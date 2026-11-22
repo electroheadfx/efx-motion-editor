@@ -242,7 +242,10 @@ describe('aquarelle layer is a compositor pigment layer (56-12)', () => {
     // mutationId and each event's point count only, so a script edit that kept
     // those three counts restored a STALE cached sheet. The identity is now a
     // canonical digest of the whole event list, and the count-only walk is gone.
-    expect(layer).toContain("import { aquarelleSheetSignature } from './aquarelleSheetSignature';");
+    // 64-30 widened this import with the presence predicate (IN-02).
+    expect(layer).toContain(
+      "import { aquarelleSheetSignature, hasCacheableScript } from './aquarelleSheetSignature';",
+    );
     // Both capture paths and the restore path go through the ONE module.
     expect(layer).toContain('rememberSheet(leavingFrame, aquarelleSheetSignature(leavingEvents), engine.captureSheet())');
     expect(layer).toContain('rememberSheet(frame, aquarelleSheetSignature(events), sheet)');

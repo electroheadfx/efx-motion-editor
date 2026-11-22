@@ -164,13 +164,22 @@ function writeValue(digest: DigestState, value: unknown, seen: WeakSet<object>):
   seen.delete(record);
 }
 
-// RED stub (64-30 Task 1): the presence predicate lands in the GREEN commit.
-// It exists here so the gate fails on its ASSERTIONS — a module-not-found run
-// asserts nothing and is INVALID_RED (#3770).
+/**
+ * Whether `events` is a script the sheet cache may park or restore (IN-02).
+ *
+ * The cache's law is symmetric: every sheet it remembers is a sheet it can
+ * later take. An empty event list digests fine but identifies no script, so
+ * it is never parked and never restored — rememberSheet and restoreCachedSheet
+ * ask this ONE question so the two answers cannot drift apart.
+ *
+ * Lives beside `aquarelleSheetSignature` because the module that owns what a
+ * script's identity is also owns whether there is a script at all. Total on
+ * malformed payloads: anything that is not an array is not a script.
+ */
 export function hasCacheableScript(
   events: unknown,
 ): events is readonly AquarellePayloadEvent[] {
-  return Boolean(events);
+  return Array.isArray(events) && events.length > 0;
 }
 
 /**

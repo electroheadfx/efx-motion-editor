@@ -71,7 +71,7 @@ import {
   cursorPreviewPressure,
   footprintCssSize,
 } from './aquarelleFootprint';
-import { aquarelleSheetSignature } from './aquarelleSheetSignature';
+import { aquarelleSheetSignature, hasCacheableScript } from './aquarelleSheetSignature';
 // debug-watercolor-loop-render-split (DEV ONLY): names the trigger that did or
 // did not reach the Studio capture handler. Installs nothing in production.
 import { recordAquarelleRenderSplitEvent } from '../performance/aquarelleRenderSplitCapture';
@@ -901,11 +901,10 @@ export function AquarelleCanvasLayer(props: {
     // Apply this session's captured sheet for `frame`, when its script still
     // matches the capture. No replay happens here — either the exact sheet is
     // uploaded or the key opens blank over its cache.
-    const restoreCachedSheet = (
-      frame: number,
-      events: readonly AquarellePayloadEvent[] | null,
-    ): boolean => {
-      if (!events || events.length === 0) return false;
+    const restoreCachedSheet = (frame: number, events: unknown): boolean => {
+      // IN-02: the ONE emptiness decision, shared with both remember sites —
+      // a script this refuses is never parked either.
+      if (!hasCacheableScript(events)) return false;
       const cached = takeSheet(frame, aquarelleSheetSignature(events));
       if (!cached || !engine.restoreSheet(cached)) return false;
       aquarelleSheetSeeded.value = true;
@@ -1138,7 +1137,7 @@ export function AquarelleCanvasLayer(props: {
       settleCapArmed = false;
       wasAwake = false;
       const events = getSeedEventsRef.current?.(frame) ?? null;
-      if (events) rememberSheet(frame, aquarelleSheetSignature(events), sheet);
+      if (hasCacheableScript(events)) rememberSheet(frame, aquarelleSheetSignature(events), sheet);
       return true;
     };
     onAdoptSheetReadyRef.current?.(adoptSheet);
@@ -1162,7 +1161,7 @@ export function AquarelleCanvasLayer(props: {
           // script signature it was built from so the return can upload it.
           const leavingFrame = lastPlayFrameRef.current;
           const leavingEvents = getSeedEventsRef.current?.(leavingFrame) ?? null;
-          if (leavingEvents) {
+          if (hasCacheableScript(leavingEvents)) {
             rememberSheet(leavingFrame, aquarelleSheetSignature(leavingEvents), engine.captureSheet());
           }
         }

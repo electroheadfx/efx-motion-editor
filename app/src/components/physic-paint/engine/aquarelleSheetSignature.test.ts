@@ -268,9 +268,10 @@ describe('64-30 hasCacheableScript — one predicate for both cache sides (IN-02
   });
 
   it('narrows a malformed payload to the payload event array', () => {
-    const value: unknown = [baseDry()];
+    const dry = baseDry();
+    const value: unknown = [dry];
     if (!hasCacheableScript(value)) throw new Error('a one-event script must be cacheable');
     const first: AquarellePayloadEvent = value[0];
-    expect(first.kind).toBe('dry');
+    expect(first).toBe(dry);
   });
 });
