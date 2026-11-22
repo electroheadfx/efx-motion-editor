@@ -24,6 +24,21 @@ export interface RotoAlphaMergeSize {
  *   (cover 1) replaces the base; a bristle gap (cover 0) keeps it. This is
  *   what a full-script re-bake produces and what the artist's re-render shows
  *   (#142) — NOT a film multiply, which reads dark.
+ *
+ * THE STORED ALPHA LAW — OPAQUE TRANSMITTANCE (64-25, 2026-11-22). Every
+ * stored pixel of the committed record carries alpha 255. Coverage enters
+ * ONLY as the exponent `1 - cover` in linear light; it never rides the alpha
+ * channel. The visible paint alpha is derived at display by
+ * transmittanceSourceToPigmentAlpha as alpha = 1 - min(rgb) — so cover 0
+ * shows the base's own alpha (the sheet is the no-pigment identity wherever
+ * coverage is 0) and cover 1 the sheet's own. The stored channel stays opaque
+ * because every consumer (the save path, the clipboard, the ink gate, the
+ * cached-base display conversion) reads transmittance, not a coverage field.
+ *
+ * This SUPERSEDES 64-15 truth 4 ("the committed alpha at a coverage pixel is
+ * the engine's coverage alpha"): that truth was reaching for a
+ * coverage-derived alpha, and this is the law that satisfies its intent after
+ * the 2026-11-21 darkness-only display amendment (alpha = 1 - min(t)).
  */
 export type RotoAlphaMergeBlend = 'source-over' | 'pigment-alpha' | 'coverage-composite';
 
@@ -177,6 +192,8 @@ export async function mergeRotoAlphaCanvases(
             const linear = sheetLinear[s[i + k]] * pow[b[i + k] * 256 + cov];
             b[i + k] = encode[Math.min(4095, Math.max(0, Math.round(linear * 4095)))];
           }
+          // Storage law, not a shortcut: the committed record is opaque
+          // transmittance; the visible alpha is derived from RGB at display.
           b[i + 3] = 255;
         }
         return base;
