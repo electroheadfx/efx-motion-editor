@@ -3,6 +3,38 @@ phase: 64
 review: 64-REVIEW.md
 titles: json
 findings:
+  - id: CR-03
+    severity: critical
+    disposition: open
+    title: "last-touch ping-pong corrupts the field outside the current dab"
+  - id: CR-04
+    severity: critical
+    disposition: open
+    title: "coverage-composite white-fill inverts the merge law and wipes the committed base"
+  - id: WR-03
+    severity: warning
+    disposition: open
+    title: "last-touch raw stamps are carried across a time-base reset"
+  - id: WR-04
+    severity: warning
+    disposition: open
+    title: "a committed-frame relight refused during playback/draft/wireframe is permanently dropped"
+  - id: IN-04
+    severity: info
+    disposition: open
+    title: "`uAmount` is a dead uniform in `bristleTouchFS`"
+  - id: IN-05
+    severity: info
+    disposition: open
+    title: "`seedSignature` under-specifies the cached sheet's script identity"
+  - id: IN-06
+    severity: info
+    disposition: open
+    title: "dead seed path: `seedAquarelleEngine`, the adapter's injected engine/clock, and `yieldToHostMs`"
+  - id: IN-07
+    severity: info
+    disposition: open
+    title: "pickup probe invariant cannot detect a collapsed dynamic range"
   - id: CR-01
     severity: critical
     disposition: open
@@ -31,16 +63,23 @@ findings:
     severity: info
     disposition: open
     title: "Azimuth 360 wraps to 0, making the slider knob snap to the left end on release"
-open: 7
-total: 7
-unparsed: 8
-recorded: 2026-11-22T13:34:07.078Z
+open: 15
+total: 15
+recorded: 2026-11-22T13:34:20.872Z
 ---
 
 # Phase 64: Code Review Disposition
 
 | Finding | Severity | Disposition | Source |
 |---------|----------|-------------|--------|
+| CR-03 | critical | open | - |
+| CR-04 | critical | open | - |
+| WR-03 | warning | open | - |
+| WR-04 | warning | open | - |
+| IN-04 | info | open | - |
+| IN-05 | info | open | - |
+| IN-06 | info | open | - |
+| IN-07 | info | open | - |
 | CR-01 | critical | open | - (not in the current review) |
 | CR-02 | critical | open | - (not in the current review) |
 | WR-01 | warning | open | - (not in the current review) |
