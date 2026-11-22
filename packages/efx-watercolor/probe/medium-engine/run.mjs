@@ -145,6 +145,9 @@
 //                                     half-width in document px (default 140,
 //                                     the full brush — the artist-visible
 //                                     lane sat at ±62 px, outside the old 48)
+//             [--over]                bristle-line only: paint the wide
+//                                     low-load wet understory first; file the
+//                                     capture as `bristle-line-over`
 //             [--emboss <0..100>]     omitted writes no emboss key
 //             [--body <0..100>]       omitted writes no body key
 //             [--light <0..4>]        omitted keeps DEFAULT_LIGHT
@@ -346,6 +349,22 @@ if (bandRaw !== undefined) {
   band = Math.round(value)
 }
 
+// 2026-11-22: the `--over` understory — a bare flag, accepted only for the
+// bristle-line scenario. File the capture under `bristle-line` (bare paper)
+// or `bristle-line-over` (wet understory); both gate ids dispatch to the same
+// comparator bars, so only the capture's own readings differ.
+const overFlag = args.indexOf('--over')
+let over
+if (overFlag >= 0) {
+  if (scenario !== 'bristle-line') {
+    console.error(
+      '--over is only valid with --scenario bristle-line (file the capture as bristle-line or bristle-line-over)',
+    )
+    process.exit(1)
+  }
+  over = 1
+}
+
 // 64-24: the §3.4 A/B mode. Omitted keeps the probe's default (1, the
 // shipped timestamp law); 0 selects 64-21's `wet × coverage` proxy, the
 // recorded control. A value the page would refuse is refused here first.
@@ -371,6 +390,7 @@ const pageQuery =
   (strokeSize === undefined ? '' : `&strokeSize=${strokeSize}`) +
   (band === undefined ? '' : `&band=${band}`) +
   (mut === undefined ? '' : `&mut=${mut}`) +
+  (over === undefined ? '' : '&over=1') +
   (wetMode === undefined ? '' : `&wetMode=${wetMode}`)
 const resultPath = join(outDir, `${gate}.json`)
 

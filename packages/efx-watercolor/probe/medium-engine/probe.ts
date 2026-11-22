@@ -1508,6 +1508,42 @@ const LINE_STATION_HALF = 16
 /** The along-stroke span the across profile averages, as doc uv x. */
 const LINE_PROFILE_X0 = 0.25
 const LINE_PROFILE_X1 = 0.75
+/** 2026-11-22 (bristle-line gate): the halo's "pale ring" fraction — the run
+ *  counts consecutive fringe rows whose darkness exceeds this fraction of the
+ *  interior plateau (5 %, HALO_RUN_FRACTION in compare.mjs). */
+const LINE_HALO_RUN_FRACTION = 0.05
+/** 2026-11-22 (bristle-line-over): the understory is a WETTING pass, never a
+ *  mark. Four measured facts shape it:
+ *  (1) the engine's load floor (deposit.ts: `(0.35 + load01 * 1.3) *
+ *      capacity`) means a load-0 pass still deposits 0.35× the base load —
+ *      lowering Load alone left a 6–15 % film at load 5 (measured);
+ *  (2) the halo walk's 2 %-of-plateau clamp ends only when the composite
+ *      falls below 0.02 × 0.62 ≈ 0.012 darkness, so any understory pigment
+ *      that surfaces beside the line is read as the line's own halo;
+ *  (3) the per-stamp strength is the pressure multiplier
+ *      (`strength = clamp(p, 0.15, 1)`), and wetness scales with the same
+ *      coverage — the lightest touch (0.15) is the weakest wetting pass the
+ *      engine can stamp; and
+ *  (4) every recorded point is one host tick, so a two-point sweep carries
+ *      one spread tick over the profile window while the artist's three-point
+ *      drag carries three.
+ *  Size 400 (measured: 800 puts the understory's own bristle structure back
+ *  into the band — halo run 10, enclosure max-run 83 px — and 200 leaves a
+ *  6–15 % film) plus the lightest touch and the single spread tick keep the
+ *  understory's own visible film at or below 0.011 darkness = 1.8 % of the
+ *  0.622 line plateau. That is INSIDE the halo walk's outward 2 %-of-plateau
+ *  clamp, so the walk ends inside the LINE's own fringe exactly as it does on
+ *  bare paper, and the understory cannot masquerade as a halo. The lateral
+ *  offset (0.52 in doc uv y ≈ 22 px above the line at 1080) keeps the film
+ *  off the line's plateau sample. `fixAfter: false` keeps the pass mobile:
+ *  the judged line lands on wet paint, which is the variant's whole point. */
+const LINE_OVER_Y = 0.52
+const LINE_OVER_SIZE = 400
+const LINE_OVER_X0 = 0.02
+const LINE_OVER_X1 = 0.98
+const LINE_OVER_LOAD = 0
+const LINE_OVER_PRESSURE = 0.15
+const LINE_OVER_MUTATION_ID = 0x7ee4ff
 
 /** The artist's straight drag: constant y, constant pressure, no tilt. */
 function straightLine(y: number): readonly AquarellePoint[] {
@@ -1515,6 +1551,16 @@ function straightLine(y: number): readonly AquarellePoint[] {
     { x: LINE_X0, y, p: 0.75, tx: 0, ty: 0, tw: 0 },
     { x: (LINE_X0 + LINE_X1) / 2, y, p: 0.75, tx: 0, ty: 0, tw: 0 },
     { x: LINE_X1, y, p: 0.75, tx: 0, ty: 0, tw: 0 },
+  ]
+}
+
+/** The understory's ONE sweep: two points (one spread tick over the profile
+ *  window), both endpoints outside the 0.25..0.75 profile window, stamped at
+ *  the lightest touch so the mobile film stays faint. */
+function understoryLine(y: number): readonly AquarellePoint[] {
+  return [
+    { x: LINE_OVER_X0, y, p: LINE_OVER_PRESSURE, tx: 0, ty: 0, tw: 0 },
+    { x: LINE_OVER_X1, y, p: LINE_OVER_PRESSURE, tx: 0, ty: 0, tw: 0 },
   ]
 }
 
@@ -1547,18 +1593,41 @@ function readMut(): number {
   return Math.floor(value)
 }
 
-/** ONE straight bristle-flat stroke at the artist's parameters. */
-function bristleLineScript(body: number, strokeSize: number, mut: number = LINE_MUTATION_ID): readonly ScriptEntry[] {
-  return [
-    {
-      color: LINE_COLOR,
-      points: straightLine(LINE_Y),
-      mutationId: mut,
-      params: bristleLineParams(body, strokeSize),
-      brushId: 'bristle-flat',
-      captureLine: true,
-    },
-  ]
+/** The `--over` understory: ONE wide, low-load, light-touch pass of the same
+ *  brush, left MOBILE (`fixAfter: false`) so the judged line lands on wet
+ *  paint. Its geometry and strength are chosen from the film measurements
+ *  recorded above LINE_OVER_Y: the understory's own visible film stays under
+ *  the halo walk's outward 2 %-of-plateau clamp, so the walk ends inside the
+ *  line's own fringe and the metric reads the line, not the understory. */
+function bristleLineOverEntry(): ScriptEntry {
+  return {
+    color: LINE_COLOR,
+    points: understoryLine(LINE_OVER_Y),
+    mutationId: LINE_OVER_MUTATION_ID,
+    params: { ...bristleLineParams(0, LINE_OVER_SIZE), load: LINE_OVER_LOAD, feather: 100 },
+    brushId: 'bristle-flat',
+    fixAfter: false,
+  }
+}
+
+/** ONE straight bristle-flat stroke at the artist's parameters. `--over`
+ *  prepends the understory; the judged entry is always last and alone carries
+ *  `captureLine`, so the profile captures never include the bare understory. */
+function bristleLineScript(
+  body: number,
+  strokeSize: number,
+  mut: number = LINE_MUTATION_ID,
+  over: boolean = false,
+): readonly ScriptEntry[] {
+  const judged: ScriptEntry = {
+    color: LINE_COLOR,
+    points: straightLine(LINE_Y),
+    mutationId: mut,
+    params: bristleLineParams(body, strokeSize),
+    brushId: 'bristle-flat',
+    captureLine: true,
+  }
+  return over ? [bristleLineOverEntry(), judged] : [judged]
 }
 
 /** 2026-11-22: the across band the line profile samples, in document pixels
@@ -1572,6 +1641,18 @@ function readBand(): number {
     throw new Error(`invalid band "${raw}" (expected 16..400)`)
   }
   return Math.round(value)
+}
+
+/** 2026-11-22: the `--over` understory flag. Absent keeps the bare-paper
+ *  capture; `1` prepends the wide low-load mobile pass. run.mjs refuses the
+ *  flag on every other scenario, so this check is the second line of defence. */
+function readOver(): boolean {
+  const raw = new URLSearchParams(location.search).get('over')
+  if (raw === null || raw === '') return false
+  if (raw !== '1') {
+    throw new Error(`invalid over "${raw}" (expected 1)`)
+  }
+  return true
 }
 
 /** 2026-11-22: the bristle-line stroke's own `size` key — absent keeps
@@ -1767,6 +1848,125 @@ function runLengths(flags: readonly boolean[]): number[] {
   }
   if (cur > 0) lengths.push(cur)
   return lengths
+}
+
+/** One side's outward walk over the darkness profile, shared by the rim and
+ *  halo measures so the two cannot disagree about which side is outward.
+ *  `plateau` is the median darkness of the interior rows on that side (the
+ *  cover-defined interior span bounds the sample, so the plateau cannot drift
+ *  from the tiling measure); `cross90/50/10` are the interpolated offsets where
+ *  the walk first falls through that fraction of the plateau, scanning from
+ *  the centre outward. The rim band is |cross10 − cross90| and `step` is the
+ *  worst adjacent-row change inside the OUTER THIRD of that band. The halo
+ *  reads only rows beyond `cross50`, clamped to the stroke's own outward
+ *  2 %-of-plateau extent: beyond that row the film is paper, and on the
+ *  `--over` variant the understory's own core continues there — without the
+ *  clamp a wet underlayer would masquerade as the line's pale halo. */
+interface LineSideWalk {
+  plateau: number
+  bandPx: number | null
+  step: number | null
+  stepAt: number | null
+  haloPeakRel: number | null
+  haloMean: number | null
+  haloRun: number
+  haloPeakAt: number | null
+}
+
+function lineSideWalk(
+  offsets: readonly number[],
+  dark: readonly number[],
+  interiorSpan: readonly [number, number],
+  side: -1 | 1,
+): LineSideWalk {
+  const plateauLo = side < 0 ? interiorSpan[0] : 0
+  const plateauHi = side < 0 ? 0 : interiorSpan[1]
+  const plateauValues: number[] = []
+  for (let i = 0; i < offsets.length; i += 1) {
+    const o = offsets[i]!
+    if (o >= plateauLo && o <= plateauHi) plateauValues.push(dark[i]!)
+  }
+  const plateau = median(plateauValues)
+  const centreIndex = offsets.indexOf(0)
+  const points: { o: number; d: number }[] = []
+  if (centreIndex >= 0) {
+    for (let i = centreIndex; i >= 0 && i < offsets.length; i += side < 0 ? -1 : 1) {
+      points.push({ o: offsets[i]!, d: dark[i]! })
+    }
+  }
+  const crossing = (fraction: number): number | null => {
+    if (!(plateau > 0)) return null
+    const threshold = plateau * fraction
+    for (let j = 1; j < points.length; j += 1) {
+      const a = points[j - 1]!
+      const b = points[j]!
+      if (a.d >= threshold && b.d < threshold) {
+        const t = (a.d - threshold) / (a.d - b.d)
+        return a.o + t * (b.o - a.o)
+      }
+    }
+    return null
+  }
+  const cross90 = crossing(0.9)
+  const cross50 = crossing(0.5)
+  const cross10 = crossing(0.1)
+  const bandPx = cross90 !== null && cross10 !== null ? Math.abs(cross10 - cross90) : null
+  let step: number | null = null
+  let stepAt: number | null = null
+  if (cross90 !== null && cross10 !== null) {
+    const outerFrom = cross90 + (2 / 3) * (cross10 - cross90)
+    const outerLo = Math.min(outerFrom, cross10)
+    const outerHi = Math.max(outerFrom, cross10)
+    for (let j = 1; j < points.length; j += 1) {
+      const point = points[j]!
+      if (point.o < outerLo || point.o > outerHi) continue
+      const delta = Math.abs(point.d - points[j - 1]!.d)
+      if (step === null || delta > step) {
+        step = delta
+        stepAt = point.o
+      }
+    }
+  }
+  let haloPeakRel: number | null = null
+  let haloPeakAt: number | null = null
+  let haloMean: number | null = null
+  let haloRun = 0
+  if (cross50 !== null && plateau > 0) {
+    let peak = -Infinity
+    let sum = 0
+    let count = 0
+    let run = 0
+    for (const point of points) {
+      if ((point.o - cross50) * side <= 0) continue
+      if (!(point.d > plateau * 0.02)) break
+      if (point.d > peak) {
+        peak = point.d
+        haloPeakAt = point.o
+      }
+      sum += point.d
+      count += 1
+      if (point.d > plateau * LINE_HALO_RUN_FRACTION) {
+        run += 1
+        if (run > haloRun) haloRun = run
+      } else {
+        run = 0
+      }
+    }
+    if (count > 0) {
+      haloPeakRel = round4(peak / plateau)
+      haloMean = round4(sum / count)
+    }
+  }
+  return {
+    plateau: round4(plateau),
+    bandPx: bandPx === null ? null : round2(bandPx),
+    step: step === null ? null : round4(step),
+    stepAt,
+    haloPeakRel,
+    haloMean,
+    haloRun,
+    haloPeakAt,
+  }
 }
 
 /**
@@ -1966,6 +2166,14 @@ function lineProfileSet(engine: WatercolorEngine): Record<string, unknown> {
     }
   }
 
+  // 2026-11-22 (bristle-line gate): the rim and halo walks, one per side,
+  // computed from the SAME across profile and interior span the tiling block
+  // uses. Additive: every pre-existing field keeps its name and shape.
+  const sides = {
+    down: lineSideWalk(offsets, dark, interiorSpan, -1),
+    up: lineSideWalk(offsets, dark, interiorSpan, 1),
+  }
+
   return {
     centreRow: centre,
     peakCover: round4(peakCover),
@@ -1974,6 +2182,34 @@ function lineProfileSet(engine: WatercolorEngine): Record<string, unknown> {
       cover: stat(cover, interiorSpan[0], interiorSpan[1]),
       dark: stat(dark, interiorSpan[0], interiorSpan[1]),
       ink: stat(ink, interiorSpan[0], interiorSpan[1]),
+    },
+    rim: {
+      down: {
+        plateau: sides.down.plateau,
+        bandPx: sides.down.bandPx,
+        step: sides.down.step,
+        stepAt: sides.down.stepAt,
+      },
+      up: {
+        plateau: sides.up.plateau,
+        bandPx: sides.up.bandPx,
+        step: sides.up.step,
+        stepAt: sides.up.stepAt,
+      },
+    },
+    halo: {
+      down: {
+        peakRel: sides.down.haloPeakRel,
+        mean: sides.down.haloMean,
+        run: sides.down.haloRun,
+        peakAt: sides.down.haloPeakAt,
+      },
+      up: {
+        peakRel: sides.up.haloPeakRel,
+        mean: sides.up.haloMean,
+        run: sides.up.haloRun,
+        peakAt: sides.up.haloPeakAt,
+      },
     },
     offsets,
     across: { cover, dark, ink },
@@ -2060,7 +2296,7 @@ function run(
                       : scenario === 'bristle-wet'
                         ? bristleWetScript()
                         : scenario === 'bristle-line'
-                          ? bristleLineScript(body ?? 0, strokeSize, readMut())
+                          ? bristleLineScript(body ?? 0, strokeSize, readMut(), readOver())
                           : neutralScript(emboss, body)
 
   // 261119-pod (D-F): the scene-parameter echo — `dry` appears in the report
@@ -2245,7 +2481,7 @@ function run(
     const lineReport =
       scenario === 'bristle-line'
         ? {
-            paramsEcho: paramsBag(script[0]!),
+            paramsEcho: paramsBag(script.find((entry) => entry.captureLine) ?? script[0]!),
             lineBodyOverride: body ?? 0,
             recordBody: MEDIUMS.find((medium) => medium.id === 'acrylic')?.params.body ?? null,
             lineSurfaces,

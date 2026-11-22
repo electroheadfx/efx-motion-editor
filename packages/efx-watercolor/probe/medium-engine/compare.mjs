@@ -634,6 +634,204 @@ function bristleWetFailures(data) {
   return failures
 }
 
+/**
+ * 2026-11-22 (bristle-line gate): the acrylic pale-line defect's measured
+ * properties, read from the three drive surfaces (`lineSurfaces`). UAT row 12
+ * names two of them — a hard rim line and a pale halo — and the enclosure scan
+ * names the third (a pale lane INSIDE the stroke's support).
+ *
+ * RIM — per side, the interior plateau's median darkness, the outward 90→10 %
+ * band width and the worst adjacent-row step inside the outer third of the
+ * band. Bars:
+ *   RIM_MIN_BAND_PX = 2 at the 1080 capture scale: one device pixel of cliff
+ *     IS a line (the artist's "hard line"); two pixels of falloff IS a blend.
+ *   RIM_MAX_STEP_FRACTION = 0.5 of the plateau: the largest adjacent change a
+ *     graded fringe can carry without reading as a step.
+ * HEAD at 2026-11-22 reads 3.74 px / 5.60 px bands and 0.194 / 0.219 of the
+ * plateau steps — both bars PASS; the bare gate's HEAD failure is the halo.
+ *
+ * HALO — per side, the peak darkness beyond the 50 % crossing RELATIVE to the
+ * plateau, its mean over the fringe, and the longest run of fringe rows above
+ * 5 % of the plateau. The probe clamps the fringe to the stroke's own outward
+ * 2 %-of-plateau extent, so a wet understory (the `--over` variant) can never
+ * masquerade as the line's halo: the understory is pressed at the lightest
+ * touch and spread as one wide sweep, so its own visible film tops out at
+ * 0.011 darkness = 1.8 % of the 0.622 plateau — below the clamp — and the
+ * bare and `--over` halo readings are identical (recorded below).
+ *   HALO_PEAK_MAX = 0.4: a graded fringe's first row beyond the half-crossing
+ *     cannot still read 40 % of the plateau.
+ *   HALO_RUN_FRACTION = 0.05, HALO_RUN_MAX = 2 rows: at most two consecutive
+ *     fringe rows may carry a measurable film above 5 % of the plateau.
+ * HEAD reads peak 0.4628 / 0.4493 and run 3 / 4 — the pale ring UAT row 12
+ * names, failing at HEAD.
+ *
+ * ENCLOSED — the tiling block's own enclosed-line scan (a row paler than its
+ * ±4..8 px neighbours on BOTH sides). A pale line INSIDE the support is the
+ * UAT row-3 writer; bare paper cannot produce one.
+ *   ENCLOSED_MEAN_MAX_PCT = 0.5 is half a luma step of 255 — the smallest
+ *     mean prominence that is a film difference rather than quantisation.
+ *   ENCLOSED_FRAC_MAX_PCT = 25 is a quarter of the sampled central half — a
+ *     line, not a fibre.
+ *   ENCLOSED_MAX_RUN_PX = 16 is the station half-width — a run longer than a
+ *     station is a lane.
+ * HEAD reads mean 0 % / frac 0 % / runs 0 / max-run 0 px on the bare capture
+ * and mean 0.3 % / frac 1.85 % / runs 2 / max-run 8 px on the `--over`
+ * capture — both pass every enclosure bar (the understory only registers as
+ * faint fringe structure); the gate's HEAD failure is the halo, not an
+ * enclosed line.
+ *
+ * Recorded HEAD readings, 2026-11-22, `--size 1080`, Body 0, stroke size 12 —
+ * byte-identical on postApply / postSettle / postFix:
+ *   bare `bristle-line`        interior [-17, 18] px, peakCover 0.409
+ *     rim.down   plateau 0.6221  bandPx 3.74    step 0.1207 @ -19
+ *     rim.up     plateau 0.6288  bandPx 5.60    step 0.1378 @ +20
+ *     halo.down  peakRel 0.4628  mean 0.1157  run 3  peakAt -18
+ *     halo.up    peakRel 0.4493  mean 0.1184  run 4  peakAt +19
+ *     enclosed   offset 56  meanPct 0  fracPct 0  runs 0  maxRunPx 0
+ *   `--over` `bristle-line-over` interior [-17, 18] px, peakCover 0.409
+ *     rim / halo identical to the bare capture above (the understory's own
+ *                  film stays under the 2 % clamp; its brightest visible row
+ *                  is 0.011 darkness at offset +48)
+ *     enclosed   offset 69  meanPct 0.3  fracPct 1.85  runs 2  maxRunPx 8
+ *
+ * The harness pins the metric labels these numbers move with, so a re-record
+ * is deliberate, never silent.
+ */
+const RIM_MIN_BAND_PX = 2
+const RIM_MAX_STEP_FRACTION = 0.5
+const HALO_PEAK_MAX = 0.4
+const HALO_RUN_FRACTION = 0.05
+const HALO_RUN_MAX = 2
+const ENCLOSED_MEAN_MAX_PCT = 0.5
+const ENCLOSED_FRAC_MAX_PCT = 25
+const ENCLOSED_MAX_RUN_PX = 16
+
+const LINE_SURFACES = ['postApply', 'postSettle', 'postFix']
+
+function bristleLineFailures(data) {
+  const surfaces = data.lineSurfaces
+  if (surfaces === null || typeof surfaces !== 'object' || Array.isArray(surfaces)) {
+    return ['capture is missing lineSurfaces; re-run the bristle-line probe']
+  }
+  const failures = []
+  for (const name of LINE_SURFACES) {
+    const surface = surfaces[name]
+    if (surface === null || typeof surface !== 'object') {
+      failures.push(`lineSurfaces.${name} is missing (the capture recorded no ${name} profile)`)
+      continue
+    }
+    if (!(typeof surface.peakCover === 'number' && surface.peakCover > 0)) {
+      failures.push(
+        `${name}: peakCover ${surface.peakCover} is not a positive coverage peak ` +
+          '(the line deposited no coverage)',
+      )
+    }
+    const span = surface.interior && surface.interior.span
+    if (
+      !Array.isArray(span) ||
+      span.length !== 2 ||
+      typeof span[0] !== 'number' ||
+      typeof span[1] !== 'number' ||
+      !(span[1] > span[0])
+    ) {
+      failures.push(
+        `${name}: interior.span ${JSON.stringify(span)} is missing or degenerate ` +
+          '(a zero-width plateau cannot certify a rim)',
+      )
+    }
+    for (const side of ['down', 'up']) {
+      const rim = surface.rim && surface.rim[side]
+      if (rim === null || typeof rim !== 'object') {
+        failures.push(`${name}: rim.${side} is missing (no ${side} rim walk was recorded)`)
+        continue
+      }
+      const plateau = rim.plateau
+      if (!(typeof plateau === 'number' && plateau > 0)) {
+        failures.push(
+          `${name}: rim.${side}.plateau ${plateau} is not a positive plateau ` +
+            '(the interior is degenerate)',
+        )
+        continue
+      }
+      if (typeof rim.bandPx !== 'number') {
+        failures.push(`${name}: rim.${side}.bandPx is not a number (the 90-to-10 band never crossed)`)
+      } else if (rim.bandPx < RIM_MIN_BAND_PX) {
+        failures.push(
+          `${name}: rim.${side}.bandPx ${rim.bandPx} px is under the ${RIM_MIN_BAND_PX} px floor ` +
+            '(a one-device-pixel cliff, not a graded edge)',
+        )
+      }
+      if (typeof rim.step !== 'number') {
+        failures.push(`${name}: rim.${side}.step is not a number (the outer-third walk was never measured)`)
+      } else if (rim.step > RIM_MAX_STEP_FRACTION * plateau) {
+        failures.push(
+          `${name}: rim.${side}.step ${rim.step} at ${rim.stepAt} exceeds half the plateau ` +
+            `${plateau} (an unblended step, not a fringe)`,
+        )
+      }
+      const halo = surface.halo && surface.halo[side]
+      if (halo === null || typeof halo !== 'object') {
+        failures.push(`${name}: halo.${side} is missing (no ${side} fringe walk was recorded)`)
+        continue
+      }
+      if (typeof halo.peakRel !== 'number') {
+        failures.push(
+          `${name}: halo.${side}.peakRel is not a number ` +
+            '(no fringe beyond the 50% crossing inside the 2% extent)',
+        )
+      } else if (halo.peakRel > HALO_PEAK_MAX) {
+        failures.push(
+          `${name}: halo.${side}.peakRel ${halo.peakRel} exceeds HALO_PEAK_MAX ${HALO_PEAK_MAX} ` +
+            `at ${halo.peakAt} (a pale ring beyond the 50% crossing)`,
+        )
+      }
+      if (typeof halo.mean !== 'number') {
+        failures.push(`${name}: halo.${side}.mean is not a number (the fringe mean was never measured)`)
+      }
+      if (typeof halo.run !== 'number') {
+        failures.push(`${name}: halo.${side}.run is not a number (the fringe run was never measured)`)
+      } else if (halo.run > HALO_RUN_MAX) {
+        failures.push(
+          `${name}: halo.${side}.run ${halo.run} exceeds HALO_RUN_MAX ${HALO_RUN_MAX} rows ` +
+            `above ${HALO_RUN_FRACTION} of the plateau (a halo band, not a fibre)`,
+        )
+      }
+    }
+    const enclosed = surface.tiling && surface.tiling.enclosed
+    if (enclosed === null || typeof enclosed !== 'object') {
+      failures.push(
+        `${name}: tiling.enclosed is missing (the enclosure scan never ran; a null scan cannot pass)`,
+      )
+      continue
+    }
+    const enclosedFields = ['meanPct', 'fracPct', 'runs', 'maxRunPx']
+    const enclosedMissing = enclosedFields.filter((field) => typeof enclosed[field] !== 'number')
+    if (enclosedMissing.length > 0) {
+      failures.push(`${name}: tiling.enclosed is missing ${enclosedMissing.join(', ')}`)
+      continue
+    }
+    if (enclosed.meanPct > ENCLOSED_MEAN_MAX_PCT) {
+      failures.push(
+        `${name}: tiling.enclosed.meanPct ${enclosed.meanPct} exceeds ` +
+          `${ENCLOSED_MEAN_MAX_PCT}% at ${enclosed.offset} (a pale line enclosed by paint)`,
+      )
+    }
+    if (enclosed.fracPct > ENCLOSED_FRAC_MAX_PCT) {
+      failures.push(
+        `${name}: tiling.enclosed.fracPct ${enclosed.fracPct} exceeds ${ENCLOSED_FRAC_MAX_PCT}% ` +
+          '(the pale line spans the stroke, not a fibre)',
+      )
+    }
+    if (enclosed.maxRunPx > ENCLOSED_MAX_RUN_PX) {
+      failures.push(
+        `${name}: tiling.enclosed.maxRunPx ${enclosed.maxRunPx} exceeds ${ENCLOSED_MAX_RUN_PX} px ` +
+          '(an enclosed lane, not an enclosed dot)',
+      )
+    }
+  }
+  return failures
+}
+
 const SCENARIO_INVARIANTS = {
   'white-over-blue': whiteOverBlueFailures,
   'cover-advect': coverAdvectFailures,
@@ -642,6 +840,8 @@ const SCENARIO_INVARIANTS = {
   'red-over-blue-50': redOverBlueFailures,
   'bristle-edge': bristleEdgeFailures,
   'bristle-wet': bristleWetFailures,
+  'bristle-line': bristleLineFailures,
+  'bristle-line-over': bristleLineFailures,
 }
 
 /** Run the scenario's invariant function, if it has one. */
