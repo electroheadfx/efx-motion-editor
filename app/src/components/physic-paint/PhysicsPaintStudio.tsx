@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { effect, signal, useComputed, useSignal, type ReadonlySignal } from '@preact/signals';
 import type { CompletedPaintMutation, PaintHistoryAvailability, RotoEditableState } from './types/paintCore';
 import { derivePaperSeed, type BlendMode, type DocumentSoundClip, type FrameLoopClipRepeat, type FrameLoopClipScale, type PaintDocumentLight } from '../../efx-paint/document/efxPaintDocument';
@@ -2962,7 +2962,15 @@ export function PhysicsPaintStudio() {
   // subscribing `.value` inside the effect, never in the render body and
   // never through `.peek()` — and the runner's three guards stay as defense
   // in depth for a state that flips back before the drain's run body runs.
-  useEffect(() => {
+  // A LAYOUT effect, not a passive one (WR-01): `isPlaying` is a PROP, so the
+  // render body updates `isPlayingRef` at commit time, but a passive effect
+  // flushes a task later. A request landing in that window would start a run
+  // the runner's live guard refuses, spend the automatic follow-up on a second
+  // refusal, and leave the blocking edge nothing to drain — the exact drop
+  // this gate exists to prevent. A layout effect runs in the same commit task,
+  // so the scheduler knows the block before any request can observe it. The
+  // two signal states still notify synchronously through `effect()`.
+  useLayoutEffect(() => {
     const dispose = effect(() => {
       const blocked = isPlaying || draftMode.value || wireframeMode.value;
       committedFrameRelightRef.current?.setBlocked(blocked);

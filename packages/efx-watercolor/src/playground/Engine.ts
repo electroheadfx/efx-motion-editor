@@ -2110,6 +2110,9 @@ export class WatercolorEngine {
     ];
     const res = dir === 'undo' ? this.history.undo(layers, metaNow) : this.history.redo(layers, metaNow);
     if (!res) return;
+    // Both halves of the last-touch pair were just restored from history, so a
+    // pending carry names texels the restored state no longer holds (IN-03).
+    invalidateCarry(this.touchCarry);
     const meta = res.meta as StepMeta;
     const now = this.clock();
     if (meta.whole) {

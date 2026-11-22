@@ -288,6 +288,14 @@ describe('the last-touch carry (CR-03)', () => {
     const invalidAt = resize.indexOf('invalidateCarry(this.touchCarry);')
     expect(copyAt, 'a resize carries the raw stamps').toBeGreaterThan(-1)
     expect(invalidAt, 'the resized pair is invalidated after the copy').toBeGreaterThan(copyAt)
+
+    // IN-03: undo/redo restores BOTH halves from history, so a pending carry
+    // names texels the restored state no longer holds.
+    const travel = sliceBetween(ENGINE_SOURCE, "private travel(dir: 'undo' | 'redo'", 'private notifyHistory()')
+    const restoreAt = travel.indexOf('this.history.')
+    const travelInvalidAt = travel.indexOf('invalidateCarry(this.touchCarry);')
+    expect(restoreAt, 'an undo/redo restores the pair').toBeGreaterThan(-1)
+    expect(travelInvalidAt, 'the restored pair is invalidated after the restore').toBeGreaterThan(restoreAt)
   })
 
   it('states the carry law where the false docstring stood', () => {

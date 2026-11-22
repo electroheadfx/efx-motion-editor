@@ -379,6 +379,8 @@ describe('mergeCachedRotoAlphaFrame', () => {
       /** false → the coverage canvas's own context has no getImageData. */
       readableCoverage?: boolean;
       coverage?: 'canvas' | 'null' | 'unreadable';
+      /** Coverage raster dimensions when they differ from the merge size. */
+      coverageSize?: { width: number; height: number };
     }
 
     let created: ModelCanvas[] = [];
@@ -422,8 +424,8 @@ describe('mergeCachedRotoAlphaFrame', () => {
         coverage = {} as unknown as HTMLCanvasElement;
       } else if (scene.coverage !== 'null') {
         const raster = new ModelCanvas('coverage-canvas');
-        raster.width = scene.width;
-        raster.height = scene.height;
+        raster.width = scene.coverageSize?.width ?? scene.width;
+        raster.height = scene.coverageSize?.height ?? scene.height;
         raster.readable = scene.readableCoverage !== false;
         raster.seed(scene.cover);
         coverage = raster as unknown as HTMLCanvasElement;
@@ -485,6 +487,27 @@ describe('mergeCachedRotoAlphaFrame', () => {
 
     it('keeps the base at cover 0 and the 0.498 exponent at cover 128 — transparent-scratch fallback', async () => {
       expectEngineDabLaw(await runMerge(lawScene(false)));
+    });
+
+    it('scales a mis-sized coverage raster instead of taking an unscaled crop (WR-02)', async () => {
+      const merged = await runMerge({
+        width: 2,
+        height: 1,
+        base: [128, 128, 255, 255, 128, 128, 255, 255],
+        sheet: [255, 255, 64, 255, 255, 255, 64, 255],
+        // A 4-wide coverage raster for a 2-wide document: nearest sampling to
+        // 2 px reads columns 0 and 2 → cover 255 then 0.
+        cover: [255, 255, 255, 255, 255, 255, 255, 255, 0, 0, 0, 0, 0, 0, 0, 0],
+        coverageSize: { width: 4, height: 1 },
+      });
+      // Cover 255: the sheet replaces the base.
+      expect(merged[0]).toBe(255);
+      expect(merged[1]).toBe(255);
+      // Cover 0: the BASE's red/green survive. The pre-fix direct read cropped
+      // the first 2 columns unscaled (cover 255, 255) and painted the sheet
+      // over this pixel too, so this is the discriminating assertion.
+      expect(merged[4]).toBe(128);
+      expect(merged[5]).toBe(128);
     });
 
     it('keeps the sheet on its white-filled transmittance scratch', async () => {

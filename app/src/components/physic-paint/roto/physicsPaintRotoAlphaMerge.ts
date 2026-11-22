@@ -43,7 +43,7 @@ export interface RotoAlphaMergeSize {
 export type RotoAlphaMergeBlend = 'source-over' | 'pigment-alpha' | 'coverage-composite';
 
 /**
- * Lookup tables for the coverage composite, built once. `pow` is a 64 KiB
+ * Lookup tables for the coverage composite, built once. `pow` is a 256 KiB
  * Float32 table over (base byte, cover byte): srgbToLinear(base/255) **
  * (1 - cover/255). `sheetLinear` and `encode` avoid per-pixel gamma math.
  */
@@ -151,9 +151,14 @@ export async function mergeRotoAlphaCanvases(
       // bytes (red = cover), with no backdrop in the way.
       try {
         const own = typeof source.getContext === 'function' ? source.getContext('2d', { willReadFrequently: true }) : null;
-        if (own && typeof own.getImageData === 'function') {
-          const direct = own.getImageData(0, 0, size.width, size.height);
-          if (direct.width === size.width && direct.height === size.height) return direct;
+        // Compare the SOURCE's dimensions, never the returned ImageData's:
+        // getImageData always returns an ImageData of exactly the requested
+        // size (out-of-canvas pixels come back transparent), so checking the
+        // result is vacuous — a mis-sized coverage raster (an engine caught
+        // mid-resize) would take an unscaled top-left crop while the scratch
+        // fallback scales, silently misaligning cov with the sheet (WR-02).
+        if (own && typeof own.getImageData === 'function' && source.width === size.width && source.height === size.height) {
+          return own.getImageData(0, 0, size.width, size.height);
         }
       } catch {
         // fall through to the transparent scratch

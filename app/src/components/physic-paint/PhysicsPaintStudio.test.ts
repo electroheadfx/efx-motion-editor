@@ -8668,6 +8668,16 @@ describe('64-19 committed-frame relight wiring (CR-01)', () => {
     expect(studio.indexOf(RELIGHT_START), 'the gate follows the creation').toBeLessThan(setBlockedAt);
     const gateStart = studio.lastIndexOf('const dispose = effect(() =>', setBlockedAt);
     expect(gateStart, 'the gate is a preact effect').toBeGreaterThan(-1);
+    // WR-01: `isPlaying` is a PROP, so a PASSIVE effect would leave a window
+    // between the render commit (isPlayingRef updated) and the gate flush. A
+    // request landing there starts a run the live guard refuses, spends the
+    // automatic follow-up on a second refusal, and leaves setBlocked(true)
+    // nothing to drain — the drop this gate exists to prevent. A layout
+    // effect runs in the same commit task, closing that window.
+    expect(
+      studio.slice(Math.max(0, gateStart - 400), gateStart),
+      'the gate is hosted by a layout effect, not a passive one (WR-01)',
+    ).toContain('useLayoutEffect(() => {');
     const gateEnd = studio.indexOf(RELIGHT_END, setBlockedAt);
     expect(gateEnd, 'the gate sits before the gesture handler').toBeGreaterThan(setBlockedAt);
     const gate = studio.slice(gateStart, gateEnd);
