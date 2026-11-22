@@ -16,7 +16,8 @@
 //
 //  Laws pinned here (task 1 of 64-17):
 //   1. The report digests `engine.exportCanvas('pigment')` — the mode-4
-//      coverage-aware sheet whose alpha is the compositor alpha.
+//      display sheet whose alpha is the pigment's darkness alone (2026-11-21);
+//      coverage claims read `engine.exportCanvas('coverage')`, the instrument.
 //   2. run.mjs refuses a capture that lacks any of the FOUR digests.
 //   3. compare.mjs compares `digestPigment` strictly everywhere except
 //      against the one committed baseline that predates the field
@@ -140,8 +141,9 @@ describe('the medium-engine probe harness (64-17)', () => {
 //   6. The white-over-blue scenario is Spike 001's geometry verbatim — the
 //      blue band at Body 0, the white diagonal at the body knob (default 100).
 //   7. The seven metrics are measured on the SPIKE's boxes: the crossing at
-//      (0.5, 0.5), and alpha on the pigment export against the transparent
-//      export's darkness conversion.
+//      (0.5, 0.5), and COVERAGE on the coverage raster (64-31: never the
+//      pigment export's alpha, which carries no coverage term) against the
+//      transparent export's darkness conversion.
 //   8. compare.mjs dispatches scenario invariants in every mode, switches the
 //      bars on the capture's own body, and fails an unlisted body loudly.
 describe('the white-over-blue matrix (64-17 task 2)', () => {
@@ -171,7 +173,7 @@ describe('the white-over-blue matrix (64-17 task 2)', () => {
         'crossG:',
         'crossB:',
         'crossBlueExcess:',
-        'crossCoverAlpha:',
+        'crossCoverage:',
         'crossDarkAlpha:',
         'coveredPaperWhitePct:',
       ]) {
@@ -204,15 +206,25 @@ describe('the white-over-blue matrix (64-17 task 2)', () => {
       expectContains(COMPARE, '} else if (data.body === 60) {')
       expectContains(COMPARE, '} else if (data.body === 30) {')
       expectContains(COMPARE, 'gap >= 0.6')
-      expectContains(COMPARE, 'data.crossCoverAlpha >= 0.9')
+      expectContains(COMPARE, 'data.crossCoverage >= 0.9')
       expectContains(COMPARE, 'data.crossBlueExcess <= 5')
-      expectContains(COMPARE, 'data.crossCoverAlpha < 0.5')
+      expectContains(COMPARE, 'data.crossCoverage < 0.5')
       expectContains(COMPARE, 'gap >= 0.04')
       expectContains(COMPARE, 'data.crossBlueExcess >= 15 && data.crossBlueExcess <= 38')
       expectContains(COMPARE, 'data.crossBlueExcess >= 38')
       expectContains(COMPARE, 'gap <= 0.03')
       expectContains(COMPARE, 'data.coveredPaperWhitePct !== 0')
       expectContains(COMPARE, 'has no white-over-blue bar set')
+    })
+
+    it('names the coverage raster in every criterion-1 message', () => {
+      expectContains(COMPARE, '`crossCoverage - crossDarkAlpha ${round2(gap)}')
+      expectContains(COMPARE, 'the coverage raster')
+    })
+
+    it('fails a capture that drops the covered-paper-white census block', () => {
+      expectContains(COMPARE, "'coveredPaperWhiteBox' in data")
+      expectContains(COMPARE, 'capture is missing the covered-paper-white census block')
     })
 
     it('prints every failure with the INVARIANT prefix before the verdict', () => {
@@ -225,13 +237,146 @@ describe('the white-over-blue matrix (64-17 task 2)', () => {
   })
 })
 
+// The coverage vocabulary is EXECUTED, not only pinned as source text: the
+// comparator must accept the new names and reject the old ones by name, and a
+// capture that drops the coverage readings must fail loudly rather than pass
+// with a vacuum where a measurement belongs.
+//
+// The old field name is BUILT, never written literally: 64-31's acceptance
+// gate greps the three probe files for it, and this test must prove the
+// rejection while keeping that grep clean.
+const OLD_COVER_ALPHA_FIELD = ['cross', 'Cover', 'Alpha'].join('')
+
+function validWhiteOverBlueCapture(): Record<string, unknown> {
+  return {
+    ...baseCapture('white-over-blue', 'nyquist'),
+    body: 100,
+    crossR: 240,
+    crossG: 240,
+    crossB: 240,
+    crossBlueExcess: 0,
+    crossCoverage: 0.97,
+    crossDarkAlpha: 0.05,
+    coveredPaperWhitePct: 0,
+    coveredPaperWhiteBox: null,
+  }
+}
+
+describe('the white-over-blue coverage claims discriminate (64-31, executed)', () => {
+  it('passes a capture carrying the coverage vocabulary', () => {
+    const { status, output } = compareSynthetic('nyquist-wob-pass', validWhiteOverBlueCapture())
+
+    expect(status, invariantLine(output)).toBe(0)
+    expect(output).toContain('scenario invariants hold')
+  })
+
+  it('fails by name when the old cover-alpha name replaces the coverage field', () => {
+    const capture = validWhiteOverBlueCapture()
+    delete capture.crossCoverage
+    capture[OLD_COVER_ALPHA_FIELD] = 0.97
+    const { status, output } = compareSynthetic('nyquist-wob-oldname', capture)
+
+    expect(status, invariantLine(output)).toBe(1)
+    expect(invariantLine(output)).toContain('capture is missing crossCoverage')
+  })
+
+  it('fails loudly when the whole coverage block is absent', () => {
+    const capture = validWhiteOverBlueCapture()
+    delete capture.crossCoverage
+    delete capture.coveredPaperWhitePct
+    delete capture.coveredPaperWhiteBox
+    const { status, output } = compareSynthetic('nyquist-wob-noblock', capture)
+
+    expect(status, invariantLine(output)).toBe(1)
+    expect(invariantLine(output)).toContain('capture is missing crossCoverage, coveredPaperWhitePct')
+  })
+
+  it('fails a capture that drops only the census block', () => {
+    const capture = validWhiteOverBlueCapture()
+    delete capture.coveredPaperWhiteBox
+    const { status, output } = compareSynthetic('nyquist-wob-nocensus', capture)
+
+    expect(status, invariantLine(output)).toBe(1)
+    expect(invariantLine(output)).toContain('capture is missing the covered-paper-white census block')
+  })
+})
+
+// Laws pinned here (64-31 task 1): the coverage channel.
+//
+//  28. Every coverage claim reads the coverage raster captured in the same run
+//      — `engine.exportCanvas('coverage')`, the probe-only instrument — under
+//      accessors that say coverage; no coverage claim reads the pigment
+//      export's alpha, which after the 2026-11-21 law carries no coverage term.
+//  29. The report's coverage vocabulary is `crossCoverage` / `coverCoverage*`;
+//      compare.mjs follows every rename at its one consumer, and a capture
+//      missing the covered-paper-white census block fails by name.
+//  30. The lifecycle readings move with the same channel: the advect/lift
+//      statistics are `coverageStats` on the coverage raster, and the
+//      paper-white scan takes that raster as its covered-set source. The
+//      film-darkness claims stay on the transparent export.
+describe('the coverage claims read the coverage raster (64-31 task 1)', () => {
+  it('captures the coverage canvas once beside the other surfaces', () => {
+    expectContains(PROBE, "const coverageCanvas = engine.exportCanvas('coverage')")
+    expectContains(PROBE, 'whiteOverBlueMetrics(transparentCanvas, coverageCanvas)')
+    expectContains(PROBE, 'coverTexturedMetrics(transparentCanvas, pigmentCanvas, coverageCanvas)')
+    expectContains(PROBE, 'redOverBlueMetrics(transparentCanvas, pigmentCanvas, coverageCanvas)')
+  })
+
+  it('exposes coverage-named accessors over the unchanged arithmetic', () => {
+    expectContains(PROBE, 'function coverageMean(')
+    expectContains(PROBE, 'function coverageStats(')
+    expectContains(PROBE, 'function coverageSpread(')
+    expectContains(PROBE, 'crossCoverage: round2(coverageMean(coverage, cross)),')
+    expectContains(PROBE, 'coveredPaperWhiteBox(transparent, coverage, 0.5)')
+    // The pigment export's alpha is never read as coverage again.
+    expectNotContains(PROBE, 'alphaMean(pigment,')
+    expectNotContains(PROBE, 'alphaSpread(pigment,')
+    expectNotContains(PROBE, "alphaStats(engine.exportCanvas('pigment')")
+  })
+
+  it('reads coverage in the cover lifecycle captures', () => {
+    expectContains(
+      PROBE,
+      "coverageStats(engine.exportCanvas('coverage'), COVER_LIFECYCLE_BOXES.crossing)",
+    )
+    expectContains(PROBE, "const advectedCoverage = engine.exportCanvas('coverage')")
+    expectContains(PROBE, "coverLifecycle['coverCoverageBeforeAdvect']")
+    expectContains(PROBE, "coverLifecycle['coverCoverageAfterAdvect']")
+    expectContains(PROBE, "coverLifecycle['coverCoverageBeforeLift']")
+    expectContains(PROBE, "coverLifecycle['coverCoverageAfterLift']")
+    expectContains(PROBE, 'coveredPaperWhitePct(advectedTransparent, advectedCoverage, 0.5)')
+  })
+
+  it('keeps the film-darkness claims on the transparent export', () => {
+    expectContains(PROBE, 'crossDarkAlpha: round2(darkAlphaMean(transparent, cross)),')
+    expectContains(PROBE, 'coverCoreFilmDarkness: round2(filmDarkness),')
+  })
+
+  it('follows every rename at its comparator consumer', () => {
+    expectContains(COMPARE, "'crossCoverage',")
+    expectContains(COMPARE, "'coverCoverageP10',")
+    expectContains(COMPARE, "'coverCoverageP90',")
+    expectContains(COMPARE, "'coverCoverageCoveredFraction',")
+    expectContains(COMPARE, "'coverCoverageBeforeAdvect',")
+    expectContains(COMPARE, "'coverCoverageAfterAdvect',")
+    expectContains(COMPARE, "'coverCoveragePeakBefore',")
+    expectContains(COMPARE, "'coverCoveragePeakAfter',")
+    expectContains(COMPARE, "'coverCoverageBeforeLift',")
+    expectContains(COMPARE, "'coverCoverageAfterLift',")
+    expectNotContains(COMPARE, OLD_COVER_ALPHA_FIELD)
+    expectNotContains(COMPARE, 'coverAlpha')
+    expectNotContains(PROBE, OLD_COVER_ALPHA_FIELD)
+    expectNotContains(PROBE, 'coverAlpha')
+  })
+})
+
 // Laws pinned here (64-16 task 1):
 //   9. A `ScriptEntry` carries an optional `brushId`; `makeStroke` falls back
 //      to `round`, and an unknown `--brush` id throws with the known list —
 //      the silent fallback is the failure this gate exists to prevent.
 //  10. `cover-textured` paints the dark band with `round` at Body 0, then the
 //      diagonal with the requested brush (default chalk), and reports the
-//      alpha spread on its own box, the crossing blue excess and the
+//      coverage spread on its own box, the crossing blue excess and the
 //      whole-sheet paper-white scan.
 //  11. compare.mjs dispatches `cover-textured` to its five bars in every mode.
 //  12. Both closed scenario lists accept `cover-textured` and
@@ -281,19 +426,22 @@ describe('the textured-tip gate (64-16 task 1)', () => {
       expectContains(PROBE, 'const TEXTURED_BOX: BandBox = { x0: 0.44, y0: 0.41, x1: 0.58, y1: 0.55 }')
     })
 
-    it('derives the spread without sorting and reuses the 64-17 helpers', () => {
+    it('derives the spread without sorting, on the coverage raster (64-31)', () => {
       expectContains(PROBE, 'function alphaSpread(')
       expectContains(PROBE, 'const bins = new Uint32Array(256)')
-      expectContains(PROBE, 'const spread = alphaSpread(pigment, TEXTURED_BOX)')
+      // 64-31: the spread helper's arithmetic is unchanged, but every coverage
+      // claim reads the coverage canvas through a coverage-named accessor.
+      expectContains(PROBE, 'function coverageSpread(')
+      expectContains(PROBE, 'const spread = coverageSpread(coverage, TEXTURED_BOX)')
       // Post-UAT 2026-11-19 (GAP-1): the mean is named once so the film
-      // descriptor can subtract it; the helper call is unchanged.
-      expectContains(PROBE, 'const alpha = alphaMean(pigment, TEXTURED_BOX)')
-      expectContains(PROBE, 'coverAlphaMean: round2(alpha),')
-      expectContains(PROBE, 'coverAlphaP10: round2(spread.p10),')
-      expectContains(PROBE, 'coverAlphaP90: round2(spread.p90),')
-      expectContains(PROBE, 'coverAlphaCoveredFraction: round2(spread.coveredFraction),')
+      // descriptor can subtract it; the channel moved, the shape did not.
+      expectContains(PROBE, 'const cover = coverageMean(coverage, TEXTURED_BOX)')
+      expectContains(PROBE, 'coverCoverageMean: round2(cover),')
+      expectContains(PROBE, 'coverCoverageP10: round2(spread.p10),')
+      expectContains(PROBE, 'coverCoverageP90: round2(spread.p90),')
+      expectContains(PROBE, 'coverCoverageCoveredFraction: round2(spread.coveredFraction),')
       expectContains(PROBE, 'coverCrossBlueExcess: round2(bandStats(pigment, COVER_BOXES.crossing).blueExcess),')
-      expectContains(PROBE, 'coveredPaperWhitePct: round2(coveredPaperWhitePct(transparent, pigment, 0.5)),')
+      expectContains(PROBE, 'coveredPaperWhitePct: round2(coveredPaperWhitePct(transparent, coverage, 0.5)),')
     })
   })
 
@@ -306,11 +454,11 @@ describe('the textured-tip gate (64-16 task 1)', () => {
       // below the 10% that band requires); the floor is set from the first
       // measurement capture and recorded in the SUMMARY.
       expectContains(COMPARE, 'const COVER_TEXTURED_P90_FLOOR = 0')
-      expectContains(COMPARE, 'data.coverAlphaP90 >= COVER_TEXTURED_P90_FLOOR')
-      expectContains(COMPARE, 'data.coverAlphaP10 <= 0.5')
+      expectContains(COMPARE, 'data.coverCoverageP90 >= COVER_TEXTURED_P90_FLOOR')
+      expectContains(COMPARE, 'data.coverCoverageP10 <= 0.5')
       expectContains(
         COMPARE,
-        'data.coverAlphaCoveredFraction >= 0.02 && data.coverAlphaCoveredFraction <= 0.8',
+        'data.coverCoverageCoveredFraction >= 0.02 && data.coverCoverageCoveredFraction <= 0.8',
       )
       expectContains(COMPARE, 'data.coverCrossBlueExcess <= 5')
       expectContains(COMPARE, 'data.coveredPaperWhitePct !== 0')
@@ -371,7 +519,7 @@ describe('the red-over-blue-50 criterion-2 gate (64-16 task 2)', () => {
       expectContains(PROBE, 'referenceLuma: round2(referenceLuma),')
       expectContains(PROBE, 'lumaRatio: round2(finalLuma / referenceLuma),')
       expectContains(PROBE, 'deltaHue: round2(deltaHue),')
-      expectContains(PROBE, 'coveredPaperWhitePct: round2(coveredPaperWhitePct(transparent, pigment, 0.5)),')
+      expectContains(PROBE, 'coveredPaperWhitePct: round2(coveredPaperWhitePct(transparent, coverage, 0.5)),')
       expectContains(PROBE, 'if (deltaHue > 180) deltaHue -= 360')
       expectContains(PROBE, "scenario === 'red-over-blue-50'")
     })
