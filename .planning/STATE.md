@@ -3,36 +3,35 @@ gsd_state_version: "1.0"
 milestone: v2.2.0
 milestone_name: Brush Tips & Medium Engine (Planned)
 current_phase: 64
-current_phase_name: Medium Engine
-status: executing
-stopped_at: Completed 64-30-PLAN.md
-last_updated: "2026-11-22T18:48:38.840Z"
+status: completed
+stopped_at: Phase 64 complete — all phases complete
+last_updated: "2026-11-22T20:22:23.032Z"
 last_activity: 2026-11-22
-last_activity_desc: Phase 64 execution started
-state_head: 5d864d571585dc2cd862089c1fa16eb98b1c1f66
+last_activity_desc: Phase 64 complete
+state_head: f5657028ff61c23b68904ded7cac6f8f9736d0c3
 progress:
   total_phases: 2
-  completed_phases: 1
-  total_plans: 55
-  completed_plans: 47
-  percent: 50
+  completed_phases: 2
+  total_plans: 48
+  completed_plans: 48
+  percent: 100
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-11-17 after Phase 63)
+See: .planning/PROJECT.md (updated 2026-11-22 after Phase 64)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences — the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 64 — Medium Engine
+**Current focus:** Milestone v2.2.0 complete — ready for `/gsd-complete-milestone`
 
 ## Current Position
 
-Phase: 64 (Medium Engine) — EXECUTING
-Plan: 31 of 38
-Status: Ready to execute
-Last activity: 2026-11-22 — Phase 64 execution started
+Phase: 64
+Plan: Not started
+Status: All phases complete
+Last activity: 2026-11-22 — Phase 64 complete
 
 
 ## Performance Metrics
@@ -54,6 +53,7 @@ Last activity: 2026-11-22 — Phase 64 execution started
 | 61 | 31 | - | - |
 | 62 | 5 | - | - |
 | 63 | 17 | - | - |
+| 64 | 31 | - | - |
 
 *Updated after each plan completion*
 **Per-Plan Metrics:**
@@ -198,6 +198,9 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 59]: The evaluator imports the pure TIMELINE_GEOMETRY design-token data module for the 18px pitch (Task 3 single-source rule) instead of a literal; the plan's 'no view imports' wording is superseded and recorded as a deviation.
 - [Phase 59]: Rail identity is durable railId only: Loop Clips bind by loopId (no mint), bare Key Rails mint a UUID, anchorKeyId is a recovery hint; the single anchor-based first-bind lookup is confined to assignRailMotionRailViews and orphans are retained, never rebound.
 - [Phase 59]: Gate B transitions are pure collection transforms: delete-first-key re-stamps the anchor without rewriting frames, delete-only-key removes the record, split keeps the head railId, merge reports adoptedRailId/droppedRailId, and copy re-key validates the whole plan before cloning and fails closed with null.
+- [Phase 64]: The shipped alpha law: committed and exported storage alpha is OPAQUE; the display alpha is the DARKNESS of the visible pigment; coverage lives only in the coverage raster (a probe-only instrument, never an export channel). Probe coverage claims read the coverage raster; the paper-white census reads the engine-cleared pigment alpha (review CR-02).
+- [Phase 64]: Body is bag-only (no UI row) and the acrylic law plans 64-32..64-38 are deferred by the 2026-11-22 artist ruling — their only mandate was UAT rows 11-14, which were never authoritative. Do not change the acrylic render/Feather/Pickup/Body/anti-aliasing against those rows.
+- [Phase 64]: Authoritative UAT 14/14 pass (2026-11-22); security 136/136 threats closed; verification 206/206 must-haves (31 plans). The deferred plans live in `phases/64-medium-engine/deferred/`.
 - [Phase 59]: Rust canonical_rail_motions mirrors the TypeScript byte format at the reserved ordinal; a present non-array railMotions fails closed instead of being silently skipped
 - [Phase 59]: The rail-motion fixture entries were appended from the TypeScript authority after the Rust encoder landed; the three 59-01 expected literals did not move and rail-motion-empty is byte-identical to untouched
 - [Phase 59]: The rail-motions ordinal is asserted on the Rust-computed source, so a wrong-branch insertion fails even if the fixture were regenerated
@@ -601,6 +604,8 @@ None yet.
 - v2.0.1 debt carried in PROJECT.md Context: VIS-02/04 token drift, mixed rail-set header accent, the one-shot prompt's pending window, and the unconfirmed 261105-p9i live native UAT rows.
 - [v2.2.0] Phase 63 closed the tip-mask registration and project-open scoping work (TIP-12/TIP-17): masks register inside the open await before the first stroke replay, and opening a project replaces the catalog and the registry. Phase 64's Viscosity must reach live pass, bake and replay identically (MED-05/06); replay determinism is its acceptance bar.
 - [Phase 63] AQTL is now v3 — a presence-prefixed `engine.textureId` sits after the vector block and before `pointCount`. v1/v2 bodies refuse with `unsupported-version` and no migration reader exists: stale v2 `.snap` caches refuse whole on first open and that track starts empty. Accepted by design; reintroducing an older AQTL reader would reopen the no-backward-compat law.
+- [Phase 64] The 17 committed probe baselines are expected-red by design: 64-31 added five alpha-law report fields and the re-capture authority (64-36) is deferred. Same-session gates and scenario invariants are green (neutral-256, white-over-blue 1080/100, cover-lift, cover-advect, cover-textured, red-over-blue-50). Do not lower a bar or hand-edit a baseline to make them green.
+- [Phase 64] Deferred, not gaps: the Play-Script dialog bake renders with the engine default light (64-07) and IN-06's dead seed path remains to be retired. Review IN-01 (lazy coverage export) and IN-02 (unreachable guard) remain open infos.
 
 ## Deferred Items
 
@@ -714,11 +719,10 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-22T18:48:37.984Z
-Stopped at: Completed 64-30-PLAN.md
+Last session: 2026-11-22T20:30:00.000Z
+Stopped at: Phase 64 complete — milestone v2.2.0 ready to close
 Resume file: None
 
 ## Operator Next Steps
 
-
-- Plan Phase 64 with /gsd-plan-phase 64 (specs 03-08: Viscosity, five Medium profiles, thickness/emboss, Body order, brush groups, scattering — all plan inputs, no quick dispatch)
+- Close milestone v2.2.0 with /gsd-complete-milestone (both phases complete: 63 Tip Pipeline, 64 Medium Engine).
