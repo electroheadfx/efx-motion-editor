@@ -109,11 +109,18 @@ export async function mergeRotoAlphaCanvases(
     //   t' = t_sheet x t_base^(1 - cover)
     // — a full-core dab (cover 1) replaces the base, a bristle gap (cover 0)
     // keeps it. That is the blended yellow-over-blue the re-render shows.
-    // The sheet and the coverage are opaque rasters from the same engine state;
-    // drawn over white so a partial raster still reads as transmittance.
+    // THE TWO RASTERS ARE NOT THE SAME KIND (CR-04, 2026-11-22). The sheet is
+    // opaque transmittance — white means "no pigment" — so it is drawn over
+    // paper white and a partial raster still reads as its transmittance. The
+    // coverage raster is NOT: `exportCoverageCanvas` writes cover into RGB AND
+    // alpha, so it is transparent exactly where cover is 0. Routing it through
+    // a white fill applies source-over and rewrites the observed red to
+    // 255·(1 - cover + cover²) — cover 0 reads 255 and inverts the exponent.
+    // Read the cover bytes directly, or draw them onto a TRANSPARENT scratch;
+    // never white-fill the coverage raster.
     // Fail-open (no coverage / no readback) to the raw sheet: a merge missing
     // its paint is worse than an unconverted sheet.
-    const scratchOf = (source: CanvasImageSource): HTMLCanvasElement | null => {
+    const transmittanceScratchOf = (source: CanvasImageSource): HTMLCanvasElement | null => {
       const canvas = document.createElement('canvas');
       canvas.width = size.width;
       canvas.height = size.height;
@@ -124,17 +131,41 @@ export async function mergeRotoAlphaCanvases(
       ctx.drawImage(source, 0, 0, size.width, size.height);
       return canvas;
     };
-    const sheetCanvas = scratchOf(scriptAlphaCanvas);
-    const coverCanvas = coverageCanvas ? scratchOf(coverageCanvas) : null;
+    const readCoverage = (source: HTMLCanvasElement): ImageData | null => {
+      // Direct read first: the raster's own context carries the true cover
+      // bytes (red = cover), with no backdrop in the way.
+      try {
+        const own = typeof source.getContext === 'function' ? source.getContext('2d', { willReadFrequently: true }) : null;
+        if (own && typeof own.getImageData === 'function') {
+          const direct = own.getImageData(0, 0, size.width, size.height);
+          if (direct.width === size.width && direct.height === size.height) return direct;
+        }
+      } catch {
+        // fall through to the transparent scratch
+      }
+      // Fallback: a TRANSPARENT scratch (no fill), so source-over keeps
+      // red = cover instead of compositing the raster over white.
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = size.width;
+        canvas.height = size.height;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        if (!ctx || typeof ctx.getImageData !== 'function') return null;
+        ctx.drawImage(source, 0, 0, size.width, size.height);
+        return ctx.getImageData(0, 0, size.width, size.height);
+      } catch {
+        return null;
+      }
+    };
+    const sheetCanvas = transmittanceScratchOf(scriptAlphaCanvas);
+    const cover = coverageCanvas ? readCoverage(coverageCanvas) : null;
     const composed = (() => {
-      if (!sheetCanvas || !coverCanvas) return null;
+      if (!sheetCanvas || !cover) return null;
       const sheetContext = sheetCanvas.getContext('2d', { willReadFrequently: true });
-      const coverContext = coverCanvas.getContext('2d', { willReadFrequently: true });
-      if (!sheetContext || !coverContext || typeof context.getImageData !== 'function' || typeof sheetContext.getImageData !== 'function' || typeof coverContext.getImageData !== 'function') return null;
+      if (!sheetContext || typeof context.getImageData !== 'function' || typeof sheetContext.getImageData !== 'function') return null;
       try {
         const base = context.getImageData(0, 0, size.width, size.height);
         const sheet = sheetContext.getImageData(0, 0, size.width, size.height);
-        const cover = coverContext.getImageData(0, 0, size.width, size.height);
         const { pow, sheetLinear, encode } = coverageCompositeLuts();
         const b = base.data;
         const s = sheet.data;

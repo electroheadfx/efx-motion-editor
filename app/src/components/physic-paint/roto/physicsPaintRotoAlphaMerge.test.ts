@@ -465,8 +465,11 @@ describe('mergeCachedRotoAlphaFrame', () => {
     });
 
     it('keeps the sheet on its white-filled transmittance scratch', async () => {
-      // A partial-alpha sheet reads as its transmittance over paper white. A
-      // no-fill draw would leave (255, 0, 0) and the merge would emit green 0.
+      // A partial-alpha sheet reads as its transmittance over paper white:
+      // (255, 0, 0, 128) over white becomes (255, 127, 127), so the cover-0
+      // composite is t_base x t_sheet = (128, 60, 127) — a no-fill draw would
+      // leave green 0 (and pre-fix the white-filled coverage read wiped the
+      // base to red 255).
       const merged = await runMerge({
         width: 1,
         height: 1,
@@ -475,8 +478,8 @@ describe('mergeCachedRotoAlphaFrame', () => {
         cover: [0, 0, 0, 0],
       });
       expect(merged[0]).toBe(128);
-      expect(merged[1]!).toBeGreaterThan(120);
-      expect(merged[2]!).toBeGreaterThan(120);
+      expect(Math.abs(merged[1]! - 60)).toBeLessThanOrEqual(2);
+      expect(Math.abs(merged[2]! - 127)).toBeLessThanOrEqual(2);
       expect(merged[3]).toBe(255);
     });
 
