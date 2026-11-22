@@ -95,6 +95,170 @@ class TestImage {
   }
 }
 
+// ============================================================
+//  The REAL 2D compositor, modelled (CR-04).
+//
+//  The original gate's `drawImage` was a no-op, so it asserted the intended
+//  arithmetic without ever modelling alpha-over. The pre-fix `scratchOf`
+//  white-filled EVERY scratch — but `exportCoverageCanvas` writes cover into
+//  RGB *and* alpha, so source-over over white rewrites the observed red to
+//  255·(1 - c + c²) and the merge law inverts (cover 0 reads 255).
+//
+//  These classes composite like the platform: `fillRect` writes OPAQUE white,
+//  `drawImage` applies source-over with the SOURCE's alpha, and `getImageData`
+//  returns unpremultiplied straight RGBA. Drawing an RGBA raster onto an
+//  opaque white scratch therefore yields 255·(1 - a + a·c/255) per channel;
+//  drawing onto a transparent scratch leaves the source colour.
+// ============================================================
+class ModelCanvas {
+  private w = 0;
+  private h = 0;
+  pixels = new Uint8ClampedArray(0);
+  /** false → this canvas's own context exposes no getImageData (fallback path). */
+  readable = true;
+  marker: string;
+
+  constructor(marker = 'model-canvas') {
+    this.marker = marker;
+  }
+
+  get width(): number {
+    return this.w;
+  }
+
+  set width(value: number) {
+    if (value === this.w) return;
+    this.w = value;
+    this.pixels = new Uint8ClampedArray(this.w * this.h * 4);
+  }
+
+  get height(): number {
+    return this.h;
+  }
+
+  set height(value: number) {
+    if (value === this.h) return;
+    this.h = value;
+    this.pixels = new Uint8ClampedArray(this.w * this.h * 4);
+  }
+
+  seed(rgba: ArrayLike<number>): void {
+    this.pixels = Uint8ClampedArray.from(rgba);
+  }
+
+  getContext(contextId: string, _options?: unknown): ModelContext | null {
+    if (contextId !== '2d') return null;
+    const context = new ModelContext(this);
+    if (!this.readable) (context as unknown as { getImageData?: unknown }).getImageData = undefined;
+    return context;
+  }
+}
+
+class ModelContext {
+  globalCompositeOperation = 'source-over';
+  fillStyle = '#000000';
+
+  constructor(private canvas: ModelCanvas) {}
+
+  clearRect(x: number, y: number, w: number, h: number): void {
+    for (let row = 0; row < h; row += 1) {
+      for (let col = 0; col < w; col += 1) {
+        const index = ((y + row) * this.canvas.width + (x + col)) * 4;
+        if (index < 0 || index + 3 >= this.canvas.pixels.length) continue;
+        this.canvas.pixels[index] = 0;
+        this.canvas.pixels[index + 1] = 0;
+        this.canvas.pixels[index + 2] = 0;
+        this.canvas.pixels[index + 3] = 0;
+      }
+    }
+  }
+
+  fillRect(x: number, y: number, w: number, h: number): void {
+    // Only the paper-white fill both blend branches open with is modelled.
+    for (let row = 0; row < h; row += 1) {
+      for (let col = 0; col < w; col += 1) {
+        const index = ((y + row) * this.canvas.width + (x + col)) * 4;
+        if (index < 0 || index + 3 >= this.canvas.pixels.length) continue;
+        this.canvas.pixels[index] = 255;
+        this.canvas.pixels[index + 1] = 255;
+        this.canvas.pixels[index + 2] = 255;
+        this.canvas.pixels[index + 3] = 255;
+      }
+    }
+  }
+
+  drawImage(source: CanvasImageSource, dx: number, dy: number, dWidth?: number, dHeight?: number): void {
+    const src = source as unknown as ModelCanvas;
+    if (!(src instanceof ModelCanvas)) throw new Error('ModelCanvas: source pixels unavailable');
+    const sw = src.width;
+    const sh = src.height;
+    const dw = dWidth ?? sw;
+    const dh = dHeight ?? sh;
+    if (!sw || !sh || !dw || !dh) return;
+    for (let row = 0; row < dh; row += 1) {
+      const sy = Math.min(sh - 1, Math.floor((row * sh) / dh));
+      for (let col = 0; col < dw; col += 1) {
+        const sx = Math.min(sw - 1, Math.floor((col * sw) / dw));
+        const s = (sy * sw + sx) * 4;
+        const d = ((dy + row) * this.canvas.width + (dx + col)) * 4;
+        if (d < 0 || d + 3 >= this.canvas.pixels.length) continue;
+        this.composite(d, src.pixels[s]!, src.pixels[s + 1]!, src.pixels[s + 2]!, src.pixels[s + 3]!);
+      }
+    }
+  }
+
+  /** Source-over in straight-alpha space — the platform's readback contract. */
+  private composite(index: number, sr: number, sg: number, sb: number, saByte: number): void {
+    const p = this.canvas.pixels;
+    const sa = saByte / 255;
+    const da = p[index + 3]! / 255;
+    const outA = sa + da * (1 - sa);
+    if (outA <= 0) {
+      p[index] = 0;
+      p[index + 1] = 0;
+      p[index + 2] = 0;
+      p[index + 3] = 0;
+      return;
+    }
+    p[index] = Math.round((sr * sa + p[index]! * da * (1 - sa)) / outA);
+    p[index + 1] = Math.round((sg * sa + p[index + 1]! * da * (1 - sa)) / outA);
+    p[index + 2] = Math.round((sb * sa + p[index + 2]! * da * (1 - sa)) / outA);
+    p[index + 3] = Math.round(outA * 255);
+  }
+
+  getImageData(x: number, y: number, w: number, h: number): { data: Uint8ClampedArray; width: number; height: number } {
+    const data = new Uint8ClampedArray(w * h * 4);
+    for (let row = 0; row < h; row += 1) {
+      for (let col = 0; col < w; col += 1) {
+        const src = ((y + row) * this.canvas.width + (x + col)) * 4;
+        const dst = (row * w + col) * 4;
+        if (src < 0 || src + 3 >= this.canvas.pixels.length) continue;
+        data[dst] = this.canvas.pixels[src]!;
+        data[dst + 1] = this.canvas.pixels[src + 1]!;
+        data[dst + 2] = this.canvas.pixels[src + 2]!;
+        data[dst + 3] = this.canvas.pixels[src + 3]!;
+      }
+    }
+    return { data, width: w, height: h };
+  }
+
+  putImageData(image: { data: Uint8ClampedArray; width?: number; height?: number }, x: number, y: number): void {
+    const w = image.width ?? this.canvas.width;
+    const h = image.height ?? this.canvas.height;
+    for (let row = 0; row < h; row += 1) {
+      for (let col = 0; col < w; col += 1) {
+        const src = (row * w + col) * 4;
+        const dst = ((y + row) * this.canvas.width + (x + col)) * 4;
+        if (dst < 0 || dst + 3 >= this.canvas.pixels.length) continue;
+        this.canvas.pixels[dst] = image.data[src]!;
+        this.canvas.pixels[dst + 1] = image.data[src + 1]!;
+        this.canvas.pixels[dst + 2] = image.data[src + 2]!;
+        this.canvas.pixels[dst + 3] = image.data[src + 3]!;
+      }
+    }
+  }
+}
+
 function makeBaseFrame(appFrame = 12): PhysicPaintRenderedFrame {
   return {
     frameIndex: 0,
@@ -195,83 +359,144 @@ describe('mergeCachedRotoAlphaFrame', () => {
     expect(liveDraw).toMatchObject({ compositeOp: 'source-over' });
   });
 
-  it('COVERAGE-COMPOSITE: the base survives by (1 - cover), the engine dab law', async () => {
-    // 2026-11-21 (the artist's re-render): base t = (128, 128, 255), sheet
-    // t = (255, 255, 64). At cover 255 the dab REPLACES the base → (255, 255, 64).
-    // At cover 0 the base is fully kept → sheet x base = (128, 128, 64).
-    // At cover 128 (0.502) the base survives at 0.498: 0.2159^0.498 ≈ 0.466
-    // → red/green ≈ 182, blue 64 — a blended yellow-over-blue, never the dark
-    // full product.
-    class PixelCanvas {
-      width = 2;
-      height = 1;
-      pixels: number[] = [];
-      getContext(contextId: string): PixelContext | null {
-        return contextId === '2d' ? new PixelContext(this) : null;
-      }
+  describe('COVERAGE-COMPOSITE on the real compositor (CR-04)', () => {
+    interface ModeledScene {
+      width: number;
+      height: number;
+      base: number[];
+      sheet: number[];
+      cover: number[];
+      /** false → the coverage canvas's own context has no getImageData. */
+      readableCoverage?: boolean;
+      coverage?: 'canvas' | 'null' | 'unreadable';
     }
-    class PixelContext {
-      globalCompositeOperation = 'source-over';
-      fillStyle = '';
-      constructor(private canvas: PixelCanvas) {}
-      clearRect(): void {}
-      fillRect(): void {}
-      drawImage(): void {}
-      getImageData(_x: number, _y: number, width: number, height: number) {
-        return { data: new Uint8ClampedArray(this.canvas.pixels), width, height };
-      }
-      putImageData(image: { data: Uint8ClampedArray }): void {
-        this.canvas.pixels = Array.from(image.data);
-      }
-    }
-    const created: PixelCanvas[] = [];
-    let coverByte = 255;
-    vi.stubGlobal('document', {
-      createElement: (tagName: string) => {
-        if (tagName !== 'canvas') throw new Error(`Unexpected test element: ${tagName}`);
-        const canvas = new PixelCanvas();
-        // Creation order: output (holds the drawn base), sheet scratch, cover
-        // scratch. drawImage is a no-op here, so seed the rasters directly.
-        canvas.pixels = created.length === 0
-          ? [128, 128, 255, 255]
-          : created.length === 1
-            ? [255, 255, 64, 255]
-            : [coverByte, coverByte, coverByte, coverByte];
-        created.push(canvas);
-        return canvas as unknown as HTMLElement;
-      },
+
+    let created: ModelCanvas[] = [];
+
+    beforeEach(() => {
+      created = [];
+      vi.stubGlobal('document', {
+        createElement: (tagName: string) => {
+          if (tagName !== 'canvas') throw new Error(`Unexpected test element: ${tagName}`);
+          const canvas = new ModelCanvas('merge-canvas');
+          created.push(canvas);
+          return canvas as unknown as HTMLElement;
+        },
+      });
     });
-    const liveCanvas = new TestCanvas() as unknown as HTMLCanvasElement;
-    liveCanvas.width = 2;
-    liveCanvas.height = 1;
-    const baseCanvas = new TestCanvas() as unknown as HTMLCanvasElement;
-    const coverageCanvas = new TestCanvas() as unknown as HTMLCanvasElement;
-    const run = async () => {
+
+    async function runMerge(scene: ModeledScene): Promise<Uint8ClampedArray> {
+      const live = new ModelCanvas('live-sheet');
+      live.width = scene.width;
+      live.height = scene.height;
+      live.seed(scene.sheet);
+      const base = new ModelCanvas('base-canvas');
+      base.width = scene.width;
+      base.height = scene.height;
+      base.seed(scene.base);
+      let coverage: HTMLCanvasElement | null = null;
+      if (scene.coverage === 'unreadable') {
+        coverage = {} as unknown as HTMLCanvasElement;
+      } else if (scene.coverage !== 'null') {
+        const raster = new ModelCanvas('coverage-canvas');
+        raster.width = scene.width;
+        raster.height = scene.height;
+        raster.readable = scene.readableCoverage !== false;
+        raster.seed(scene.cover);
+        coverage = raster as unknown as HTMLCanvasElement;
+      }
       created.length = 0;
       await mergeCachedRotoAlphaFrame(
         null,
-        liveCanvas,
+        live as unknown as HTMLCanvasElement,
         12,
-        { width: 2, height: 1 },
+        { width: scene.width, height: scene.height },
         undefined,
-        baseCanvas,
+        base as unknown as HTMLCanvasElement,
         'coverage-composite',
-        coverageCanvas,
+        coverage,
       );
       return created[0]!.pixels;
-    };
+    }
 
-    coverByte = 255;
-    expect(await run()).toEqual([255, 255, 64, 255]);
-    coverByte = 0;
-    expect(await run()).toEqual([128, 128, 64, 255]);
-    coverByte = 128;
-    const blended = await run();
-    expect(Math.abs(blended[0]! - 182)).toBeLessThanOrEqual(2);
-    expect(Math.abs(blended[1]! - 182)).toBeLessThanOrEqual(2);
-    expect(Math.abs(blended[2]! - 64)).toBeLessThanOrEqual(2);
-    expect(blended[3]).toBe(255);
-    expect(harness.convert).not.toHaveBeenCalled();
+    /**
+     * The law fixture: base t = (128, 128, 255), uniform sheet t = (255, 255,
+     * 64), and a REAL RGBA coverage raster whose red AND alpha are the cover
+     * byte — exactly what `exportCoverageCanvas` writes. The uniform sheet is
+     * chosen to make the exponent visible in red/green; it is not the
+     * physically coherent cover-0 relationship (the alpha law stage below
+     * carries that).
+     */
+    const lawScene = (readableCoverage: boolean): ModeledScene => ({
+      width: 3,
+      height: 1,
+      base: [128, 128, 255, 255, 128, 128, 255, 255, 128, 128, 255, 255],
+      sheet: [255, 255, 64, 255, 255, 255, 64, 255, 255, 255, 64, 255],
+      cover: [0, 0, 0, 0, 128, 128, 128, 128, 255, 255, 255, 255],
+      readableCoverage,
+    });
+
+    function expectEngineDabLaw(merged: Uint8ClampedArray): void {
+      // cover 0: the BASE's own red/green survive (pre-fix the sheet's 255).
+      expect(merged[0]).toBe(128);
+      expect(merged[1]).toBe(128);
+      expect(merged[2]).toBe(64);
+      expect(merged[3]).toBe(255);
+      // cover 128 → exponent 1 - 128/255 = 0.498 → red/green ≈ 182
+      // (pre-fix the white fill gives 0.251 and red/green ≈ 215).
+      expect(Math.abs(merged[4]! - 182)).toBeLessThanOrEqual(2);
+      expect(Math.abs(merged[5]! - 182)).toBeLessThanOrEqual(2);
+      expect(Math.abs(merged[6]! - 64)).toBeLessThanOrEqual(2);
+      expect(merged[7]).toBe(255);
+      // cover 255: the dab replaces the base with the sheet.
+      expect(merged[8]).toBe(255);
+      expect(merged[9]).toBe(255);
+      expect(merged[10]).toBe(64);
+      expect(merged[11]).toBe(255);
+      expect(harness.convert).not.toHaveBeenCalled();
+    }
+
+    it('keeps the base at cover 0 and the 0.498 exponent at cover 128 — direct 2D read', async () => {
+      expectEngineDabLaw(await runMerge(lawScene(true)));
+    });
+
+    it('keeps the base at cover 0 and the 0.498 exponent at cover 128 — transparent-scratch fallback', async () => {
+      expectEngineDabLaw(await runMerge(lawScene(false)));
+    });
+
+    it('keeps the sheet on its white-filled transmittance scratch', async () => {
+      // A partial-alpha sheet reads as its transmittance over paper white. A
+      // no-fill draw would leave (255, 0, 0) and the merge would emit green 0.
+      const merged = await runMerge({
+        width: 1,
+        height: 1,
+        base: [128, 128, 255, 255],
+        sheet: [255, 0, 0, 128],
+        cover: [0, 0, 0, 0],
+      });
+      expect(merged[0]).toBe(128);
+      expect(merged[1]!).toBeGreaterThan(120);
+      expect(merged[2]!).toBeGreaterThan(120);
+      expect(merged[3]).toBe(255);
+    });
+
+    it('fails open to the raw sheet when the coverage raster has no readback', async () => {
+      for (const coverage of ['null', 'unreadable'] as const) {
+        const merged = await runMerge({
+          width: 1,
+          height: 1,
+          base: [128, 128, 255, 255],
+          sheet: [255, 255, 64, 255],
+          cover: [0, 0, 0, 0],
+          coverage,
+        });
+        expect(merged[0]).toBe(255);
+        expect(merged[1]).toBe(255);
+        expect(merged[2]).toBe(64);
+        expect(merged[3]).toBe(255);
+        expect(harness.convert).not.toHaveBeenCalled();
+      }
+    });
   });
 
   it('COVERAGE-COMPOSITE: fails open to the raw sheet without a coverage readback', async () => {
