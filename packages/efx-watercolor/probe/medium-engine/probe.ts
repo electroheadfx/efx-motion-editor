@@ -1160,6 +1160,12 @@ const EDGE_STATIONS = 24
 const EDGE_SCAN_HEIGHTS = 0.08
 /** The plateau reference band's half-height, in doc heights. */
 const EDGE_PLATEAU_HALF = 0.006
+/** 64-29: the fraction of the plateau a row must still carry to count as
+ *  fringe SUPPORT beyond the 50 % crossing. A pressure-ring bine keeps a
+ *  visible skirt below the crossing; a binary cross-fade drops to 0 within a
+ *  texel and has none. 2 % sits under the halo walk's own 2 %-of-plateau
+ *  clamp, so the two readings describe the same visible fringe. */
+const EDGE_SUPPORT_FRACTION = 0.02
 /** The film's darkness a stroke must reach to be measurable at all. The plan's
  *  0.2 was written for the saturated mode-4 alpha (which always reads 1); a
  *  real light-wash film reads ~0.13–0.16 here, a blank render 0. */
@@ -1205,10 +1211,62 @@ function quantile(values: readonly number[], q: number): number {
   return sorted[lo]! + (sorted[hi]! - sorted[lo]!) * (pos - lo)
 }
 
+/** 64-29: the four shape scalars of one measured edge, derived in one pass
+ *  over the measured stations. Except the density they are in document
+ *  pixels.
+ *
+ *  - irregularity — median |Δ| of the 50 % crossing position between adjacent
+ *    stations: how far the edge meanders along the stroke.
+ *  - roughness — median |Δ²| of the same positions: how much the meander
+ *    itself changes. A staircase (flat run, jump, flat run) is rough; a slow
+ *    wave is irregular but smooth. Deliberately has NO ceiling here: the
+ *    engine's acceptable roughness is 64-34's finding, not this gate's.
+ *  - support — median distance from the 50 % crossing to the outermost row
+ *    still above `EDGE_SUPPORT_FRACTION` of the plateau: the fringe that
+ *    survives BEYOND the crossing. A binary cross-fade has none.
+ *  - fringe density — the share of measured stations whose support clears one
+ *    device pixel, in percent. Aliasing (crossing position quantised to whole
+ *    rows) and a fully supported fringe can share an irregularity reading and
+ *    differ here. */
+interface EdgeProfileStats {
+  readonly irregularityPx: number
+  readonly roughnessPx: number
+  readonly supportPx: number
+  readonly fringeDensityPct: number
+}
+
+/**
+ * 64-29: derive the four scalars in ONE pass over the measured stations, so
+ * both Feather levels are read by the same arithmetic (the 64-23 census's
+ * core principle). Two stations are the minimum for an irregularity and three
+ * for a roughness; a shorter list reads 0 — the comparator's "> 0" bars then
+ * name the degenerate capture instead of the derivation pretending.
+ */
+function edgeProfileStats(
+  crossings: readonly number[],
+  supports: readonly number[],
+): EdgeProfileStats {
+  const firstDiffs: number[] = []
+  for (let i = 1; i < crossings.length; i += 1) {
+    firstDiffs.push(Math.abs(crossings[i]! - crossings[i - 1]!))
+  }
+  const secondDiffs: number[] = []
+  for (let i = 1; i < crossings.length - 1; i += 1) {
+    secondDiffs.push(Math.abs(crossings[i + 1]! - 2 * crossings[i]! + crossings[i - 1]!))
+  }
+  const supported = supports.filter((support) => support > 1).length
+  return {
+    irregularityPx: median(firstDiffs),
+    roughnessPx: median(secondDiffs),
+    supportPx: median(supports),
+    fringeDensityPct: supports.length === 0 ? 0 : (supported / supports.length) * 100,
+  }
+}
+
 /** One stroke's census: the median 90 %−10 % width, the P90−P10 spread of the
- *  50 % crossing, the median crossing distance (the measured half-width) and
- *  the plateau the halves were normalised by. */
-interface EdgeCensus {
+ *  50 % crossing, the median crossing distance (the measured half-width), the
+ *  plateau the halves were normalised by, and the 64-29 shape scalars. */
+interface EdgeCensus extends EdgeProfileStats {
   readonly softnessPx: number
   readonly variationPx: number
   readonly halfWidthPx: number
@@ -1264,6 +1322,7 @@ function strokeEdgeCensus(
   //    the three crossings against the plateau.
   const widths: number[] = []
   const crossings: number[] = []
+  const supports: number[] = []
   const limit = Math.max(0, Math.round(centreRow - EDGE_SCAN_HEIGHTS * h))
   const startRow = Math.max(0, Math.floor(centreRow))
   for (let s = 0; s < EDGE_STATIONS; s += 1) {
@@ -1283,8 +1342,13 @@ function strokeEdgeCensus(
     ] as const
     let previousRow = startRow
     let previousNorm = startNorm
+    // The outermost row still carrying `EDGE_SUPPORT_FRACTION` of the plateau
+    // — the fringe's far edge. The walk runs to `limit` regardless of the
+    // crossings, so this lands on the furthest row above the fraction.
+    let supportOuter: number | null = null
     for (let row = startRow - 1; row >= limit; row -= 1) {
       const norm = valueAt(row, x) / plateauAlpha
+      if (norm >= EDGE_SUPPORT_FRACTION) supportOuter = centreRow - row
       for (const [key, q] of thresholds) {
         if (found[key] === null && norm < q) {
           const span = previousNorm - norm
@@ -1303,6 +1367,9 @@ function strokeEdgeCensus(
     }
     widths.push(found.p10 - found.p90)
     crossings.push(found.p50)
+    // Support is measured BEYOND the crossing; a full column (no row below the
+    // fraction inside the scan band) clamps to 0, never a negative distance.
+    supports.push(supportOuter === null ? 0 : Math.max(0, supportOuter - found.p50))
   }
   if (widths.length === 0) {
     failures.push(`edge census: ${label} stroke has no measurable station`)
@@ -1313,6 +1380,7 @@ function strokeEdgeCensus(
     variationPx: quantile(crossings, 0.9) - quantile(crossings, 0.1),
     halfWidthPx: median(crossings),
     plateauAlpha,
+    ...edgeProfileStats(crossings, supports),
   }
 }
 
@@ -1325,6 +1393,30 @@ function strokeEdgeCensus(
  * named degenerate failures, which compare.mjs also refuses. Zeros stand in
  * for a stroke the census could not find, so a blank render reads 0 and fails
  * the invariant; the failure line names WHY.
+ *
+ * 64-29 adds the four shape scalars per stroke (see `edgeProfileStats`) and
+ * the per-stroke half-widths beside the compatibility mean. Recorded readings
+ * from `node run.mjs --gate bristle-edge-1080 --scenario bristle-edge --size
+ * 1080` on this tree (two runs, 0 differing fields — the derivation is
+ * deterministic; the ABSOLUTE values move with the engine and are evidence,
+ * not contract):
+ *
+ *   Feather 0:   softness 20.27  variation 0.08  irregularity 0.04
+ *                roughness 0.08  support 0.31  density 0 %   half-width 28.09
+ *                plateau 0.10   (6 of 24 stations skipped as dash gaps)
+ *   Feather 100: softness  1.87  variation 4.38  irregularity 1.82
+ *                roughness 2.26  support 0.29  density 35 %  half-width 19.57
+ *                plateau 0.09   (4 of 24 stations skipped as dash gaps)
+ *
+ * What the numbers say about the profiles: Feather 0 is nearly a ruler
+ * (0.04 px station-to-station) with a sub-pixel support skirt (0.31 px, no
+ * station clearing one device pixel); Feather 100 meanders (1.82 px) with a
+ * rougher second difference (2.26 px) and a fringe that clears a texel on
+ * 35 % of the stations. The softness direction (Feather 0 wider than Feather
+ * 100) is inverted from the fixture-era capture because the current engine
+ * plateaus differ — the census gate records it and the committed
+ * `bristle-edge-1080` baseline predates that engine state (see the SUMMARY's
+ * deferred item); 64-29 changes the probe only, never the engine.
  */
 function bristleEdgeMetrics(sheet: HTMLCanvasElement): Record<string, number | string[]> {
   const ctx = sheet.getContext('2d')
@@ -1341,7 +1433,16 @@ function bristleEdgeMetrics(sheet: HTMLCanvasElement): Record<string, number | s
   }
   const failures: string[] = []
   const skips: string[] = []
-  const zero: EdgeCensus = { softnessPx: 0, variationPx: 0, halfWidthPx: 0, plateauAlpha: 0 }
+  const zero: EdgeCensus = {
+    softnessPx: 0,
+    variationPx: 0,
+    halfWidthPx: 0,
+    plateauAlpha: 0,
+    irregularityPx: 0,
+    roughnessPx: 0,
+    supportPx: 0,
+    fringeDensityPct: 0,
+  }
   const feather0 =
     strokeEdgeCensus(data, w, h, EDGE_FEATHER_0_Y, 'feather-0', failures, skips) ?? zero
   const feather100 =
@@ -1351,7 +1452,17 @@ function bristleEdgeMetrics(sheet: HTMLCanvasElement): Record<string, number | s
     edgeSoftnessPxFeather100: round2(feather100.softnessPx),
     edgeVariationPxFeather0: round2(feather0.variationPx),
     edgeVariationPxFeather100: round2(feather100.variationPx),
+    edgeIrregularityPxFeather0: round2(feather0.irregularityPx),
+    edgeIrregularityPxFeather100: round2(feather100.irregularityPx),
+    edgeRoughnessPxFeather0: round2(feather0.roughnessPx),
+    edgeRoughnessPxFeather100: round2(feather100.roughnessPx),
+    edgeSupportPxFeather0: round2(feather0.supportPx),
+    edgeSupportPxFeather100: round2(feather100.supportPx),
+    edgeFringeDensityPctFeather0: round2(feather0.fringeDensityPct),
+    edgeFringeDensityPctFeather100: round2(feather100.fringeDensityPct),
     edgeHalfWidthPx: round2((feather0.halfWidthPx + feather100.halfWidthPx) / 2),
+    edgeHalfWidthPxFeather0: round2(feather0.halfWidthPx),
+    edgeHalfWidthPxFeather100: round2(feather100.halfWidthPx),
     edgePlateauAlphaFeather0: round2(feather0.plateauAlpha),
     edgePlateauAlphaFeather100: round2(feather100.plateauAlpha),
     edgeSkippedStations: skips,

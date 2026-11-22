@@ -645,12 +645,24 @@ function validEdgeCapture(): Record<string, unknown> {
   return {
     ...baseCapture('bristle-edge', 'nyquist'),
     // The SUMMARY's measured readings — absolute values are evidence, the
-    // relations below them are the contract.
+    // relations below them are the contract. The 64-29 shape scalars are part
+    // of the required shape (a capture without them is invalid under the
+    // extended contract), so the base fixture carries them too.
     edgeSoftnessPxFeather0: 20.25,
     edgeSoftnessPxFeather100: 25.11,
     edgeVariationPxFeather0: 13.0,
     edgeVariationPxFeather100: 1.06,
-    edgeHalfWidthPx: 32.14,
+    edgeIrregularityPxFeather0: 0.62,
+    edgeIrregularityPxFeather100: 0.58,
+    edgeRoughnessPxFeather0: 0.35,
+    edgeRoughnessPxFeather100: 0.42,
+    edgeSupportPxFeather0: 3.6,
+    edgeSupportPxFeather100: 4.4,
+    edgeFringeDensityPctFeather0: 100,
+    edgeFringeDensityPctFeather100: 100,
+    edgeHalfWidthPx: 31.99,
+    edgeHalfWidthPxFeather0: 32.11,
+    edgeHalfWidthPxFeather100: 31.87,
     edgePlateauAlphaFeather0: 0.13,
     edgePlateauAlphaFeather100: 0.16,
     edgeSkippedStations: [],

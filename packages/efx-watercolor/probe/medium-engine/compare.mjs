@@ -518,6 +518,27 @@ function redOverBlueFailures(data) {
  * measured half-width (the band is an edge, not the whole stroke). A
  * non-empty `edgeFailures` array is the probe's own named degeneracy (stroke
  * not found, a station with fewer than three crossings) and fails verbatim.
+ *
+ * 64-29 adds the four shape scalars per Feather level, derived by the probe in
+ * one shared pass (`edgeProfileStats`): irregularity (median |Δ| of the 50 %
+ * crossing position between adjacent stations), roughness (median |Δ²|),
+ * support (median distance from the crossing to the outermost row above 2 %
+ * of the plateau) and fringe density (share of measured stations whose
+ * support clears one device pixel). Bars, at BOTH levels:
+ * - irregularity > 0 — "a ruler-straight crossing" is a synthetic edge, not a
+ *   brushed one; 24 stations landing on one position means the stroke is not
+ *   being measured.
+ * - support > 0 — an edge with "no fringe beyond the crossing" is a binary
+ *   cross-fade; the medium's deposit must carry a gradient past the 50 %.
+ * - roughness finite and >= 0, and NOTHING ELSE: "is not a finite non-negative
+ *   roughness" is the only failure text the gate owns here. Pinning a ceiling
+ *   now would freeze a guess into a committed gate before the engine law that
+ *   fixes it — 64-34 owns the roughness ceiling (sequencing, not an implicit
+ *   bar).
+ * - fringe density within [0, 100] — it is a percentage of measured stations.
+ * The per-stroke half-widths (`edgeHalfWidthPxFeather0/100`) are required
+ * numbers beside the compatibility mean; they are recorded evidence, not a
+ * bar.
  */
 function bristleEdgeFailures(data) {
   const fields = [
@@ -525,7 +546,17 @@ function bristleEdgeFailures(data) {
     'edgeSoftnessPxFeather100',
     'edgeVariationPxFeather0',
     'edgeVariationPxFeather100',
+    'edgeIrregularityPxFeather0',
+    'edgeIrregularityPxFeather100',
+    'edgeRoughnessPxFeather0',
+    'edgeRoughnessPxFeather100',
+    'edgeSupportPxFeather0',
+    'edgeSupportPxFeather100',
+    'edgeFringeDensityPctFeather0',
+    'edgeFringeDensityPctFeather100',
     'edgeHalfWidthPx',
+    'edgeHalfWidthPxFeather0',
+    'edgeHalfWidthPxFeather100',
   ]
   const missing = fields.filter((field) => typeof data[field] !== 'number')
   if (missing.length > 0) {
@@ -570,6 +601,51 @@ function bristleEdgeFailures(data) {
       `edgeSoftnessPxFeather100 ${data.edgeSoftnessPxFeather100} is not narrower than ` +
         `edgeHalfWidthPx ${data.edgeHalfWidthPx} (the band is not an edge but the stroke)`,
     )
+  }
+  if (!(data.edgeIrregularityPxFeather0 > 0)) {
+    failures.push(
+      `edgeIrregularityPxFeather0 ${data.edgeIrregularityPxFeather0} is 0 ` +
+        '(a ruler-straight crossing: every station landed on the same position)',
+    )
+  }
+  if (!(data.edgeIrregularityPxFeather100 > 0)) {
+    failures.push(
+      `edgeIrregularityPxFeather100 ${data.edgeIrregularityPxFeather100} is 0 ` +
+        '(a ruler-straight crossing: every station landed on the same position)',
+    )
+  }
+  if (!(data.edgeSupportPxFeather0 > 0)) {
+    failures.push(
+      `edgeSupportPxFeather0 ${data.edgeSupportPxFeather0} is 0 ` +
+        '(the Feather-0 edge has no fringe beyond the crossing: a binary cross-fade)',
+    )
+  }
+  if (!(data.edgeSupportPxFeather100 > 0)) {
+    failures.push(
+      `edgeSupportPxFeather100 ${data.edgeSupportPxFeather100} is 0 ` +
+        '(the Feather-100 edge has no fringe beyond the crossing: a binary cross-fade)',
+    )
+  }
+  if (!(Number.isFinite(data.edgeRoughnessPxFeather0) && data.edgeRoughnessPxFeather0 >= 0)) {
+    failures.push(
+      `edgeRoughnessPxFeather0 ${data.edgeRoughnessPxFeather0} is not a finite non-negative roughness ` +
+        '(the derivation or the capture is broken; 64-34 owns the roughness ceiling)',
+    )
+  }
+  if (!(Number.isFinite(data.edgeRoughnessPxFeather100) && data.edgeRoughnessPxFeather100 >= 0)) {
+    failures.push(
+      `edgeRoughnessPxFeather100 ${data.edgeRoughnessPxFeather100} is not a finite non-negative roughness ` +
+        '(the derivation or the capture is broken; 64-34 owns the roughness ceiling)',
+    )
+  }
+  for (const level of ['Feather0', 'Feather100']) {
+    const density = data[`edgeFringeDensityPct${level}`]
+    if (!(density >= 0 && density <= 100)) {
+      failures.push(
+        `edgeFringeDensityPct${level} ${density} is outside [0, 100] ` +
+          '(a share of measured stations cannot exceed 100 %)',
+      )
+    }
   }
   return failures
 }
