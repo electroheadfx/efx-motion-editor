@@ -16,10 +16,25 @@ import type {
   AquarelleDryEvent,
   AquarellePayloadEvent,
   AquarelleStrokePayload,
+  AquarelleToolOverrides,
 } from '@efxlab/efx-watercolor';
 import { aquarelleSheetSignature } from './aquarelleSheetSignature';
 
 type Stroke = StudioStroke<AquarelleStrokePayload>;
+
+/** One valid override bag; `tip` is the member the variants perturb. */
+function overrides(tip = 1.2): AquarelleToolOverrides {
+  return {
+    tip,
+    aspect: 1,
+    rotation: 1,
+    sizeCurve: 1,
+    scatter: 1,
+    capacity: 1,
+    grain: 0.8,
+    wetRound: 1,
+  };
+}
 
 function baseStroke(): Stroke {
   return {
@@ -41,7 +56,7 @@ function baseStroke(): Stroke {
       color: '#204060',
       params: { width: 40, flow: 0.7, Body: 100 },
       brushId: 'bristle-flat',
-      toolOverrides: { width: 1.2, flow: 0.8 },
+      toolOverrides: overrides(),
       mutationId: 9,
       diffusionFrames: 12,
       timestamp: 1000,
@@ -135,7 +150,7 @@ describe('64-28 canonical sheet signature (IN-05)', () => {
       ['textureRotation', withEngine({ textureRotation: 45 })],
       ['params value', withEngine({ params: { width: 41, flow: 0.7, Body: 100 } })],
       ['params key set', withEngine({ params: { width: 40, flow: 0.7 } })],
-      ['toolOverrides', withEngine({ toolOverrides: { width: 1.3, flow: 0.8 } })],
+      ['toolOverrides', withEngine({ toolOverrides: overrides(1.3) })],
       [
         'anchors',
         withEngine({
@@ -167,7 +182,7 @@ describe('64-28 canonical sheet signature (IN-05)', () => {
   it('is independent of key insertion order in nested records', () => {
     const ordered = withEngine({
       params: { width: 40, flow: 0.7, Body: 100 },
-      toolOverrides: { width: 1.2, flow: 0.8 },
+      toolOverrides: overrides(),
     });
     const reordered: Stroke = {
       ...ordered,
@@ -175,7 +190,16 @@ describe('64-28 canonical sheet signature (IN-05)', () => {
       engine: {
         ...ordered.engine,
         params: { Body: 100, flow: 0.7, width: 40 },
-        toolOverrides: { flow: 0.8, width: 1.2 },
+        toolOverrides: {
+          wetRound: 1,
+          grain: 0.8,
+          capacity: 1,
+          scatter: 1,
+          sizeCurve: 1,
+          rotation: 1,
+          aspect: 1,
+          tip: 1.2,
+        },
         anchors: [
           { y: 0.2, x: 0.2, kind: 'auto', in: { y: 0.1, x: 0.1 }, out: { y: 0.3, x: 0.3 } },
         ],

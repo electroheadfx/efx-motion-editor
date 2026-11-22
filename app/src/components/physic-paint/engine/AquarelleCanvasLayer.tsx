@@ -71,6 +71,7 @@ import {
   cursorPreviewPressure,
   footprintCssSize,
 } from './aquarelleFootprint';
+import { aquarelleSheetSignature } from './aquarelleSheetSignature';
 // debug-watercolor-loop-render-split (DEV ONLY): names the trigger that did or
 // did not reach the Studio capture handler. Installs nothing in production.
 import { recordAquarelleRenderSplitEvent } from '../performance/aquarelleRenderSplitCapture';
@@ -862,20 +863,11 @@ export function AquarelleCanvasLayer(props: {
       for (const layer of Object.values(sheet.whole.layers)) total += layer.byteLength;
       return total;
     };
-    // FNV-1a over the event identity. Stroke events are immutable once
-    // recorded, so (mutation id, sample count) per event plus the list length
-    // detects every script edit — including deletes, which filter the list.
-    const seedSignature = (events: readonly AquarellePayloadEvent[]): number => {
-      let hash = (2166136261 ^ events.length) >>> 0;
-      for (const event of events) {
-        const mutationId =
-          (event as { engine?: { mutationId?: number } }).engine?.mutationId ?? -1;
-        const samples = (event as { pts?: readonly unknown[] }).pts?.length ?? 0;
-        hash = Math.imul(hash ^ (mutationId + 0x9e3779b9), 16777619) >>> 0;
-        hash = Math.imul(hash ^ samples, 16777619) >>> 0;
-      }
-      return hash >>> 0;
-    };
+    // IN-05 (KEY = CACHE): the cache key is the frame's SCRIPT identity — a
+    // canonical digest of the WHOLE event list (aquarelleSheetSignature), so
+    // a key can only restore a sheet captured under the exact current script.
+    // Counts alone are not identity: a moved point or a changed param has to
+    // change the key, or the key opens stale pixels.
     const rememberSheet = (frame: number, signature: number, sheet: SheetSnapshot) => {
       const bytes = sheetBytes(sheet);
       // One sheet over half the budget would evict everything else for a
@@ -914,7 +906,7 @@ export function AquarelleCanvasLayer(props: {
       events: readonly AquarellePayloadEvent[] | null,
     ): boolean => {
       if (!events || events.length === 0) return false;
-      const cached = takeSheet(frame, seedSignature(events));
+      const cached = takeSheet(frame, aquarelleSheetSignature(events));
       if (!cached || !engine.restoreSheet(cached)) return false;
       aquarelleSheetSeeded.value = true;
       return true;
@@ -1146,7 +1138,7 @@ export function AquarelleCanvasLayer(props: {
       settleCapArmed = false;
       wasAwake = false;
       const events = getSeedEventsRef.current?.(frame) ?? null;
-      if (events) rememberSheet(frame, seedSignature(events), sheet);
+      if (events) rememberSheet(frame, aquarelleSheetSignature(events), sheet);
       return true;
     };
     onAdoptSheetReadyRef.current?.(adoptSheet);
@@ -1171,7 +1163,7 @@ export function AquarelleCanvasLayer(props: {
           const leavingFrame = lastPlayFrameRef.current;
           const leavingEvents = getSeedEventsRef.current?.(leavingFrame) ?? null;
           if (leavingEvents) {
-            rememberSheet(leavingFrame, seedSignature(leavingEvents), engine.captureSheet());
+            rememberSheet(leavingFrame, aquarelleSheetSignature(leavingEvents), engine.captureSheet());
           }
         }
         // PLAY FIDELITY: the sheet is about to be wiped — stamp the measured
