@@ -32,10 +32,11 @@
 //    - the display alpha is the DARKNESS of the visible pigment (mode 4:
 //      alpha = 1 − min(rgb) of the compositor view) — it never composes with
 //      a coverage term.
-//  Every capture proves both halves: the opaque-export check samples the
-//  paper, white and transparent surfaces on one fixed prime stride, and the
-//  visible-alpha check compares the pigment export's alpha with the
-//  transparent export's darkness on the same pixels.
+//  Every capture proves both halves, over EVERY texel: the opaque-export check
+//  scans the paper, white and transparent surfaces, and the visible-alpha
+//  check compares the pigment export's alpha with the transparent export's
+//  darkness on the same painted pixels. Both live in `alphaLaw.ts` so the pure
+//  functions also run in vitest.
 //
 //  64-06 adds the Body matrix: `--body <0..100>` folds the canonical key into
 //  EVERY stroke's params bag, and `--scenario cover` swaps the fixed
@@ -203,6 +204,12 @@
 //           | bristle-edge | bristle-wet.
 // ============================================================
 
+import {
+  BRISTLE_VISIBLE_ALPHA_SKIP,
+  opaqueExportCheck,
+  visibleAlphaCheck,
+  visibleAlphaSkipped,
+} from './alphaLaw'
 import { WatercolorEngine } from '../../src/playground/Engine'
 import { BRUSH_PRESETS } from '../../src/playground/brushes'
 import { PAPERS, type PaperPreset } from '../../src/playground/papers'
@@ -365,129 +372,11 @@ function digestCanvas(canvas: HTMLCanvasElement): Digest {
 }
 
 // --- the shipped alpha law, checked on every capture (64-31) -----------------
-
-/**
- * The fixed prime pixel stride the two alpha-law checks sample. A whole-sheet
- * scan of every surface on every capture would pay for no new evidence, so
- * the checks walk one pixel in 4093 — prime, so consecutive samples never
- * lock to a row or dab period — and the verdicts are exact at every sampled
- * texel (a single translucent export pixel still fails the opaque check).
- */
-const ALPHA_LAW_STRIDE = 4093
-
-/**
- * The bristle captures' visible-alpha exclusion. The display film blur is
- * applied to the exported RGB while the pigment alpha is derived from the
- * UNSHADED reconstruction, so on a bristle fringe the two disagree BY DESIGN;
- * the check reports this reason instead of a delta (compare.mjs requires the
- * skip on a bristle capture and refuses it on any other).
- */
-const BRISTLE_VISIBLE_ALPHA_SKIP =
-  'bristle film blur: the display film blur makes the exported RGB and alpha intentionally disagree at the fringe'
-
-/** One exported surface the opaque-export check samples. */
-interface AlphaLawSurface {
-  readonly surface: string
-  readonly digest: Digest
-}
-
-interface OpaqueExportCheck {
-  /** The smallest alpha byte found on any sampled texel (255 = opaque). */
-  readonly minAlpha: number
-  /** The surface that carried the minimum (the first surface when all are
-   *  opaque — every export must read 255, so any 255 is truthful). */
-  readonly surface: string
-}
-
-/**
- * 64-31: the opaque-export half of the shipped law — committed and exported
- * storage alpha is OPAQUE, on every surface. Walks the paper, white and
- * transparent exports' already-read buffers on {@link ALPHA_LAW_STRIDE} and
- * reports the minimum alpha and the surface that carried it. Any value below
- * 255 is a storage alpha that picked up a coverage or lightness term; the
- * comparator fails it by name.
- */
-function opaqueExportCheck(surfaces: readonly AlphaLawSurface[]): OpaqueExportCheck {
-  let minAlpha = 255
-  let surface = surfaces.length > 0 ? surfaces[0]!.surface : 'none'
-  for (const entry of surfaces) {
-    const pixels = Math.floor(entry.digest.pixels.length / 4)
-    for (let p = 0; p < pixels; p += ALPHA_LAW_STRIDE) {
-      const alpha = entry.digest.pixels[p * 4 + 3]!
-      if (alpha < minAlpha) {
-        minAlpha = alpha
-        surface = entry.surface
-      }
-    }
-  }
-  return { minAlpha, surface }
-}
-
-interface VisibleAlphaCheck {
-  /** The worst |darkness − display alpha| found, in 8-bit steps. */
-  readonly visibleAlphaMaxDelta: number | null
-  /** The number of sampled texels the comparison used. */
-  readonly visibleAlphaSamples: number
-  /** The worst texel's exported-pixel coordinates (the first sampled texel on
-   *  a tie), or null when no sampled texel carried paint. */
-  readonly visibleAlphaWorstAt: string | null
-  /** Present only on the bristle captures: why the check was skipped. */
-  readonly visibleAlphaSkip?: string
-}
-
-/**
- * 64-31: the display half of the shipped law — the display alpha is the
- * DARKNESS of the visible pigment, so the pigment export's alpha must equal
- * the darkness the transparent export's own RGB records (`255 − min(rgb)`,
- * one 8-bit step of rounding allowed). Samples both already-read buffers on
- * the same {@link ALPHA_LAW_STRIDE}; the pigment RGB is read only where its
- * alpha is non-zero, because an empty display texel carries no visible film
- * and its RGB is the un-premultiplied zero, not a darkness reading. Transparent
- * captures therefore compare only the pixels that actually carry paint, and
- * report how many were sampled.
- */
-function visibleAlphaCheck(
-  pigment: Digest,
-  transparent: Digest,
-  width: number,
-): VisibleAlphaCheck {
-  const data = transparent.pixels
-  const pixels = Math.floor(Math.min(pigment.pixels.length, data.length) / 4)
-  let visibleAlphaMaxDelta = 0
-  let visibleAlphaSamples = 0
-  let worstPixel = -1
-  for (let p = 0; p < pixels; p += ALPHA_LAW_STRIDE) {
-    const i = p * 4
-    const alpha = pigment.pixels[i + 3]!
-    if (alpha === 0) continue
-    const darkness = 255 - Math.min(data[i]!, data[i + 1]!, data[i + 2]!)
-    if (visibleAlphaSamples === 0) worstPixel = p
-    visibleAlphaSamples += 1
-    const delta = Math.abs(darkness - alpha)
-    if (delta > visibleAlphaMaxDelta) {
-      visibleAlphaMaxDelta = delta
-      worstPixel = p
-    }
-  }
-  const x = worstPixel < 0 ? 0 : worstPixel % width
-  const y = worstPixel < 0 ? 0 : Math.floor(worstPixel / width)
-  return {
-    visibleAlphaMaxDelta: visibleAlphaSamples === 0 ? null : visibleAlphaMaxDelta,
-    visibleAlphaSamples,
-    visibleAlphaWorstAt: worstPixel < 0 ? null : `x=${x},y=${y}`,
-  }
-}
-
-/** The bristle captures' skip record: the same block shape, reported as
- *  skipped with its reason instead of a delta. */
-function visibleAlphaSkipped(reason: string): VisibleAlphaCheck {
-  return {
-    visibleAlphaMaxDelta: null,
-    visibleAlphaSamples: 0,
-    visibleAlphaWorstAt: null,
-    visibleAlphaSkip: reason,
-  }
-}
+//
+// The law and its two checks live in `alphaLaw.ts`, so the pure functions run
+// in vitest over synthetic buffers as well as in the capture path below. Both
+// checks scan every texel: a fixed prime stride walks a right-edge lattice on
+// every power-of-two sheet and can miss the paint entirely.
 
 // --- WR-01 region statistics -------------------------------------------------
 
@@ -699,12 +588,19 @@ interface CoveredPaperWhiteCensus {
 /**
  * The offender census behind `coveredPaperWhitePct` — one texel loop serves
  * both readings, so the percentage can never disagree with the census it
- * reports. Counts the texels the COVERAGE raster claims to cover (coverage ≥
- * threshold — 64-31: never the pigment export's alpha, which after the
- * 2026-11-21 law carries no coverage term) and, among them, the texels that
- * still read as bare paper (≥ 250 luma) on the transparent export; returns
- * the offending texels' union bbox in document uv (y up), or `null` when no
- * texel offends.
+ * reports. Counts the texels the CLEARED pigment raster claims visible film on
+ * (alpha ≥ threshold) and, among them, the texels that still read as bare
+ * paper (≥ 250 luma) on the transparent export; returns the offending texels'
+ * union bbox in document uv (y up), or `null` when no texel offends.
+ *
+ * The covered set is the PIGMENT export's alpha, not the raw coverage raster:
+ * the engine closes this census at the capture boundary (`coverClearFS` zeroes
+ * the claim where the finished film reads paper-white, pigment mode only), so
+ * the raw coverage raster still carries claims the clear retires. Reading it
+ * here counted those retired claims as offenders and made a correct
+ * `white-over-blue` capture fail its own zero bar (review CR-02, 2026-11-22).
+ * Coverage quantities proper (`crossCoverage`, the lifecycle means) still read
+ * the coverage raster — this census is a paper-white claim, not a coverage one.
  *
  * 64-20 exists so a failing scan NAMES its texels: the percentage alone said
  * "0.88" while the four exported digests said nothing about where. The
@@ -713,16 +609,16 @@ interface CoveredPaperWhiteCensus {
  */
 function coveredPaperWhiteBox(
   transparent: HTMLCanvasElement,
-  coverage: HTMLCanvasElement,
+  cleared: HTMLCanvasElement,
   threshold = 0.5,
 ): CoveredPaperWhiteCensus | null {
   const ctxT = transparent.getContext('2d')
-  const ctxC = coverage.getContext('2d')
+  const ctxC = cleared.getContext('2d')
   if (!ctxT || !ctxC) throw new Error('covered paper white: canvas has no 2D context')
   const w = transparent.width
   const h = transparent.height
   const t = ctxT.getImageData(0, 0, w, h).data
-  const a = ctxC.getImageData(0, 0, coverage.width, coverage.height).data
+  const a = ctxC.getImageData(0, 0, cleared.width, cleared.height).data
   let covered = 0
   let count = 0
   let minX = w
@@ -761,18 +657,18 @@ function coveredPaperWhiteBox(
 }
 
 /**
- * Percentage of texels the COVERAGE raster claims to cover (coverage ≥
- * threshold) that still read as bare paper (≥ 250 luma) on the transparent
- * export — Spike 001's criterion-1 failure scan. 0 is the bar. The name is
- * unchanged (it says white paper covered); 64-31 only moves the input to the
- * raster that carries coverage.
+ * Percentage of texels the CLEARED pigment raster claims visible film on
+ * (alpha ≥ threshold) that still read as bare paper (≥ 250 luma) on the
+ * transparent export — Spike 001's criterion-1 failure scan. 0 is the bar.
+ * Measured on the engine-cleared pigment alpha; see `coveredPaperWhiteBox`
+ * for why the raw coverage raster is the wrong channel for this claim.
  */
 function coveredPaperWhitePct(
   transparent: HTMLCanvasElement,
-  coverage: HTMLCanvasElement,
+  cleared: HTMLCanvasElement,
   threshold = 0.5,
 ): number {
-  const census = coveredPaperWhiteBox(transparent, coverage, threshold)
+  const census = coveredPaperWhiteBox(transparent, cleared, threshold)
   return census && census.covered > 0 ? (100 * census.count) / census.covered : 0
 }
 
@@ -1073,6 +969,7 @@ function whiteOverBlueScript(body: number): readonly ScriptEntry[] {
 function whiteOverBlueMetrics(
   transparent: HTMLCanvasElement,
   coverage: HTMLCanvasElement,
+  pigment: HTMLCanvasElement,
 ): Record<string, number | CoveredPaperWhiteCensus | null> {
   const cross = WHITE_OVER_BLUE_BOXES.crossing
   const stats = bandStats(transparent, cross)
@@ -1083,8 +980,8 @@ function whiteOverBlueMetrics(
     crossBlueExcess: round2(stats.blueExcess),
     crossCoverage: round2(coverageMean(coverage, cross)),
     crossDarkAlpha: round2(darkAlphaMean(transparent, cross)),
-    coveredPaperWhitePct: round2(coveredPaperWhitePct(transparent, coverage, 0.5)),
-    coveredPaperWhiteBox: coveredPaperWhiteBox(transparent, coverage, 0.5),
+    coveredPaperWhitePct: round2(coveredPaperWhitePct(transparent, pigment, 0.5)),
+    coveredPaperWhiteBox: coveredPaperWhiteBox(transparent, pigment, 0.5),
   }
 }
 
@@ -1231,7 +1128,7 @@ function coverTexturedMetrics(
     coverCoreFilmDarkness: round2(filmDarkness),
     coverCoreCoverageMinusFilm: round2(cover - filmDarkness),
     coverCrossBlueExcess: round2(bandStats(pigment, COVER_BOXES.crossing).blueExcess),
-    coveredPaperWhitePct: round2(coveredPaperWhitePct(transparent, coverage, 0.5)),
+    coveredPaperWhitePct: round2(coveredPaperWhitePct(transparent, pigment, 0.5)),
   }
 }
 
@@ -1333,7 +1230,7 @@ function redOverBlueMetrics(
     referenceLuma: round2(referenceLuma),
     lumaRatio: round2(finalLuma / referenceLuma),
     deltaHue: round2(deltaHue),
-    coveredPaperWhitePct: round2(coveredPaperWhitePct(transparent, coverage, 0.5)),
+    coveredPaperWhitePct: round2(coveredPaperWhitePct(transparent, pigment, 0.5)),
   }
 }
 
@@ -2885,6 +2782,7 @@ function run(
         for (let tick = 0; tick < ADVECT_TICKS; tick += 1) adapter.stepTick(tick)
         const advectedTransparent = engine.exportCanvas('transparent')
         const advectedCoverage = engine.exportCanvas('coverage')
+        const advectedPigment = engine.exportCanvas('pigment')
         const after = coverageStats(advectedCoverage, COVER_LIFECYCLE_BOXES.crossing)
         captureMs += performance.now() - captureStart
         coverLifecycle['coverCoverageBeforeAdvect'] = round2(before.mean)
@@ -2892,7 +2790,7 @@ function run(
         coverLifecycle['coverCoverageAfterAdvect'] = round2(after.mean)
         coverLifecycle['coverCoveragePeakAfter'] = round2(after.peak)
         coverLifecycle['coveredPaperWhitePct'] = round2(
-          coveredPaperWhitePct(advectedTransparent, advectedCoverage, 0.5),
+          coveredPaperWhitePct(advectedTransparent, advectedPigment, 0.5),
         )
       }
       // quick-261117-tq7: `fixAfter: false` skips the settle so the stroke
@@ -2908,13 +2806,15 @@ function run(
         // 64-31: Lift destroys COVERAGE, so the reading is the coverage
         // raster's, never a pigment export's alpha.
         const coverage = engine.exportCanvas('coverage')
+        // The paper-white census rides the engine-cleared pigment alpha (CR-02).
+        const pigment = engine.exportCanvas('pigment')
         const stats = coverageStats(coverage, COVER_LIFECYCLE_BOXES.crossing)
         captureMs += performance.now() - captureStart
         if (entry.captureCover === 'beforeLift') {
           coverLifecycle['coverCoverageBeforeLift'] = round2(stats.mean)
         } else {
           coverLifecycle['coverCoverageAfterLift'] = round2(stats.mean)
-          coverLifecycle['coveredPaperWhitePct'] = round2(coveredPaperWhitePct(transparent, coverage, 0.5))
+          coverLifecycle['coveredPaperWhitePct'] = round2(coveredPaperWhitePct(transparent, pigment, 0.5))
         }
       }
       // 64-17 / spike probe.ts:603-618: fix every tenth rapid stroke, so the
@@ -2960,13 +2860,13 @@ function run(
     // 64-31: the shipped law is checked on the capture, not only narrated.
     // Both halves read the buffers digestCanvas just read — no extra export.
     const opaqueExport = opaqueExportCheck([
-      { surface: 'paper', digest: paper },
-      { surface: 'white', digest: white },
-      { surface: 'transparent', digest: transparent },
+      { surface: 'paper', pixels: paper.pixels },
+      { surface: 'white', pixels: white.pixels },
+      { surface: 'transparent', pixels: transparent.pixels },
     ])
     const visibleAlpha = scenario.startsWith('bristle-')
       ? visibleAlphaSkipped(BRISTLE_VISIBLE_ALPHA_SKIP)
-      : visibleAlphaCheck(pigment, transparent, sheet)
+      : visibleAlphaCheck(pigment.pixels, transparent.pixels, sheet)
 
     // WR-01: the four region means that make the cover gate's PASS mean
     // something. Measured after renderMs so the cost number keeps its meaning.
@@ -2985,7 +2885,9 @@ function run(
     // 64-17: Spike 001 criterion 1, only for its scenario, so every other
     // report shape is unchanged apart from digestPigment.
     const whiteOverBlueReport =
-      scenario === 'white-over-blue' ? whiteOverBlueMetrics(transparentCanvas, coverageCanvas) : {}
+      scenario === 'white-over-blue'
+        ? whiteOverBlueMetrics(transparentCanvas, coverageCanvas, pigmentCanvas)
+        : {}
 
     // 64-16: the textured-tip spread, only for its scenario, so every other
     // report shape is unchanged. 64-31: the spread reads the coverage raster;

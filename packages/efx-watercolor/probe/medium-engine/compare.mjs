@@ -195,10 +195,20 @@ function alphaLawFailures(data) {
         'capture is missing visibleAlphaSkip; a bristle capture must report why the ' +
           'visible-alpha check was skipped (the film-blur exclusion)',
       )
+    } else if (data.visibleAlphaMaxDelta !== null || data.visibleAlphaSamples !== 0) {
+      failures.push(
+        `a bristle capture reports visibleAlphaMaxDelta ${data.visibleAlphaMaxDelta} / ` +
+          `visibleAlphaSamples ${data.visibleAlphaSamples} beside its skip ` +
+          '(a skipped check records no delta and no samples)',
+      )
     }
     return failures
   }
-  if (data.visibleAlphaMaxDelta === null || typeof data.visibleAlphaSkip === 'string') {
+  if (
+    data.visibleAlphaMaxDelta === null ||
+    data.visibleAlphaSamples === 0 ||
+    typeof data.visibleAlphaSkip === 'string'
+  ) {
     failures.push(
       'the visible-alpha check cannot be skipped for this scenario ' +
         `(visibleAlphaSkip ${JSON.stringify(data.visibleAlphaSkip)}, ` +
