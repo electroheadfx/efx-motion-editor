@@ -21,8 +21,19 @@
 //  /tmp/medium-engine/<gate>.json and compare.mjs diffs it against
 //  probe/medium-engine/baselines/<gate>.json (or a sibling capture).
 //  The report digests all four exports (paper, transparent, white and, since
-//  64-17, pigment — the coverage-aware compositor sheet) and echoes the 64-04
+//  64-17, pigment — the compositor view) and echoes the 64-04
 //  `--light <0..4>` intensity it was shaded with.
+//
+//  The shipped alpha law (2026-11-21, restated by 64-31): committed and
+//  exported storage alpha is OPAQUE — every export carries coverage-free
+//  straight alpha, and coverage lives ONLY in the coverage raster, a
+//  probe-only instrument that is never an export channel. The display alpha
+//  is the DARKNESS of the visible pigment (mode 4: alpha = 1 − min(rgb) of
+//  the compositor view); it never composes with a coverage term. Every
+//  capture proves both halves: the opaque-export check samples the paper,
+//  white and transparent surfaces on one fixed prime stride, and the
+//  visible-alpha check compares the pigment alpha with the transparent
+//  export's darkness on the same pixels.
 //
 //  64-06 adds the Body matrix: `--body <0..100>` folds the canonical key into
 //  EVERY stroke's params bag, and `--scenario cover` swaps the fixed
@@ -76,11 +87,12 @@
 //  compare.mjs asserts these for every cover-over-wet capture. Only that
 //  scenario emits them, so every other scenario's report shape is unchanged.
 //
-//  64-17 adds the coverage sheet to the gate: `engine.exportCanvas('pigment')`
-//  is the mode-4 COMPOSITOR view, whose alpha is max(1 − min(rgb), cover) —
-//  the exact alpha 64-15 carries into the app commit — so every report
-//  digests it as `digestPigment` beside the three backgrounds and run.mjs
-//  refuses a capture without it. Adding the export leaves the other three
+//  64-17 adds the pigment sheet to the gate: `engine.exportCanvas('pigment')`
+//  is the mode-4 COMPOSITOR view. Under the shipped alpha law its alpha is
+//  the darkness of the visible pigment alone — coverage is NOT part of it,
+//  and coverage claims read the coverage raster — so every report digests it
+//  as `digestPigment` beside the three backgrounds and run.mjs refuses a
+//  capture without it. Adding the export leaves the other three
 //  byte-identical, which the neutral identity gate proves on every run.
 //
 //  64-17 also adds the drive cadence the 1080² 50-stroke passage needs: a
@@ -128,21 +140,21 @@
 //
 //  64-14 also adds `cover-lift`: the cover geometry fully fixed, then a LIFT
 //  stroke (the same tool through the same applyStroke seam at pressure 0.8)
-//  across the covering diagonal. The report carries the crossing alpha on the
-//  PIGMENT export before and after the lift stroke, plus the paper-white scan
-//  after it — the bounded limitation "Lift does not reduce coverage" becomes
-//  a measured assertion.
+//  across the covering diagonal. The report carries the crossing COVERAGE on
+//  the coverage raster before and after the lift stroke, plus the paper-white
+//  scan after it — the bounded limitation "Lift does not reduce coverage"
+//  becomes a measured assertion.
 //
 //  64-16 adds the brush operand and the textured-tip scenario: `--brush <id>`
 //  selects the covering stroke's brush (resolved against BRUSH_PRESETS, an
 //  unknown id throws with the known list), and `cover-textured` paints the
 //  `cover` geometry with that brush on the light diagonal (default `chalk`)
 //  so a chalk stroke's coverage can be measured as a SPREAD rather than a
-//  solid disc. The report adds the alpha distribution over TEXTURED_BOX —
-//  mean, P10, P90, covered fraction — plus the crossing's blue excess and the
-//  whole-sheet paper-white scan, all on the pigment export. The pigment alpha
-//  IS the coverage alpha by construction (mode 4: alpha = max(1 − min(rgb),
-//  cover)), which is why a coverage claim can be measured from an export.
+//  solid disc. The report adds the COVERAGE distribution over TEXTURED_BOX —
+//  mean, P10, P90, covered fraction — read on the coverage raster, plus the
+//  crossing's blue excess and the whole-sheet paper-white scan on the
+//  transparent export. The coverage raster is the instrument; no export's
+//  alpha is re-derived into a coverage claim (the shipped alpha law above).
 //
 //  64-16 also adds `red-over-blue-50` — Spike 001 criterion 2: a dry blue field
 //  at Body 0, 50 rapid red strokes at the Body knob with settle 1 and no
