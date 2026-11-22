@@ -786,3 +786,284 @@ describe('the bristle-wet invariant discriminates (64-24, executed)', () => {
     expect(output).toContain('outside [0, 255]')
   })
 })
+
+// ============================================================
+//  Laws pinned here (64-29 task 1): the bristle-line gate.
+//
+//  24. `lineProfileSet` emits additive `rim` and `halo` blocks beside the
+//      existing profiles: per side, the interior plateau, the outward 90-to-10
+//      band width, the worst adjacent-row step in the band's outer third, and
+//      the fringe peak/mean/run beyond the 50 % crossing clamped to the
+//      stroke's own outward 2 % extent. The existing blocks are untouched.
+//  25. `bristleLineScript` takes an `over` flag; the `bristle-line-over`
+//      variant prepends one wide, low-load MOBILE pass (its own fringe outside
+//      the ±140 px measured band) so the judged line lands on wet paint, and
+//      `paramsEcho` still echoes the JUDGED entry, not the understory.
+//  26. compare.mjs dispatches both gate ids to `bristleLineFailures`, whose
+//      named bars are the 2 px band floor, half the plateau for the rim step,
+//      the halo peak/run bars and the enclosure bars — each checked only after
+//      the block's presence, so an absent block fails by name.
+//  27. The recorded HEAD readings live in the failure function's doc block;
+//      the harness pins the metric labels the readings move with.
+// ============================================================
+
+interface LineSideFixture {
+  plateau: number
+  bandPx: number | null
+  step: number | null
+  stepAt: number | null
+}
+
+interface LineHaloFixture {
+  peakRel: number | null
+  mean: number | null
+  run: number
+  peakAt: number | null
+}
+
+interface LineSurfaceFixture {
+  centreRow: number
+  peakCover: number
+  interior: { span: [number, number]; dark: { max: number } }
+  rim: { down: LineSideFixture; up: LineSideFixture }
+  halo: { down: LineHaloFixture; up: LineHaloFixture }
+  tiling: {
+    rows: unknown[]
+    coherence: { mean: number; fracHigh: number; pairs: number }
+    enclosed: null | { offset: number; meanPct: number; fracPct: number; runs: number; maxRunPx: number }
+  }
+}
+
+interface LineCaptureFixture extends Record<string, unknown> {
+  lineSurfaces: Record<'postApply' | 'postSettle' | 'postFix', LineSurfaceFixture>
+}
+
+/** A clean graded fringe: every rim/halo/enclosure bar passes. */
+function validLineSurface(): LineSurfaceFixture {
+  return {
+    centreRow: 540,
+    peakCover: 0.41,
+    interior: { span: [-17, 18], dark: { max: 0.62 } },
+    rim: {
+      down: { plateau: 0.62, bandPx: 4.1, step: 0.12, stepAt: -19 },
+      up: { plateau: 0.63, bandPx: 4.8, step: 0.14, stepAt: 20 },
+    },
+    halo: {
+      down: { peakRel: 0.31, mean: 0.08, run: 2, peakAt: -18 },
+      up: { peakRel: 0.33, mean: 0.09, run: 2, peakAt: 19 },
+    },
+    tiling: {
+      rows: [],
+      coherence: { mean: 0, fracHigh: 0, pairs: 0 },
+      enclosed: { offset: 56, meanPct: 0, fracPct: 0, runs: 0, maxRunPx: 0 },
+    },
+  }
+}
+
+function validLineCapture(): LineCaptureFixture {
+  const capture = baseCapture('bristle-line', 'nyquist') as LineCaptureFixture
+  capture.lineSurfaces = {
+    postApply: validLineSurface(),
+    postSettle: validLineSurface(),
+    postFix: validLineSurface(),
+  }
+  return capture
+}
+
+describe('the bristle-line rim/halo/enclosure gate (64-29 task 1)', () => {
+  describe('the probe emits the rim and halo walks beside the existing profiles', () => {
+    it('computes one shared per-side walk over the darkness profile', () => {
+      expectContains(PROBE, 'function lineSideWalk(')
+      expectContains(PROBE, 'const sides = {')
+      expectContains(PROBE, 'rim: {')
+      expectContains(PROBE, 'halo: {')
+      expectContains(PROBE, 'bandPx: sides.down.bandPx,')
+      expectContains(PROBE, 'step: sides.down.step,')
+      expectContains(PROBE, 'peakRel: sides.down.haloPeakRel,')
+      expectContains(PROBE, 'run: sides.down.haloRun,')
+      expectContains(PROBE, 'peakRel: sides.up.haloPeakRel,')
+      expectContains(PROBE, 'run: sides.up.haloRun,')
+    })
+
+    it('clamps the halo to the outward 2 % extent with a named run fraction', () => {
+      expectContains(PROBE, 'const LINE_HALO_RUN_FRACTION = 0.05')
+      expectContains(PROBE, 'plateau * 0.02')
+    })
+  })
+
+  describe('the --over variant is a wide low-load mobile understory', () => {
+    it('prepends the understory only when the flag is set', () => {
+      expectContains(PROBE, 'function bristleLineOverEntry(): ScriptEntry {')
+      expectContains(PROBE, 'const LINE_OVER_Y = 0.52')
+      expectContains(PROBE, 'load: LINE_OVER_LOAD')
+      expectContains(PROBE, 'fixAfter: false,')
+      expectContains(
+        PROBE,
+        'bristleLineScript(body ?? 0, strokeSize, readMut(), readOver())',
+      )
+      expectContains(PROBE, 'function readOver(): boolean {')
+      expectContains(PROBE, 'invalid over "${raw}" (expected 1)')
+    })
+
+    it('echoes the judged entry, not the understory, in paramsEcho', () => {
+      expectContains(
+        PROBE,
+        'paramsEcho: paramsBag(script.find((entry) => entry.captureLine) ?? script[0]!),',
+      )
+    })
+
+    it('parses --over in run.mjs, refuses it elsewhere and forwards it', () => {
+      expectContains(RUN, "const overFlag = args.indexOf('--over')")
+      expectContains(RUN, '--over is only valid with --scenario bristle-line')
+      expectContains(RUN, 'bristle-line-over')
+      expectContains(RUN, "(over === undefined ? '' : '&over=1')")
+    })
+  })
+
+  describe('the comparator dispatches both gate ids to its named bars', () => {
+    it('maps the scenario and both gate ids to bristleLineFailures', () => {
+      expectContains(COMPARE, 'function bristleLineFailures(data) {')
+      expectContains(COMPARE, "'bristle-line': bristleLineFailures,")
+      expectContains(COMPARE, "'bristle-line-over': bristleLineFailures,")
+      expectContains(COMPARE, "const LINE_SURFACES = ['postApply', 'postSettle', 'postFix']")
+    })
+
+    it('names every bar constant and every metric path', () => {
+      expectContains(COMPARE, 'const RIM_MIN_BAND_PX = 2')
+      expectContains(COMPARE, 'const RIM_MAX_STEP_FRACTION = 0.5')
+      expectContains(COMPARE, 'const HALO_PEAK_MAX = 0.4')
+      expectContains(COMPARE, 'const HALO_RUN_FRACTION = 0.05')
+      expectContains(COMPARE, 'const HALO_RUN_MAX = 2')
+      expectContains(COMPARE, 'const ENCLOSED_MEAN_MAX_PCT = 0.5')
+      expectContains(COMPARE, 'const ENCLOSED_FRAC_MAX_PCT = 25')
+      expectContains(COMPARE, 'const ENCLOSED_MAX_RUN_PX = 16')
+      expectContains(COMPARE, 'rim.${side}.bandPx')
+      expectContains(COMPARE, 'rim.${side}.step')
+      expectContains(COMPARE, 'halo.${side}.peakRel')
+      expectContains(COMPARE, 'halo.${side}.run')
+      expectContains(COMPARE, 'tiling.enclosed')
+      expectContains(COMPARE, 'lineSurfaces.${name}')
+    })
+  })
+
+  describe('the bars discriminate (64-29 task 1, executed)', () => {
+    // TAP law: an assertion message must stay ONE line — the comparator's
+    // report is multi-line, and a raw `output` message emits column-0
+    // continuation lines that make the RED report unparseable (64-28's
+    // contract). Read the report through one-line predicates instead.
+    function lineVerdict(status: number | null, output: string): string {
+      const invariant = output.split('\n').find((line) => line.startsWith('INVARIANT '))
+      return `status=${status} ${invariant ?? '(no INVARIANT line)'}`
+    }
+
+    function expectOutputHas(output: string, needle: string): void {
+      expect(output.includes(needle), `missing report text: ${needle}`).toBe(true)
+    }
+
+    it('passes a clean graded fringe', () => {
+      const { status, output } = compareSynthetic('nyquist-line-pass', validLineCapture())
+
+      expect(status, lineVerdict(status, output)).toBe(0)
+      expectOutputHas(output, 'scenario invariants hold')
+    })
+
+    it('fails a one-device-pixel cliff (band under the 2 px floor)', () => {
+      const capture = validLineCapture()
+      capture.lineSurfaces.postFix.rim.down.bandPx = 0.8
+      const { status, output } = compareSynthetic('nyquist-line-cliff', capture)
+
+      expect(status, lineVerdict(status, output)).toBe(1)
+      expectOutputHas(output, 'under the 2 px floor')
+    })
+
+    it('fails an unblended rim step (worst step over half the plateau)', () => {
+      const capture = validLineCapture()
+      capture.lineSurfaces.postFix.rim.up.step = 0.4
+      const { status, output } = compareSynthetic('nyquist-line-step', capture)
+
+      expect(status, lineVerdict(status, output)).toBe(1)
+      expectOutputHas(output, 'exceeds half the plateau')
+    })
+
+    it('fails a raised outer ring (halo peak over the named bar)', () => {
+      const capture = validLineCapture()
+      capture.lineSurfaces.postFix.halo.up.peakRel = 0.55
+      const { status, output } = compareSynthetic('nyquist-line-halo', capture)
+
+      expect(status, lineVerdict(status, output)).toBe(1)
+      expectOutputHas(output, 'HALO_PEAK_MAX 0.4')
+      expectOutputHas(output, 'pale ring')
+    })
+
+    it('fails a halo band (run over the named bar)', () => {
+      const capture = validLineCapture()
+      capture.lineSurfaces.postFix.halo.down.run = 4
+      const { status, output } = compareSynthetic('nyquist-line-run', capture)
+
+      expect(status, lineVerdict(status, output)).toBe(1)
+      expectOutputHas(output, 'HALO_RUN_MAX 2')
+    })
+
+    it('fails a capture with no lineSurfaces block by name', () => {
+      const capture = validLineCapture()
+      delete (capture as Record<string, unknown>).lineSurfaces
+      const { status, output } = compareSynthetic('nyquist-line-nosurfaces', capture)
+
+      expect(status, lineVerdict(status, output)).toBe(1)
+      expectOutputHas(output, 'missing lineSurfaces')
+    })
+
+    it('fails a capture missing one of the three surfaces by name', () => {
+      const capture = validLineCapture()
+      delete (capture.lineSurfaces as Partial<LineCaptureFixture['lineSurfaces']>).postSettle
+      const { status, output } = compareSynthetic('nyquist-line-nosettle', capture)
+
+      expect(status, lineVerdict(status, output)).toBe(1)
+      expectOutputHas(output, 'lineSurfaces.postSettle is missing')
+    })
+
+    it('fails a zero coverage peak by name', () => {
+      const capture = validLineCapture()
+      capture.lineSurfaces.postApply.peakCover = 0
+      const { status, output } = compareSynthetic('nyquist-line-nopeak', capture)
+
+      expect(status, lineVerdict(status, output)).toBe(1)
+      expectOutputHas(output, 'not a positive coverage peak')
+    })
+
+    it('fails a degenerate interior plateau by name', () => {
+      const capture = validLineCapture()
+      capture.lineSurfaces.postFix.interior.span = [0, 0]
+      capture.lineSurfaces.postFix.rim.down.plateau = 0
+      const { status, output } = compareSynthetic('nyquist-line-flat', capture)
+
+      expect(status, lineVerdict(status, output)).toBe(1)
+      expectOutputHas(output, 'interior.span')
+      expectOutputHas(output, 'degenerate')
+    })
+
+    it('fails an absent enclosed block by name', () => {
+      const capture = validLineCapture()
+      capture.lineSurfaces.postFix.tiling.enclosed = null
+      const { status, output } = compareSynthetic('nyquist-line-noenclosed', capture)
+
+      expect(status, lineVerdict(status, output)).toBe(1)
+      expectOutputHas(output, 'tiling.enclosed is missing')
+    })
+
+    it('fails an enclosed pale line by name', () => {
+      const capture = validLineCapture()
+      capture.lineSurfaces.postFix.tiling.enclosed = {
+        offset: 62,
+        meanPct: 1.5,
+        fracPct: 40,
+        runs: 2,
+        maxRunPx: 30,
+      }
+      const { status, output } = compareSynthetic('nyquist-line-enclosed', capture)
+
+      expect(status, lineVerdict(status, output)).toBe(1)
+      expectOutputHas(output, 'enclosed.meanPct 1.5')
+    })
+  })
+})
