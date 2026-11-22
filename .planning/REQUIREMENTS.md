@@ -31,44 +31,44 @@
 
 ### Medium Engine (Phase 64)
 
-- [x] **MED-01**: User has a `Viscosity` global on the app's 0..100 slider scale (normalized 0..1 internally) that reduces water motion and suppresses spread, exposed as a row in the existing globals panel
-- [x] **MED-02**: At its neutral default, a project painted before this milestone renders bit-identically after it
-- [x] **MED-03**: Viscosity only ever raises the dissipation coefficient — it never lowers the existing floor and never replaces `flow` — and is applied at exactly those two engine sites and nowhere else
-- [x] **MED-04**: Spread becomes `0.12 × (1 − viscosity × 0.9)`, landing near `0.012` at maximum viscosity
-- [x] **MED-05**: A stroke snapshots its viscosity the way it already snapshots `lift`; strokes without the key keep the default, and live pass, bake and replay read the same value
-- [x] **MED-06**: Changing Viscosity after a stroke has settled does not re-process the settled pigment
-- [x] **MED-07**: A medium record `{ id, name, params }` exists as plain serializable data — no functions, no class
-- [x] **MED-08**: `watercolor` ships as today's `DEFAULT_AQUARELLE_PARAMS`, unchanged, and remains the selected medium on a fresh session
-- [x] **MED-09**: Five built-ins ship — `watercolor`, `gouache`, `pastel`, `graphite`, `acrylic` — each a plain record over the canonical global set (the nine existing globals plus `viscosity`, `body` and `emboss`), with their tuned numbers recorded explicitly and no other globals invented
-- [x] **MED-10**: Selecting a medium applies its params to `aquarelleParams` in exactly one store write, with no cascade of per-key setters
-- [x] **MED-11**: Selecting a medium never alters already-recorded strokes — each keeps the values it was painted with; the medium sets values for the next stroke only
-- [x] **MED-12**: A project opened on a machine with different medium defaults replays identically, because the per-stroke params snapshot stays authoritative and the medium id is advisory
-- [x] **MED-13**: The medium selection is surfaced in the existing Studio UI without adding a second parameter panel — the globals panel stays the fine-tuning surface, and a manual global tweak keeps the medium selected
-- [x] **MED-14**: A document-resolution half-float paint-**thickness** channel receives a thickness deposit through each dab's own tip footprint, and deposits accumulate so successive strokes superpose into layered relief
-- [x] **MED-15**: The composite lights the thickness gradient with the same normal-and-light maths the paper relief uses and multiplies the paint colour; at emboss 0 and light intensity 0 the render is byte-identical
-- [x] **MED-16**: Emboss strength is a canonical param carried by the medium and snapshotted with the stroke — no fluid transport of thickness and no height texture asset
-- [x] **MED-17**: Light (azimuth, elevation, intensity) is a document setting and a render parameter — never stored in paint, applied anew on every render (live paint, stroke re-render, Play motion, Apply Script, stroke/vector edit), persisted as an optional additive field, and part of the cache content fingerprint
-- [x] **MED-18**: Thickness is captured in the engine snapshot, protected for undo alongside the pigment it sits on, and export matches the screen on every `uMode` path with no shimmer on zoom
-- [x] **MED-19**: User has a `Body` global on the app's 0..100 slider scale (normalized 0..1 internally), part of the canonical global set (`AquarelleGlobalParams` / `AQUARELLE_GLOBAL_KEYS` / `DEFAULT_AQUARELLE_PARAMS` / `AquarelleCanonicalParams`), exposed as a row in the existing globals panel, defaulting to 0
-- [x] **MED-20**: At `Body` 0 the engine takes no cover pass at all — a project painted before this milestone renders bit-identically, and a recorded stroke without the key keeps 0
-- [x] **MED-21**: A brush stroke with `Body` above 0 erodes the settled pigment under each dab with the Lift program and the stroke's own tip footprint (aspect, rotation, texture rotation, round), scaled by `Body` and therefore full at the core and partial at the edges, **before** that dab deposits its own pigment
-- [x] **MED-22**: The cover pass touches the settled layer and the thickness only — standing water and mobile pigment are untouched, so a light stroke over a still-wet dark area mixes with it (declared behaviour, not a defect), and covering is destructive to the settled sheet while hide/show and undo stay consistent
-- [x] **MED-23**: A stroke snapshots its `Body` with its params the way `lift` and `viscosity` are snapshotted; live pass, bake and replay read the same value and produce the same raster, and the medium record carries the value (`watercolor` 0, `pastel` low, `graphite` 0, `gouache` mid, `acrylic` high)
-- [x] **MED-24**: Undo and redo restore both the settled-layer region and the thickness a covering stamp eroded — both pools protected before the cover pass's first draw, verified rather than assumed
-- [x] **MED-25**: `Body` adds no render target, no texture allocation and no shader program beyond the thickness channel of MED-14 (the cover pass reuses the Lift program), and export matches the screen on both `uMode` paths
-- [x] **MED-26**: `BrushPreset` carries a compile-time `group` with five values (`watercolor`, `gouache`, `pastel`, `graphite`, `acrylic`); absent reads `watercolor`, nothing is persisted and there is no Rust or format change
-- [x] **MED-27**: The brush library renders one section per group in the fixed order Watercolor · Gouache · Chalk/pastel · Graphite · Acrylic/oil, with no filter and no search; a group with no reachable response is not rendered
-- [x] **MED-28**: Selecting a response applies its group's medium params in exactly one store write, only when the group changes; switching brushes inside the same group keeps the user's manual global tweaks
-- [x] **MED-29**: The 15 existing responses are classified per the spec table (watercolour 11, chalk/pastel 4, the other groups shipping only new responses)
-- [x] **MED-30**: Eight new responses ship with the recorded parameters (`gouache-round`, `gouache-flat`, `pastel-soft`, `conte-hard`, `graphite-pencil`, `graphite-6b`, `bristle-flat`, `bristle-round`); adding is safe and renaming or removing an existing preset id is forbidden
-- [x] **MED-31**: The texture axis is unchanged — a texture replaces the selected response's footprint and applies to every group; a texture never selects a group and a group never selects a texture
-- [x] **MED-32**: The scattering coefficient `S` rides the existing `inkB.a` (mobile) and `fixedB.a` (settled) channels — no new render target, no texture allocation, no new pass
-- [x] **MED-33**: `Body` derives `S`; the existing ink advection transports it and the settle pass carries it into the settled layer
-- [x] **MED-34**: The composite reconstructs each band with the Kubelka-Munk layer-over-background form; scattering is broadband (one scalar), with no per-band `S`
-- [x] **MED-35**: At `S = 0` the render is bit-identical, verified by a pixel-buffer comparison, with a numerically stable small-argument branch and a recorded epsilon
-- [x] **MED-36**: Scattering and order compose — high `Body` both scatters and erases; low `Body` scatters without erasing, so a semi-opaque glaze lightens without destroying the pigment underneath
-- [x] **MED-37**: The white-gouache channel is retired from the deposit, settle and composite paths, and a check confirms no shipped project writes it
-- [x] **MED-38**: Replay determinism holds for `S` (live = bake = replay) and export matches the screen on every `uMode` path
+- [ ] **MED-01**: User has a `Viscosity` global on the app's 0..100 slider scale (normalized 0..1 internally) that reduces water motion and suppresses spread, exposed as a row in the existing globals panel
+- [ ] **MED-02**: At its neutral default, a project painted before this milestone renders bit-identically after it
+- [ ] **MED-03**: Viscosity only ever raises the dissipation coefficient — it never lowers the existing floor and never replaces `flow` — and is applied at exactly those two engine sites and nowhere else
+- [ ] **MED-04**: Spread becomes `0.12 × (1 − viscosity × 0.9)`, landing near `0.012` at maximum viscosity
+- [ ] **MED-05**: A stroke snapshots its viscosity the way it already snapshots `lift`; strokes without the key keep the default, and live pass, bake and replay read the same value
+- [ ] **MED-06**: Changing Viscosity after a stroke has settled does not re-process the settled pigment
+- [ ] **MED-07**: A medium record `{ id, name, params }` exists as plain serializable data — no functions, no class
+- [ ] **MED-08**: `watercolor` ships as today's `DEFAULT_AQUARELLE_PARAMS`, unchanged, and remains the selected medium on a fresh session
+- [ ] **MED-09**: Five built-ins ship — `watercolor`, `gouache`, `pastel`, `graphite`, `acrylic` — each a plain record over the canonical global set (the nine existing globals plus `viscosity`, `body` and `emboss`), with their tuned numbers recorded explicitly and no other globals invented
+- [ ] **MED-10**: Selecting a medium applies its params to `aquarelleParams` in exactly one store write, with no cascade of per-key setters
+- [ ] **MED-11**: Selecting a medium never alters already-recorded strokes — each keeps the values it was painted with; the medium sets values for the next stroke only
+- [ ] **MED-12**: A project opened on a machine with different medium defaults replays identically, because the per-stroke params snapshot stays authoritative and the medium id is advisory
+- [ ] **MED-13**: The medium selection is surfaced in the existing Studio UI without adding a second parameter panel — the globals panel stays the fine-tuning surface, and a manual global tweak keeps the medium selected
+- [ ] **MED-14**: A document-resolution half-float paint-**thickness** channel receives a thickness deposit through each dab's own tip footprint, and deposits accumulate so successive strokes superpose into layered relief
+- [ ] **MED-15**: The composite lights the thickness gradient with the same normal-and-light maths the paper relief uses and multiplies the paint colour; at emboss 0 and light intensity 0 the render is byte-identical
+- [ ] **MED-16**: Emboss strength is a canonical param carried by the medium and snapshotted with the stroke — no fluid transport of thickness and no height texture asset
+- [ ] **MED-17**: Light (azimuth, elevation, intensity) is a document setting and a render parameter — never stored in paint, applied anew on every render (live paint, stroke re-render, Play motion, Apply Script, stroke/vector edit), persisted as an optional additive field, and part of the cache content fingerprint
+- [ ] **MED-18**: Thickness is captured in the engine snapshot, protected for undo alongside the pigment it sits on, and export matches the screen on every `uMode` path with no shimmer on zoom
+- [ ] **MED-19**: User has a `Body` global on the app's 0..100 slider scale (normalized 0..1 internally), part of the canonical global set (`AquarelleGlobalParams` / `AQUARELLE_GLOBAL_KEYS` / `DEFAULT_AQUARELLE_PARAMS` / `AquarelleCanonicalParams`), exposed as a row in the existing globals panel, defaulting to 0
+- [ ] **MED-20**: At `Body` 0 the engine takes no cover pass at all — a project painted before this milestone renders bit-identically, and a recorded stroke without the key keeps 0
+- [ ] **MED-21**: A brush stroke with `Body` above 0 erodes the settled pigment under each dab with the Lift program and the stroke's own tip footprint (aspect, rotation, texture rotation, round), scaled by `Body` and therefore full at the core and partial at the edges, **before** that dab deposits its own pigment
+- [ ] **MED-22**: The cover pass touches the settled layer and the thickness only — standing water and mobile pigment are untouched, so a light stroke over a still-wet dark area mixes with it (declared behaviour, not a defect), and covering is destructive to the settled sheet while hide/show and undo stay consistent
+- [ ] **MED-23**: A stroke snapshots its `Body` with its params the way `lift` and `viscosity` are snapshotted; live pass, bake and replay read the same value and produce the same raster, and the medium record carries the value (`watercolor` 0, `pastel` low, `graphite` 0, `gouache` mid, `acrylic` high)
+- [ ] **MED-24**: Undo and redo restore both the settled-layer region and the thickness a covering stamp eroded — both pools protected before the cover pass's first draw, verified rather than assumed
+- [ ] **MED-25**: `Body` adds no render target, no texture allocation and no shader program beyond the thickness channel of MED-14 (the cover pass reuses the Lift program), and export matches the screen on both `uMode` paths
+- [ ] **MED-26**: `BrushPreset` carries a compile-time `group` with five values (`watercolor`, `gouache`, `pastel`, `graphite`, `acrylic`); absent reads `watercolor`, nothing is persisted and there is no Rust or format change
+- [ ] **MED-27**: The brush library renders one section per group in the fixed order Watercolor · Gouache · Chalk/pastel · Graphite · Acrylic/oil, with no filter and no search; a group with no reachable response is not rendered
+- [ ] **MED-28**: Selecting a response applies its group's medium params in exactly one store write, only when the group changes; switching brushes inside the same group keeps the user's manual global tweaks
+- [ ] **MED-29**: The 15 existing responses are classified per the spec table (watercolour 11, chalk/pastel 4, the other groups shipping only new responses)
+- [ ] **MED-30**: Eight new responses ship with the recorded parameters (`gouache-round`, `gouache-flat`, `pastel-soft`, `conte-hard`, `graphite-pencil`, `graphite-6b`, `bristle-flat`, `bristle-round`); adding is safe and renaming or removing an existing preset id is forbidden
+- [ ] **MED-31**: The texture axis is unchanged — a texture replaces the selected response's footprint and applies to every group; a texture never selects a group and a group never selects a texture
+- [ ] **MED-32**: The scattering coefficient `S` rides the existing `inkB.a` (mobile) and `fixedB.a` (settled) channels — no new render target, no texture allocation, no new pass
+- [ ] **MED-33**: `Body` derives `S`; the existing ink advection transports it and the settle pass carries it into the settled layer
+- [ ] **MED-34**: The composite reconstructs each band with the Kubelka-Munk layer-over-background form; scattering is broadband (one scalar), with no per-band `S`
+- [ ] **MED-35**: At `S = 0` the render is bit-identical, verified by a pixel-buffer comparison, with a numerically stable small-argument branch and a recorded epsilon
+- [ ] **MED-36**: Scattering and order compose — high `Body` both scatters and erases; low `Body` scatters without erasing, so a semi-opaque glaze lightens without destroying the pigment underneath
+- [ ] **MED-37**: The white-gouache channel is retired from the deposit, settle and composite paths, and a check confirms no shipped project writes it
+- [ ] **MED-38**: Replay determinism holds for `S` (live = bake = replay) and export matches the screen on every `uMode` path
 
 ## v2 Requirements
 
@@ -127,44 +127,44 @@ Which phases cover which requirements.
 | TIP-15 | Phase 63 | Complete |
 | TIP-16 | Phase 63 | Complete |
 | TIP-17 | Phase 63 | Complete |
-| MED-01 | Phase 64 | Complete |
-| MED-02 | Phase 64 | Complete |
-| MED-03 | Phase 64 | Complete |
-| MED-04 | Phase 64 | Complete |
-| MED-05 | Phase 64 | Complete |
-| MED-06 | Phase 64 | Complete |
-| MED-07 | Phase 64 | Complete |
-| MED-08 | Phase 64 | Complete |
-| MED-09 | Phase 64 | Complete |
-| MED-10 | Phase 64 | Complete |
-| MED-11 | Phase 64 | Complete |
-| MED-12 | Phase 64 | Complete |
-| MED-13 | Phase 64 | Complete |
-| MED-14 | Phase 64 | Complete |
-| MED-15 | Phase 64 | Complete |
-| MED-16 | Phase 64 | Complete |
-| MED-17 | Phase 64 | Complete |
-| MED-18 | Phase 64 | Complete |
-| MED-19 | Phase 64 | Complete |
-| MED-20 | Phase 64 | Complete |
-| MED-21 | Phase 64 | Complete |
-| MED-22 | Phase 64 | Complete |
-| MED-23 | Phase 64 | Complete |
-| MED-24 | Phase 64 | Complete |
-| MED-25 | Phase 64 | Complete |
-| MED-26 | Phase 64 | Complete |
-| MED-27 | Phase 64 | Complete |
-| MED-28 | Phase 64 | Complete |
-| MED-29 | Phase 64 | Complete |
-| MED-30 | Phase 64 | Complete |
-| MED-31 | Phase 64 | Complete |
-| MED-32 | Phase 64 | Complete |
-| MED-33 | Phase 64 | Complete |
-| MED-34 | Phase 64 | Complete |
-| MED-35 | Phase 64 | Complete |
-| MED-36 | Phase 64 | Complete |
-| MED-37 | Phase 64 | Complete |
-| MED-38 | Phase 64 | Complete |
+| MED-01 | Phase 64 | Gaps Found |
+| MED-02 | Phase 64 | Gaps Found |
+| MED-03 | Phase 64 | Gaps Found |
+| MED-04 | Phase 64 | Gaps Found |
+| MED-05 | Phase 64 | Gaps Found |
+| MED-06 | Phase 64 | Gaps Found |
+| MED-07 | Phase 64 | Gaps Found |
+| MED-08 | Phase 64 | Gaps Found |
+| MED-09 | Phase 64 | Gaps Found |
+| MED-10 | Phase 64 | Gaps Found |
+| MED-11 | Phase 64 | Gaps Found |
+| MED-12 | Phase 64 | Gaps Found |
+| MED-13 | Phase 64 | Gaps Found |
+| MED-14 | Phase 64 | Gaps Found |
+| MED-15 | Phase 64 | Gaps Found |
+| MED-16 | Phase 64 | Gaps Found |
+| MED-17 | Phase 64 | Gaps Found |
+| MED-18 | Phase 64 | Gaps Found |
+| MED-19 | Phase 64 | Gaps Found |
+| MED-20 | Phase 64 | Gaps Found |
+| MED-21 | Phase 64 | Gaps Found |
+| MED-22 | Phase 64 | Gaps Found |
+| MED-23 | Phase 64 | Gaps Found |
+| MED-24 | Phase 64 | Gaps Found |
+| MED-25 | Phase 64 | Gaps Found |
+| MED-26 | Phase 64 | Gaps Found |
+| MED-27 | Phase 64 | Gaps Found |
+| MED-28 | Phase 64 | Gaps Found |
+| MED-29 | Phase 64 | Gaps Found |
+| MED-30 | Phase 64 | Gaps Found |
+| MED-31 | Phase 64 | Gaps Found |
+| MED-32 | Phase 64 | Gaps Found |
+| MED-33 | Phase 64 | Gaps Found |
+| MED-34 | Phase 64 | Gaps Found |
+| MED-35 | Phase 64 | Gaps Found |
+| MED-36 | Phase 64 | Gaps Found |
+| MED-37 | Phase 64 | Gaps Found |
+| MED-38 | Phase 64 | Gaps Found |
 
 **Coverage:**
 - v1 requirements: 55 total (17 TIP + 38 MED)
