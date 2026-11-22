@@ -267,7 +267,7 @@ Plans:
 - [x] 64-25-PLAN.md — Coverage-composite merge: the real-compositor gate, the red-channel/cover-0/0.5-exponent property, and the committed alpha law stated and proven end to end (closes CR-04)
 - [x] 64-26-PLAN.md — Last-touch carry and clock: the previous-dab-rect carry with its three invalidations and corrected docstring, the AGES whole-document boundary with a monotonic live base, and the dead `uAmount` retired (closes CR-03, WR-03, IN-04)
 - [x] 64-27-PLAN.md — Relight refusal: a blocked request parks and re-lights exactly once on the idle edge, with no retry loop while playback/draft/wireframe persists (closes WR-04)
-- [ ] 64-28-PLAN.md — Digest and floor: the canonical whole-event sheet signature, and the pickup floor derived from the recorded baseline gap (closes IN-05, IN-07)
+- [x] 64-28-PLAN.md — Digest and floor: the canonical whole-event sheet signature, and the pickup floor derived from the recorded baseline gap (closes IN-05, IN-07)
 
 **Specs**: `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-03-viscosity.md`, `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-04-medium-profile.md`, `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-05-pigment-relief.md`, `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-06-coverage.md`, `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-07-brush-groups.md`, `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-08-scattering.md`
 
@@ -288,7 +288,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 63. Brush Tip Pipeline | 17/17 | Complete | 2026-11-17 |
-| 64. Medium Engine | 27/28 | In Progress | - |
+| 64. Medium Engine | 28/28 | In Progress | - |
 
 ---
 
