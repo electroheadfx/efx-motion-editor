@@ -24,16 +24,18 @@
 //  64-17, pigment — the compositor view) and echoes the 64-04
 //  `--light <0..4>` intensity it was shaded with.
 //
-//  The shipped alpha law (2026-11-21, restated by 64-31): committed and
-//  exported storage alpha is OPAQUE — every export carries coverage-free
-//  straight alpha, and coverage lives ONLY in the coverage raster, a
-//  probe-only instrument that is never an export channel. The display alpha
-//  is the DARKNESS of the visible pigment (mode 4: alpha = 1 − min(rgb) of
-//  the compositor view); it never composes with a coverage term. Every
-//  capture proves both halves: the opaque-export check samples the paper,
-//  white and transparent surfaces on one fixed prime stride, and the
-//  visible-alpha check compares the pigment alpha with the transparent
-//  export's darkness on the same pixels.
+//  The shipped alpha law (2026-11-21, restated by 64-31), in one voice:
+//    - committed and exported storage alpha is OPAQUE — every export carries
+//      coverage-free straight alpha, and no alpha is derived from coverage;
+//    - coverage lives ONLY in the coverage raster, a probe-only instrument
+//      that is never an export channel;
+//    - the display alpha is the DARKNESS of the visible pigment (mode 4:
+//      alpha = 1 − min(rgb) of the compositor view) — it never composes with
+//      a coverage term.
+//  Every capture proves both halves: the opaque-export check samples the
+//  paper, white and transparent surfaces on one fixed prime stride, and the
+//  visible-alpha check compares the pigment export's alpha with the
+//  transparent export's darkness on the same pixels.
 //
 //  64-06 adds the Body matrix: `--body <0..100>` folds the canonical key into
 //  EVERY stroke's params bag, and `--scenario cover` swaps the fixed
@@ -349,13 +351,142 @@ function hashPixels(buffer: Uint8ClampedArray): string {
 interface Digest {
   readonly digest: string
   readonly byteLength: number
+  /** 64-31: the exported pixels, kept beside the digest so the capture-level
+   *  alpha-law checks read the SAME already-read buffers — no extra export,
+   *  no extra readback. */
+  readonly pixels: Uint8ClampedArray
 }
 
 function digestCanvas(canvas: HTMLCanvasElement): Digest {
   const ctx = canvas.getContext('2d')
   if (!ctx) throw new Error('digest: exported canvas has no 2D context')
   const buffer = new Uint8ClampedArray(ctx.getImageData(0, 0, canvas.width, canvas.height).data)
-  return { digest: hashPixels(buffer), byteLength: buffer.length }
+  return { digest: hashPixels(buffer), byteLength: buffer.length, pixels: buffer }
+}
+
+// --- the shipped alpha law, checked on every capture (64-31) -----------------
+
+/**
+ * The fixed prime pixel stride the two alpha-law checks sample. A whole-sheet
+ * scan of every surface on every capture would pay for no new evidence, so
+ * the checks walk one pixel in 4093 — prime, so consecutive samples never
+ * lock to a row or dab period — and the verdicts are exact at every sampled
+ * texel (a single translucent export pixel still fails the opaque check).
+ */
+const ALPHA_LAW_STRIDE = 4093
+
+/**
+ * The bristle captures' visible-alpha exclusion. The display film blur is
+ * applied to the exported RGB while the pigment alpha is derived from the
+ * UNSHADED reconstruction, so on a bristle fringe the two disagree BY DESIGN;
+ * the check reports this reason instead of a delta (compare.mjs requires the
+ * skip on a bristle capture and refuses it on any other).
+ */
+const BRISTLE_VISIBLE_ALPHA_SKIP =
+  'bristle film blur: the display film blur makes the exported RGB and alpha intentionally disagree at the fringe'
+
+/** One exported surface the opaque-export check samples. */
+interface AlphaLawSurface {
+  readonly surface: string
+  readonly digest: Digest
+}
+
+interface OpaqueExportCheck {
+  /** The smallest alpha byte found on any sampled texel (255 = opaque). */
+  readonly minAlpha: number
+  /** The surface that carried the minimum (the first surface when all are
+   *  opaque — every export must read 255, so any 255 is truthful). */
+  readonly surface: string
+}
+
+/**
+ * 64-31: the opaque-export half of the shipped law — committed and exported
+ * storage alpha is OPAQUE, on every surface. Walks the paper, white and
+ * transparent exports' already-read buffers on {@link ALPHA_LAW_STRIDE} and
+ * reports the minimum alpha and the surface that carried it. Any value below
+ * 255 is a storage alpha that picked up a coverage or lightness term; the
+ * comparator fails it by name.
+ */
+function opaqueExportCheck(surfaces: readonly AlphaLawSurface[]): OpaqueExportCheck {
+  let minAlpha = 255
+  let surface = surfaces.length > 0 ? surfaces[0]!.surface : 'none'
+  for (const entry of surfaces) {
+    const pixels = Math.floor(entry.digest.pixels.length / 4)
+    for (let p = 0; p < pixels; p += ALPHA_LAW_STRIDE) {
+      const alpha = entry.digest.pixels[p * 4 + 3]!
+      if (alpha < minAlpha) {
+        minAlpha = alpha
+        surface = entry.surface
+      }
+    }
+  }
+  return { minAlpha, surface }
+}
+
+interface VisibleAlphaCheck {
+  /** The worst |darkness − display alpha| found, in 8-bit steps. */
+  readonly visibleAlphaMaxDelta: number | null
+  /** The number of sampled texels the comparison used. */
+  readonly visibleAlphaSamples: number
+  /** The worst texel's exported-pixel coordinates (the first sampled texel on
+   *  a tie), or null when no sampled texel carried paint. */
+  readonly visibleAlphaWorstAt: string | null
+  /** Present only on the bristle captures: why the check was skipped. */
+  readonly visibleAlphaSkip?: string
+}
+
+/**
+ * 64-31: the display half of the shipped law — the display alpha is the
+ * DARKNESS of the visible pigment, so the pigment export's alpha must equal
+ * the darkness the transparent export's own RGB records (`255 − min(rgb)`,
+ * one 8-bit step of rounding allowed). Samples both already-read buffers on
+ * the same {@link ALPHA_LAW_STRIDE}; the pigment RGB is read only where its
+ * alpha is non-zero, because an empty display texel carries no visible film
+ * and its RGB is the un-premultiplied zero, not a darkness reading. Transparent
+ * captures therefore compare only the pixels that actually carry paint, and
+ * report how many were sampled.
+ */
+function visibleAlphaCheck(
+  pigment: Digest,
+  transparent: Digest,
+  width: number,
+): VisibleAlphaCheck {
+  const data = transparent.pixels
+  const pixels = Math.floor(Math.min(pigment.pixels.length, data.length) / 4)
+  let visibleAlphaMaxDelta = 0
+  let visibleAlphaSamples = 0
+  let worstPixel = -1
+  for (let p = 0; p < pixels; p += ALPHA_LAW_STRIDE) {
+    const i = p * 4
+    const alpha = pigment.pixels[i + 3]!
+    if (alpha === 0) continue
+    const darkness = 255 - Math.min(data[i]!, data[i + 1]!, data[i + 2]!)
+    if (visibleAlphaSamples === 0) worstPixel = p
+    visibleAlphaSamples += 1
+    const delta = Math.abs(darkness - alpha)
+    if (delta > visibleAlphaMaxDelta) {
+      visibleAlphaMaxDelta = delta
+      worstPixel = p
+    }
+  }
+  const x = worstPixel < 0 ? 0 : worstPixel % width
+  const y = worstPixel < 0 ? 0 : Math.floor(worstPixel / width)
+  return {
+    visibleAlphaMaxDelta: visibleAlphaSamples === 0 ? null : visibleAlphaMaxDelta,
+    visibleAlphaSamples,
+    visibleAlphaWorstAt: worstPixel < 0 ? null : `x=${x},y=${y}`,
+  }
+}
+
+/** The bristle captures' skip record: the same block shape, reported as
+ *  skipped with its reason instead of a delta. */
+function visibleAlphaSkipped(reason: string): VisibleAlphaCheck {
+  return {
+    visibleAlphaMaxDelta: null,
+    visibleAlphaSamples: 0,
+    visibleAlphaWorstAt: null,
+    visibleAlphaSkip: reason,
+  }
 }
 
 // --- WR-01 region statistics -------------------------------------------------
@@ -2826,6 +2957,17 @@ function run(
     const pigment = digestCanvas(pigmentCanvas)
     const renderMs = Math.round(performance.now() - renderStart)
 
+    // 64-31: the shipped law is checked on the capture, not only narrated.
+    // Both halves read the buffers digestCanvas just read — no extra export.
+    const opaqueExport = opaqueExportCheck([
+      { surface: 'paper', digest: paper },
+      { surface: 'white', digest: white },
+      { surface: 'transparent', digest: transparent },
+    ])
+    const visibleAlpha = scenario.startsWith('bristle-')
+      ? visibleAlphaSkipped(BRISTLE_VISIBLE_ALPHA_SKIP)
+      : visibleAlphaCheck(pigment, transparent, sheet)
+
     // WR-01: the four region means that make the cover gate's PASS mean
     // something. Measured after renderMs so the cost number keeps its meaning.
     // Only cover-over-wet reports them, so every other scenario's report shape
@@ -2912,6 +3054,9 @@ function run(
       digestWhite: white.digest,
       digestPigment: pigment.digest,
       byteLength: paper.byteLength,
+      opaqueExportMinAlpha: opaqueExport.minAlpha,
+      opaqueExportMinAlphaSurface: opaqueExport.surface,
+      ...visibleAlpha,
       ...coverRegions,
       ...whiteOverBlueReport,
       ...coverTexturedReport,

@@ -7,8 +7,8 @@
 //   1. Committed-baseline equality
 //        node compare.mjs <gate>
 //      Compares /tmp/medium-engine/<gate>.json against the committed
-//      probe/medium-engine/baselines/<gate>.json on every recorded
-//      digest, the byte length and the dimensions.
+//      probe/medium-engine/baselines/<gate>.json on every recorded digest,
+//      the byte length, the dimensions and the five alpha-law fields (64-31).
 //
 //   2. Same-session comparison
 //        node compare.mjs <gate> --other <otherGate>
@@ -61,17 +61,28 @@
 //  reported, not gated, so a duration delta can never fail a byte-identity
 //  check. The operand contract above is unchanged: 64-10 only reads it.
 //
-//  64-17: FIELDS gains `digestPigment` — the mode-4 coverage sheet whose
-//  alpha is max(1 - min(rgb), cover), so a covering stroke is visible in the
-//  comparison at all. The field is strict in EVERY mode except one named
-//  reference: `neutral-identity` was captured from commit d1fd7ea3, before the
-//  pigment export existed, so its missing field prints as `absent` and is not
-//  compared. The exception is consulted only when the REFERENCE is the
-//  committed baseline (mode 1) — a capture-side omission is still a missing
-//  field, and --other stays strict, so the legacy allowance can never launder
-//  a same-session regression. DIGESTS stays the three exported backgrounds:
-//  --differs-from keeps asserting those, not the sheet that must change with
-//  them.
+//  64-17: FIELDS gains `digestPigment` — the mode-4 compositor sheet. The
+//  field is strict in EVERY mode except one named reference: `neutral-identity`
+//  was captured from commit d1fd7ea3, before the pigment export existed, so its
+//  missing field prints as `absent` and is not compared. The exception is
+//  consulted only when the REFERENCE is the committed baseline (mode 1) — a
+//  capture-side omission is still a missing field, and --other stays strict, so
+//  the legacy allowance can never launder a same-session regression. DIGESTS
+//  stays the three exported backgrounds: --differs-from keeps asserting those,
+//  not the sheet that must change with them.
+//
+//  64-31 states the shipped alpha law (2026-11-21) once, here and in probe.ts
+//  and run.mjs: committed and exported storage alpha is OPAQUE — every export
+//  carries coverage-free straight alpha and no alpha is derived from coverage;
+//  coverage lives only in the coverage raster, a probe-only instrument and
+//  never an export channel; and the display alpha is the DARKNESS of the
+//  visible pigment (alpha = 1 − min(rgb) of the compositor view), never
+//  composed with a coverage term. `alphaLawFailures` enforces both halves on
+//  EVERY capture in EVERY mode: the opaque-export block must report 255 on the
+//  surface it names, and a non-bristle capture's `visibleAlphaMaxDelta` must
+//  stay within one 8-bit step (the bristle captures report the check as
+//  skipped with their film-blur reason). The five law fields are also part of
+//  FIELDS, so a capture cannot silently drop them.
 //
 //  64-17: scenario-keyed outcome invariants (`SCENARIO_INVARIANTS`) run in
 //  EVERY mode before the verdict, alongside — never replacing — the
@@ -84,12 +95,11 @@
 //  failure line of its own — an unlisted body never passes silently.
 //
 //  64-14 adds `'cover-advect'` to SCENARIO_INVARIANTS: the coverage channel
-//  must keep at least 90% of the crossing alpha across the eight extra wet
+//  must keep at least 90% of its crossing coverage across the eight extra wet
 //  ticks (mass preserved), must not raise the peak (spread, not sharpen),
 //  must stay at or above 0.60 (still covering) and must raise no
-//  covered-paper-white. The readings are taken on the pigment export, whose
-//  mode-4 alpha is max(darkness, cover) — at Body 100 the white pigment's own
-//  darkness alpha is a few percent, so the crossing alpha is ~cover.
+//  covered-paper-white. 64-31: every reading comes from the coverage raster
+//  itself — the only channel that carries coverage.
 //
 //  64-14 also adds `'cover-lift'`: Lift peels the covering stroke's opacity,
 //  so the crossing must read at least 0.90 before the lift stroke, fall to at
@@ -126,12 +136,82 @@ const here = dirname(fileURLToPath(import.meta.url))
 const tmpDir = '/tmp/medium-engine'
 
 const DIGESTS = ['digestPaper', 'digestTransparent', 'digestWhite']
-const FIELDS = [...DIGESTS, 'digestPigment', 'byteLength', 'width', 'height']
+const FIELDS = [...DIGESTS, 'digestPigment', 'byteLength', 'width', 'height', 'opaqueExportMinAlpha', 'opaqueExportMinAlphaSurface', 'visibleAlphaMaxDelta', 'visibleAlphaSamples', 'visibleAlphaWorstAt']
 
 // 64-17: the one committed baseline captured before the pigment export
 // existed. `absent` is legal for these fields on the REFERENCE side only —
 // never for the capture, and never outside committed-baseline mode.
 const REFERENCE_OPTIONAL = { 'neutral-identity': ['digestPigment'] }
+
+// 64-31: the two alpha-law blocks every capture carries (probe.ts). Listed
+// here so a capture that omits one fails BY NAME, and so the comparator can
+// never read `undefined` as a satisfied bar.
+const ALPHA_LAW_OPAQUE_FIELDS = ['opaqueExportMinAlpha', 'opaqueExportMinAlphaSurface']
+const ALPHA_LAW_VISIBLE_FIELDS = ['visibleAlphaMaxDelta', 'visibleAlphaSamples', 'visibleAlphaWorstAt']
+// The two slots a skipped (bristle) visible-alpha check records as null.
+const ALPHA_LAW_NULLABLE_FIELDS = new Set(['visibleAlphaMaxDelta', 'visibleAlphaWorstAt'])
+const ALPHA_LAW_MAX_DELTA = 1 // one 8-bit step: the law is exact up to rounding
+
+/**
+ * 64-31: the shipped alpha law enforced on a capture, in EVERY mode.
+ *
+ * OPAQUE — committed and exported storage alpha is OPAQUE: the opaque-export
+ * check's minimum must be the 8-bit maximum 255, and a failure names the
+ * surface that carried the translucency.
+ *
+ * DISPLAY — the display alpha is the DARKNESS of the visible pigment: a
+ * non-bristle capture's `visibleAlphaMaxDelta` (pigment alpha vs the
+ * transparent export's `255 − min(rgb)` on the same pixels) must stay within
+ * one step, and a failure names the step count and the worst coordinate. A
+ * bristle capture instead reports the check as skipped with its film-blur
+ * reason; skipping it on any other scenario fails.
+ */
+function alphaLawFailures(data) {
+  const failures = []
+  const opaqueMissing = ALPHA_LAW_OPAQUE_FIELDS.filter((field) => !(field in data))
+  if (opaqueMissing.length > 0) {
+    failures.push(
+      `capture is missing ${opaqueMissing.join(', ')}; re-run the probe ` +
+        '(every capture carries the opaque-export law block)',
+    )
+  } else if (data.opaqueExportMinAlpha !== 255) {
+    failures.push(
+      `opaqueExportMinAlpha ${data.opaqueExportMinAlpha} on the ${data.opaqueExportMinAlphaSurface} ` +
+        'surface is not the opaque maximum 255 (committed and exported storage alpha is OPAQUE)',
+    )
+  }
+  const visibleMissing = ALPHA_LAW_VISIBLE_FIELDS.filter((field) => !(field in data))
+  if (visibleMissing.length > 0) {
+    failures.push(
+      `capture is missing ${visibleMissing.join(', ')}; re-run the probe ` +
+        '(every capture carries the visible-alpha law block)',
+    )
+    return failures
+  }
+  const bristle = String(data.scenario).startsWith('bristle-')
+  if (bristle) {
+    if (typeof data.visibleAlphaSkip !== 'string' || data.visibleAlphaSkip.length === 0) {
+      failures.push(
+        'capture is missing visibleAlphaSkip; a bristle capture must report why the ' +
+          'visible-alpha check was skipped (the film-blur exclusion)',
+      )
+    }
+    return failures
+  }
+  if (data.visibleAlphaMaxDelta === null || typeof data.visibleAlphaSkip === 'string') {
+    failures.push(
+      'the visible-alpha check cannot be skipped for this scenario ' +
+        `(visibleAlphaSkip ${JSON.stringify(data.visibleAlphaSkip)}, ` +
+        `visibleAlphaMaxDelta ${data.visibleAlphaMaxDelta})`,
+    )
+  } else if (!(typeof data.visibleAlphaMaxDelta === 'number' && data.visibleAlphaMaxDelta <= ALPHA_LAW_MAX_DELTA)) {
+    failures.push(
+      `visibleAlphaMaxDelta ${data.visibleAlphaMaxDelta} steps at ${data.visibleAlphaWorstAt} ` +
+        'exceeds one 8-bit step (the display alpha is not the darkness of the visible pigment)',
+    )
+  }
+  return failures
+}
 
 // WR-01: the cover-over-wet gate asserts the rendered OUTCOME, not only that
 // the bytes changed. The probe reports four full-resolution region means
@@ -1323,16 +1403,27 @@ if (mode === 'differs') {
   const regionFailures = coverRegionFailures(actual)
   printCoverRegions(actual, refData)
   printBristleTip(actual)
+  // 64-31: the alpha-law blocks are enforced in this mode too — a digest that
+  // differs on a capture whose law regressed is not a pass.
+  const lawFailures = alphaLawFailures(actual)
+  for (const line of lawFailures) console.log(`INVARIANT ${line}`)
   // 64-17: the scenario-keyed invariants, in every mode before the verdict.
   // 64-29: the reference rides along — the bristle-tip A/B bar needs the
   // plain leg's band count.
   const invariantFailures = scenarioInvariantFailures(actual, refData)
   for (const line of invariantFailures) console.log(`INVARIANT ${line}`)
-  if (missing > 0 || equal > 0 || regionFailures.length > 0 || invariantFailures.length > 0) {
+  if (
+    missing > 0 ||
+    equal > 0 ||
+    regionFailures.length > 0 ||
+    lawFailures.length > 0 ||
+    invariantFailures.length > 0
+  ) {
     for (const line of regionFailures) console.log(`REGION    ${line}`)
     console.log(
       `RESULT: FAIL — ${equal} digest(s) did not differ, ${missing} missing, ` +
         `${regionFailures.length} cover region invariant(s) failed, ` +
+        `${lawFailures.length} alpha law failure(s), ` +
         `${invariantFailures.length} scenario invariant(s) failed ` +
         `(${gate} vs ${operand})`,
     )
@@ -1360,16 +1451,22 @@ for (const field of FIELDS) {
   const b = refData[field]
   const aOk = a !== undefined && a !== null
   const bOk = b !== undefined && b !== null
+  // 64-31: a skipped visible-alpha check records null in its numeric slots, so
+  // null is a PRESENT value for those two fields on both sides — only an
+  // absent key is a missing field. The opaque block is never nullable.
+  const nullable = ALPHA_LAW_NULLABLE_FIELDS.has(field)
+  const aPresent = aOk || (nullable && field in actual)
+  const bPresent = bOk || (nullable && field in refData)
   // 64-17: the reference-legacy rule. Legal only against the named committed
   // baseline (mode 1); the capture side is always required.
   const optionalForReference =
     mode === 'baseline' && (REFERENCE_OPTIONAL[refData.gate] ?? []).includes(field)
-  if (!aOk || (!bOk && !optionalForReference)) {
+  if (!aPresent || (!bPresent && !optionalForReference)) {
     missing += 1
-    console.log(`MISSING   ${field.padEnd(18)} capture=${aOk ? a : '(missing)'} reference=${bOk ? b : '(missing)'}`)
+    console.log(`MISSING   ${field.padEnd(18)} capture=${aPresent ? a : '(missing)'} reference=${bPresent ? b : '(missing)'}`)
     continue
   }
-  if (!bOk) {
+  if (!bPresent) {
     console.log(`absent    ${field.padEnd(18)} ${a}  (baseline predates the field; not compared)`)
     continue
   }
@@ -1389,6 +1486,10 @@ printBristleEdge(actual)
 printBristleWet(actual)
 printBristleTip(actual)
 printCoverLifecycle(actual)
+// 64-31: the alpha-law blocks run in committed-baseline and same-session mode
+// too — every mode, before every verdict.
+const lawFailures = alphaLawFailures(actual)
+for (const line of lawFailures) console.log(`INVARIANT ${line}`)
 // 64-17: the scenario-keyed invariants run in committed-baseline and
 // same-session mode too — every mode, before every verdict.
 const invariantFailures = scenarioInvariantFailures(actual, refData)
@@ -1396,11 +1497,18 @@ for (const line of invariantFailures) console.log(`INVARIANT ${line}`)
 
 console.log('')
 const counterpart = mode === 'other' ? operand : 'baseline'
-if (missing > 0 || differing > 0 || regionFailures.length > 0 || invariantFailures.length > 0) {
+if (
+  missing > 0 ||
+  differing > 0 ||
+  regionFailures.length > 0 ||
+  lawFailures.length > 0 ||
+  invariantFailures.length > 0
+) {
   for (const line of regionFailures) console.log(`REGION    ${line}`)
   console.log(
     `RESULT: FAIL — ${differing} differing field(s), ${missing} missing field(s), ` +
       `${regionFailures.length} cover region invariant(s) failed, ` +
+      `${lawFailures.length} alpha law failure(s), ` +
       `${invariantFailures.length} scenario invariant(s) failed ` +
       `(${gate} vs ${counterpart})`,
   )

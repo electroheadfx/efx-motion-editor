@@ -55,12 +55,30 @@
 //  now commits its own near-opaque body, own-pigment 14.54 against 3.47), so
 //  neither claim measures the erased underlayer any more. The digest-differs
 //  check stays as the change detector.
+//  (These are region-PIGMENT means on the transparent export, not coverage
+//  fields: 64-31 moved only the coverage claims to the coverage raster.)
 //
-//  64-17 digests the coverage sheet: every report carries `digestPigment`
-//  (the mode-4 compositor export, whose alpha is max(1 − min(rgb), cover)),
-//  and a capture that lacks any of the FOUR digests is refused below. The
-//  comparison field is `digestPigment`; the one baseline captured before the
-//  export existed (`neutral-identity`) is handled explicitly by compare.mjs.
+//  64-17 digests the pigment sheet: every report carries `digestPigment` (the
+//  mode-4 compositor export), and a capture that lacks any of the FOUR digests
+//  is refused below. The comparison field is `digestPigment`; the one baseline
+//  captured before the export existed (`neutral-identity`) is handled
+//  explicitly by compare.mjs.
+//
+//  64-31 restates the shipped alpha law (2026-11-21) across all three probe
+//  files in one voice, with no flag and no scenario changed. In three parts:
+//    - committed and exported storage alpha is OPAQUE — every export carries
+//      coverage-free straight alpha, and no alpha is derived from coverage;
+//    - coverage lives only in the coverage raster, a probe-only instrument
+//      that is never an export channel;
+//    - the display alpha is the DARKNESS of the visible pigment (1 − min(rgb)
+//      of the compositor view), never composed with a coverage term.
+//  Every report therefore carries two law blocks beside the digests:
+//  `opaqueExportMinAlpha` / `opaqueExportMinAlphaSurface` and
+//  `visibleAlphaMaxDelta` / `visibleAlphaSamples` / `visibleAlphaWorstAt` —
+//  or, on a bristle capture, the visible-alpha check reported as skipped with
+//  `visibleAlphaSkip` and its film-blur reason. compare.mjs enforces both
+//  halves in every mode.
+//
 //  64-17 also adds `--scenario watercolor-50`: the spike's 50 rapid #cc2222
 //  strokes on blank paper at Body 0, captured at `--size 1080` as the second
 //  half of the Body-0 identity law.
@@ -68,26 +86,27 @@
 //  64-17 adds `--scenario white-over-blue`: Spike 001's criterion-1 scene — a
 //  saturated #0044dd band at Body 0, fixed, then a #f0f0f0 diagonal at
 //  `--body` (default 100) crossing it. The report carries the crossing box's
-//  mean channels, blue excess, pigment alpha (the compositor alpha), the
+//  mean channels, blue excess, the coverage raster's mean coverage, the
 //  transparent sheet's darkness conversion, and the covered-paper-white scan;
 //  compare.mjs gates them in EVERY mode, keyed on the capture's own body.
 //
 //  64-14 adds `--scenario cover-advect`: the cover geometry with the covering
 //  stroke left wet, so the coverage channel can be read mid-script — the
-//  crossing alpha on the pigment export before and after eight extra wet
+//  crossing coverage on the coverage raster before and after eight extra wet
 //  ticks, plus the covered-paper-white scan. compare.mjs gates those readings
 //  in EVERY mode, keyed `'cover-advect'`.
 //
 //  64-14 also adds `--scenario cover-lift`: the fully fixed cover geometry
-//  followed by a LIFT stroke across the covering diagonal — the crossing alpha
-//  before and after the lift, then the paper-white scan. compare.mjs gates
-//  those readings in EVERY mode, keyed `'cover-lift'`.
+//  followed by a LIFT stroke across the covering diagonal — the crossing
+//  coverage on the coverage raster before and after the lift, then the
+//  paper-white scan. compare.mjs gates those readings in EVERY mode, keyed
+//  `'cover-lift'`.
 //
 //  64-16 adds `--brush <id>`: the covering stroke's brush preset. The page
 //  resolves the id against BRUSH_PRESETS and throws on an unknown one with the
 //  known list, so the id list stays in one place; this parser only rejects an
 //  empty token. `cover-textured` is the cover geometry with the light
-//  diagonal stamped by that brush (default chalk), measured as an alpha
+//  diagonal stamped by that brush (default chalk), measured as a coverage
 //  spread on TEXTURED_BOX; `red-over-blue-50` is task 2's criterion-2
 //  scenario, declared in both closed lists now so the two files cannot drift.
 //
@@ -162,7 +181,7 @@
 //                                     cover-textured defaults to chalk)
 //             [--wet-mode <0|1>]      omitted keeps 1 (the shipped §3.4
 //                                     timestamp law); 0 is the A/B proxy
-//    compare.mjs <gate>               committed-baseline equality (7 fields)
+//    compare.mjs <gate>               committed-baseline equality (12 fields)
 //    compare.mjs <gate> --other <g>   same-session equality; never a baseline
 //    compare.mjs <gate> --differs-from <n>
 //                                     committed baseline <n> when it exists,
