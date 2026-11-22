@@ -197,7 +197,7 @@ Plans:
   6. The brush library groups the responses by medium in five sections; picking a brush applies its group's medium in one store write only when the group changes; the 15 existing responses are classified and the eight new ones ship.
   7. Export matches the screen on every `uMode` path, zooming produces no shimmer or crawl, and undo restores the eroded pigment and the eroded thickness exactly.
 
-**Plans:** 20 of 24 executed — 17 executed (coverage-replacement addendum 64-13…64-17 planned 2026-11-18), 3 gap-closure plans added 2026-11-18 from `64-VERIFICATION.md`, and 4 acrylic-bristle extension plans (64-21…64-24) planned 2026-11-19 from `64-CONTEXT.md` + Spike 002
+**Plans:** 24 of 28 executed — 17 executed (coverage-replacement addendum 64-13…64-17 planned 2026-11-18), 3 gap-closure plans added 2026-11-18 from `64-VERIFICATION.md`, 4 acrylic-bristle extension plans (64-21…64-24) planned 2026-11-19 from `64-CONTEXT.md` + Spike 002, and 4 re-review gap-closure plans (64-25…64-28) planned 2026-11-22 from `64-VERIFICATION.md` + `64-REVIEW.md`
 
 Plans:
 **Wave 1**
@@ -263,6 +263,12 @@ Plans:
 **Wave 18** *(blocked on 64-23 completion)*
 - [x] 64-24-PLAN.md — Acrylic water and wetness: the document-sized `R32F` last-touch ping-pong pair (D-24), the §3.4 `exp(−age / wetSeconds) · coverage` gate in the carrier, the D-25 acrylic record retune and the Wet/Dry acceptance capture
 
+**Wave 19 — re-review gap closure** *(from `64-VERIFICATION.md` + `64-REVIEW.md`; planned 2026-11-22; criticals first per the artist's G-01 ruling; all four are independent of each other — no shared file)*
+- [ ] 64-25-PLAN.md — Coverage-composite merge: the real-compositor gate, the red-channel/cover-0/0.5-exponent property, and the committed alpha law stated and proven end to end (closes CR-04)
+- [ ] 64-26-PLAN.md — Last-touch carry and clock: the previous-dab-rect carry with its three invalidations and corrected docstring, the AGES whole-document boundary with a monotonic live base, and the dead `uAmount` retired (closes CR-03, WR-03, IN-04)
+- [ ] 64-27-PLAN.md — Relight refusal: a blocked request parks and re-lights exactly once on the idle edge, with no retry loop while playback/draft/wireframe persists (closes WR-04)
+- [ ] 64-28-PLAN.md — Digest and floor: the canonical whole-event sheet signature, and the pickup floor derived from the recorded baseline gap (closes IN-05, IN-07)
+
 **Specs**: `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-03-viscosity.md`, `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-04-medium-profile.md`, `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-05-pigment-relief.md`, `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-06-coverage.md`, `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-07-brush-groups.md`, `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-08-scattering.md`
 
 **Spec provenance** (planner input, not an execution unit — the `GSD-QUICK-PROMPT-*` filenames are historical names, not quick dispatches): spec 03 — Viscosity global (dissipation raises only, spread `0.12 × (1 − v·0.9)`, per-stroke snapshot like `lift`); spec 04 — five medium records over the canonical globals, one store write per switch; spec 05 — a real paint-thickness channel deposited through the tip, lit as an emboss with a document-level render light; spec 06 — `Body` order (a covering dab erodes the settled layer with the Lift program under its own tip, then deposits its own pigment); spec 07 — brush groups (compile-time `group` tag, five sections, group → medium in one write, 15 classified + 8 new responses); spec 08 — Kubelka-Munk scattering (`S` in `inkB.a`/`fixedB.a`, `Body`-driven, `S = 0` bit-identical).
@@ -282,7 +288,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 63. Brush Tip Pipeline | 17/17 | Complete | 2026-11-17 |
-| 64. Medium Engine | 24/24 | In Progress | - |
+| 64. Medium Engine | 24/28 | In Progress | - |
 
 ---
 

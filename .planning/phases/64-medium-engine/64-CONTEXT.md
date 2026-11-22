@@ -94,6 +94,17 @@ Does **not** add: a paint height field beyond the one thickness channel (MED-F01
 
 </decisions>
 
+<gap_closure_rulings>
+## Gap-Closure Rulings (2026-11-22, from `/gsd-plan-phase 64 --gaps`)
+
+- **G-01 — Criticals first (scope of this run).** This gap-closure run fixes **CR-03, CR-04, WR-03 and WR-04** and the regression gates that would have caught them. The visible acrylic contract (UAT rows 11–14, GAP-1…GAP-5) and the probe-baseline / invariant re-authoring are a **follow-up gap-closure run**, planned once the paint law stops moving — so the baselines are re-authored once, not twice.
+- **G-02 — Body stays bag-only; do not touch it.** Body was removed from the Paint panel by quick 261121-mtu and **defaults to 0**. No Body row returns in this milestone. MED-19, ROADMAP SC5 and 64-06 truth 1 are amended to "exposed through medium selection only, default 0"; the value stays in `AQUARELLE_GLOBAL_KEYS`, the medium records and the Reset key set.
+- **G-03 — D-27 amended: a texture tip composes with the bristle gather.** A brush carrying a `textureId` no longer bypasses `isBristleResponse`; the texture modulates the gather/deposit while hairs, pickup and wetness remain. UAT row 14 ("at least as good as either path alone") is the acceptance. Implemented in the follow-up run.
+- **G-04 — D-28 amended: a coefficient-space smear is in scope.** The artist wants the reference's trainées (trails dragging underlying colour). The smear is a **new measured term in coefficient space** (never an RGB smear, per D-28's constraint), driven by pickup/feather. Implemented in the follow-up run.
+- **G-05 — Emboss stays capped at 15.** The cap is the artist's post-UAT decision recorded at `aquarelleParamVisibility.ts:87-90`; 64-04 truth 5 is amended from 0..100 to the capped band rather than the cap being raised.
+- **G-06 — UAT rows 11–14 remain the artist's live judgement.** No row is marked passed by this run; the criticals close defects, the follow-up lands the visible behaviours, and the artist re-tests on the native surface.
+</gap_closure_rulings>
+
 <canonical_refs>
 ## Canonical References
 

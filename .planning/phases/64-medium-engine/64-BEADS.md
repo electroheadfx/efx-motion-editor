@@ -6,7 +6,7 @@ closed: 54
 blocking_open: 18
 diverged: 18
 generated_from: "bd list --parent efx-motion-editor-4ro --all --json -n 0"
-generated_at: 2026-11-19T14:51:28Z
+generated_at: 2026-11-22T13:16:14Z
 ---
 
 # BEADS.md: 64-medium-engine
