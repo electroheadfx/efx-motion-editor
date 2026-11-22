@@ -192,24 +192,47 @@ describe('the eight lifecycle sites (D-24)', () => {
     expect(coverAt, 'coverage stays last').toBeGreaterThan(writeAt)
   })
 
-  it('6/8 captures through readFloat into an exact Float32Array', () => {
+  it('6/8 captures through readFloat and stores AGES, never raw stamps', () => {
     const whole = sliceBetween(ENGINE_SOURCE, 'private captureWhole()', 'private applyWhole(')
-    expect(whole).toContain(
-      'const readF = (fb: WebGLFramebuffer) => (r ? g.readFloat(fb, dw, dh, r) : new Float32Array(0));',
-    )
-    expect(whole).toContain('lastTouch: readF(this.lastTouch.read.views[0]),')
+    // Message-first source pins: a raw `toContain` dumps the slice into the
+    // RED report and breaks its TAP format.
+    const has = (needle: string): void => {
+      expect(whole.includes(needle), `missing engine text: ${needle}`).toBe(true)
+    }
+    has('const readF = (fb: WebGLFramebuffer) => (r ? g.readFloat(fb, dw, dh, r) : new Float32Array(0));')
+    // 64-26 (WR-03): the whole-document record is the clock-free form — ages.
+    has('lastTouch: stampsToAges(readF(this.lastTouch.read.views[0]), this.nowSec()),')
   })
 
-  it('7/8 uploads both halves through uploadFloat behind the narrowing guard', () => {
+  it('7/8 re-stamps the AGES on this clock and uploads both halves through uploadFloat', () => {
     const whole = sliceBetween(ENGINE_SOURCE, 'private captureWhole()', 'private applyWhole(')
-    expect(whole).toContain(
-      'const upF = (tex: WebGLTexture, data: Float32Array) => g.uploadFloat(tex, r.x0, r.y0, w, h, data);',
-    )
-    expect(whole).toContain('const lt = whole.layers.lastTouch;')
-    expect(whole).toContain('if (lt instanceof Float32Array)')
-    expect(whole).toContain(
-      'for (const t of [this.lastTouch.read, this.lastTouch.write]) upF(t.tex[0], lt);',
-    )
+    const has = (needle: string): void => {
+      expect(whole.includes(needle), `missing engine text: ${needle}`).toBe(true)
+    }
+    has('const upF = (tex: WebGLTexture, data: Float32Array) => g.uploadFloat(tex, r.x0, r.y0, w, h, data);')
+    has('const lt = whole.layers.lastTouch;')
+    has('if (lt instanceof Float32Array)')
+    has('const stamps = agesToStamps(lt, this.nowSec());')
+    has('for (const t of [this.lastTouch.read, this.lastTouch.write]) upF(t.tex[0], stamps);')
+    // A cached record is restored repeatedly: the upload must never write back
+    // into the record it was given.
+    expect(
+      whole.includes('whole.layers.lastTouch ='),
+      'the record is never mutated by an upload',
+    ).toBe(false)
+  })
+
+  it('keeps the live time base monotonic across sheet wipes; only setClock re-anchors', () => {
+    const clear = sliceBetween(ENGINE_SOURCE, 'private clearLastTouch() {', 'private allocateHistory()')
+    expect(
+      clear.includes('this.timeBaseMs = null;'),
+      'a sheet wipe never re-anchors the clock (the resize copy keeps its stamps)',
+    ).toBe(false)
+    const setClock = ENGINE_SOURCE.split('\n').find(l => l.includes('setClock(fn: () => number)'))
+    expect(
+      setClock?.includes('this.timeBaseMs = null;'),
+      'a new clock starts a new base',
+    ).toBe(true)
   })
 
   it('8/8 carries the pair through a resize into both halves', () => {

@@ -162,7 +162,7 @@ describe('the sheet cache seam (2026-11-22)', () => {
     expectContains(restore, 'if (whole.w !== this.dw || whole.h !== this.dh) return false;')
     // A known blank first (dry sentinel + paint state), then the exact layers.
     expect(restore.indexOf('this.resetSheet();')).toBeGreaterThan(-1)
-    expect(restore.indexOf('this.resetSheet();')).toBeLessThan(restore.indexOf('this.uploadWhole(upload);'))
+    expect(restore.indexOf('this.resetSheet();')).toBeLessThan(restore.indexOf('this.uploadWhole(whole);'))
     expectContains(restore, 'this.bristleContent = s.bristleContent;')
     // It is a SHEET seam: paper, view and history are never touched here.
     expect(restore).not.toContain('drawPaper(')
@@ -170,21 +170,43 @@ describe('the sheet cache seam (2026-11-22)', () => {
     expect(restore).not.toContain('history.begin')
   })
 
-  it('carries last-touch as AGES, so a bake engine hands its sheet to the LIVE clock', () => {
+  it('carries last-touch as AGES at the whole-document boundary only', () => {
     // A re-bake runs a VIRTUAL clock from 0; the live engine runs real time.
     // A raw stamp captured on one and uploaded to the other reads as ancient
-    // (no wetness, no blend). Ages are clock-free: restore re-stamps them.
+    // (no wetness, no blend). Ages are clock-free: the whole-document
+    // boundary converts both ways, so the sheet-cache seam stays pass-through.
+    const captureWhole = ENGINE_SOURCE.slice(
+      ENGINE_SOURCE.indexOf('private captureWhole()'),
+      ENGINE_SOURCE.indexOf('private uploadWhole('),
+    )
+    expectContains(captureWhole, 'lastTouch: stampsToAges(readF(this.lastTouch.read.views[0]), this.nowSec()),')
+    const uploadWhole = ENGINE_SOURCE.slice(
+      ENGINE_SOURCE.indexOf('private uploadWhole('),
+      ENGINE_SOURCE.indexOf('private applyWhole('),
+    )
+    expectContains(uploadWhole, 'const stamps = agesToStamps(lt, this.nowSec());')
+    expectContains(uploadWhole, 'upF(t.tex[0], stamps);')
+
     const capture = ENGINE_SOURCE.slice(
       ENGINE_SOURCE.indexOf('captureSheet(): SheetSnapshot {'),
       ENGINE_SOURCE.indexOf('restoreSheet(s: SheetSnapshot): boolean {'),
     )
-    expectContains(capture, 'lastTouch[i] = Math.max(now - lastTouch[i], 0);')
+    expectContains(capture, 'const whole = this.captureWhole();')
+    expectContains(capture, 'return { whole, bristleContent: this.bristleContent };')
+    expect(
+      capture.includes('Math.max(now - lastTouch'),
+      'captureSheet is pass-through — the AGES law lives at one boundary',
+    ).toBe(false)
+
     const restore = ENGINE_SOURCE.slice(
       ENGINE_SOURCE.indexOf('restoreSheet(s: SheetSnapshot): boolean {'),
       ENGINE_SOURCE.indexOf('/** Replace the painting with a saved one. History starts afresh. */'),
     )
-    expectContains(restore, 'stamps[i] = now - ages[i];')
-    expectContains(restore, 'upload = { ...whole, layers: { ...whole.layers, lastTouch: stamps } };')
+    expect(
+      restore.includes('stamps[i] = now - ages[i]'),
+      'restoreSheet is pass-through — no conversion of its own',
+    ).toBe(false)
+    expectContains(restore, 'this.uploadWhole(whole);')
   })
 
   it('the adapter exposes captureSheet for the bake → live handoff', () => {
