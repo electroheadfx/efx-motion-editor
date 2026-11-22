@@ -253,6 +253,41 @@ describe('aquarelle layer is a compositor pigment layer (56-12)', () => {
     expect(layer).not.toContain('pts?.length');
   });
 
+  it('SHEET CACHE: one predicate answers both sides of the cache (64-30 IN-02)', () => {
+    // IN-02: rememberSheet parked a script restoreCachedSheet would never
+    // take — only the restore side tested for an empty event list, so an
+    // empty script could sit in the cache under a valid digest forever.
+    // The emptiness answer now lives beside the digest and BOTH sides call it.
+    // Pins use the one-line message form: a toContain on the whole layer
+    // dumps the source into the failure diagnostic.
+    const cacheBlock = layer.slice(
+      layer.indexOf('const SHEET_CACHE_MAX_FRAMES = 3;'),
+      layer.indexOf('// LIVE OVER COMMITTED'),
+    );
+    const expectSource = (source: string, needle: string): void => {
+      expect(source.includes(needle), `missing source text: ${needle}`).toBe(true);
+    };
+    const expectMissing = (source: string, needle: string): void => {
+      expect(source.includes(needle), `unexpected source text: ${needle}`).toBe(false);
+    };
+    expectSource(
+      layer,
+      "import { aquarelleSheetSignature, hasCacheableScript } from './aquarelleSheetSignature';",
+    );
+    // The restore side asks the predicate; no hand-rolled emptiness test
+    // survives in the cache block.
+    expectSource(cacheBlock, 'if (!hasCacheableScript(events)) return false;');
+    expectMissing(cacheBlock, 'events.length === 0');
+    expectMissing(cacheBlock, '!events ||');
+    // Both remember sites ask the same predicate — an empty list parks
+    // nothing, exactly because the restore side would refuse it.
+    expectSource(
+      layer,
+      'if (hasCacheableScript(events)) rememberSheet(frame, aquarelleSheetSignature(events), sheet);',
+    );
+    expectSource(layer, 'if (hasCacheableScript(leavingEvents)) {');
+  });
+
   it('NAV FLUSH: navigation forces an aquarelle frame-leave capture BEFORE flushing live pixels', () => {
     // The aquarelle rAF poll queues its frame-leave capture AFTER
     // scheduleRotoStartFramePropagation, which is AFTER navigateToSyncedPhysicalFrame

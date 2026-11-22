@@ -18,7 +18,7 @@ import type {
   AquarelleStrokePayload,
   AquarelleToolOverrides,
 } from '@efxlab/efx-watercolor';
-import { aquarelleSheetSignature } from './aquarelleSheetSignature';
+import { aquarelleSheetSignature, hasCacheableScript } from './aquarelleSheetSignature';
 
 type Stroke = StudioStroke<AquarelleStrokePayload>;
 
@@ -239,5 +239,38 @@ describe('64-28 canonical sheet signature (IN-05)', () => {
       engine: { ...baseStroke().engine, textureId: undefined },
     } as Stroke;
     expect(digestOf([explicit])).toBe(digestOf([baseStroke()]));
+  });
+});
+
+// ============================================================
+//  64-30 (IN-02) — hasCacheableScript.
+//
+//  The sheet cache had two definitions of "a script": rememberSheet
+//  parked any truthy list (an empty array parked under a valid digest
+//  and could never be taken), restoreCachedSheet refused empty and
+//  absent. The predicate lives beside the digest so the remember side
+//  and the restore side answer the same question.
+// ============================================================
+
+describe('64-30 hasCacheableScript — one predicate for both cache sides (IN-02)', () => {
+  it('treats an absent value, a non-array and an empty array as no script', () => {
+    expect(hasCacheableScript(undefined)).toBe(false);
+    expect(hasCacheableScript(null)).toBe(false);
+    expect(hasCacheableScript('dry')).toBe(false);
+    expect(hasCacheableScript({ length: 1, 0: baseDry() })).toBe(false);
+    expect(hasCacheableScript([])).toBe(false);
+  });
+
+  it('accepts a script with one event and with many', () => {
+    expect(hasCacheableScript([baseDry()])).toBe(true);
+    expect(hasCacheableScript([baseStroke()])).toBe(true);
+    expect(hasCacheableScript(baseEvents())).toBe(true);
+  });
+
+  it('narrows a malformed payload to the payload event array', () => {
+    const value: unknown = [baseDry()];
+    if (!hasCacheableScript(value)) throw new Error('a one-event script must be cacheable');
+    const first: AquarellePayloadEvent = value[0];
+    expect(first.kind).toBe('dry');
   });
 });

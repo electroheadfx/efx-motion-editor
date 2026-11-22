@@ -164,6 +164,15 @@ function writeValue(digest: DigestState, value: unknown, seen: WeakSet<object>):
   seen.delete(record);
 }
 
+// RED stub (64-30 Task 1): the presence predicate lands in the GREEN commit.
+// It exists here so the gate fails on its ASSERTIONS — a module-not-found run
+// asserts nothing and is INVALID_RED (#3770).
+export function hasCacheableScript(
+  events: unknown,
+): events is readonly AquarellePayloadEvent[] {
+  return Boolean(events);
+}
+
 /**
  * Canonical digest of one frame's whole event list — the sheet cache's key.
  * Order-stable (values, never key insertion order), total (never throws) and
