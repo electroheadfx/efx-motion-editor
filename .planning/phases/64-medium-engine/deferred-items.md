@@ -2,15 +2,9 @@
 
 Out-of-scope discoveries logged during plan execution. Not fixed in phase 64.
 
-## 64-32 / 64-33 / 64-34 — DEFERRED: UAT rows 11–14 are obsolete (artist ruling, 2026-11-22)
-
-- **Ruling:** the artist stated on 2026-11-22 that the medium-engine UAT was never run through `/gsd-verify-work`. Rows 11–14 (`result: [failed]`) are therefore not authoritative failures and must not be used as gap-closure justification.
-- **Plans affected:** 64-32 (acrylic bristle mixer / rim blend falloff), 64-33 (Feather + Pickup visibility), 64-34 (directional anti-aliasing + wet edge mixing). Their only mandate was those rows; each moves the acrylic render law in `packages/efx-watercolor/src/playground/{bristles,shaders,Engine}.ts`.
-- **Decision:** do not change the acrylic render, Feather, Pickup, Body or anti-aliasing against rows 11–14. The artist's validated brush/render calibration stands.
-- **Consequences:** 64-35 (depends on 64-34), 64-37 (depends on 64-32), 64-38 (depends on 64-33/34/35) and 64-36 (depends on all) are blocked and remain unexecuted. Phase 64 stays `gaps_found` until a real `/gsd-verify-work 64` round produces authoritative UAT rows.
-- **Beads:** plan-level tasks under `efx-motion-editor-4ro.89` (64-32), `.91` (64-33), `.93` (64-34) are left OPEN, not closed — the work is deferred, not done.
-- **If revisited:** the only valid path is `/gsd-verify-work 64` first; if its rows confirm any of these defects on the artist's own screen, re-plan against those rows, not against the stale UAT file.
-- **Placement (2026-11-22):** the plan files 64-32 … 64-38 now live in `deferred/`, outside the phase plan scan, so the phase reads as fully executed (31 plans, every one summarized) and `execute-phase` resumes at the verification gates instead of re-running them. Contents are unchanged; move any plan back to the phase root to revive its work.
+Plans 64-32 … 64-38 are **retired as obsolete** by the artist's 2026-11-22 ruling — the Studio
+render law is validated and must not change. They are closed work, not deferred work; the
+authoritative record is `deferred/RETIRED.md`.
 
 ## 64-07 — `bakeAquarelleScript` still renders with the engine default light
 

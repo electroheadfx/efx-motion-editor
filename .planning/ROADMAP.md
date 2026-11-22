@@ -269,32 +269,22 @@ Plans:
 - [x] 64-27-PLAN.md — Relight refusal: a blocked request parks and re-lights exactly once on the idle edge, with no retry loop while playback/draft/wireframe persists (closes WR-04)
 - [x] 64-28-PLAN.md — Digest and floor: the canonical whole-event sheet signature, and the pickup floor derived from the recorded baseline gap (closes IN-05, IN-07)
 
-**Visible-closure gap closure** *(from the four failed UAT rows + the artist's 2026-11-22 no-row mixer ruling; planned 2026-11-22; GAP-5 out of scope by that ruling)*
-**Visible-closure wave 1** *(the visible-closure DAG starts here — every earlier plan has a SUMMARY; 64-29 and 64-30 are file-disjoint)*
+**Visible-closure gap closure** *(opened 2026-11-22 from four UAT rows; the artist's 2026-11-22 ruling then declared those rows non-authoritative and retired waves 3–8 — see `deferred/RETIRED.md`)*
+**Visible-closure wave 1** *(every earlier plan has a SUMMARY; 64-29 and 64-30 are file-disjoint)*
 - [x] 64-29-PLAN.md — The visible-gap instruments: the bristle-line rim/halo/enclosure gate with its overstory variant, the extended edge census, and the texture-tip A/B
 - [x] 64-30-PLAN.md — Sheet-cache symmetry (closes IN-02) and the written IN-06 deferral
 
 **Visible-closure wave 2** *(blocked on 64-29 completion)*
-- [ ] 64-31-PLAN.md — Probe invariants on the shipped alpha law: coverage reads from the coverage raster, the law stated once, and two capture-level checks
+- [x] 64-31-PLAN.md — Probe invariants on the shipped alpha law: coverage reads from the coverage raster, the law stated once, and two capture-level checks
 
-**Visible-closure wave 3** *(blocked on 64-29 + 64-31 completion)*
-- [ ] 64-32-PLAN.md — GAP-1 Body as the mixer, rowless: the rim blend falloff and the paint-alpha coverage target
-
-**Visible-closure wave 4** *(blocked on 64-32 completion; 64-33 and 64-37 are file-disjoint — the records and the engine work never share a file)*
-- [ ] 64-33-PLAN.md — GAP-2 Feather/Pickup visibility: the two discriminating pairs, the recorded law-or-measurement verdict, and the arm it names
-- [ ] 64-37-PLAN.md — The no-row mixer record: UAT row 12 rewritten with both defects kept, the tenth amendment and the resolved open item, ROADMAP criterion 5, and the rowlessness pin
-
-**Visible-closure wave 5** *(blocked on 64-33 completion)*
-- [ ] 64-34-PLAN.md — GAP-3 directional anti-aliasing and the acrylic wet gate, with the softness resolution pinned
-
-**Visible-closure wave 6** *(blocked on 64-29 + 64-34 completion)*
-- [ ] 64-35-PLAN.md — GAP-4 texture-tip composition verified on the final engine, and the texture-axis contract pinned
-
-**Visible-closure wave 7** *(blocked on 64-29 + 64-33 + 64-34 + 64-35 completion)*
-- [ ] 64-38-PLAN.md — Amendment 7's census relation: both softness widths recorded, each below its own stroke's half-width, with the direction claim retired and the support relation preserved
-
-**Visible-closure wave 8** *(blocked on 64-29…64-35 + 64-37 + 64-38 completion; ends at a blocking-human checkpoint)*
-- [ ] 64-36-PLAN.md — Baselines and UAT: twenty baselines re-captured from the final engine, every gate green, and the artist's walkthrough of all fourteen rows
+**Waves 3–8 — RETIRED 2026-11-22** *(artist ruling: the Studio render law is validated; no changes to the acrylic render, Feather, Pickup, Body or anti-aliasing. The plans are kept in `deferred/` as historical record and must not be revived without a new artist ruling.)*
+- ~~64-32-PLAN.md~~ — RETIRED (obsolete): GAP-1 Body as the mixer, rowless
+- ~~64-33-PLAN.md~~ — RETIRED (obsolete): GAP-2 Feather/Pickup visibility
+- ~~64-34-PLAN.md~~ — RETIRED (obsolete): GAP-3 directional anti-aliasing and the acrylic wet gate
+- ~~64-35-PLAN.md~~ — RETIRED (obsolete): GAP-4 texture-tip composition
+- ~~64-36-PLAN.md~~ — RETIRED (obsolete): baselines and UAT re-capture
+- ~~64-37-PLAN.md~~ — RETIRED (obsolete): the no-row mixer record
+- ~~64-38-PLAN.md~~ — RETIRED (obsolete): Amendment 7's census relation
 
 **Specs**: `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-03-viscosity.md`, `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-04-medium-profile.md`, `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-05-pigment-relief.md`, `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-06-coverage.md`, `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-07-brush-groups.md`, `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-08-scattering.md`
 
@@ -315,7 +305,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 63. Brush Tip Pipeline | 17/17 | Complete | 2026-11-17 |
-| 64. Medium Engine | 30/38 | In Progress | - |
+| 64. Medium Engine | 31/31 | Complete | 2026-11-22 |
 
 ---
 
