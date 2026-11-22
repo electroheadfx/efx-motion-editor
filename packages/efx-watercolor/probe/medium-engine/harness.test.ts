@@ -536,7 +536,10 @@ describe('the bristle-wet acceptance (64-24)', () => {
     it('maps bristle-wet to its failure function and the delta bar', () => {
       expectContains(COMPARE, "'bristle-wet': bristleWetFailures,")
       expectContains(COMPARE, 'function bristleWetFailures(data) {')
-      expectContains(COMPARE, 'const PICKUP_MIN_DELTA = 1')
+      // 64-28 (IN-07): the floor is derived from the committed baseline's
+      // recorded gap, never a decorative round number.
+      expectContains(COMPARE, 'const RECORDED_PICKUP_GAP = 199.52')
+      expectContains(COMPARE, 'const PICKUP_MIN_DELTA = RECORDED_PICKUP_GAP / 2')
       expectContains(COMPARE, 'Math.abs(fresh - aged) >= PICKUP_MIN_DELTA')
       expectContains(COMPARE, 'fresh > 0')
       expectContains(COMPARE, 'aged > 0')
@@ -625,6 +628,17 @@ function compareSynthetic(
     encoding: 'utf8',
   })
   return { status: result.status, output: `${result.stdout}${result.stderr}` }
+}
+
+/**
+ * The single `INVARIANT …` line of a comparator report, or `''` when the run
+ * raised none. Assertions read this line rather than the whole report so a
+ * failing expectation keeps a one-line `actual` in the TAP diagnostic (a
+ * multi-line scalar would emit column-0 continuation lines and make the
+ * report unparseable for the TDD gate).
+ */
+function invariantLine(output: string): string {
+  return output.split('\n').find((line) => line.includes('INVARIANT')) ?? ''
 }
 
 function validEdgeCapture(): Record<string, unknown> {
@@ -718,7 +732,7 @@ describe('the bristle-wet invariant discriminates (64-24, executed)', () => {
     expect(output).toContain('scenario invariants hold')
   })
 
-  it('fails a decorative age gate (gap below PICKUP_MIN_DELTA)', () => {
+  it('fails a decorative age gate (gap below the derived PICKUP_MIN_DELTA)', () => {
     const { status, output } = compareSynthetic('nyquist-wet-decorative', {
       ...baseCapture('bristle-wet', 'nyquist'),
       pickupFreshMean: 100,
@@ -727,7 +741,25 @@ describe('the bristle-wet invariant discriminates (64-24, executed)', () => {
     })
 
     expect(status, output).toBe(1)
-    expect(output).toContain('below 1 luma')
+    const invariant = invariantLine(output)
+    expect(invariant).toContain('below 99.76 luma')
+    expect(invariant).toContain('half the recorded 199.52-luma gap')
+  })
+
+  it('fails a response collapsed to the old one-luma bar (49 / 50)', () => {
+    // The old floor accepted this pair: a gap of exactly 1 passed `>= 1`.
+    // The derived floor is what makes the vanished feature a named failure.
+    const { status, output } = compareSynthetic('nyquist-wet-collapsed', {
+      ...baseCapture('bristle-wet', 'nyquist'),
+      pickupFreshMean: 49,
+      pickupAgedWetMean: 50,
+      wetMode: 1,
+    })
+
+    expect(status).toBe(1)
+    const invariant = invariantLine(output)
+    expect(invariant).toContain('below 99.76 luma')
+    expect(invariant).toContain('half the recorded 199.52-luma gap')
   })
 
   it('fails a blank band (no film deposited over the fresh crossing)', () => {
