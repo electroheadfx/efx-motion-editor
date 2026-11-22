@@ -47,6 +47,8 @@ import {
   bodyCurve,
   scatteringDeposit,
 } from './scattering'
+import { COEFFS, LEVEL_COEFFS, coeffsToLinear, pigmentFromHex } from './spectral'
+import { BASIS, DISPLAY_BANDS } from './spectralData'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 
@@ -903,7 +905,12 @@ describe('64-23 — the traces in the gather and the carrier', () => {
     expectContains(gather, 'return streaks * uStreakShare + tooth * 0.35 + cloud * (0.65 - uStreakShare);')
     // The trio replaces the paper tap outright: no sampler survives in the gather.
     expectContains(gather, 'float height = mix(grainHeight(css, uAxis), 0.5, rimCalm);')
-    expectContains(gather, 'float threshold = uGrain * (1.0 - height) - 0.25;')
+    // 2026-11-22 (the pale-line rows): Feather opens the edge through this
+    // threshold, never through a depth multiplier — a depth fade gives the
+    // texel a small deposit weight a, and the dab lerp then holds the old
+    // film for ~100 px of travel (measured ENCLOSED 7.54 % / 231 px; the
+    // rejected along-only selector traded it for an 18-px band motif).
+    expectContains(gather, 'float threshold = uGrain * (1.0 - height) - 0.25 + featherShift;')
     expectNotContains(gather, 'uPaper')
     expectNotContains(gather, 'texture(uPaper')
   })
@@ -972,6 +979,7 @@ describe('64-23 — the traces in the gather and the carrier', () => {
       ['uDrySpeed', 'clamp(this.params.dry, 0, 1)'],
       ['uDryCapFloor', 'BRISTLE_DRY_CAP_FLOOR'],
       ['uDryCapFull', 'BRISTLE_DRY_CAP_FULL'],
+      ['uFeatherShift', 'BRISTLE_FEATHER_SHIFT'],
     ]
     const binder = sliceBetween(ENGINE_SOURCE, 'private bindGather(', 'private bristleInk(')
     for (const [uniform, source] of bindings) {
@@ -1326,14 +1334,30 @@ describe('261119-pod — the §3.3 smear, the snapshot and the four-side Feather
       g,
       'float featherStart = uFeatherEdge * (1.0 - mix(uFeatherMin, uFeatherReach, uFeather));',
     )
-    expectContains(g, 'float lateralFade = 1.0 - smoothstep(featherStart, uFeatherEdge, lateral);')
-    // 2026-11-20: the fade breaks into hairs — a smooth ramp read as a white
-    // veil at F100 (the artist's live report). F0 stays exact: uFeather scales
-    // the ragged term to zero.
+    // 2026-11-22 (UAT row 3 and after): the feather IS a threshold shift. The
+    // film carries NO depth fade — every depth selector tried wrote a pale
+    // lane or a band motif (across noise 7.54 % / 231 px enclosed; 2-D cell
+    // 11.66 % / 205 px; along-only 0.60 % but an 18-doc-px tiled motif, the
+    // artist-rejected row 3; per-dab seed 2.20 % residual with the control
+    // nearly dead; monotone tip ramp line/tiling-clean but at full fringe
+    // depth, the control dead). A depth fade gives the texel a small deposit
+    // weight a, and the dab lerp `ink <- ink*(1-a) + carried*a` then holds the
+    // old film for ~100 px of travel. Raising the threshold removes paint
+    // where the tooth is low: the fringe breaks into full-depth specks over
+    // paper (measured ENCLOSED 0.22 % / 9 px and 0.01 % / 4 px; fringe-row
+    // coherence 0.094 / 4 % and 0.064 / 0 %, at the feather-pin's floor).
+    expectContains(
+      g,
+      'float featherShift = uFeather * uFeatherShift * smoothstep(featherStart, uFeatherEdge, lateral);',
+    )
+    expectContains(g, 'float featherFade = 1.0;')
+    // The cap's stagger still reads the streak noise (slow along it); the
+    // across · hairFreq term survives ONLY for that cap.
     expectContains(g, 'float hairFreq = clamp(uHalfWidthPx / 5.0, 6.0, 40.0);')
     expectContains(g, 'float fadeStreak = noise1(across * hairFreq + uAlongPx / max(uStreakLen * 5.0, 1.0) + 11.3);')
-    expectContains(g, 'float raggedFade = mix(lateralFade, 1.0, smoothstep(0.35, 0.75, fadeStreak));')
-    expectContains(g, 'float featherFade = mix(1.0, raggedFade, uFeather);')
+    expectNotContains(g, 'float lateralFade')
+    expectNotContains(g, 'float raggedFade')
+    expectNotContains(g, 'float fadeAlong')
     // The front cap is LEADING-only (q.y < 0): an interior texel's last dab
     // sits at its trailing rim, so a symmetric along fade would erase the core.
     // 2026-11-20: the cap no longer mixes toward uFeatherReach (that inverted
@@ -1343,17 +1367,27 @@ describe('261119-pod — the §3.3 smear, the snapshot and the four-side Feather
     expectContains(g, 'float dryCap = mix(uDryCapFloor, 1.0, smoothstep(0.0, uDryCapFull, uDrySpeed));')
     expectContains(g, 'float capW = clamp(uFeatherCap * uCapGain * dryCap, 0.0, 0.85);')
     // 2026-11-20 (artist's box-at-release): the stroke's first dab fades its
-    // trailing half too while the stroke is inside its first half-width;
-    // later dabs keep the leading-only cap, so the core never thins.
+    // trailing half too while the stroke is inside its first half-width.
     // 2026-11-20 (the artist's pen end block): a catch-up dab has no NEXT
     // dab to cover its trailing half, so uEndCap makes its cap symmetric —
     // the final impression dissolves into specks instead of re-inking the
-    // whole footprint. Running dabs stay leading-only (uEndCap = 0).
+    // whole footprint.
+    // 2026-11-22 (the residual pale lane): "running dabs stay leading-only"
+    // was the 11-20 assumption, but a running dab's leading half is repainted
+    // by the dabs ahead and its cap is not harmless: hairEnd's stagger reads
+    // fadeStreak, whose across · hairFreq term is the LATERAL fringe's
+    // canvas-stationary texture, so the running cap wrote an across texture
+    // into the deposit's saturation level (probe: pinning the caps collapsed
+    // the band's across depth 5.5 % -> 0.6 %). The cap now exists only where
+    // it is visible: the stroke's start (exposedTrail > 0) and the catch-up
+    // end (uEndCap = 1 -> exposedTrail = 1). Interior dabs carry no cap.
     expectContains(g, 'uniform float uEndCap;')
     expectContains(g, 'float exposedTrail = max(')
     expectContains(g, '1.0 - smoothstep(0.0, 1.0, uStrokeDistPx / max(uHalfWidthPx, 1.0)),')
     expectContains(g, 'uEndCap);')
-    expectContains(g, 'float along = mix(max(-q.y, 0.0), abs(q.y), exposedTrail);')
+    expectContains(g, 'float along = exposedTrail > 0.0')
+    expectContains(g, '? mix(max(-q.y, 0.0), abs(q.y), exposedTrail)')
+    expectContains(g, ': 0.0;')
     expectContains(ENGINE_SOURCE, 'gl.uniform1f(p.u.uEndCap!, endCap ? 1 : 0);')
     expectContains(ENGINE_SOURCE, 'this.bristleEndCap = true;')
     expectContains(ENGINE_SOURCE, 'this.bristleInk(dx, dy, dr, angle, bristleBodyAlpha, contactPr, c1[3]!, alongPx, this.bristleEndCap);')
@@ -1496,5 +1530,59 @@ describe('261119-pod — the §3.3 smear, the snapshot and the four-side Feather
       (ENGINE_SOURCE.match(/this\.bristleContent = false;/g) ?? []).length,
       'clear() and resetSheet() both reset',
     ).toBe(2)
+  })
+})
+
+// ============================================================
+//  The §4.2 value jitter is a REFLECTANCE multiply (2026-11-22, the acrylic
+//  pale-line debug). The reference scales `brush.rgb` in linear light, so in
+//  the absorbance basis the faithful image is a FLAT band offset
+//  `u = -ln(jitter)` through the basis's level coefficients — never a raw
+//  multiply of the absorbance coefficients (which scales the spectral shape
+//  and, sign inverted, laid a continuous pale lane along every bristle film).
+//  The behavioural rows below pin the law itself; the source rows pin both
+//  application sites and forbid the retired raw multiply.
+// ============================================================
+describe('§4.2 value jitter — the flat absorbance offset, never a coefficient scale', () => {
+  const pigment = pigmentFromHex('#2b6fd0')
+  const VJ = 0.8
+  const U = -Math.log(VJ)
+  const bandAbs = (coeffs: ArrayLike<number>): number[] =>
+    DISPLAY_BANDS.map((band) => {
+      let a = 0
+      for (let k = 0; k < COEFFS; k += 1) a += coeffs[k]! * BASIS[k]![band]!
+      return a
+    })
+  const lifted = Array.from(pigment.coeffs, (c, k) => c + U * LEVEL_COEFFS[k]!)
+
+  it('adds -ln(vj) to EVERY display band within the basis residual, so the display scales by vj', () => {
+    const base = bandAbs(pigment.coeffs)
+    const shifts = bandAbs(lifted).map((a, i) => a - base[i]!)
+    // Flat: every band moves by the same amount (the basis residual is the
+    // documented max 0.0353 per band, so the shift deviates from U by u·residual).
+    expect(Math.max(...shifts) - Math.min(...shifts)).toBeLessThan(0.08)
+    for (const shift of shifts) expect(Math.abs(shift - U)).toBeLessThan(0.04)
+    const linBase = coeffsToLinear(pigment.coeffs)
+    const linLifted = coeffsToLinear(lifted)
+    for (let j = 0; j < 3; j += 1) {
+      expect(Math.abs(linLifted[j]! / linBase[j]! - VJ), 'reflectance scales by vj').toBeLessThan(0.05)
+    }
+  })
+
+  it('is NOT a coefficient scale: scaling the coefficients shifts bands unequally', () => {
+    const raw = Array.from(pigment.coeffs, (c) => c * VJ)
+    const base = bandAbs(pigment.coeffs)
+    const shifts = bandAbs(raw).map((a, i) => a - base[i]!)
+    expect(Math.max(...shifts) - Math.min(...shifts)).toBeGreaterThan(0.15)
+  })
+
+  it('applies the log offset at both sites and nowhere the retired raw multiply', () => {
+    expectContains(SPECTRAL_SOURCE, 'export const LEVEL_COEFFS')
+    expectContains(ENGINE_SOURCE, 'const level = -Math.log(vj);')
+    expectContains(ENGINE_SOURCE, 'pig[0]! + level * LEVEL_COEFFS[0]!')
+    expectNotContains(ENGINE_SOURCE, 'pig[0]! * vj')
+    expectContains(SHADERS_SOURCE, 'float level = -log(state.w);')
+    expectContains(SHADERS_SOURCE, 'uPigmentA + uLevelA * level')
+    expectNotContains(SHADERS_SOURCE, 'uPigmentA * state.w')
   })
 })

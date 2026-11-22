@@ -9,6 +9,7 @@ import {
   BRISTLE_FEATHER_EDGE,
   BRISTLE_FEATHER_MIN,
   BRISTLE_FEATHER_REACH,
+  BRISTLE_FEATHER_SHIFT,
   BRISTLE_FILM_BLUR,
   BRISTLE_GRAIN,
   BRISTLE_HAIRS,
@@ -32,7 +33,7 @@ import { GL, type DoubleTarget, type Format, type Program, type Rect, type Targe
 import { History, type StepInfo, type StepKind } from './history';
 import { DEFAULT_PAPER, linearRGB, PAPERS, type PaperPreset } from './papers';
 import * as S from './shaders';
-import { COEFFS, pigmentFromHex, type Pigment } from './spectral';
+import { COEFFS, LEVEL_COEFFS, pigmentFromHex, type Pigment } from './spectral';
 // 61-04: the published width-factor range lives in the pure spine module —
 // one authority for the bound, shared by the profile law and this channel.
 import { ANCHOR_WIDTH_MAX, ANCHOR_WIDTH_MIN } from '../vector/spine';
@@ -3175,9 +3176,26 @@ export class WatercolorEngine {
       // carry old per-stroke data into a new one; the draw stops at `count`.
       const base = Math.min(i, count - 1) * 8;
       const vj = set.data[base + 5]!;
-      // §4.2: the palette absorbance at this bristle's value jitter.
-      a.set([pig[0]! * vj, pig[1]! * vj, pig[2]! * vj, pig[3]! * vj], i * 4);
-      b.set([pig[4]! * vj, pig[5]! * vj, pig[6]! * vj, 1], i * 4);
+      // §4.2's value jitter is a REFLECTANCE multiplier: the reference scales
+      // the bristle's linear-light colour (`paint.rgb * _`, app.js:355 with
+      // `_` from app.js:380-383), so a low jitter is a DARK fibre. Absorbance
+      // is the log of reflectance, so the faithful image is a FLAT band
+      // offset `u = -ln(vj)` applied through the basis's level coefficients —
+      // NOT a coefficient scale. Measured 2026-11-22 (acrylic pale-line
+      // debug): each run of 3–16 bristles shares one multiplier (0.80–0.92 on
+      // 18 % of runs), and the raw `· vj` laid a continuous 8–15 px pale lane
+      // along every stroke's film (ink 1.75 vs 2.30, dark 0.58 vs 0.70). The
+      // offset leaves the cover channel untouched, and unlike a coefficient
+      // scale it scales every display band by exactly `vj` (hue holds).
+      const level = -Math.log(vj);
+      a.set([
+        pig[0]! + level * LEVEL_COEFFS[0]!, pig[1]! + level * LEVEL_COEFFS[1]!,
+        pig[2]! + level * LEVEL_COEFFS[2]!, pig[3]! + level * LEVEL_COEFFS[3]!,
+      ], i * 4);
+      b.set([
+        pig[4]! + level * LEVEL_COEFFS[4]!, pig[5]! + level * LEVEL_COEFFS[5]!,
+        pig[6]! + level * LEVEL_COEFFS[6]!, 1,
+      ], i * 4);
       // state = (load, across, seed, valueJitter); load starts at this
       // bristle's §4.2 initial charge. Attachment 1's alpha starts at 1 (a
       // fully charged bristle carries the pigment, not the canvas).
@@ -3304,6 +3322,8 @@ export class WatercolorEngine {
     const c = this.pigment.coeffs;
     gl.uniform4f(p.u.uPigmentA!, c[0]!, c[1]!, c[2]!, c[3]!);
     gl.uniform3f(p.u.uPigmentB!, c[4]!, c[5]!, c[6]!);
+    gl.uniform4f(p.u.uLevelA!, LEVEL_COEFFS[0]!, LEVEL_COEFFS[1]!, LEVEL_COEFFS[2]!, LEVEL_COEFFS[3]!);
+    gl.uniform3f(p.u.uLevelB!, LEVEL_COEFFS[4]!, LEVEL_COEFFS[5]!, LEVEL_COEFFS[6]!);
     gl.uniform1f(p.u.uAlongPx!, alongPx);
     // 64-23: the carrier's contact noise reads §5.3's two declared constants
     // — 64-21 hard-coded the spike's numbers here; they now come from
@@ -3367,13 +3387,15 @@ export class WatercolorEngine {
     gl.uniform1f(p.u.uPressure!, clamp(pr, 0, 1));
     gl.uniform1f(p.u.uGrain!, BRISTLE_GRAIN);
     gl.uniform1f(p.u.uSoftness!, gatherSoftness(this.params.feather));
-    // Feather is the radial fade, not the band: 0 leaves the coverage alone,
-    // 1 dissolves the outer band (the artist's control direction).
+    // Feather raises the paper-tooth THRESHOLD at the rim, never the film's
+    // depth: 0 leaves the coverage alone, 1 opens the outer band into dry
+    // specks (the artist's control direction).
     gl.uniform1f(p.u.uFeather!, clamp(this.params.feather, 0, 1));
     gl.uniform1f(p.u.uFeatherReach!, BRISTLE_FEATHER_REACH);
     gl.uniform1f(p.u.uFeatherEdge!, BRISTLE_FEATHER_EDGE);
     gl.uniform1f(p.u.uFeatherCap!, BRISTLE_FEATHER_CAP);
     gl.uniform1f(p.u.uFeatherMin!, BRISTLE_FEATHER_MIN);
+    gl.uniform1f(p.u.uFeatherShift!, BRISTLE_FEATHER_SHIFT);
     gl.uniform1f(p.u.uCapGain!, BRISTLE_CAP_GAIN);
     // Dry owns the end transition's width (the artist's 2026-11-20 re-range):
     // short at Dry 0, full from BRISTLE_DRY_CAP_FULL (the acrylic default).

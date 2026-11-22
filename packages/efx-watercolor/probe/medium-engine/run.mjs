@@ -132,6 +132,19 @@
 //                                     two Feather-0/100 strokes, edge census
 //             [--scenario bristle-wet]
 //                                     two ages on one sheet; pickup readings
+//  2026-11-22 also adds `--stroke-size`, the stroke's own `size` key for the
+//  bristle-line scenario only — the pale-line sweep needs several widths on
+//  the same 1080 sheet, and the canvas flag `--size` cannot carry both.
+//             [--scenario bristle-line]
+//                                     one straight bristle-flat stroke at the
+//                                     acrylic record (Body via --body, default
+//                                     0); three-field across profiles + PNGs
+//             [--stroke-size <1..200>]  bristle-line only: the stroke's `size`
+//                                     key (omitted keeps STROKE_PARAMS' 12)
+//             [--band <16..400>]      bristle-line only: the across-profile
+//                                     half-width in document px (default 140,
+//                                     the full brush — the artist-visible
+//                                     lane sat at ±62 px, outside the old 48)
 //             [--emboss <0..100>]     omitted writes no emboss key
 //             [--body <0..100>]       omitted writes no body key
 //             [--light <0..4>]        omitted keeps DEFAULT_LIGHT
@@ -147,6 +160,19 @@
 //                                     else the same-session capture; all
 //                                     three exported-background digests must
 //                                     differ and the dimensions must agree
+//
+//  2026-11-22 adds `--scenario bristle-line` — the acrylic pale-line defect's
+//  reproduction at the ARTIST'S parameters. ONE straight bristle-flat stroke
+//  (`pressureLink 0`/`speedLink 0` are the brush preset's own fields), the
+//  acrylic medium record with Body overridden (`--body`, default 0 — the
+//  artist's value; the record states 100 and is NOT changed), at
+//  `--size 1080`. The report carries the echoed params bag, the record's own
+//  Body, and a three-surface across-stroke profile set (`lineSurfaces`:
+//  postApply / postSettle / postFix) over the coverage channel, the displayed
+//  film darkness and the raw delivered ink absorbance. Three PNG data URLs
+//  ride the report; THIS script writes them beside the JSON
+//  (`/tmp/medium-engine/<gate>-<kind>.png`) and strips the base64 from the
+//  saved JSON so the record stays comparable.
 //
 //  The scenario closed lists here and in probe.ts (readScenario) must stay
 //  literal-identical: a name accepted here but unknown to the probe fails at
@@ -173,7 +199,7 @@ const gateFlag = args.indexOf('--gate')
 const gate = gateFlag >= 0 ? args[gateFlag + 1] : undefined
 if (!gate) {
   console.error(
-    'usage: node run.mjs --gate <name> [--scenario cover|cover-over-wet|cover-advect|cover-lift|watercolor-50|white-over-blue|cover-textured|red-over-blue-50|bristle-edge|bristle-wet] [--emboss <0..100>] [--body <0..100>] [--light <0..4>] [--size <32..4096>] [--brush <id>] [--wet-mode <0|1>]   (e.g. neutral-identity)',
+    'usage: node run.mjs --gate <name> [--scenario cover|cover-over-wet|cover-advect|cover-lift|watercolor-50|white-over-blue|cover-textured|red-over-blue-50|bristle-edge|bristle-wet|bristle-line] [--emboss <0..100>] [--body <0..100>] [--light <0..4>] [--size <32..4096>] [--brush <id>] [--wet-mode <0|1>]   (e.g. neutral-identity)',
   )
   console.error(
     '       every operand except --gate is optional and additive; an omitted operand writes no key/value, so the neutral gate keeps reproducing the committed baseline',
@@ -234,9 +260,9 @@ const scenarioFlag = args.indexOf('--scenario')
 const scenarioRaw = scenarioFlag >= 0 ? args[scenarioFlag + 1] : undefined
 let scenario
 if (scenarioRaw !== undefined) {
-  if (scenarioRaw !== 'cover' && scenarioRaw !== 'cover-over-wet' && scenarioRaw !== 'watercolor-50' && scenarioRaw !== 'white-over-blue' && scenarioRaw !== 'cover-advect' && scenarioRaw !== 'cover-lift' && scenarioRaw !== 'cover-textured' && scenarioRaw !== 'red-over-blue-50' && scenarioRaw !== 'bristle-edge' && scenarioRaw !== 'bristle-wet') {
+  if (scenarioRaw !== 'cover' && scenarioRaw !== 'cover-over-wet' && scenarioRaw !== 'watercolor-50' && scenarioRaw !== 'white-over-blue' && scenarioRaw !== 'cover-advect' && scenarioRaw !== 'cover-lift' && scenarioRaw !== 'cover-textured' && scenarioRaw !== 'red-over-blue-50' && scenarioRaw !== 'bristle-edge' && scenarioRaw !== 'bristle-wet' && scenarioRaw !== 'bristle-line') {
     console.error(
-      `invalid --scenario "${scenarioRaw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue", "cover-advect", "cover-lift", "cover-textured", "red-over-blue-50", "bristle-edge" or "bristle-wet")`,
+      `invalid --scenario "${scenarioRaw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue", "cover-advect", "cover-lift", "cover-textured", "red-over-blue-50", "bristle-edge", "bristle-wet" or "bristle-line")`,
     )
     process.exit(1)
   }
@@ -266,6 +292,60 @@ if (brush !== undefined && (brush === '' || brush.startsWith('--'))) {
   process.exit(1)
 }
 
+// 2026-11-22: the bristle-line stroke's own `size` key — the canvas flag
+// `--size` already owns the sheet dimension, so the pale-line size sweep
+// needs this separate operand. Refused for every other scenario here first.
+const strokeSizeFlag = args.indexOf('--stroke-size')
+const strokeSizeRaw = strokeSizeFlag >= 0 ? args[strokeSizeFlag + 1] : undefined
+let strokeSize
+if (strokeSizeRaw !== undefined) {
+  const value = Number(strokeSizeRaw)
+  if (!Number.isFinite(value) || value < 1 || value > 200) {
+    console.error(`invalid --stroke-size "${strokeSizeRaw}" (expected 1..200)`)
+    process.exit(1)
+  }
+  if (scenario !== 'bristle-line') {
+    console.error('--stroke-size is only valid with --scenario bristle-line')
+    process.exit(1)
+  }
+  strokeSize = value
+}
+
+// 2026-11-22: the across band the line profile samples. A large brush is
+// wider than the ±48 default, and the lane must be judged against the
+// stroke's true support; bristle-line only, refused elsewhere here first.
+const mutFlag = args.indexOf('--mut')
+const mutRaw = mutFlag >= 0 ? args[mutFlag + 1] : undefined
+let mut
+if (mutRaw !== undefined) {
+  const value = Number(mutRaw)
+  if (!Number.isFinite(value) || value < 0) {
+    console.error(`invalid --mut "${mutRaw}" (expected a non-negative integer)`)
+    process.exit(1)
+  }
+  if (scenario !== 'bristle-line') {
+    console.error('--mut is only valid with --scenario bristle-line')
+    process.exit(1)
+  }
+  mut = Math.floor(value)
+}
+
+const bandFlag = args.indexOf('--band')
+const bandRaw = bandFlag >= 0 ? args[bandFlag + 1] : undefined
+let band
+if (bandRaw !== undefined) {
+  const value = Number(bandRaw)
+  if (!Number.isFinite(value) || value < 16 || value > 400) {
+    console.error(`invalid --band "${bandRaw}" (expected 16..400)`)
+    process.exit(1)
+  }
+  if (scenario !== 'bristle-line') {
+    console.error('--band is only valid with --scenario bristle-line')
+    process.exit(1)
+  }
+  band = Math.round(value)
+}
+
 // 64-24: the §3.4 A/B mode. Omitted keeps the probe's default (1, the
 // shipped timestamp law); 0 selects 64-21's `wet × coverage` proxy, the
 // recorded control. A value the page would refuse is refused here first.
@@ -288,6 +368,9 @@ const pageQuery =
   (light === undefined ? '' : `&light=${light}`) +
   (size === undefined ? '' : `&size=${size}`) +
   (brush === undefined ? '' : `&brush=${encodeURIComponent(brush)}`) +
+  (strokeSize === undefined ? '' : `&strokeSize=${strokeSize}`) +
+  (band === undefined ? '' : `&band=${band}`) +
+  (mut === undefined ? '' : `&mut=${mut}`) +
   (wetMode === undefined ? '' : `&wetMode=${wetMode}`)
 const resultPath = join(outDir, `${gate}.json`)
 
@@ -403,6 +486,29 @@ if (result.gate !== gate) {
   process.exit(1)
 }
 
+// 2026-11-22 (bristle-line): the report carries up to three PNG data URLs.
+// Write them BESIDE the JSON and strip the base64 from the saved record, so
+// the JSON stays the small comparable capture and the images stay on disk.
+// A scenario that emits no PNG keeps this block inert.
+const pngPaths = {}
+for (const [key, kind] of [
+  ['pngTransparent', 'transparent'],
+  ['pngCoverage', 'coverage'],
+  ['pngPigment', 'pigment'],
+]) {
+  const url = result[key]
+  if (typeof url !== 'string') continue
+  const encoded = url.match(/^data:image\/png;base64,(.*)$/s)
+  if (!encoded) {
+    console.error(`[probe] ${key} is not a PNG data URL; left in the JSON`)
+    continue
+  }
+  const path = join(outDir, `${gate}-${kind}.png`)
+  writeFileSync(path, Buffer.from(encoded[1], 'base64'))
+  delete result[key]
+  pngPaths[kind] = path
+}
+
 // Keep the capture pristine: wall clock and machine strings are printed,
 // never written, so the JSON is exactly the rendered-bytes record.
 writeFileSync(resultPath, JSON.stringify(result, null, 2) + '\n')
@@ -437,6 +543,18 @@ if (typeof result.pickupFreshMean === 'number') {
   console.log(
     `wetness   : mode ${result.wetMode} | fresh ${result.pickupFreshMean} | agedWet ${result.pickupAgedWetMean} (band darkness, 0..255)`,
   )
+}
+if (result.lineSurfaces && typeof result.lineSurfaces === 'object') {
+  console.log(`params    : ${JSON.stringify(result.paramsEcho ?? null)}`)
+  console.log(`body      : override ${result.lineBodyOverride} | record ${result.recordBody} (the record is NOT changed)`)
+  for (const [surface, set] of Object.entries(result.lineSurfaces)) {
+    const inner = set?.interior ?? {}
+    const fmt = (s) => (s ? `min ${s.min} @ ${s.at >= 0 ? '+' : ''}${s.at} px` : 'n/a')
+    console.log(
+      `surface ${surface}: interior ${inner.span?.[0] ?? '?'}..${inner.span?.[1] ?? '?'} px | cover ${fmt(inner.cover)} | dark ${fmt(inner.dark)} | ink ${fmt(inner.ink)}`,
+    )
+  }
+  for (const [kind, path] of Object.entries(pngPaths)) console.log(`png ${kind}: ${path}`)
 }
 console.log(`result JSON: ${resultPath}`)
 console.log(`total probe: ${elapsedMs} ms`)

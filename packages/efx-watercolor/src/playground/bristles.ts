@@ -43,9 +43,10 @@
 //  (D-A): one knob, no second curve. Each twin mirrors one expression in
 //  `shaders.ts`; the engine binds the constants as uniforms, so a literal
 //  that replaces a declared constant, or a second copy of a law, fails the
-//  source pins. Feather never widens §6's band: it thins the carried film
-//  radially (`BRISTLE_FEATHER_REACH`), so F0 keeps the reference's full
-//  stroke and F1 dissolves the rim.
+//  source pins. Feather never widens §6's band: it raises the §4.4 paper
+//  threshold radially (`BRISTLE_FEATHER_REACH`), so F0 keeps the reference's
+//  full stroke and F1 opens the rim into dry specks. It never scales the
+//  film's depth — that law wrote the artist's pale lane (see the constant).
 //
 //  THE §4.4 NAME COLLISION: `BRISTLE_GRAIN` (1.2) is the paint's paper-tooth
 //  scale from §6 — NOT `Brush.grain` (0..1, the dry re-threshold the engine's
@@ -80,16 +81,23 @@ export const BRISTLE_MIN = 40;
  */
 export const BRISTLE_SOFTNESS = 0.09;
 /**
- * Studio-only Feather (D-22; artist's rulings 2026-11-19 and 2026-11-20):
- * Feather owns the mark's EDGE, and F0 must read CLEAN. Two earlier cuts
- * were rejected: widening the threshold band lowered the threshold and ADDS
- * paint (the control read inverted); a lateral fade on the coverage alone was
- * erased by the dab-over-dab lerp, so F0/F100 differed only by display blur.
- * The shipped law thins the carried film at the LATERAL rim and bounds the
- * silhouette analytically at `BRISTLE_FEATHER_EDGE`, filling the rim pores at
- * low Feather. This constant is the fraction of that silhouette the fade
- * opens over at F1 (`featherStart = edge · (1 - reach)`): F0 is a crisp edge,
- * F1 softens the outer band while the core stays loaded.
+ * Studio-only Feather (D-22; artist's rulings 2026-11-19, 2026-11-20, and the
+ * 2026-11-22 pale-line rows): Feather owns the mark's EDGE, and F0 must read
+ * CLEAN. Two earlier cuts were rejected: widening the threshold band lowered
+ * the threshold and ADDS paint (the control read inverted); a lateral fade on
+ * the coverage alone was erased by the dab-over-dab lerp, so F0/F100 differed
+ * only by display blur. The 2026-11-20 law thinned the carried film at the
+ * LATERAL rim — and wrote a continuous pale line (ENCLOSED 7.54 % in 231-px
+ * runs at the artist's parameters): a depth fade gives the texel a small
+ * deposit weight, and the dab lerp then holds the old film for ~100 px of
+ * travel, so every pale cell froze into a lane. Its along-only selector was
+ * rejected in UAT as a tiled band motif. The shipped law raises the §4.4
+ * paper TOOTH threshold at the lateral rim and never scales the film's
+ * depth: the edge opens into full-depth specks over paper, the way a drying
+ * brush ends, and the rag comes from the paper (no along period). This
+ * constant is the fraction of the silhouette the threshold opens over at F1
+ * (`featherStart = edge · (1 - reach)`): F0 is a crisp edge, F1 opens the
+ * outer band while the core stays loaded.
  *
  * 2026-11-20, the artist's live F100 report: at 0.65 the fade covered the
  * outer two-thirds of the silhouette, so F100 washed the stroke's body out
@@ -98,6 +106,17 @@ export const BRISTLE_SOFTNESS = 0.09;
  * outer rim.
  */
 export const BRISTLE_FEATHER_REACH = 0.3;
+/**
+ * 2026-11-22 (the pale-line rows): how far the paper-tooth THRESHOLD rises at
+ * the rim when Feather is 1, scaled by uFeather and ramped from `featherStart`
+ * to BRISTLE_FEATHER_EDGE. 0.35 opens the rim into full-depth tooth specks
+ * over paper without eating the loaded body — measured at the artist's
+ * parameters: the core keeps 0.69-0.72 darkness out to 56 px, the specks
+ * begin at ~64 px, and the fringe reaches paper by ~96 px. Feather never
+ * scales the film's depth (that law wrote the pale lane); see
+ * BRISTLE_FEATHER_REACH.
+ */
+export const BRISTLE_FEATHER_SHIFT = 0.35;
 /**
  * The stroke's LEADING end cap: the fraction of the dab's forward half over
  * which the front of the mark fades. The start of a stroke is soft through
@@ -175,14 +194,14 @@ export function bristleSampleScale(sizePx: number): number {
 }
 
 /**
- * The lateral fade's start anchor for Feather > 0. The 2026-11-20 white-seam
- * ruling supersedes the earlier "even F0 keeps a soft lateral edge" cut: at
- * F0 the gather applies NONE of this fade — the rim is the thresholded
- * bristle coverage, so a drying stroke breaks into hairs instead of fading
- * into a blurred band over the paper. From Feather > 0 the fade opens from
- * this fraction of the silhouette and widens to BRISTLE_FEATHER_REACH at F1
- * (its strength is also scaled by uFeather, so the edge grows continuously
- * from the ragged F0 rim).
+ * The lateral threshold shift's start anchor for Feather > 0. The 2026-11-20
+ * white-seam ruling supersedes the earlier "even F0 keeps a soft lateral
+ * edge" cut: at F0 the gather applies NONE of this shift — the rim is the
+ * thresholded bristle coverage, so a drying stroke breaks into hairs instead
+ * of fading into a blurred band over the paper. From Feather > 0 the shift
+ * opens from this fraction of the silhouette and widens to
+ * BRISTLE_FEATHER_REACH at F1 (its strength is also scaled by uFeather, so
+ * the edge grows continuously from the ragged F0 rim).
  */
 export const BRISTLE_FEATHER_MIN = 0.18;
 /**
@@ -190,9 +209,9 @@ export const BRISTLE_FEATHER_MIN = 0.18;
  * footprint radius. The outer third of the footprint is intermittent bristle
  * spill: the reference's visible half-width measures ~0.66 of it (probe:
  * 19 px visible vs 29 px nominal at size 19). Studio's analytic edge anchors
- * here, so Feather smooths and fades the edge WITHOUT resizing the brush —
- * an edge at the full nominal radius made F0 50 % wider than F100 (measured:
- * 29 px vs 18.5 px) and the slider read as a size control.
+ * here, so Feather opens the edge WITHOUT resizing the brush — an edge at
+ * the full nominal radius made F0 50 % wider than F100 (measured: 29 px vs
+ * 18.5 px) and the slider read as a size control.
  */
 export const BRISTLE_FEATHER_EDGE = 0.66;
 /**

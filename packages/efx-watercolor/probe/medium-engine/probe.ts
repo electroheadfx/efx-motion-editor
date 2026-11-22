@@ -191,6 +191,8 @@
 import { WatercolorEngine } from '../../src/playground/Engine'
 import { BRUSH_PRESETS } from '../../src/playground/brushes'
 import { PAPERS, type PaperPreset } from '../../src/playground/papers'
+import { MEDIUMS } from '../../src/playground/mediums'
+import { fromHalf } from '../../src/playground/half'
 import { createAquarelleEngineAdapter } from '../../src/adapter/engineAdapter'
 import {
   toStudioStroke,
@@ -641,12 +643,27 @@ interface ScriptEntry {
    *  without touching the engine. Omitted adds no key, so every identity
    *  gate's bag stays byte-identical. */
   readonly dry?: number
+  /** bristle-line (2026-11-22): a FULL params bag that REPLACES the
+   *  plan-01 STROKE_PARAMS base. The pale-line defect reproduces at the
+   *  artist's medium record, not the neutral bag, so the scenario carries
+   *  the acrylic record's own numbers (plus the canonical size/lift the
+   *  record does not hold). The entry knobs still fold in on top, and the
+   *  full bag is echoed in the report. Omitted keeps STROKE_PARAMS, so
+   *  every pre-existing script is byte-identical. */
+  readonly params?: Readonly<Record<string, number>>
+  /** bristle-line (2026-11-22): capture the across-stroke profile set at
+   *  this entry's three drive moments — after `applyStroke` (the bake
+   *  surface), after the settle ticks, and after `fix()`. The defect must
+   *  be named per surface; omitted entries capture nothing. */
+  readonly captureLine?: boolean
 }
 
 /** The canonical bag as the app records it (0..100). A knob adds its key;
  *  absent knobs add nothing — the neutral gate must send the plan-01 bag. */
 function paramsBag(entry: ScriptEntry): Record<string, number> {
-  const bag: Record<string, number> = { ...STROKE_PARAMS }
+  // bristle-line: the entry's full bag replaces the neutral base; every
+  // pre-existing entry carries no `params` and keeps STROKE_PARAMS verbatim.
+  const bag: Record<string, number> = entry.params ? { ...entry.params } : { ...STROKE_PARAMS }
   if (entry.emboss !== undefined) bag['emboss'] = entry.emboss
   if (entry.body !== undefined) bag['body'] = entry.body
   if (entry.feather !== undefined) bag['feather'] = entry.feather
@@ -1445,6 +1462,530 @@ function bristleWetMetrics(transparent: HTMLCanvasElement): Record<string, numbe
   }
 }
 
+// --- bristle-line (2026-11-22, the acrylic pale-line defect) ----------------
+//
+// The defect: every Acrylic bristle stroke drags a thin (1-3 px) PALER film of
+// its own pigment along its length — on bare paper and over earlier paint.
+// This scenario reproduces it through the real engine at the ARTIST'S
+// parameters and measures the three fields the defect could live in:
+//
+//   cover  the coverage channel (the gather's per-texel coverage weighted by
+//          Body's film opacity — `bristleCoverFS`'s ONE write)
+//   dark   the displayed film, 1 - min(rgb) on the `transparent` export
+//          (the engine's own `darkAlpha` — the visible paint)
+//   ink    the delivered ink absorbance: the mean of the seven absorbance
+//          coefficients, read from the engine's OWN half-float pigment
+//          targets (ink + fixed), never a re-derivation from the export
+//
+// The profile is a mean along the stroke's central half (x 0.25..0.75), one
+// row per document pixel across the stroke's ±48 px band, plus three
+// single-column station profiles (±16 px) so a lane's CONTINUITY can be
+// checked. The same set is captured at three surfaces: after `applyStroke`
+// (the bake drive), after the settle ticks and after `fix()`.
+//
+// PARAMETERS: the acrylic medium record's own numbers, with Body overridden
+// to the artist's value. The artist reports Body 0 while
+// `MEDIUMS.acrylic.params.body` is 100 — the mismatch is recorded in the
+// report (`paramsEcho`), and the record is NOT changed here. `size` (12) and
+// `lift` (22) are the canonical members the record does not carry.
+const LINE_COLOR = '#2b6fd0'
+const LINE_Y = 0.5
+const LINE_X0 = 0.15
+const LINE_X1 = 0.85
+const LINE_MUTATION_ID = 0x7ee400
+/** The across band the profile covers, in document pixels either side.
+ *  2026-11-22: `--band` widens it — a stroke at a large `size` is wider than
+ *  the original ±48 band, and a lane must be judged against the stroke's
+ *  TRUE support, not a clipped window. The 2026-11-22 UAT-row-3 failure
+ *  proved the point twice over: the artist-visible writer sat at ±62 px,
+ *  OUTSIDE the ±48 default, and every earlier bisection was blind to it. The
+ *  default is now the full brush (±140) and the TILING/enclosed metrics read
+ *  fixed fringe rows out to ±96 px. */
+let LINE_BAND_PX = 140
+/** Single-column stations inside the stroke's central half. */
+const LINE_STATIONS: readonly number[] = [0.35, 0.5, 0.65]
+const LINE_STATION_HALF = 16
+/** The along-stroke span the across profile averages, as doc uv x. */
+const LINE_PROFILE_X0 = 0.25
+const LINE_PROFILE_X1 = 0.75
+
+/** The artist's straight drag: constant y, constant pressure, no tilt. */
+function straightLine(y: number): readonly AquarellePoint[] {
+  return [
+    { x: LINE_X0, y, p: 0.75, tx: 0, ty: 0, tw: 0 },
+    { x: (LINE_X0 + LINE_X1) / 2, y, p: 0.75, tx: 0, ty: 0, tw: 0 },
+    { x: LINE_X1, y, p: 0.75, tx: 0, ty: 0, tw: 0 },
+  ]
+}
+
+/**
+ * The FULL artist bag: the acrylic record verbatim, Body overridden, plus the
+ * canonical members the record does not hold. The spread order is the point —
+ * a record key wins, then `size`/`lift` are added, then Body is pinned.
+ */
+function bristleLineParams(body: number, strokeSize: number): Record<string, number> {
+  const acrylic = MEDIUMS.find((medium) => medium.id === 'acrylic')
+  if (!acrylic) throw new Error('bristle-line: the acrylic medium record is missing')
+  return {
+    size: strokeSize,
+    lift: STROKE_PARAMS['lift']!,
+    ...acrylic.params,
+    body,
+  }
+}
+
+/** 2026-11-22: the stroke's own mutation id — the per-stroke seed. Two runs
+ *  with different ids move any bristle-set structure and leave any
+ *  law/screen-locked structure in place (the lane's discriminating test). */
+function readMut(): number {
+  const raw = new URLSearchParams(location.search).get('mut')
+  if (raw === null || raw === '') return LINE_MUTATION_ID
+  const value = Number(raw)
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error(`invalid mut "${raw}" (expected a non-negative integer)`)
+  }
+  return Math.floor(value)
+}
+
+/** ONE straight bristle-flat stroke at the artist's parameters. */
+function bristleLineScript(body: number, strokeSize: number, mut: number = LINE_MUTATION_ID): readonly ScriptEntry[] {
+  return [
+    {
+      color: LINE_COLOR,
+      points: straightLine(LINE_Y),
+      mutationId: mut,
+      params: bristleLineParams(body, strokeSize),
+      brushId: 'bristle-flat',
+      captureLine: true,
+    },
+  ]
+}
+
+/** 2026-11-22: the across band the line profile samples, in document pixels
+ *  either side of the centreline — absent keeps 140 (the full brush; the
+ *  artist-visible lane at ±62 px was outside the old ±48 default). */
+function readBand(): number {
+  const raw = new URLSearchParams(location.search).get('band')
+  if (raw === null || raw === '') return 140
+  const value = Number(raw)
+  if (!Number.isFinite(value) || value < 16 || value > 400) {
+    throw new Error(`invalid band "${raw}" (expected 16..400)`)
+  }
+  return Math.round(value)
+}
+
+/** 2026-11-22: the bristle-line stroke's own `size` key — absent keeps
+ *  STROKE_PARAMS' 12 so the first captures stay reproducible. */
+function readStrokeSize(): number {
+  const raw = new URLSearchParams(location.search).get('strokeSize')
+  if (raw === null || raw === '') return STROKE_PARAMS['size']!
+  const value = Number(raw)
+  if (!Number.isFinite(value) || value < 1 || value > 200) {
+    throw new Error(`invalid strokeSize "${raw}" (expected 1..200)`)
+  }
+  return value
+}
+
+/** The private engine seams the absorbance profile reads. Read-only. */
+interface LineEngineInternals {
+  g: {
+    readHalf: (
+      fb: WebGLFramebuffer,
+      w: number,
+      h: number,
+      channels: 1 | 4,
+      rect?: { x0: number; y0: number; x1: number; y1: number },
+    ) => Uint16Array
+  }
+  ink: { read: { views: WebGLFramebuffer[] } }
+  fixed: { views: WebGLFramebuffer[] }
+  bristles: { read: { views: WebGLFramebuffer[] } }
+  bristleShape: { views: WebGLFramebuffer[] }
+  bristleCount: number
+}
+
+/**
+ * 2026-11-22 (residual bisect): the stroke's ACTUAL reservoirs — the 1×256
+ * rows the gather reads. `paintA`/`paintB` are the carried absorbance after
+ * the last carrier pass; `state` is (load, across, seed, valueJitter) as the
+ * carrier wrote it back. Read-only evidence: this is what the gather averages,
+ * so a lane's carried value can be traced to the bristle run that owns it.
+ */
+function bristleReservoir(engine: WatercolorEngine): Record<string, unknown> {
+  const it = engine as unknown as LineEngineInternals
+  const n = Math.min(256, Math.max(1, it.bristleCount))
+  const read = (fb: WebGLFramebuffer) => {
+    const rows = it.g.readHalf(fb, 1, 256, 4, { x0: 0, y0: 0, x1: 1, y1: 256 })
+    const out: number[][] = []
+    for (let i = 0; i < n; i += 1) {
+      const o = i * 4
+      out.push([fromHalf(rows[o]!), fromHalf(rows[o + 1]!), fromHalf(rows[o + 2]!), fromHalf(rows[o + 3]!)])
+    }
+    return out
+  }
+  const shapeRows = it.g.readHalf(it.bristleShape.views[0]!, 1, 256, 4, { x0: 0, y0: 0, x1: 1, y1: 256 })
+  const shape: number[][] = []
+  for (let i = 0; i < n; i += 1) {
+    const o = i * 4
+    shape.push([fromHalf(shapeRows[o]!), fromHalf(shapeRows[o + 1]!), fromHalf(shapeRows[o + 2]!), fromHalf(shapeRows[o + 3]!)])
+  }
+  return {
+    count: it.bristleCount,
+    paintA: read(it.bristles.read.views[0]!),
+    paintB: read(it.bristles.read.views[1]!),
+    state: read(it.bristles.read.views[2]!),
+    shape,
+  }
+}
+
+/**
+ * Mean of the seven absorbance coefficients (ink + fixed) per texel over a
+ * band, from the engine's half-float targets. Row 0 is the band's GL row y0
+ * (bottom-up), exactly as `readHalf` returns it.
+ */
+function absorbBand(
+  engine: WatercolorEngine,
+  w: number,
+  h: number,
+  x0: number,
+  x1: number,
+  y0: number,
+  y1: number,
+): { data: Float32Array; width: number } {
+  const internals = engine as unknown as LineEngineInternals
+  const rect = { x0, y0, x1: x1, y1: y1 }
+  const inkA = internals.g.readHalf(internals.ink.read.views[0]!, w, h, 4, rect)
+  const inkB = internals.g.readHalf(internals.ink.read.views[1]!, w, h, 4, rect)
+  const fixA = internals.g.readHalf(internals.fixed.views[0]!, w, h, 4, rect)
+  const fixB = internals.g.readHalf(internals.fixed.views[1]!, w, h, 4, rect)
+  const width = x1 - x0
+  const data = new Float32Array(width * (y1 - y0))
+  for (let i = 0; i < data.length; i += 1) {
+    const o = i * 4
+    const sum =
+      fromHalf(inkA[o]!) + fromHalf(inkA[o + 1]!) + fromHalf(inkA[o + 2]!) + fromHalf(inkA[o + 3]!) +
+      fromHalf(inkB[o]!) + fromHalf(inkB[o + 1]!) + fromHalf(inkB[o + 2]!) +
+      fromHalf(fixA[o]!) + fromHalf(fixA[o + 1]!) + fromHalf(fixA[o + 2]!) + fromHalf(fixA[o + 3]!) +
+      fromHalf(fixB[o]!) + fromHalf(fixB[o + 1]!) + fromHalf(fixB[o + 2]!)
+    data[i] = sum / 7
+  }
+  return { data, width }
+}
+
+function round4(value: number): number {
+  return Math.round(value * 10000) / 10000
+}
+
+// --- 2026-11-22 (UAT row 3, the tiled motif) --------------------------------
+//
+// The enclosed-line statistic answers "is a pale row bounded by darker paint
+// on both sides?" — and a law that trades the continuous line for a PERIODIC
+// band motif PASSES it (the along-only feather law measured 0.60 % enclosed
+// and the artist rejected the look as "a motif (tiled)"). The gate needs the
+// missing half: periodicity ALONG the stroke. For every sampled row the along
+// profile is high-passed (boxcar, LINE_TILING_WINDOW doc px — longer than any
+// visible band, shorter than the mark) and periodogrammed; a tiled motif is a
+// dominant period in 12..180 px with an amplitude above the fibre floor, and
+// it pulses the WHOLE fringe IN PHASE, so the cross-row coherence of the
+// high-passed profiles separates a motif from per-row fibre noise.
+const LINE_TILING_ROWS: readonly number[] = [0, 44, -44, 52, -52, 60, -60, 68, -68, 76, -76]
+const LINE_TILING_WINDOW = 200
+const LINE_TILING_MIN_PERIOD = 12
+const LINE_TILING_MAX_PERIOD = 180
+/** A high-passed pair above this correlation is the same band, not two fibres. */
+const LINE_TILING_COHERENT = 0.5
+
+function boxcarHighpass(values: readonly number[], window: number): number[] {
+  const n = values.length
+  const half = Math.floor(window / 2)
+  const prefix = new Float64Array(n + 1)
+  for (let i = 0; i < n; i += 1) prefix[i + 1] = prefix[i]! + values[i]!
+  const out: number[] = []
+  for (let i = 0; i < n; i += 1) {
+    const a = Math.max(0, i - half)
+    const b = Math.min(n, i + half + 1)
+    out.push(values[i]! - (prefix[b]! - prefix[a]!) / (b - a))
+  }
+  return out
+}
+
+function seriesStats(values: readonly number[]): { mean: number; rms: number } {
+  const n = values.length
+  if (n === 0) return { mean: 0, rms: 0 }
+  let sum = 0
+  for (const v of values) sum += v
+  const mean = sum / n
+  let ss = 0
+  for (const v of values) ss += (v - mean) * (v - mean)
+  return { mean, rms: Math.sqrt(ss / n) }
+}
+
+function seriesCorr(a: readonly number[], b: readonly number[]): number {
+  const n = Math.min(a.length, b.length)
+  if (n === 0) return 0
+  let ma = 0
+  let mb = 0
+  for (let i = 0; i < n; i += 1) { ma += a[i]!; mb += b[i]! }
+  ma /= n
+  mb /= n
+  let num = 0
+  let da = 0
+  let db = 0
+  for (let i = 0; i < n; i += 1) {
+    const x = a[i]! - ma
+    const y = b[i]! - mb
+    num += x * y
+    da += x * x
+    db += y * y
+  }
+  return da === 0 || db === 0 ? 0 : num / Math.sqrt(da * db)
+}
+
+function alongPeriodogram(values: readonly number[], from: number, to: number): { periodPx: number; amp: number } {
+  const n = values.length
+  let best = { periodPx: 0, amp: 0 }
+  for (let p = from; p <= to; p += 1) {
+    let re = 0
+    let im = 0
+    for (let i = 0; i < n; i += 1) {
+      const a = (2 * Math.PI * i) / p
+      re += values[i]! * Math.cos(a)
+      im += values[i]! * Math.sin(a)
+    }
+    const amp = Math.sqrt(re * re + im * im) / n
+    if (amp > best.amp) best = { periodPx: p, amp }
+  }
+  return best
+}
+
+function runLengths(flags: readonly boolean[]): number[] {
+  const lengths: number[] = []
+  let cur = 0
+  for (const f of flags) {
+    if (f) cur += 1
+    else { if (cur > 0) lengths.push(cur); cur = 0 }
+  }
+  if (cur > 0) lengths.push(cur)
+  return lengths
+}
+
+/**
+ * The three-field across profile at one surface. The `interior` block finds
+ * the palest band INSIDE the stroke's own support (rows whose cover is at
+ * least half of the profile's peak), so the rim — which thins by design —
+ * can never masquerade as the defect.
+ */
+function lineProfileSet(engine: WatercolorEngine): Record<string, unknown> {
+  const transparent = engine.exportCanvas('transparent')
+  const coverage = engine.exportCanvas('coverage')
+  const dw = transparent.width
+  const dh = transparent.height
+  const tData = transparent.getContext('2d')!.getImageData(0, 0, dw, dh).data
+  const cData = coverage.getContext('2d')!.getImageData(0, 0, dw, dh).data
+  const centre = Math.round(LINE_Y * dh)
+  const px0 = Math.round(LINE_PROFILE_X0 * dw)
+  const px1 = Math.round(LINE_PROFILE_X1 * dw)
+  const bandY0 = Math.max(0, centre - LINE_BAND_PX)
+  const bandY1 = Math.min(dh, centre + LINE_BAND_PX + 1)
+  const absorb = absorbBand(engine, dw, dh, px0, px1, bandY0, bandY1)
+
+  const offsets: number[] = []
+  const cover: number[] = []
+  const dark: number[] = []
+  const ink: number[] = []
+  for (let o = -LINE_BAND_PX; o <= LINE_BAND_PX; o += 1) {
+    const gy = centre + o
+    if (gy < 0 || gy >= dh) continue
+    const cr = dh - 1 - gy
+    let cSum = 0
+    let dSum = 0
+    let iSum = 0
+    let n = 0
+    for (let x = px0; x < px1; x += 1) {
+      const i4 = (cr * dw + x) * 4
+      cSum += cData[i4]! / 255
+      dSum += 1 - Math.min(tData[i4]!, tData[i4 + 1]!, tData[i4 + 2]!) / 255
+      iSum += absorb.data[(gy - bandY0) * absorb.width + (x - px0)]!
+      n += 1
+    }
+    offsets.push(o)
+    cover.push(round4(cSum / n))
+    dark.push(round4(dSum / n))
+    ink.push(round4(iSum / n))
+  }
+
+  const peakCover = cover.reduce((m, v) => Math.max(m, v), 0)
+  const floorCover = peakCover * 0.5
+  const interiorRows = offsets
+    .map((o, i) => ({ o, c: cover[i]! }))
+    .filter((row) => row.c >= floorCover && row.c > 0)
+  const interiorSpan: [number, number] =
+    interiorRows.length > 0
+      ? [interiorRows[0]!.o, interiorRows[interiorRows.length - 1]!.o]
+      : [0, 0]
+
+  const stat = (values: readonly number[], from: number, to: number) => {
+    let min = Infinity
+    let at = 0
+    let max = -Infinity
+    for (let i = 0; i < values.length; i += 1) {
+      const o = offsets[i]!
+      if (o < from || o > to) continue
+      const v = values[i]!
+      if (v < min) {
+        min = v
+        at = o
+      }
+      if (v > max) max = v
+    }
+    return { min: round4(min), max: round4(max), at, depth: round4(max - min) }
+  }
+
+  const stations = LINE_STATIONS.map((x) => {
+    const xpx = Math.min(dw - 1, Math.round(x * dw))
+    const values: number[] = []
+    for (let o = -LINE_STATION_HALF; o <= LINE_STATION_HALF; o += 1) {
+      const gy = centre + o
+      const cr = dh - 1 - gy
+      if (gy < 0 || gy >= dh) {
+        values.push(0)
+        continue
+      }
+      const i4 = (cr * dw + xpx) * 4
+      values.push(round4(1 - Math.min(tData[i4]!, tData[i4 + 1]!, tData[i4 + 2]!) / 255))
+    }
+    return { x, values }
+  })
+
+  // 2026-11-22 (UAT row 3): the along profiles. `darkAt(o)` is one row's
+  // darkness across the stroke's central half, `inkAt(o)` its delivered
+  // absorbance; both are cached per across offset because the enclosed-line
+  // scan reads the same rows as ±4..8 px neighbours.
+  const darkRows = new Map<number, number[]>()
+  const inkRows = new Map<number, number[]>()
+  const darkAt = (o: number): number[] => {
+    const cached = darkRows.get(o)
+    if (cached) return cached
+    const gy = centre + o
+    const cr = dh - 1 - gy
+    const values: number[] = []
+    if (gy < 0 || gy >= dh) {
+      values.push(...new Array<number>(px1 - px0).fill(0))
+    } else {
+      for (let x = px0; x < px1; x += 1) {
+        const i4 = (cr * dw + x) * 4
+        values.push(1 - Math.min(tData[i4]!, tData[i4 + 1]!, tData[i4 + 2]!) / 255)
+      }
+    }
+    darkRows.set(o, values)
+    return values
+  }
+  const inkAt = (o: number): number[] => {
+    const cached = inkRows.get(o)
+    if (cached) return cached
+    const gy = centre + o
+    const values: number[] = []
+    if (gy < bandY0 || gy >= bandY1) {
+      values.push(...new Array<number>(px1 - px0).fill(0))
+    } else {
+      for (let x = px0; x < px1; x += 1) {
+        values.push(absorb.data[(gy - bandY0) * absorb.width + (x - px0)]!)
+      }
+    }
+    inkRows.set(o, values)
+    return values
+  }
+
+  // The TILING gate: high-passed along profiles, their dominant period and
+  // amplitude, and the cross-row coherence of the fringe rows (a band motif
+  // pulses the whole fringe in phase; fibre noise is row-independent).
+  const tilingRows = LINE_TILING_ROWS
+    .filter((o) => centre + o >= 0 && centre + o < dh)
+    .map((o) => {
+      const darkHp = boxcarHighpass(darkAt(o), LINE_TILING_WINDOW)
+      const inkHp = boxcarHighpass(inkAt(o), LINE_TILING_WINDOW)
+      const darkPeak = alongPeriodogram(darkHp, LINE_TILING_MIN_PERIOD, LINE_TILING_MAX_PERIOD)
+      const inkPeak = alongPeriodogram(inkHp, LINE_TILING_MIN_PERIOD, LINE_TILING_MAX_PERIOD)
+      return {
+        offset: o,
+        dark: { hpRms: round4(seriesStats(darkHp).rms), periodPx: darkPeak.periodPx, amp: round4(darkPeak.amp) },
+        ink: { hpRms: round4(seriesStats(inkHp).rms), periodPx: inkPeak.periodPx, amp: round4(inkPeak.amp) },
+        darkHp,
+      }
+    })
+  const fringeRows = tilingRows.filter((row) => Math.abs(row.offset) >= 52)
+  const pairs: number[] = []
+  for (let i = 0; i < fringeRows.length; i += 1) {
+    for (let j = i + 1; j < fringeRows.length; j += 1) {
+      pairs.push(seriesCorr(fringeRows[i]!.darkHp, fringeRows[j]!.darkHp))
+    }
+  }
+  const coherence = {
+    mean: round4(pairs.length > 0 ? pairs.reduce((s, v) => s + v, 0) / pairs.length : 0),
+    fracHigh: round4(pairs.length > 0 ? pairs.filter((v) => v > LINE_TILING_COHERENT).length / pairs.length : 0),
+    pairs: pairs.length,
+  }
+
+  // The ENCLOSED-line scan (the artist's definition, self-contained in the
+  // probe since 2026-11-22): a row is a line when it is paler than the
+  // mean of its ±4..8 px neighbours on BOTH sides — a feather's pale edge is
+  // not a line, because beyond it is paper, not paint.
+  const scanHi = Math.min(96, LINE_BAND_PX - 8)
+  let enclosed: Record<string, unknown> | null = null
+  if (scanHi >= 56) {
+    let best: { offset: number; meanProm: number; prom: number[] } = { offset: 0, meanProm: -Infinity, prom: [] }
+    for (const sgn of [1, -1] as const) {
+      for (let o = 56; o <= scanHi; o += 1) {
+        const row = darkAt(sgn * o)
+        const inward = new Array<number>(row.length).fill(0)
+        const outward = new Array<number>(row.length).fill(0)
+        for (let d = 4; d <= 8; d += 1) {
+          const a = darkAt(sgn * (o - d))
+          const b = darkAt(sgn * (o + d))
+          for (let x = 0; x < row.length; x += 1) {
+            inward[x] = inward[x]! + a[x]! / 5
+            outward[x] = outward[x]! + b[x]! / 5
+          }
+        }
+        const prom = inward.map((v, x) => Math.min(v, outward[x]!) - row[x]!)
+        let sum = 0
+        for (const v of prom) sum += v
+        const meanProm = sum / Math.max(prom.length, 1)
+        if (meanProm > best.meanProm) best = { offset: sgn * o, meanProm, prom }
+      }
+    }
+    const thr = Math.max(best.meanProm * 0.5, 0.02)
+    const flags = best.prom.map((v) => v > thr)
+    const runs = runLengths(flags)
+    enclosed = {
+      offset: best.offset,
+      meanPct: round2(100 * best.meanProm),
+      fracPct: round2((100 * flags.filter(Boolean).length) / Math.max(flags.length, 1)),
+      runs: runs.length,
+      maxRunPx: runs.length > 0 ? Math.max(...runs) : 0,
+    }
+  }
+
+  return {
+    centreRow: centre,
+    peakCover: round4(peakCover),
+    interior: {
+      span: interiorSpan,
+      cover: stat(cover, interiorSpan[0], interiorSpan[1]),
+      dark: stat(dark, interiorSpan[0], interiorSpan[1]),
+      ink: stat(ink, interiorSpan[0], interiorSpan[1]),
+    },
+    offsets,
+    across: { cover, dark, ink },
+    stations,
+    tiling: {
+      rows: tilingRows.map(({ darkHp: _darkHp, ...rest }) => rest),
+      coherence,
+      enclosed,
+    },
+  }
+}
+
 // --- WebGL2 canary ----------------------------------------------------------
 
 /** Throw if the vendored engine cannot get a real WebGL2 surface. */
@@ -1489,12 +2030,14 @@ function run(
   body?: number,
   light?: number,
   wetMode: 0 | 1 = 1,
+  strokeSize: number = STROKE_PARAMS['size']!,
 ): void {
   if (!COLD) throw new Error("paper preset 'cold' is not in PAPERS")
   // 64-16: the resolved brush — the operand when given, `chalk` as the
-  // textured-tip scenario's documented default, otherwise nothing. The report
-  // echoes THIS value, so a run that passed `--brush` can never print null.
-  const resolvedBrush = brush ?? (scenario === 'cover-textured' ? 'chalk' : undefined)
+  // textured-tip scenario's documented default, `bristle-flat` for the
+  // 2026-11-22 pale-line reproduction, otherwise nothing. The report echoes
+  // THIS value, so a run that passed `--brush` can never print null.
+  const resolvedBrush = brush ?? (scenario === 'cover-textured' ? 'chalk' : scenario === 'bristle-line' ? 'bristle-flat' : undefined)
   const script =
     scenario === 'cover'
       ? coverScript(emboss, body)
@@ -1516,7 +2059,9 @@ function run(
                       ? bristleEdgeScript()
                       : scenario === 'bristle-wet'
                         ? bristleWetScript()
-                        : neutralScript(emboss, body)
+                        : scenario === 'bristle-line'
+                          ? bristleLineScript(body ?? 0, strokeSize, readMut())
+                          : neutralScript(emboss, body)
 
   // 261119-pod (D-F): the scene-parameter echo — `dry` appears in the report
   // only when a script pins it, so every capture records the calibration and a
@@ -1551,6 +2096,16 @@ function run(
     const bakeStart = performance.now()
     let captureMs = 0
     const coverLifecycle: Record<string, number> = {}
+    // bristle-line: the same profile set at the three drive surfaces. Each is
+    // profiled from the engine's own readbacks, so its wall clock is capture
+    // time (subtracted from bakeMs), never medium cost.
+    const lineSurfaces: Record<string, unknown> = {}
+    const lineCapture = (surface: string) => {
+      if (scenario !== 'bristle-line') return
+      const start = performance.now()
+      lineSurfaces[surface] = lineProfileSet(engine)
+      captureMs += performance.now() - start
+    }
     script.forEach((entry, index) => {
       // 64-24: the acceptance's clock-only age — the virtual clock moves, the
       // fluid does not, so "thirty seconds old" and "just re-wetted" are
@@ -1558,10 +2113,15 @@ function run(
       // read (and stamp) the advanced time.
       if (entry.advanceClockMs !== undefined) adapter.advanceClock(entry.advanceClockMs)
       adapter.applyStroke(makeStroke(entry))
+      // bristle-line: the BAKE surface — the whole stroke has landed and its
+      // one tick has run; no settle, no fix yet.
+      if (entry.captureLine) lineCapture('postApply')
       // 64-17: per-entry settle (ticks 0..settle, default SETTLE_TICKS); the
       // rapid entries of the 50-stroke passage settle in ONE tick each.
       const settle = entry.settle ?? SETTLE_TICKS
       for (let tick = 0; tick <= settle; tick += 1) adapter.stepTick(tick)
+      // bristle-line: the SETTLED surface — the fluid has run its wet ticks.
+      if (entry.captureLine) lineCapture('postSettle')
       // 64-14: the advect gate reads the cover channel mid-script. The pre-read
       // happens while the covering stroke is still wet (its entry carries
       // `fixAfter: false`); ADVECT_TICKS extra wet ticks then run and the
@@ -1585,6 +2145,8 @@ function run(
       // quick-261117-tq7: `fixAfter: false` skips the settle so the stroke
       // stays mobile `ink`, the cover-over-wet underlayer.
       if (entry.fixAfter !== false) adapter.fix()
+      // bristle-line: the DRY surface — the display's own settled field.
+      if (entry.captureLine) lineCapture('postFix')
       // 64-14: the lift gate reads the crossing after the entry's own fix, so
       // the field it measures is the one the display reads.
       if (entry.captureCover === 'beforeLift' || entry.captureCover === 'afterLift') {
@@ -1676,6 +2238,24 @@ function run(
     const bristleWetReport =
       scenario === 'bristle-wet' ? bristleWetMetrics(transparentCanvas) : {}
 
+    // bristle-line (2026-11-22): the artist's exact bag is echoed so the
+    // Body-0-versus-record-100 mismatch is a recorded fact of every capture,
+    // and the three surfaces' profiles ride the report beside the PNGs the
+    // run script writes to disk. Only this scenario emits them.
+    const lineReport =
+      scenario === 'bristle-line'
+        ? {
+            paramsEcho: paramsBag(script[0]!),
+            lineBodyOverride: body ?? 0,
+            recordBody: MEDIUMS.find((medium) => medium.id === 'acrylic')?.params.body ?? null,
+            lineSurfaces,
+            bristleDump: bristleReservoir(engine),
+            pngTransparent: transparentCanvas.toDataURL('image/png'),
+            pngCoverage: engine.exportCanvas('coverage').toDataURL('image/png'),
+            pngPigment: pigmentCanvas.toDataURL('image/png'),
+          }
+        : {}
+
     writeResult({
       gate,
       scenario,
@@ -1700,6 +2280,7 @@ function run(
       ...redOverBlueReport,
       ...bristleEdgeReport,
       ...bristleWetReport,
+      ...lineReport,
       ...coverLifecycle,
       renderer,
       verdict: 'MEDIUM-ENGINE CAPTURED',
@@ -1763,16 +2344,17 @@ function readBrush(): string | undefined {
  *  `cover-advect`; 64-16 adds `cover-textured` (task 1) and `red-over-blue-50`
  *  (task 2's scenario, declared now so the two closed lists cannot drift).
  *  64-23 adds `bristle-edge`, the directional-edge census; 64-24 adds
- *  `bristle-wet`, the wetness acceptance.
+ *  `bristle-wet`, the wetness acceptance; 2026-11-22 adds `bristle-line`,
+ *  the acrylic pale-line defect's three-field across profile.
  *  The closed list here and the one in run.mjs must stay literal-identical:
  *  a name accepted by the parser but unknown to the probe fails at capture,
  *  and a name the probe knows but the parser rejects can never be requested. */
 function readScenario(): string {
   const raw = new URLSearchParams(location.search).get('scenario')
   if (raw === null || raw === '') return 'neutral'
-  if (raw !== 'cover' && raw !== 'cover-over-wet' && raw !== 'watercolor-50' && raw !== 'white-over-blue' && raw !== 'cover-advect' && raw !== 'cover-lift' && raw !== 'cover-textured' && raw !== 'red-over-blue-50' && raw !== 'bristle-edge' && raw !== 'bristle-wet') {
+  if (raw !== 'cover' && raw !== 'cover-over-wet' && raw !== 'watercolor-50' && raw !== 'white-over-blue' && raw !== 'cover-advect' && raw !== 'cover-lift' && raw !== 'cover-textured' && raw !== 'red-over-blue-50' && raw !== 'bristle-edge' && raw !== 'bristle-wet' && raw !== 'bristle-line') {
     throw new Error(
-      `invalid scenario "${raw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue", "cover-advect", "cover-lift", "cover-textured", "red-over-blue-50", "bristle-edge" or "bristle-wet")`,
+      `invalid scenario "${raw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue", "cover-advect", "cover-lift", "cover-textured", "red-over-blue-50", "bristle-edge", "bristle-wet" or "bristle-line")`,
     )
   }
   return raw
@@ -1812,6 +2394,7 @@ function main(): void {
   let body: number | undefined
   let light: number | undefined
   let wetMode: 0 | 1 = 1
+  let strokeSize = STROKE_PARAMS['size']!
   try {
     scenario = readScenario()
     sheet = readSize()
@@ -1820,8 +2403,10 @@ function main(): void {
     body = readBody()
     light = readLight()
     wetMode = readWetMode()
+    strokeSize = readStrokeSize()
+    LINE_BAND_PX = readBand()
     renderer = probeRenderer()
-    run(gate, renderer, scenario, sheet, brush, emboss, body, light, wetMode)
+    run(gate, renderer, scenario, sheet, brush, emboss, body, light, wetMode, strokeSize)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     writeResult({

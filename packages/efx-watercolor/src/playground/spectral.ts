@@ -18,6 +18,20 @@ const uncompand = (x: number) => (x < 0.04045 ? x / 12.92 : Math.pow((x + 0.055)
 const compand = (x: number) => (x < 0.0031308 ? x * 12.92 : 1.055 * Math.pow(x, 1 / 2.4) - 0.055);
 const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
 
+/**
+ * The absorbance-basis coordinates of a FLAT band offset: `LEVEL_COEFFS[k]` is
+ * the sum of basis vector `k` across the 38 bands, so adding `u·LEVEL_COEFFS`
+ * to a pigment adds `u` to every reconstructed band's absorbance — the exact
+ * absorbance-space image of multiplying the pigment's reflectance curve by
+ * `e^-u`. §4.2's per-bristle value jitter is a REFLECTANCE multiplier (the
+ * reference scales `brush.rgb` in linear light, app.js:355/849), so bristle
+ * paint takes `u = -ln(jitter)` here, never a coefficient scale: a coefficient
+ * scale changes the spectral SHAPE (hue) and, with the sign inverted, turns
+ * the reference's dark-fibre runs into pale lanes.
+ */
+export const LEVEL_COEFFS: readonly number[] = BASIS.map(vector =>
+  vector.reduce((sum, v) => sum + v, 0));
+
 export function hexToRgb(hex: string): [number, number, number] {
   const n = parseInt(hex.replace('#', ''), 16);
   return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];

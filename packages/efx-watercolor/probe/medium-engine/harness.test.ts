@@ -256,9 +256,12 @@ describe('the textured-tip gate (64-16 task 1)', () => {
     })
 
     it('echoes the resolved brush in the report', () => {
+      // 2026-11-22 (acrylic pale-line): the bristle-line scenario extended the
+      // default chain with its own brush; the intent is unchanged — the report
+      // echoes the brush the run actually used.
       expectContains(
         PROBE,
-        "const resolvedBrush = brush ?? (scenario === 'cover-textured' ? 'chalk' : undefined)",
+        "const resolvedBrush = brush ?? (scenario === 'cover-textured' ? 'chalk' : scenario === 'bristle-line' ? 'bristle-flat' : undefined)",
       )
       expectContains(PROBE, 'brush: resolvedBrush ?? null,')
     })
