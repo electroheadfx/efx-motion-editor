@@ -1457,12 +1457,17 @@ void main(){
 //  samples is that weight's accumulated analogue (0.5 floor at Body 0), so
 //  the bare channel converges in a few dabs, exactly as the shipped law's own
 //  prose ("the coverage channel IS the weight") always claimed.
+//
+//  IN-04 (64-26): `uAmount` was still declared and uploaded here after the
+//  measurement above made the bare channel the weight — removed as dead,
+//  together with its upload and `bristleTouch`'s amount parameter. The bare
+//  coverage channel IS the weight; a declared-but-unread uniform is only a
+//  trap for the next reader.
 // ============================================================
 export const bristleTouchFS = `${HEADER}
 layout(location=0) out vec4 o0;
 uniform sampler2D uTimes, uCover;
 uniform float uNow;
-uniform float uAmount;
 void main(){
   float weight = clamp(texture(uCover, vUv).x, 0.0, 1.0);
   o0 = vec4(mix(texture(uTimes, vUv).r, uNow, weight));

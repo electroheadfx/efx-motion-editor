@@ -28,6 +28,9 @@ import {
   makeBristles,
 } from './bristles';
 import { f32ToF16, fromHalf } from './half';
+// 64-26 (CR-03): the ping-pong carry law and its state machine, proven on the
+// CPU in lastTouchCarry.test.ts — the engine only feeds it rects.
+import { invalidateCarry, newLastTouchCarry, recordStamp, takeCarry } from './lastTouchCarry';
 import { engineScaleToSize } from './params';
 import { GL, type DoubleTarget, type Format, type Program, type Rect, type Target } from './gl';
 import { History, type StepInfo, type StepKind } from './history';
@@ -515,6 +518,16 @@ export class WatercolorEngine {
   // as the medium engine's ONLY document-sized addition.
   private lastTouch!: DoubleTarget;
   /**
+   * 64-26 (CR-03): the ping-pong's carry — the previous dab's rect, blitted
+   * read-to-write before the next scissored stamp. The halves are INDEPENDENT
+   * textures (gl.double), so without this copy every dab reverts everything
+   * the previous dab stamped. Whole-target writes (clearLastTouch,
+   * uploadWhole, the resize copy) leave both halves identical and invalidate
+   * it. See lastTouchCarry.ts for the induction that makes one rect-sized
+   * copy per dab sufficient.
+   */
+  private touchCarry = newLastTouchCarry();
+  /**
    * 64-24 (D-24): the carrier's wetness source — 1 is the shipped timestamp
    * law, 0 is 64-21's `wet * coverage` proxy kept ONLY as the recorded A/B
    * control 64-21 reserved `uWetMode` for. The probe's `--wet-mode` flag is
@@ -783,6 +796,7 @@ export class WatercolorEngine {
       gl.clear(gl.COLOR_BUFFER_BIT);
     }
     gl.clearColor(0, 0, 0, 0);
+    invalidateCarry(this.touchCarry);   // both halves were just written identically
   }
 
   private allocateHistory() {
@@ -886,6 +900,7 @@ export class WatercolorEngine {
     copy(old.relief, [this.relief]);   // Phase 64: a resized sheet keeps its relief
     copy(old.cover, [this.cover.read, this.cover.write]);   // SPIKE 001: and its coverage
     copy(old.lastTouch, [this.lastTouch.read, this.lastTouch.write]);   // 64-24: and its last-touch memory
+    invalidateCarry(this.touchCarry);   // both halves were just copied identically; a stale rect may not exist in the new geometry
     old.targets.forEach(t => g.disposeTarget(t));
 
     this.paperOrigin = [this.paperOrigin[0] - ox, this.paperOrigin[1] - oy];
@@ -962,6 +977,7 @@ export class WatercolorEngine {
     // a hypothetical half-float-era record from uploading garbage).
     const lt = whole.layers.lastTouch;
     if (lt instanceof Float32Array) for (const t of [this.lastTouch.read, this.lastTouch.write]) upF(t.tex[0], lt);
+    invalidateCarry(this.touchCarry);   // both halves were just written identically
     this.everPainted = { ...r };
   }
 
@@ -2831,7 +2847,7 @@ export class WatercolorEngine {
           // 64-24 (D-24): the dab records its own touch AFTER depositing and
           // after its one coverage write — the next dab's carrier reads an
           // honest age of the paint it crosses.
-          if (bristle) this.bristleTouch(dx, dy, dr, angle, amount);
+          if (bristle) this.bristleTouch(dx, dy, dr, angle);
           // Post-UAT (2026-11-21): a bristle response's thickness follows the
           // gather's REAL coverage, never the solid base footprint — the
           // footprint's boundary lit as a dark/white seam inside the
@@ -3556,23 +3572,33 @@ export class WatercolorEngine {
    * the last-touch field toward `uNow` (SECONDS on the virtual clock) in the
    * WRITE half, then swapping the pair. Runs AFTER the deposit and its one
    * coverage write, so the next dab's carrier reads an honest age of the
-   * paint it crosses. Texels outside the dab rect keep their age untouched.
+   * paint it crosses.
+   *
+   * 64-26 (CR-03): the pair is a PING-PONG of two INDEPENDENT textures, so
+   * the fragment's scissored writes leave the halves equal only inside the
+   * just-stamped rect. Before this stamp, the engine carries the previous dab's rect
+   * read-to-write; only then do texels outside the current dab keep their age.
+   * Every whole-target write invalidates the carry.
    */
-  private bristleTouch(x: number, y: number, r: number, angle: number, amount: number): void {
+  private bristleTouch(x: number, y: number, r: number, angle: number): void {
     const { gl, g } = this;
     // `angle` is accepted for signature symmetry with bristleInk: the touch
     // rect is the dab's axis-aligned stamp at the SAME extent (1.6).
     void angle;
     const t = this.programs.bristleTouch!;
     const rect = this.stampRect(x, y, r, this.dw, this.dh, 1.6);
+    const carry = takeCarry(this.touchCarry);
+    if (carry) g.blit(this.lastTouch.read.views[0]!, carry.x0, carry.y0, this.lastTouch.write.views[0]!, carry.x0, carry.y0, carry.x1 - carry.x0, carry.y1 - carry.y0);
     t.bind();
     gl.disable(gl.BLEND);
     gl.uniform1i(t.u.uTimes!, g.bindTex(0, this.lastTouch.read.tex[0]!));
     gl.uniform1i(t.u.uCover!, g.bindTex(1, this.cover.read.tex[0]!));
     gl.uniform1f(t.u.uNow!, this.nowSec());
-    gl.uniform1f(t.u.uAmount!, amount);
     g.draw(this.lastTouch.write, rect);
     this.lastTouch.swap();
+    // 64-26 (CR-03): the next dab carries THIS dab's rect, so the scissored
+    // draw just made is the only difference between the halves.
+    recordStamp(this.touchCarry, rect);
   }
 
   /**
