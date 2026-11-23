@@ -123,6 +123,23 @@
 //  evidence, never asserted. The A/B is a capture comparison (`--differs-from`
 //  against the `--wet-mode 0` proxy), never a committed baseline.
 //
+//  quick 261123-hr5 adds a self-contained mode:
+//        node compare.mjs <gate> --relief-smooth
+//  It reads ONLY the capture's own six signed-emboss readings
+//  (reliefMean/reliefPeak/pigmentMean, before and after the smoothing pass)
+//  and asserts the relation: the +15 impasto landed (reliefMeanBefore > 0);
+//  a normal negative pass at least HALVES the band mean
+//  (reliefMeanAfter <= reliefMeanBefore * 0.5); it never raises the peak
+//  (reliefPeakAfter <= reliefPeakBefore — the erode subtracts, it cannot
+//  add); and the paint is KEPT (pigmentMeanAfter >= pigmentMeanBefore * 0.9 —
+//  the standing contrast with Lift, which erases it). No baseline and no
+//  other capture is read; the alpha law still runs on the capture. The same
+//  mode name is the one operand that takes no gate name, so `--relief-smooth`
+//  can never be mistaken for `--other`.
+//  `--other` additionally compares those six readings FIELD FOR FIELD when
+//  BOTH captures carry them, so an a/b replay of the negative stroke is
+//  proven to reproduce its numbers, not just its digests.
+//
 //  Exit codes: 0 = pass, 1 = fail or missing data, 2 = bad usage.
 //  Unknown flags are rejected loudly — a later plan adding an operand must
 //  teach this parser about it rather than have it silently misparse.
@@ -137,6 +154,18 @@ const tmpDir = '/tmp/medium-engine'
 
 const DIGESTS = ['digestPaper', 'digestTransparent', 'digestWhite']
 const FIELDS = [...DIGESTS, 'digestPigment', 'byteLength', 'width', 'height', 'opaqueExportMinAlpha', 'opaqueExportMinAlphaSurface', 'visibleAlphaMaxDelta', 'visibleAlphaSamples', 'visibleAlphaWorstAt']
+
+// quick 261123-hr5: the six signed-emboss readings an `emboss-smooth` capture
+// carries (probe.ts embossSmoothReport). The self-contained relation reads them
+// all; `--other` compares them field for field when both sides have them.
+const RELIEF_SMOOTH_FIELDS = [
+  'reliefMeanBefore',
+  'reliefPeakBefore',
+  'pigmentMeanBefore',
+  'reliefMeanAfter',
+  'reliefPeakAfter',
+  'pigmentMeanAfter',
+]
 
 // 64-17: the one committed baseline captured before the pigment export
 // existed. `absent` is legal for these fields on the REFERENCE side only —
@@ -1153,6 +1182,50 @@ function bristleTipFailures(data, reference) {
   return failures
 }
 
+/**
+ * quick 261123-hr5: the signed-emboss smoothing relation. Self-contained on the
+ * capture's own readings, so the gate cannot pass by comparing two equally
+ * broken runs: the impasto must land, the smoothing pass must at least halve
+ * the band mean without raising its peak, and the pigment must survive.
+ */
+function reliefSmoothFailures(data) {
+  const failures = []
+  const missing = RELIEF_SMOOTH_FIELDS.filter(
+    (field) => typeof data[field] !== 'number' || !Number.isFinite(data[field]),
+  )
+  if (missing.length > 0) {
+    failures.push(
+      `capture "${data.gate}" is missing the signed-emboss readings ${missing.join(', ')} ` +
+        '(run --scenario emboss-smooth)',
+    )
+    return failures
+  }
+  if (!(data.reliefMeanBefore > 0)) {
+    failures.push(
+      `reliefMeanBefore ${data.reliefMeanBefore} is not positive — the +15 impasto did not land`,
+    )
+  }
+  if (!(data.reliefMeanAfter <= data.reliefMeanBefore * 0.5)) {
+    failures.push(
+      `reliefMeanAfter ${data.reliefMeanAfter} is above half of reliefMeanBefore ` +
+        `${data.reliefMeanBefore} — the smoothing pass must visibly flatten the band`,
+    )
+  }
+  if (!(data.reliefPeakAfter <= data.reliefPeakBefore)) {
+    failures.push(
+      `reliefPeakAfter ${data.reliefPeakAfter} exceeds reliefPeakBefore ` +
+        `${data.reliefPeakBefore} — a smoothing pass may not raise the peak`,
+    )
+  }
+  if (!(data.pigmentMeanAfter >= data.pigmentMeanBefore * 0.9)) {
+    failures.push(
+      `pigmentMeanAfter ${data.pigmentMeanAfter} fell below 90% of pigmentMeanBefore ` +
+        `${data.pigmentMeanBefore} — the paint must be KEPT (this is not Lift)`,
+    )
+  }
+  return failures
+}
+
 const SCENARIO_INVARIANTS = {
   'white-over-blue': whiteOverBlueFailures,
   'cover-advect': coverAdvectFailures,
@@ -1258,7 +1331,9 @@ function printCoverRegions(actualData, refData) {
 
 function usage(message) {
   console.error(`compare: ${message}`)
-  console.error('usage: node compare.mjs <gate> [--other <otherGate> | --differs-from <name>]')
+  console.error(
+    'usage: node compare.mjs <gate> [--other <otherGate> | --differs-from <name> | --relief-smooth]',
+  )
   process.exit(2)
 }
 
@@ -1266,15 +1341,21 @@ const args = process.argv.slice(2)
 const gate = args[0]
 if (!gate || gate.startsWith('--')) usage('missing <gate> operand')
 
-// mode: 'baseline' (mode 1), 'other' (mode 2), 'differs' (mode 3).
+// mode: 'baseline' (mode 1), 'other' (mode 2), 'differs' (mode 3),
+// 'relief-smooth' (quick 261123-hr5, a self-contained relation on the capture).
 let mode = 'baseline'
 let operand
 if (args.length > 1) {
-  if (args[1] !== '--other' && args[1] !== '--differs-from') usage(`unknown argument "${args[1]}"`)
-  mode = args[1] === '--other' ? 'other' : 'differs'
-  operand = args[2]
-  if (!operand || operand.startsWith('--')) usage(`${args[1]} needs a gate name`)
-  if (args.length > 3) usage(`unexpected extra argument "${args[3]}"`)
+  if (args[1] === '--relief-smooth') {
+    if (args.length > 2) usage(`unexpected extra argument "${args[2]}"`)
+    mode = 'relief-smooth'
+  } else {
+    if (args[1] !== '--other' && args[1] !== '--differs-from') usage(`unknown argument "${args[1]}"`)
+    mode = args[1] === '--other' ? 'other' : 'differs'
+    operand = args[2]
+    if (!operand || operand.startsWith('--')) usage(`${args[1]} needs a gate name`)
+    if (args.length > 3) usage(`unexpected extra argument "${args[3]}"`)
+  }
 }
 
 function readJson(path, label) {
@@ -1339,6 +1420,41 @@ function resolveReference() {
 
 const actualPath = join(tmpDir, `${gate}.json`)
 const actual = readJson(actualPath, `capture "${gate}"`)
+
+// quick 261123-hr5: the self-contained signed-emboss relation. No baseline and
+// no other capture is read — the capture's own six readings carry the gate.
+if (mode === 'relief-smooth') {
+  console.log('============ medium-engine pixel-gate compare ============')
+  console.log('mode      : signed-emboss smoothing relation (--relief-smooth)')
+  console.log(`capture   : ${actualPath}`)
+  console.log('')
+  printDurations('capture', actual)
+  console.log('')
+  if (typeof actual.smoothEmboss === 'number') {
+    console.log(`emboss    : smooth ${actual.smoothEmboss} (the smoothing entry's value)`)
+  }
+  const readings = RELIEF_SMOOTH_FIELDS.filter((field) => typeof actual[field] === 'number').map(
+    (field) => `${field} ${actual[field]}`,
+  )
+  if (readings.length > 0) console.log(`smoothing : ${readings.join(' | ')}`)
+  console.log('')
+  const lawFailures = alphaLawFailures(actual)
+  for (const line of lawFailures) console.log(`INVARIANT ${line}`)
+  const failures = reliefSmoothFailures(actual)
+  for (const line of failures) console.log(`RELATION  ${line}`)
+  if (lawFailures.length > 0 || failures.length > 0) {
+    console.log(
+      `RESULT: FAIL — ${failures.length} smoothing relation failure(s), ` +
+        `${lawFailures.length} alpha law failure(s) (${gate})`,
+    )
+    console.log('=========================================================')
+    process.exit(1)
+  }
+  console.log(`RESULT: PASS — the smoothing relation holds (${gate})`)
+  console.log('=========================================================')
+  process.exit(0)
+}
+
 const reference = resolveReference()
 const referencePath = reference.path
 const refData = readJson(referencePath, reference.label)
@@ -1485,6 +1601,26 @@ for (const field of FIELDS) {
     console.log(`DIFFER    ${field.padEnd(18)} capture=${a} reference=${b}`)
   } else {
     console.log(`equal     ${field.padEnd(18)} ${a}`)
+  }
+}
+
+// quick 261123-hr5: an a/b replay pair of the signed-emboss scenario must
+// replay to the SAME numbers, not only the same digests. Compared field for
+// field only when BOTH captures carry the readings, so every other scenario's
+// comparison shape is unchanged.
+if (
+  mode === 'other' &&
+  RELIEF_SMOOTH_FIELDS.every(
+    (field) => typeof actual[field] === 'number' && typeof refData[field] === 'number',
+  )
+) {
+  for (const field of RELIEF_SMOOTH_FIELDS) {
+    if (actual[field] !== refData[field]) {
+      differing += 1
+      console.log(`DIFFER    ${field.padEnd(18)} capture=${actual[field]} reference=${refData[field]}`)
+    } else {
+      console.log(`equal     ${field.padEnd(18)} ${actual[field]}`)
+    }
   }
 }
 

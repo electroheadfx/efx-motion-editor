@@ -264,10 +264,11 @@ const RELIEF_ERODE = 0.5;
 /**
  * Quick 261123-hr5 (signed Emboss): the negative half of the Emboss row
  * subtracts thickness through the Lift blend law. This gain scales the erode
- * mask; Task 3 calibrates it on the probe (smoothing must halve the relief
- * while keeping the pigment under it).
+ * mask; calibrated on the probe so one normal pass at -15 at least halves a
+ * +15 impasto's band relief on BOTH masks (reliefFS and the bristle gather)
+ * while keeping the pigment under it.
  */
-const RELIEF_ERODE_NEGATIVE = 1;
+const RELIEF_ERODE_NEGATIVE = 20;
 /** The emboss thickness a feather touch still lays, as a share of full press. */
 const EMBOSS_PRESS_FLOOR = 0.15;
 /**

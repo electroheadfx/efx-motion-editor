@@ -754,6 +754,10 @@ interface ScriptEntry {
   /** 64-29: the per-stroke Pickup global (0..100), folded into the entry's
    *  params bag like every other entry knob. Omitted adds no key. */
   readonly pickup?: number
+  /** quick 261123-hr5: the signed-emboss readings. 'before' records the band
+   *  after this entry's own fix (the impasto); 'after' records it again after
+   *  the smoothing entry's fix. Undefined entries capture nothing. */
+  readonly captureRelief?: 'before' | 'after'
 }
 
 /** The canonical bag as the app records it (0..100). A knob adds its key;
@@ -795,6 +799,25 @@ function makeStroke(entry: ScriptEntry): StudioStroke<AquarelleStrokePayload> {
 /** The plan-01 single stroke — byte-for-byte the pre-64 script with no knob. */
 function neutralScript(emboss?: number, body?: number): readonly ScriptEntry[] {
   return [{ color: STROKE_COLOR, points: STROKE_POINTS, mutationId: MUTATION_ID, emboss, body }]
+}
+
+// quick 261123-hr5 (signed Emboss): the smoothing relation's band. Entry 1
+// lays a +15 impasto over the plan-01 stroke geometry; entry 2 paints the SAME
+// path at the signed value, so the only difference between the two readings is
+// the erode pass. The box encloses the whole band with bare paper around it,
+// so its mean is a band statistic, never a single-pixel probe.
+const EMBOSS_SMOOTH_BOX: BandBox = { x0: 0.24, y0: 0.24, x1: 0.76, y1: 0.68 }
+
+/** quick 261123-hr5: the signed-emboss scenario — a +15 impasto, then the same
+ *  band at `smoothEmboss` (the `--emboss` operand, default -15). Each entry
+ *  carries the resolved brush when one was requested, so `--brush bristle-flat`
+ *  drives the bristle gather mask instead of the reliefFS footprint. */
+function embossSmoothScript(smoothEmboss: number, brushId?: string): readonly ScriptEntry[] {
+  const brush = brushId === undefined ? {} : { brushId }
+  return [
+    { color: STROKE_COLOR, points: STROKE_POINTS, mutationId: MUTATION_ID, emboss: 15, captureRelief: 'before', ...brush },
+    { color: STROKE_COLOR, points: STROKE_POINTS, mutationId: MUTATION_ID + 1, emboss: smoothEmboss, captureRelief: 'after', ...brush },
+  ]
 }
 
 /** 64-06: a dark band across the sheet, fixed dry, then a light diagonal
@@ -1994,6 +2017,39 @@ function absorbBand(
 
 function round4(value: number): number {
   return Math.round(value * 10000) / 10000
+}
+
+/** quick 261123-hr5: the private relief target the signed-emboss readback
+ *  taps. Read-only, probe-only — the relief layer has no export channel. */
+interface ReliefEngineInternals {
+  g: LineEngineInternals['g']
+  relief: { views: WebGLFramebuffer[] }
+}
+
+/**
+ * quick 261123-hr5: mean and peak paint thickness over a doc-uv box, read
+ * straight from the engine's HALF_FLOAT_R relief target. The rect is in
+ * DOCUMENT pixels and both axes are y-up, so the uv box maps directly.
+ */
+function reliefBandStats(
+  engine: WatercolorEngine,
+  sheet: number,
+  box: BandBox,
+): { mean: number; peak: number } {
+  const internals = engine as unknown as ReliefEngineInternals
+  const x0 = Math.max(0, Math.min(sheet - 1, Math.floor(box.x0 * sheet)))
+  const x1 = Math.max(x0 + 1, Math.min(sheet, Math.ceil(box.x1 * sheet)))
+  const y0 = Math.max(0, Math.min(sheet - 1, Math.floor(box.y0 * sheet)))
+  const y1 = Math.max(y0 + 1, Math.min(sheet, Math.ceil(box.y1 * sheet)))
+  const rows = internals.g.readHalf(internals.relief.views[0]!, sheet, sheet, 1, { x0, y0, x1, y1 })
+  let sum = 0
+  let peak = 0
+  for (let i = 0; i < rows.length; i += 1) {
+    const value = fromHalf(rows[i]!)
+    sum += value
+    if (value > peak) peak = value
+  }
+  return { mean: rows.length > 0 ? sum / rows.length : 0, peak }
 }
 
 // --- 2026-11-22 (UAT row 3, the tiled motif) --------------------------------
@@ -3311,7 +3367,9 @@ function run(
                             ? bristleTipScript()
                             : scenario === 'bristle-end'
                               ? bristleEndScript(endDrive ?? 'stop', body ?? 100, strokeSize)
-                              : neutralScript(emboss, body)
+                              : scenario === 'emboss-smooth'
+                                ? embossSmoothScript(emboss ?? -15, resolvedBrush)
+                                : neutralScript(emboss, body)
 
   // 261119-pod (D-F): the scene-parameter echo — `dry` appears in the report
   // only when a script pins it, so every capture records the calibration and a
@@ -3361,6 +3419,21 @@ function run(
       const start = performance.now()
       lineSurfaces[surface] = lineProfileSet(engine)
       captureMs += performance.now() - start
+    }
+    // quick 261123-hr5: the signed-emboss readings — the impasto's band and the
+    // smoothing pass's band, each taken after its own fix so the relation
+    // compares settled surfaces. Probe-only readbacks: capture cost, not medium.
+    const reliefSmooth: Record<string, number> = {}
+    const reliefCapture = (surface: 'before' | 'after') => {
+      if (scenario !== 'emboss-smooth') return
+      const start = performance.now()
+      const stats = reliefBandStats(engine, sheet, EMBOSS_SMOOTH_BOX)
+      const pigmentMean = bandPigment(engine.exportCanvas('transparent'), EMBOSS_SMOOTH_BOX)
+      captureMs += performance.now() - start
+      const cap = surface === 'before' ? 'Before' : 'After'
+      reliefSmooth[`reliefMean${cap}`] = round4(stats.mean)
+      reliefSmooth[`reliefPeak${cap}`] = round4(stats.peak)
+      reliefSmooth[`pigmentMean${cap}`] = round4(pigmentMean)
     }
     // bristle-end: the LIVE end paths drive the captured engine directly (the
     // adapter has no live pointer seam); the re-bake drive rides the normal
@@ -3414,6 +3487,9 @@ function run(
       if (entry.fixAfter !== false) adapter.fix()
       // bristle-line: the DRY surface — the display's own settled field.
       if (entry.captureLine) lineCapture('postFix')
+      // quick 261123-hr5: read the signed-emboss band after this entry settled
+      // and fixed, so the two readings differ by the erode pass alone.
+      if (entry.captureRelief !== undefined) reliefCapture(entry.captureRelief)
       // 64-14: the lift gate reads the crossing after the entry's own fix, so
       // the field it measures is the one the display reads.
       if (entry.captureCover === 'beforeLift' || entry.captureCover === 'afterLift') {
@@ -3574,6 +3650,18 @@ function run(
     // report shape is unchanged (the bristle-line PNG block above stays inert).
     const tipReport = scenario === 'bristle-tip' ? bristleTipReport(engine, script) : {}
 
+    // quick 261123-hr5: the signed-emboss smoothing relation's six readings
+    // plus the smooth value the second entry carried, only for its scenario,
+    // so every other report shape is unchanged.
+    const embossSmoothReport =
+      scenario === 'emboss-smooth'
+        ? {
+            smoothEmboss: emboss ?? -15,
+            ...reliefSmooth,
+            pngTransparent: transparentCanvas.toDataURL('image/png'),
+          }
+        : {}
+
     writeResult({
       gate,
       scenario,
@@ -3604,6 +3692,7 @@ function run(
       ...lineReport,
       ...bristleEndReport,
       ...tipReport,
+      ...embossSmoothReport,
       ...coverLifecycle,
       renderer,
       verdict: 'MEDIUM-ENGINE CAPTURED',
@@ -3613,13 +3702,15 @@ function run(
   }
 }
 
-/** 64-03: the emboss knob — absent keeps the neutral (pre-milestone) script. */
+/** 64-03: the emboss knob — absent keeps the neutral (pre-milestone) script.
+ *  Quick 261123-hr5: the band is SIGNED (-100..100); for `emboss-smooth` this
+ *  operand is the SMOOTH value the second entry carries. */
 function readEmboss(): number | undefined {
   const raw = new URLSearchParams(location.search).get('emboss')
   if (raw === null || raw === '') return undefined
   const value = Number(raw)
-  if (!Number.isFinite(value) || value < 0 || value > 100) {
-    throw new Error(`invalid emboss "${raw}" (expected 0..100)`)
+  if (!Number.isFinite(value) || value < -100 || value > 100) {
+    throw new Error(`invalid emboss "${raw}" (expected -100..100)`)
   }
   return value
 }
@@ -3669,16 +3760,17 @@ function readBrush(): string | undefined {
  *  64-23 adds `bristle-edge`, the directional-edge census; 64-24 adds
  *  `bristle-wet`, the wetness acceptance; 2026-11-22 adds `bristle-line`,
  *  the acrylic pale-line defect's three-field across profile; 64-29 adds
- *  `bristle-tip`, the texture-tip A/B.
+ *  `bristle-tip`, the texture-tip A/B; quick 261123-hr5 adds `emboss-smooth`,
+ *  the signed-emboss smoothing relation.
  *  The closed list here and the one in run.mjs must stay literal-identical:
  *  a name accepted by the parser but unknown to the probe fails at capture,
  *  and a name the probe knows but the parser rejects can never be requested. */
 function readScenario(): string {
   const raw = new URLSearchParams(location.search).get('scenario')
   if (raw === null || raw === '') return 'neutral'
-  if (raw !== 'cover' && raw !== 'cover-over-wet' && raw !== 'watercolor-50' && raw !== 'white-over-blue' && raw !== 'cover-advect' && raw !== 'cover-lift' && raw !== 'cover-textured' && raw !== 'red-over-blue-50' && raw !== 'bristle-edge' && raw !== 'bristle-wet' && raw !== 'bristle-line' && raw !== 'bristle-tip' && raw !== 'bristle-end') {
+  if (raw !== 'cover' && raw !== 'cover-over-wet' && raw !== 'watercolor-50' && raw !== 'white-over-blue' && raw !== 'cover-advect' && raw !== 'cover-lift' && raw !== 'cover-textured' && raw !== 'red-over-blue-50' && raw !== 'bristle-edge' && raw !== 'bristle-wet' && raw !== 'bristle-line' && raw !== 'bristle-tip' && raw !== 'bristle-end' && raw !== 'emboss-smooth') {
     throw new Error(
-      `invalid scenario "${raw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue", "cover-advect", "cover-lift", "cover-textured", "red-over-blue-50", "bristle-edge", "bristle-wet", "bristle-line", "bristle-end" or "bristle-tip")`,
+      `invalid scenario "${raw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue", "cover-advect", "cover-lift", "cover-textured", "red-over-blue-50", "bristle-edge", "bristle-wet", "bristle-line", "bristle-end", "bristle-tip" or "emboss-smooth")`,
     )
   }
   return raw

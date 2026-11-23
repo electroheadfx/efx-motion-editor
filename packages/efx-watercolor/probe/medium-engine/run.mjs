@@ -173,7 +173,13 @@
 //                                     deterministic mask)
 //             [--texture <mask id>]   bristle-tip only: the mask id the stroke
 //                                     carries; omitted is the plain leg
-//             [--emboss <0..100>]     omitted writes no emboss key
+//             [--scenario emboss-smooth]
+//                                     quick 261123-hr5: a +15 impasto, then
+//                                     the same band at --emboss (default
+//                                     -15); relief/pigment readings before
+//                                     and after the smoothing pass
+//             [--emboss <-100..100>]  SIGNED (261123-hr5): negative subtracts
+//                                     thickness; omitted writes no emboss key
 //             [--body <0..100>]       omitted writes no body key
 //             [--light <0..4>]        omitted keeps DEFAULT_LIGHT
 //             [--size <32..4096>]     omitted keeps the 256 square
@@ -188,6 +194,10 @@
 //                                     else the same-session capture; all
 //                                     three exported-background digests must
 //                                     differ and the dimensions must agree
+//    compare.mjs <gate> --relief-smooth
+//                                     quick 261123-hr5: the signed-emboss
+//                                     smoothing relation, self-contained on
+//                                     the capture's own six readings
 //
 //  2026-11-22 adds `--scenario bristle-line` — the acrylic pale-line defect's
 //  reproduction at the ARTIST'S parameters. ONE straight bristle-flat stroke
@@ -227,7 +237,7 @@ const gateFlag = args.indexOf('--gate')
 const gate = gateFlag >= 0 ? args[gateFlag + 1] : undefined
 if (!gate) {
   console.error(
-    'usage: node run.mjs --gate <name> [--scenario cover|cover-over-wet|cover-advect|cover-lift|watercolor-50|white-over-blue|cover-textured|red-over-blue-50|bristle-edge|bristle-wet|bristle-line|bristle-end|bristle-tip] [--emboss <0..100>] [--body <0..100>] [--light <0..4>] [--size <32..4096>] [--brush <id>] [--wet-mode <0|1>] [--texture <mask id>] [--drive <stop|lift|decay|mouse|mouse-lift|bake>]   (e.g. neutral-identity)',
+    'usage: node run.mjs --gate <name> [--scenario cover|cover-over-wet|cover-advect|cover-lift|watercolor-50|white-over-blue|cover-textured|red-over-blue-50|bristle-edge|bristle-wet|bristle-line|bristle-end|bristle-tip|emboss-smooth] [--emboss <-100..100>] [--body <0..100>] [--light <0..4>] [--size <32..4096>] [--brush <id>] [--wet-mode <0|1>] [--texture <mask id>] [--drive <stop|lift|decay|mouse|mouse-lift|bake>]   (e.g. neutral-identity)',
   )
   console.error(
     '       every operand except --gate is optional and additive; an omitted operand writes no key/value, so the neutral gate keeps reproducing the committed baseline',
@@ -241,13 +251,15 @@ if (!/^[A-Za-z0-9._-]+$/.test(gate)) {
 
 // 64-03: optional thickness knob. Omitted means the neutral (absent-key)
 // script — the exact pre-milestone stroke the baseline captured.
+// quick 261123-hr5: SIGNED band (-100..100) — the negative half erodes
+// thickness, and on `emboss-smooth` this operand is the smooth value.
 const embossFlag = args.indexOf('--emboss')
 const embossRaw = embossFlag >= 0 ? args[embossFlag + 1] : undefined
 let emboss
 if (embossRaw !== undefined) {
   emboss = Number(embossRaw)
-  if (!Number.isFinite(emboss) || emboss < 0 || emboss > 100) {
-    console.error(`invalid --emboss "${embossRaw}" (expected 0..100)`)
+  if (!Number.isFinite(emboss) || emboss < -100 || emboss > 100) {
+    console.error(`invalid --emboss "${embossRaw}" (expected -100..100)`)
     process.exit(1)
   }
 }
@@ -282,15 +294,16 @@ if (bodyRaw !== undefined) {
 // `white-over-blue` (the criterion-1 crossing); 64-14 adds `cover-advect`
 // (cover geometry, covering stroke left wet) and `cover-lift` (fixed cover
 // geometry, then a Lift stroke); 64-24 adds `bristle-wet` (two ages on one
-// sheet); 64-29 adds `bristle-tip` (the texture-tip A/B). This closed list
-// and probe.ts readScenario's must stay literal-identical.
+// sheet); 64-29 adds `bristle-tip` (the texture-tip A/B); quick 261123-hr5
+// adds `emboss-smooth` (the signed-emboss smoothing relation). This closed
+// list and probe.ts readScenario's must stay literal-identical.
 const scenarioFlag = args.indexOf('--scenario')
 const scenarioRaw = scenarioFlag >= 0 ? args[scenarioFlag + 1] : undefined
 let scenario
 if (scenarioRaw !== undefined) {
-  if (scenarioRaw !== 'cover' && scenarioRaw !== 'cover-over-wet' && scenarioRaw !== 'watercolor-50' && scenarioRaw !== 'white-over-blue' && scenarioRaw !== 'cover-advect' && scenarioRaw !== 'cover-lift' && scenarioRaw !== 'cover-textured' && scenarioRaw !== 'red-over-blue-50' && scenarioRaw !== 'bristle-edge' && scenarioRaw !== 'bristle-wet' && scenarioRaw !== 'bristle-line' && scenarioRaw !== 'bristle-tip' && scenarioRaw !== 'bristle-end') {
+  if (scenarioRaw !== 'cover' && scenarioRaw !== 'cover-over-wet' && scenarioRaw !== 'watercolor-50' && scenarioRaw !== 'white-over-blue' && scenarioRaw !== 'cover-advect' && scenarioRaw !== 'cover-lift' && scenarioRaw !== 'cover-textured' && scenarioRaw !== 'red-over-blue-50' && scenarioRaw !== 'bristle-edge' && scenarioRaw !== 'bristle-wet' && scenarioRaw !== 'bristle-line' && scenarioRaw !== 'bristle-tip' && scenarioRaw !== 'bristle-end' && scenarioRaw !== 'emboss-smooth') {
     console.error(
-      `invalid --scenario "${scenarioRaw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue", "cover-advect", "cover-lift", "cover-textured", "red-over-blue-50", "bristle-edge", "bristle-wet", "bristle-line", "bristle-end" or "bristle-tip")`,
+      `invalid --scenario "${scenarioRaw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue", "cover-advect", "cover-lift", "cover-textured", "red-over-blue-50", "bristle-edge", "bristle-wet", "bristle-line", "bristle-end", "bristle-tip" or "emboss-smooth")`,
     )
     process.exit(1)
   }
