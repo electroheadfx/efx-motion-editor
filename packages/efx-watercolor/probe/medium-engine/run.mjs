@@ -227,7 +227,7 @@ const gateFlag = args.indexOf('--gate')
 const gate = gateFlag >= 0 ? args[gateFlag + 1] : undefined
 if (!gate) {
   console.error(
-    'usage: node run.mjs --gate <name> [--scenario cover|cover-over-wet|cover-advect|cover-lift|watercolor-50|white-over-blue|cover-textured|red-over-blue-50|bristle-edge|bristle-wet|bristle-line|bristle-tip] [--emboss <0..100>] [--body <0..100>] [--light <0..4>] [--size <32..4096>] [--brush <id>] [--wet-mode <0|1>] [--texture <mask id>]   (e.g. neutral-identity)',
+    'usage: node run.mjs --gate <name> [--scenario cover|cover-over-wet|cover-advect|cover-lift|watercolor-50|white-over-blue|cover-textured|red-over-blue-50|bristle-edge|bristle-wet|bristle-line|bristle-end|bristle-tip] [--emboss <0..100>] [--body <0..100>] [--light <0..4>] [--size <32..4096>] [--brush <id>] [--wet-mode <0|1>] [--texture <mask id>] [--drive <stop|lift|decay|mouse|mouse-lift|bake>]   (e.g. neutral-identity)',
   )
   console.error(
     '       every operand except --gate is optional and additive; an omitted operand writes no key/value, so the neutral gate keeps reproducing the committed baseline',
@@ -288,9 +288,9 @@ const scenarioFlag = args.indexOf('--scenario')
 const scenarioRaw = scenarioFlag >= 0 ? args[scenarioFlag + 1] : undefined
 let scenario
 if (scenarioRaw !== undefined) {
-  if (scenarioRaw !== 'cover' && scenarioRaw !== 'cover-over-wet' && scenarioRaw !== 'watercolor-50' && scenarioRaw !== 'white-over-blue' && scenarioRaw !== 'cover-advect' && scenarioRaw !== 'cover-lift' && scenarioRaw !== 'cover-textured' && scenarioRaw !== 'red-over-blue-50' && scenarioRaw !== 'bristle-edge' && scenarioRaw !== 'bristle-wet' && scenarioRaw !== 'bristle-line' && scenarioRaw !== 'bristle-tip') {
+  if (scenarioRaw !== 'cover' && scenarioRaw !== 'cover-over-wet' && scenarioRaw !== 'watercolor-50' && scenarioRaw !== 'white-over-blue' && scenarioRaw !== 'cover-advect' && scenarioRaw !== 'cover-lift' && scenarioRaw !== 'cover-textured' && scenarioRaw !== 'red-over-blue-50' && scenarioRaw !== 'bristle-edge' && scenarioRaw !== 'bristle-wet' && scenarioRaw !== 'bristle-line' && scenarioRaw !== 'bristle-tip' && scenarioRaw !== 'bristle-end') {
     console.error(
-      `invalid --scenario "${scenarioRaw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue", "cover-advect", "cover-lift", "cover-textured", "red-over-blue-50", "bristle-edge", "bristle-wet", "bristle-line" or "bristle-tip")`,
+      `invalid --scenario "${scenarioRaw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue", "cover-advect", "cover-lift", "cover-textured", "red-over-blue-50", "bristle-edge", "bristle-wet", "bristle-line", "bristle-end" or "bristle-tip")`,
     )
     process.exit(1)
   }
@@ -332,8 +332,8 @@ if (strokeSizeRaw !== undefined) {
     console.error(`invalid --stroke-size "${strokeSizeRaw}" (expected 1..200)`)
     process.exit(1)
   }
-  if (scenario !== 'bristle-line') {
-    console.error('--stroke-size is only valid with --scenario bristle-line')
+  if (scenario !== 'bristle-line' && scenario !== 'bristle-end') {
+    console.error('--stroke-size is only valid with --scenario bristle-line or bristle-end')
     process.exit(1)
   }
   strokeSize = value
@@ -351,8 +351,8 @@ if (mutRaw !== undefined) {
     console.error(`invalid --mut "${mutRaw}" (expected a non-negative integer)`)
     process.exit(1)
   }
-  if (scenario !== 'bristle-line') {
-    console.error('--mut is only valid with --scenario bristle-line')
+  if (scenario !== 'bristle-line' && scenario !== 'bristle-end') {
+    console.error('--mut is only valid with --scenario bristle-line or bristle-end')
     process.exit(1)
   }
   mut = Math.floor(value)
@@ -367,8 +367,8 @@ if (bandRaw !== undefined) {
     console.error(`invalid --band "${bandRaw}" (expected 16..400)`)
     process.exit(1)
   }
-  if (scenario !== 'bristle-line') {
-    console.error('--band is only valid with --scenario bristle-line')
+  if (scenario !== 'bristle-line' && scenario !== 'bristle-end') {
+    console.error('--band is only valid with --scenario bristle-line or bristle-end')
     process.exit(1)
   }
   band = Math.round(value)
@@ -423,6 +423,29 @@ if (textureRaw !== undefined) {
   texture = textureRaw
 }
 
+// bristle-end (2026-11-23): which end path the capture drives. One stroke per
+// capture; the value is a closed list so an unknown drive can never fall back
+// to a capture that judges something else. bristle-end only.
+const driveFlag = args.indexOf('--drive')
+const driveRaw = driveFlag >= 0 ? args[driveFlag + 1] : undefined
+let drive
+if (driveRaw !== undefined) {
+  if (
+    driveRaw !== 'stop' && driveRaw !== 'lift' && driveRaw !== 'decay' &&
+    driveRaw !== 'mouse' && driveRaw !== 'mouse-lift' && driveRaw !== 'bake'
+  ) {
+    console.error(
+      `invalid --drive "${driveRaw}" (expected "stop", "lift", "decay", "mouse", "mouse-lift" or "bake")`,
+    )
+    process.exit(1)
+  }
+  if (scenario !== 'bristle-end') {
+    console.error('--drive is only valid with --scenario bristle-end')
+    process.exit(1)
+  }
+  drive = driveRaw
+}
+
 const pageQuery =
   `gate=${encodeURIComponent(gate)}` +
   (scenario === undefined ? '' : `&scenario=${scenario}`) +
@@ -436,7 +459,8 @@ const pageQuery =
   (mut === undefined ? '' : `&mut=${mut}`) +
   (over === undefined ? '' : '&over=1') +
   (wetMode === undefined ? '' : `&wetMode=${wetMode}`) +
-  (texture === undefined ? '' : `&texture=${encodeURIComponent(texture)}`)
+  (texture === undefined ? '' : `&texture=${encodeURIComponent(texture)}`) +
+  (drive === undefined ? '' : `&drive=${encodeURIComponent(drive)}`)
 const resultPath = join(outDir, `${gate}.json`)
 
 const esbuildCandidates = [
@@ -560,6 +584,12 @@ for (const [key, kind] of [
   ['pngTransparent', 'transparent'],
   ['pngCoverage', 'coverage'],
   ['pngPigment', 'pigment'],
+  // bristle-end (2026-11-23): the 2x start/end crops beside the full sheet,
+  // plus the end crop in the engine's pigment and coverage channels.
+  ['pngStart', 'start'],
+  ['pngEnd', 'end'],
+  ['pngEndPigment', 'end-pigment'],
+  ['pngEndCoverage', 'end-coverage'],
 ]) {
   const url = result[key]
   if (typeof url !== 'string') continue

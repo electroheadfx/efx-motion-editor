@@ -148,6 +148,26 @@ export const BRISTLE_DRY_CAP_FLOOR = 0.12;
 /** The Dry value (0..1) where the end cap reaches its full width. */
 export const BRISTLE_DRY_CAP_FULL = 0.7;
 /**
+ * 2026-11-23 (the acrylic end-block): the stroke's TAKEOFF — the paper-tooth
+ * threshold rise over the outer LEADING band of every dab, scaled by the same
+ * `0.3 + 0.7 * uPressure` factor the coverage carries. A stroke ends on its
+ * last running dab's leading frontier: every earlier frontier is repainted by
+ * the dabs ahead, so the end that survives is exactly the band no later dab
+ * covers. The along cap only fades DEPTH, and the deposit lerp holds film the
+ * running dabs already committed (a small weight a keeps it for ~100 px), so
+ * a depth fade cannot open that frontier — measured: the stopped end was a
+ * wall at x = 1015 on every row, flat over 83 % of the width. Raising the
+ * SAME paper threshold the Feather law uses turns the frontier into
+ * full-depth tooth specks (no partial-depth window, no along-periodic motif):
+ * at the acrylic record's parameters the stopped end reads 21.9 % flat / 12 px
+ * longest same-x run (mouse 25.3 % / 34 px, decay 20.1 % / 17 px, mouse-lift
+ * 10.4 % / 6 px, bake 23.7 % / 15 px) against the body's 0.578 darkness, and
+ * the approved pen-lift end is unchanged (1.8 %). 1.1 clears a full-pressure
+ * body (1.0 · 0.97) against the paper threshold's -0.25 floor, so a mouse
+ * stop opens the frontier like a pen lift.
+ */
+export const BRISTLE_TAKEOFF_SHIFT = 1.1;
+/**
  * 2026-11-20 (the artist's large-brush steps; "samples should be proportional
  * to the size of the brush, to not slow down normal size brush"): the dab
  * chain is SUPERSAMPLED with the brush's canonical Size — the 3D motion

@@ -224,6 +224,13 @@ import { TIP_MASK_BYTES, TIP_MASK_EDGE } from '../../src/brushes/deriveMask'
 // 64-29: the echo reads the tip resolution through the SAME projection the
 // adapter hands the engine (buildBrushForStroke), not a re-derived guess.
 import { buildBrushForStroke } from '../../src/playground/brushBridge'
+// bristle-end (2026-11-23): the live drive configures the engine exactly like
+// the adapter's own `configure()` — the same param mapping, colour resolution
+// and per-stroke seed derivation, so a live end and its re-bake are the same
+// stroke in every input the engine sees.
+import { toEngineParams } from '../../src/playground/params'
+import { pigmentFromHex } from '../../src/playground/spectral'
+import { hashMutationId } from '@efxlab/efx-paint-host'
 import {
   toStudioStroke,
   type AquarellePoint,
@@ -2454,6 +2461,601 @@ function lineProfileSet(engine: WatercolorEngine): Record<string, unknown> {
   }
 }
 
+// --- bristle-end (2026-11-23, the acrylic stroke end-cap defect) ------------
+//
+// The defect (live, artist isolation): every Acrylic bristle stroke ENDS on a
+// straight-edged rectangular block of different contrast — a hard wall across
+// the mark's width — while its START breaks up with bristle-scale
+// irregularity. The artist's isolation:
+//   - pen LIFT while still moving            -> correct, ragged cap;
+//   - pen STOPS the tip while pressed, then releases -> square block;
+//   - mouse / trackpad (the stroke stops dead)       -> always square;
+//   - Pigment 0 shows the wanted dry break-up, but at the cost of run length.
+//
+// WHERE IT CAN LIVE (tree, 2026-11-23): the along cap rides ONLY the catch-up
+// impression (`bristleEndCap = true` around the `ending`-tick trace in
+// Engine.ts processInput); `trace()` stamps only when residual arc length
+// reaches one spacing and then sets `s.x = ex` regardless, so a stop whose
+// catch-up consumes the residual stamps nothing left for later ticks. The
+// scripted (re-bake) path calls `trace(s, nx, ny, nx, ny)` — no residual, no
+// catch-up, no capped dab ever. Separately the cap is a DEPTH fade while the
+// film already committed by preceding running dabs survives the deposit lerp
+// (~100 px memory), so a depth fade alone cannot remove committed film.
+//
+// THE DRIVES — one stroke per capture (one sheet, one lane at y = 0.5), the
+// SAME geometry (#2b6fd0, x 0.15..0.85, bristle-flat, the acrylic record's
+// params) driven through six different end paths:
+//
+//   stop        live pen, constant pressure 0.75, then a held pointer's
+//               deterministic +-1 px jitter moves (a stylus in contact keeps
+//               reporting), then pointerup. The artist's square case.
+//   lift        live pen, constant pressure, pointerup between moves — the
+//               artist's correct case: the catch-up fires while the hand is
+//               still travelling.
+//   decay       live pen, the last ten samples ramp pressure 0.75 -> 0.10
+//               while the hand keeps moving: a physical pen's lift-off.
+//   mouse       live mouse (the -1 pressure sentinel: pressureOf derives
+//               simPressure from speed), jitter stop, pointerup. The artist's
+//               always-square case; the speed-derived pressure saturates as
+//               the jitter kills the measured speed.
+//   mouse-lift  live mouse, pointerup between moves — a mouse CAN be released
+//               while travelling; the control for "mouse can never lift".
+//   bake        the recorded `stop` sequence replayed through the adapter's
+//               scripted feed (one sample per host tick, SCRIPT_POINTER): the
+//               re-bake surface, which never stamps a capped dab.
+//
+// THE MEASUREMENT — per-row edge geometry read off the `transparent` export
+// (the film's visible darkness, 1 - min(rgb), the same field the bristle-line
+// gate reads):
+//   - the END boundary: for every row across the stroke's own support, the
+//     LAST x whose darkness clears the threshold — a straight wall reads as a
+//     huge flat share, a short spread and a long unbroken row run;
+//   - the START boundary: the SAME statistic from the leading edge, so the
+//     wanted break-up is measured by one law on the same stroke;
+//   - contrast: mean darkness of the last 30 px before the end boundary vs the
+//     body (x 0.40..0.55) — the "block of different contrast" as a number;
+//   - thickness over the last 10 / 25 / 50 % of travel vs the first 10 / 25 /
+//     50 %, so a terminal width step is a number too.
+// The PNG crops (`pngStart`, `pngEnd`) are 2x nearest-neighbour cut-outs on
+// white, the visual evidence that pairs with the numbers.
+const END_COLOR = LINE_COLOR
+const END_LANE_Y = LINE_Y
+const END_X0 = LINE_X0
+const END_X1 = LINE_X1
+/** The end scenario's own per-stroke seed (distinct from the pale-line lane's,
+ *  so a capture can never be mistaken for the other scenario's). */
+const END_MUTATION_ID = 0x7ee500
+/** The live pointer's non-SCRIPT_POINTER id (any positive integer: the engine
+ *  only branches on `pointerId === SCRIPT_POINTER`). */
+const END_LIVE_POINTER = 91
+/** The 60 Hz drive: one sample per host tick, the same cadence the adapter's
+ *  scripted feed uses — so a live end and its re-bake are tick-aligned. */
+const END_DT = 1 / 60
+const END_TICK_MS = 1000 / 60
+/** Moving samples from END_X0 to END_X1 at constant pressure. */
+const END_STEPS = 24
+const END_PRESS = 0.75
+/** The held pointer's jitter: +-1 px x, +-0.5 px y, alternating each sample —
+ *  deterministic, and small enough that it never advances a full dab spacing
+ *  per sample (the speed still reads ~0, which is the point). */
+const END_JITTER_UV_X = 1 / 1080
+const END_JITTER_UV_Y = 0.5 / 1080
+const END_JITTER_TICKS = 15
+/** The pressure-decay tail: ten still-moving samples, pressure 0.75 -> 0.10. */
+const END_DECAY_SAMPLES = 10
+const END_DECAY_FROM = 0.75
+const END_DECAY_TO = 0.1
+const END_DECAY_STEP_X = 0.004
+/** Darkness a pixel must clear to count as film (the pale-line gate's own
+ *  visible-darkness field; blank paper reads 0). */
+const END_DARK_THRESHOLD = 0.06
+/** Rows whose central-half mean darkness clears this carry the mark. */
+const END_MARK_FLOOR = 0.1
+/** Two boundary positions this close count as the same straight line. */
+const END_ROW_TOL_PX = 1.5
+/** The contrast zone's length before/after the boundary, in document px. */
+const END_BLOCK_PX = 30
+/** The crop cut-outs: ~2.4 brush widths of travel, 40 px past the edge. */
+const END_CROP_W = 520
+const END_CROP_MARGIN = 40
+
+const END_DRIVES = ['stop', 'lift', 'decay', 'mouse', 'mouse-lift', 'bake'] as const
+type EndDrive = (typeof END_DRIVES)[number]
+
+/** The `--drive` operand: which end path this capture drives. Absent keeps the
+ *  artist's primary case (`stop`); an unknown name throws rather than falling
+ *  back to a capture that cannot judge what was asked for. */
+function readEndDrive(): EndDrive {
+  const raw = new URLSearchParams(location.search).get('drive')
+  if (raw === null || raw === '') return 'stop'
+  if (
+    raw !== 'stop' && raw !== 'lift' && raw !== 'decay' &&
+    raw !== 'mouse' && raw !== 'mouse-lift' && raw !== 'bake'
+  ) {
+    throw new Error(
+      `invalid drive "${raw}" (expected "stop", "lift", "decay", "mouse", "mouse-lift" or "bake")`,
+    )
+  }
+  return raw
+}
+
+/** The bristle-end stroke's per-stroke seed: `--mut` when given, else the
+ *  scenario's own constant. One seed for the live drive and the re-bake, so
+ *  the two surfaces differ only in HOW the dabs land. */
+function readEndMut(): number {
+  const raw = new URLSearchParams(location.search).get('mut')
+  if (raw === null || raw === '') return END_MUTATION_ID
+  const value = Number(raw)
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error(`invalid mut "${raw}" (expected a non-negative integer)`)
+  }
+  return Math.floor(value)
+}
+
+/** One queued sample of the live drive. `p` keeps the mouse sentinel (-1). */
+interface EndSample {
+  readonly x: number
+  readonly y: number
+  readonly p: number
+}
+
+/** The moving samples every drive shares, at the drive's own pressure. */
+function endMoves(pressure: number): EndSample[] {
+  const out: EndSample[] = []
+  for (let i = 0; i < END_STEPS; i += 1) {
+    out.push({ x: END_X0 + ((END_X1 - END_X0) * i) / (END_STEPS - 1), y: END_LANE_Y, p: pressure })
+  }
+  return out
+}
+
+/** The held pointer's deterministic jitter after the last move. */
+function endJitter(pressure: number): EndSample[] {
+  const out: EndSample[] = []
+  for (let i = 0; i < END_JITTER_TICKS; i += 1) {
+    const sign = i % 2 === 0 ? 1 : -1
+    out.push({
+      x: END_X1 + sign * END_JITTER_UV_X,
+      y: END_LANE_Y + sign * END_JITTER_UV_Y,
+      p: pressure,
+    })
+  }
+  return out
+}
+
+/** A real stylus lift: the nib loses contact progressively, so the pressure
+ *  collapses over the last few samples WHILE the hand keeps travelling at its
+ *  drawing cadence. This is the artist's correct case. */
+const END_LIFT_TAIL = 6
+const END_LIFT_PRESSURES: readonly number[] = [0.55, 0.4, 0.25, 0.12, 0.05, 0.02]
+
+/** The samples each live drive feeds: the moves, the drive's own end path. */
+function endDriveSamples(drive: EndDrive): EndSample[] {
+  const mouse = drive === 'mouse' || drive === 'mouse-lift'
+  const pressure = mouse ? -1 : END_PRESS
+  const moves = endMoves(pressure)
+  if (drive === 'mouse-lift') return moves
+  if (drive === 'lift') {
+    // The artist's lift: the LAST moves already carry the collapsing pressure
+    // (the hand is still moving), then pointerup — no rest, no jitter.
+    const out = moves
+    for (let i = 0; i < END_LIFT_TAIL; i += 1) {
+      const idx = out.length - END_LIFT_TAIL + i
+      const sample = out[idx]!
+      out[idx] = { x: sample.x, y: sample.y, p: END_LIFT_PRESSURES[i]! }
+    }
+    return out
+  }
+  if (drive === 'decay') {
+    const out = moves
+    let x = END_X1
+    for (let i = 1; i <= END_DECAY_SAMPLES; i += 1) {
+      x += END_DECAY_STEP_X
+      const t = i / END_DECAY_SAMPLES
+      out.push({ x, y: END_LANE_Y, p: END_DECAY_FROM + (END_DECAY_TO - END_DECAY_FROM) * t })
+    }
+    return out
+  }
+  // stop / mouse: the held pointer's jitter, then the release.
+  return [...moves, ...endJitter(pressure)]
+}
+
+/** The re-bake surface's recorded points: the `stop` drive's sequence — a
+ *  recorded stop-then-release stroke carries the jitter, and the scripted feed
+ *  replays it one sample per host tick, exactly like the app's re-bake. */
+function endBakePoints(): readonly AquarellePoint[] {
+  return endDriveSamples('stop').map((sample) => ({
+    x: sample.x,
+    y: sample.y,
+    p: sample.p,
+    tx: 0,
+    ty: 0,
+    tw: 0,
+  }))
+}
+
+/** The adapter's configure(), reproduced against the captured engine for the
+ *  LIVE drives (the adapter has no live pointer seam). Same bag, same brush
+ *  projection, same colour resolution, same seed derivation — one stroke in
+ *  every input the engine reads. */
+function configureLiveEnd(engine: WatercolorEngine, bag: Record<string, number>, mut: number): void {
+  engine.setParams(toEngineParams(bag))
+  engine.setBrush(
+    buildBrushForStroke('bristle-flat', {
+      textureId: null,
+      textureRotation: null,
+      overrides: undefined,
+    }),
+  )
+  engine.setPigment(pigmentFromHex(END_COLOR))
+  engine.setTool('brush')
+  engine.setRandom(seededRandom(hashMutationId(mut) || 1))
+}
+
+/** The adapter seams the live drive needs. Structural, so the real adapter
+ *  passes without a cast at the call site. */
+interface EndAdapter {
+  advanceClock(ms: number): void
+  stepTick(tick: number): void
+  fix(): void
+}
+
+/** The private engine state the live drive dresses as a pointer stroke. The
+ *  seam is the same one `scriptBegin` seeds; the drive only re-labels the
+ *  pointer and queues samples, exactly like attachInput's own handlers. */
+interface EndLiveEngine {
+  stroke: { pointerId: number; pointerType: string; ending: boolean } | null
+  queue: Array<Record<string, number>>
+  clock: () => number
+}
+
+/** Drive one LIVE end path through the real engine, then settle and fix. */
+/** One recorded impression: where a dab landed, at what pressure, and whether
+ *  it carried the catch-up's uEndCap flag. The census proves which dabs (if
+ *  any) carry the cap on each end path. */
+interface EndTap {
+  readonly x: number
+  readonly y: number
+  readonly pr: number
+  readonly endCap: boolean
+}
+
+interface EndCensus {
+  readonly taps: number
+  readonly endCaps: number
+  readonly last: readonly EndTap[]
+}
+
+function driveBristleEnd(
+  adapter: EndAdapter,
+  engine: WatercolorEngine,
+  drive: EndDrive,
+  body: number,
+  strokeSize: number,
+): EndCensus {
+  configureLiveEnd(engine, bristleLineParams(body, strokeSize), readEndMut())
+  const samples = endDriveSamples(drive)
+  const first = samples[0]
+  if (first === undefined) throw new Error('bristle-end: the drive has no samples')
+  if (!engine.scriptBegin('brush', first.x, first.y, first.p, 'Stroke')) {
+    throw new Error('bristle-end: the engine refused the stroke')
+  }
+  const live = engine as unknown as EndLiveEngine
+  const stroke = live.stroke
+  if (stroke === null) throw new Error('bristle-end: scriptBegin left no stroke')
+  // Re-label the scripted stroke as a live pointer: the processing branch is
+  // `pointerId !== SCRIPT_POINTER` (the midpoint trace and the catch-up), and
+  // the smoothing weight reads `pointerType`.
+  stroke.pointerId = END_LIVE_POINTER
+  stroke.pointerType = drive === 'mouse' || drive === 'mouse-lift' ? 'mouse' : 'pen'
+  // The dab census: shadow the instance's stamp so every impression records
+  // its position, pressure and the catch-up flag, then call the original.
+  const taps: EndTap[] = []
+  const mutable = engine as unknown as { stampScripted: (...args: unknown[]) => void; bristleEndCap: boolean }
+  const baseStamp = mutable.stampScripted.bind(engine)
+  mutable.stampScripted = (...args: unknown[]) => {
+    taps.push({ x: Number(args[1]), y: Number(args[2]), pr: Number(args[3]), endCap: mutable.bristleEndCap })
+    baseStamp(...args)
+  }
+  // The first sample is already queued by scriptBegin; one tick deposits it.
+  adapter.stepTick(0)
+  for (let i = 1; i < samples.length; i += 1) {
+    adapter.advanceClock(END_TICK_MS)
+    const sample = samples[i]!
+    live.queue.push({ x: sample.x, y: sample.y, p: sample.p, t: live.clock(), tx: 0, ty: 0, w: 1 })
+    engine.tick(END_DT)
+  }
+  // The release: pointerup arrives with no new sample, exactly like the live
+  // handler's `ending = true`. The ending tick is where the catch-up (and its
+  // uEndCap dabs) fires for every path.
+  stroke.ending = true
+  engine.tick(END_DT)
+  for (let tick = 0; tick <= SETTLE_TICKS; tick += 1) adapter.stepTick(tick)
+  adapter.fix()
+  return {
+    taps: taps.length,
+    endCaps: taps.filter((tap) => tap.endCap).length,
+    last: taps.slice(-8),
+  }
+}
+
+/** The four shape scalars + quantiles of one measured edge. Row order is the
+ *  across-stroke order: adjacent entries are neighbouring rows. */
+interface EndEdgeStats {
+  readonly medianPx: number
+  readonly p10Px: number
+  readonly p90Px: number
+  readonly spreadPx: number
+  readonly irregularityPx: number
+  readonly flatPct: number
+  readonly longestFlatRunPx: number
+}
+
+/** Derive one edge's stats in one pass. A wall reads flatPct ~100, spread ~0,
+ *  irregularity ~0 and a run as long as the mark is thick; the wanted ragged
+ *  edge reads a visible spread and a short run. */
+function endEdgeStats(values: readonly number[]): EndEdgeStats {
+  if (values.length === 0) {
+    return { medianPx: 0, p10Px: 0, p90Px: 0, spreadPx: 0, irregularityPx: 0, flatPct: 0, longestFlatRunPx: 0 }
+  }
+  const med = median(values)
+  const p10 = quantile(values, 0.1)
+  const p90 = quantile(values, 0.9)
+  const diffs: number[] = []
+  for (let i = 1; i < values.length; i += 1) diffs.push(Math.abs(values[i]! - values[i - 1]!))
+  const flat = values.filter((value) => Math.abs(value - med) <= END_ROW_TOL_PX).length
+  let longest = 1
+  let run = 1
+  let anchor = values[0]!
+  for (let i = 1; i < values.length; i += 1) {
+    if (Math.abs(values[i]! - anchor) <= END_ROW_TOL_PX) {
+      run += 1
+    } else {
+      run = 1
+      anchor = values[i]!
+    }
+    if (run > longest) longest = run
+  }
+  return {
+    medianPx: round2(med),
+    p10Px: round2(p10),
+    p90Px: round2(p90),
+    spreadPx: round2(p90 - p10),
+    irregularityPx: round2(median(diffs)),
+    flatPct: round2((100 * flat) / values.length),
+    longestFlatRunPx: longest,
+  }
+}
+
+/**
+ * 2026-11-23: the end-region census on the `transparent` export. Rows carrying
+ * the mark are those whose central-half mean darkness clears END_MARK_FLOOR;
+ * for each, the START boundary is the first x above threshold and the END
+ * boundary the last, inside the scan window. All numbers are document pixels.
+ */
+function bristleEndMetrics(transparent: HTMLCanvasElement): Record<string, unknown> {
+  const dw = transparent.width
+  const dh = transparent.height
+  const data = transparent.getContext('2d')!.getImageData(0, 0, dw, dh).data
+  const centre = Math.round(END_LANE_Y * dh)
+  const scanLo = Math.max(0, Math.round((END_X0 - 0.06) * dw))
+  const scanHi = Math.min(dw - 1, Math.round((END_X1 + 0.09) * dw))
+  const bodyLo = Math.round(0.4 * dw)
+  const bodyHi = Math.round(0.55 * dw)
+  const dark = (x: number, cr: number): number => {
+    const i4 = (cr * dw + x) * 4
+    return 1 - Math.min(data[i4]!, data[i4 + 1]!, data[i4 + 2]!) / 255
+  }
+
+  const starts: number[] = []
+  const ends: number[] = []
+  const markRows: number[] = []
+  let bodySum = 0
+  let bodyCount = 0
+  for (let o = -LINE_BAND_PX; o <= LINE_BAND_PX; o += 1) {
+    const gy = centre + o
+    if (gy < 0 || gy >= dh) continue
+    const cr = dh - 1 - gy
+    let rowSum = 0
+    let rowN = 0
+    for (let x = bodyLo; x < bodyHi; x += 1) {
+      rowSum += dark(x, cr)
+      rowN += 1
+    }
+    const rowMean = rowSum / Math.max(1, rowN)
+    if (rowMean < END_MARK_FLOOR) continue
+    markRows.push(gy)
+    bodySum += rowMean
+    bodyCount += 1
+    let lead = -1
+    for (let x = scanLo; x <= scanHi; x += 1) {
+      if (dark(x, cr) >= END_DARK_THRESHOLD) {
+        lead = x
+        break
+      }
+    }
+    let trail = -1
+    for (let x = scanHi; x >= scanLo; x -= 1) {
+      if (dark(x, cr) >= END_DARK_THRESHOLD) {
+        trail = x
+        break
+      }
+    }
+    if (lead >= 0) starts.push(lead)
+    if (trail >= 0) ends.push(trail)
+  }
+
+  const bodyDark = bodyCount > 0 ? bodySum / bodyCount : 0
+  const startMedian = median(starts)
+  const endMedian = median(ends)
+
+  /** Mean darkness over an x-window across every mark row. */
+  const zoneMean = (x0: number, x1: number): number => {
+    const lo = Math.max(scanLo, Math.round(x0))
+    const hi = Math.min(scanHi, Math.round(x1))
+    if (hi <= lo) return 0
+    let sum = 0
+    let n = 0
+    for (const gy of markRows) {
+      const cr = dh - 1 - gy
+      for (let x = lo; x <= hi; x += 1) {
+        sum += dark(x, cr)
+        n += 1
+      }
+    }
+    return n > 0 ? sum / n : 0
+  }
+
+  /** One column's across-stroke thickness, in document px. */
+  const columnThickness = (x: number): number => {
+    let lo = -1
+    let hi = -1
+    for (const gy of markRows) {
+      const cr = dh - 1 - gy
+      if (dark(x, cr) >= END_DARK_THRESHOLD) {
+        if (lo < 0) lo = gy
+        hi = gy
+      }
+    }
+    return lo < 0 ? 0 : hi - lo + 1
+  }
+
+  /** Thickness over a travel window: mean plus the p10..p90 spread. */
+  const thickness = (from: number, to: number): Record<string, number> => {
+    const values: number[] = []
+    for (let x = Math.round(from); x <= Math.round(to); x += 1) values.push(columnThickness(x))
+    return {
+      meanPx: round2(values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0),
+      p10Px: round2(quantile(values, 0.1)),
+      p90Px: round2(quantile(values, 0.9)),
+    }
+  }
+
+  const travel = Math.round((END_X1 - END_X0) * dw)
+  const window = (fraction: number) => Math.round(travel * fraction)
+  const bodyDarkness = zoneMean(bodyLo, bodyHi)
+  const startDarkness = zoneMean(startMedian + 2, startMedian + END_BLOCK_PX)
+  const endDarkness = zoneMean(endMedian - END_BLOCK_PX, endMedian - 2)
+
+  /** The along-x darkness profile through the end boundary, one value every
+   *  4 px over END_X1 +- 160 px: a hard cut reads as a cliff from the body
+   *  level to 0 in one step; a fade contour reads as a graded decay. */
+  const endAlongDark: number[] = []
+  for (let x = Math.round(END_X1 * dw) - 160; x <= Math.round(END_X1 * dw) + 160; x += 4) {
+    endAlongDark.push(round4(zoneMean(x, x + 3)))
+  }
+  const startAlongDark: number[] = []
+  for (let x = Math.round(END_X0 * dw) - 160; x <= Math.round(END_X0 * dw) + 160; x += 4) {
+    startAlongDark.push(round4(zoneMean(x, x + 3)))
+  }
+
+  /** 2026-11-23: the end boundary at 1 px, three ways — the raw pigment
+   *  darkness, the film's alpha, and the composite over white the eye reads.
+   *  A terminal block whose film OPACITY differs from the body shows as a
+   *  vis/alpha step even where the pigment darkness does not. */
+  const endFine: Array<{ x: number; dark: number; vis: number; alpha: number }> = []
+  for (let x = Math.round(END_X1 * dw) - 200; x <= Math.round(END_X1 * dw) + 160; x += 1) {
+    let darkSum = 0
+    let visSum = 0
+    let alphaSum = 0
+    let n = 0
+    for (const gy of markRows) {
+      const cr = dh - 1 - gy
+      const i4 = (cr * dw + x) * 4
+      const r = data[i4]!
+      const g = data[i4 + 1]!
+      const b = data[i4 + 2]!
+      const a = data[i4 + 3]! / 255
+      darkSum += 1 - Math.min(r, g, b) / 255
+      visSum += 1 - Math.min(r * a + 255 * (1 - a), g * a + 255 * (1 - a), b * a + 255 * (1 - a)) / 255
+      alphaSum += a
+      n += 1
+    }
+    endFine.push({
+      x,
+      dark: round4(darkSum / Math.max(1, n)),
+      vis: round4(visSum / Math.max(1, n)),
+      alpha: round4(alphaSum / Math.max(1, n)),
+    })
+  }
+
+  return {
+    bandPx: LINE_BAND_PX,
+    markRows: markRows.length,
+    threshold: END_DARK_THRESHOLD,
+    bodyDark: round4(bodyDarkness),
+    start: {
+      ...endEdgeStats(starts),
+      zoneDark: round4(startDarkness),
+      contrastDelta: round4(startDarkness - bodyDarkness),
+    },
+    end: {
+      ...endEdgeStats(ends),
+      zoneDark: round4(endDarkness),
+      contrastDelta: round4(endDarkness - bodyDarkness),
+    },
+    thickness: {
+      start10: thickness(startMedian, startMedian + window(0.1)),
+      start25: thickness(startMedian, startMedian + window(0.25)),
+      start50: thickness(startMedian, startMedian + window(0.5)),
+      body: thickness(startMedian + window(0.45), startMedian + window(0.55)),
+      end50: thickness(endMedian - window(0.5), endMedian),
+      end25: thickness(endMedian - window(0.25), endMedian),
+      end10: thickness(endMedian - window(0.1), endMedian),
+    },
+    startProfilePx: starts,
+    endProfilePx: ends,
+    endAlongDark,
+    startAlongDark,
+    endFine,
+  }
+}
+
+/** A 2x nearest-neighbour crop of the transparent export on white, so the
+ *  start/end silhouettes are a viewable artifact beside the numbers. */
+function endCrop(transparent: HTMLCanvasElement, xFrom: number, xTo: number): string {
+  const dh = transparent.height
+  const centre = Math.round(END_LANE_Y * dh)
+  const gyCentre = dh - 1 - centre
+  const y0 = Math.max(0, gyCentre - LINE_BAND_PX)
+  const y1 = Math.min(dh, gyCentre + LINE_BAND_PX + 1)
+  const x0 = Math.max(0, Math.round(xFrom))
+  const x1 = Math.min(transparent.width, Math.round(xTo))
+  const out = document.createElement('canvas')
+  out.width = (x1 - x0) * 2
+  out.height = (y1 - y0) * 2
+  const ctx = out.getContext('2d')!
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(0, 0, out.width, out.height)
+  ctx.imageSmoothingEnabled = false
+  ctx.drawImage(transparent, x0, y0, x1 - x0, y1 - y0, 0, 0, out.width, out.height)
+  return out.toDataURL('image/png')
+}
+
+/** The crop windows: the last / first ~2.4 brush widths of travel. */
+function endCropWindow(dw: number): { start: [number, number]; end: [number, number] } {
+  const x0 = Math.round(END_X0 * dw)
+  const x1 = Math.round(END_X1 * dw)
+  return {
+    start: [x0 - END_CROP_MARGIN, x0 - END_CROP_MARGIN + END_CROP_W],
+    end: [x1 - END_CROP_W + END_CROP_MARGIN, x1 + END_CROP_MARGIN],
+  }
+}
+
+/** The re-bake lane's script entry — the `stop` sequence's recorded points,
+ *  fed through the adapter's scripted path. Live drives contribute no entry. */
+function bristleEndScript(drive: EndDrive, body: number, strokeSize: number): readonly ScriptEntry[] {
+  if (drive !== 'bake') return []
+  return [
+    {
+      color: END_COLOR,
+      points: endBakePoints(),
+      mutationId: readEndMut(),
+      params: bristleLineParams(body, strokeSize),
+      brushId: 'bristle-flat',
+    },
+  ]
+}
+
 // --- 64-29 the texture-tip A/B ------------------------------------------------
 //
 // Acceptance ask (better-acrylic.md gap 5): the acrylic bristle tip must be
@@ -2678,6 +3280,10 @@ function run(
   // nothing. The report echoes THIS value, so a run that passed `--brush`
   // can never print null.
   const resolvedBrush = brush ?? (scenario === 'cover-textured' ? 'chalk' : scenario === 'bristle-line' || scenario === 'bristle-tip' ? 'bristle-flat' : undefined)
+  // bristle-end: which end path this capture drives. Read before any stroke
+  // runs, so an operand the probe refuses can never leave a half-painted
+  // sheet behind.
+  const endDrive = scenario === 'bristle-end' ? readEndDrive() : undefined
   const script =
     scenario === 'cover'
       ? coverScript(emboss, body)
@@ -2703,7 +3309,9 @@ function run(
                           ? bristleLineScript(body ?? 0, strokeSize, readMut(), readOver())
                           : scenario === 'bristle-tip'
                             ? bristleTipScript()
-                            : neutralScript(emboss, body)
+                            : scenario === 'bristle-end'
+                              ? bristleEndScript(endDrive ?? 'stop', body ?? 100, strokeSize)
+                              : neutralScript(emboss, body)
 
   // 261119-pod (D-F): the scene-parameter echo — `dry` appears in the report
   // only when a script pins it, so every capture records the calibration and a
@@ -2753,6 +3361,14 @@ function run(
       const start = performance.now()
       lineSurfaces[surface] = lineProfileSet(engine)
       captureMs += performance.now() - start
+    }
+    // bristle-end: the LIVE end paths drive the captured engine directly (the
+    // adapter has no live pointer seam); the re-bake drive rides the normal
+    // script loop below. Written after the bakeStart mark so the drive's wall
+    // clock is part of bakeMs, like every other scenario's script.
+    let endCensus: EndCensus | undefined
+    if (scenario === 'bristle-end' && endDrive !== undefined && endDrive !== 'bake') {
+      endCensus = driveBristleEnd(adapter, engine, endDrive, body ?? 100, strokeSize)
     }
     script.forEach((entry, index) => {
       // 64-24: the acceptance's clock-only age — the virtual clock moves, the
@@ -2934,6 +3550,26 @@ function run(
           }
         : {}
 
+    // bristle-end (2026-11-23): the end-region census and its two 2x crops.
+    // Only this scenario emits them, so every other report shape is unchanged.
+    const bristleEndReport =
+      scenario === 'bristle-end'
+        ? {
+            endDrive: endDrive ?? 'stop',
+            endCensus: endCensus ?? null,
+            endMetrics: bristleEndMetrics(transparentCanvas),
+            pngTransparent: transparentCanvas.toDataURL('image/png'),
+            pngCoverage: coverageCanvas.toDataURL('image/png'),
+            pngPigment: pigmentCanvas.toDataURL('image/png'),
+            pngStart: endCrop(transparentCanvas, ...endCropWindow(transparentCanvas.width).start),
+            pngEnd: endCrop(transparentCanvas, ...endCropWindow(transparentCanvas.width).end),
+            // The same end crop in the engine's own channels, so a terminal
+            // contrast step can be attributed to coverage, pigment or display.
+            pngEndPigment: endCrop(pigmentCanvas, ...endCropWindow(pigmentCanvas.width).end),
+            pngEndCoverage: endCrop(coverageCanvas, ...endCropWindow(coverageCanvas.width).end),
+          }
+        : {}
+
     // 64-29: the texture-tip A/B echoes, only for its scenario, so every other
     // report shape is unchanged (the bristle-line PNG block above stays inert).
     const tipReport = scenario === 'bristle-tip' ? bristleTipReport(engine, script) : {}
@@ -2966,6 +3602,7 @@ function run(
       ...bristleEdgeReport,
       ...bristleWetReport,
       ...lineReport,
+      ...bristleEndReport,
       ...tipReport,
       ...coverLifecycle,
       renderer,
@@ -3039,9 +3676,9 @@ function readBrush(): string | undefined {
 function readScenario(): string {
   const raw = new URLSearchParams(location.search).get('scenario')
   if (raw === null || raw === '') return 'neutral'
-  if (raw !== 'cover' && raw !== 'cover-over-wet' && raw !== 'watercolor-50' && raw !== 'white-over-blue' && raw !== 'cover-advect' && raw !== 'cover-lift' && raw !== 'cover-textured' && raw !== 'red-over-blue-50' && raw !== 'bristle-edge' && raw !== 'bristle-wet' && raw !== 'bristle-line' && raw !== 'bristle-tip') {
+  if (raw !== 'cover' && raw !== 'cover-over-wet' && raw !== 'watercolor-50' && raw !== 'white-over-blue' && raw !== 'cover-advect' && raw !== 'cover-lift' && raw !== 'cover-textured' && raw !== 'red-over-blue-50' && raw !== 'bristle-edge' && raw !== 'bristle-wet' && raw !== 'bristle-line' && raw !== 'bristle-tip' && raw !== 'bristle-end') {
     throw new Error(
-      `invalid scenario "${raw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue", "cover-advect", "cover-lift", "cover-textured", "red-over-blue-50", "bristle-edge", "bristle-wet", "bristle-line" or "bristle-tip")`,
+      `invalid scenario "${raw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue", "cover-advect", "cover-lift", "cover-textured", "red-over-blue-50", "bristle-edge", "bristle-wet", "bristle-line", "bristle-end" or "bristle-tip")`,
     )
   }
   return raw

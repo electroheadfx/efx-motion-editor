@@ -980,6 +980,7 @@ describe('64-23 — the traces in the gather and the carrier', () => {
       ['uDryCapFloor', 'BRISTLE_DRY_CAP_FLOOR'],
       ['uDryCapFull', 'BRISTLE_DRY_CAP_FULL'],
       ['uFeatherShift', 'BRISTLE_FEATHER_SHIFT'],
+      ['uTakeoffShift', 'BRISTLE_TAKEOFF_SHIFT'],
     ]
     const binder = sliceBetween(ENGINE_SOURCE, 'private bindGather(', 'private bristleInk(')
     for (const [uniform, source] of bindings) {
@@ -1366,6 +1367,28 @@ describe('261119-pod — the §3.3 smear, the snapshot and the four-side Feather
       'float featherShift = uFeather * uFeatherShift * smoothstep(featherStart, uFeatherEdge, lateral);',
     )
     expectContains(g, 'float featherFade = 1.0;')
+    // 2026-11-23 (the acrylic end-block): the stroke's TAKEOFF. The end of a
+    // stroke is its last RUNNING dab's leading frontier — every earlier
+    // frontier is repainted by the dabs ahead. The along cap can only fade
+    // DEPTH, and the dab lerp holds committed film, so the frontier is opened
+    // through this SAME threshold instead: an inked cell keeps the full
+    // carried paint and an open cell discards, the way the Feather specks do.
+    // Measured on the bristle-end probe (s100, acrylic record): the stopped
+    // end was a wall at x = 1015 on every row, flat over 83 % of the width;
+    // the takeoff grades every end path into tooth specks — stop 21.9 % flat /
+    // 12 px longest same-x run, mouse 25.3 % / 34 px, decay 20.1 % / 17 px,
+    // mouse-lift 10.4 % / 6 px, bake 23.7 % / 15 px — while the approved pen
+    // lift stays at 1.8 %. Leading-only (q.y < 0), pressure-scaled by the SAME
+    // factor the coverage carries, so a mouse's saturated stop opens the
+    // frontier like a pen's lift; the magnitude is BRISTLE_TAKEOFF_SHIFT.
+    expectContains(g, 'float takeoff = smoothstep(0.45, 1.05, -q.y);')
+    expectContains(g, 'threshold += takeoff * (0.3 + 0.7 * uPressure) * uTakeoffShift;')
+    // A threshold shift, never a depth multiplier: a deposit-level fade
+    // freezes committed film into a lane (the pale-line lesson above).
+    expectNotContains(g, 'g.cA *= takeoff')
+    expectNotContains(g, 'g.cB *= takeoff')
+    expectNotContains(g, 'g.alpha *= takeoff')
+    expectNotContains(g, 'coverage * takeoff')
     // The cap's stagger still reads the streak noise (slow along it); the
     // across · hairFreq term survives ONLY for that cap.
     expectContains(g, 'float hairFreq = clamp(uHalfWidthPx / 5.0, 6.0, 40.0);')

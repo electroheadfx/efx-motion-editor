@@ -20,6 +20,7 @@ import {
   BRISTLE_STREAK,
   BRISTLE_STREAK_LENGTH,
   BRISTLE_STREAK_SHARE,
+  BRISTLE_TAKEOFF_SHIFT,
   bristleContactPressure,
   bristleCount,
   bristleSampleScale,
@@ -3422,6 +3423,10 @@ export class WatercolorEngine {
     gl.uniform1f(p.u.uFeatherCap!, BRISTLE_FEATHER_CAP);
     gl.uniform1f(p.u.uFeatherMin!, BRISTLE_FEATHER_MIN);
     gl.uniform1f(p.u.uFeatherShift!, BRISTLE_FEATHER_SHIFT);
+    // The end's takeoff is the same threshold mechanism on the leading
+    // frontier: the last running dab's uncovered band opens into tooth
+    // specks instead of ending on a straight wall.
+    gl.uniform1f(p.u.uTakeoffShift!, BRISTLE_TAKEOFF_SHIFT);
     gl.uniform1f(p.u.uCapGain!, BRISTLE_CAP_GAIN);
     // Dry owns the end transition's width (the artist's 2026-11-20 re-range):
     // short at Dry 0, full from BRISTLE_DRY_CAP_FULL (the acrylic default).

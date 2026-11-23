@@ -964,6 +964,7 @@ uniform float uFeatherEdge;  // silhouette radius, in nominal footprint units
 uniform float uFeatherCap;   // leading end cap, fraction of the radius (all Feathers)
 uniform float uFeatherMin;   // the threshold shift's start anchor, fraction of the silhouette
 uniform float uFeatherShift; // the rim threshold rise at F100 (BRISTLE_FEATHER_SHIFT)
+uniform float uTakeoffShift; // the leading frontier's threshold rise (BRISTLE_TAKEOFF_SHIFT)
 uniform float uCapGain;      // the along-cap fade's gain (BRISTLE_CAP_GAIN)
 uniform float uDrySpeed;     // the Dry slider, 0..1
 uniform float uDryCapFloor;  // the end cap's share at Dry 0
@@ -1183,6 +1184,30 @@ Gathered gatherBristle(vec2 uv){
   float featherStart = uFeatherEdge * (1.0 - mix(uFeatherMin, uFeatherReach, uFeather));
   float featherShift = uFeather * uFeatherShift * smoothstep(featherStart, uFeatherEdge, lateral);
   float threshold = uGrain * (1.0 - height) - 0.25 + featherShift;
+  // 2026-11-23 (the acrylic end-block debug): the stroke's TAKEOFF. A stroke
+  // ends on its last RUNNING dab's leading half — every earlier dab's leading
+  // rect is repainted by the dabs ahead, so the frontier that survives is
+  // exactly the band no later dab covers. The along cap below fades DEPTH,
+  // and a depth fade cannot remove film the running dabs already committed:
+  // the deposit lerp holds the old film wherever the weight a is small
+  // (a = 0.15 keeps it for ~100 px). The measured stopped end was a wall —
+  // 1015 px on every row, flat over 83 % of the width, 40 px darker than the
+  // body — while the lift's pressure-weakened dabs broke into full-depth
+  // specks. The takeoff opens the SAME paper threshold the Feather law uses
+  // over the outer leading band: an inked cell keeps the full carried paint
+  // and an open cell discards, so the frontier dissolves into bristle-scale
+  // specks — no partial-depth window, no along-periodic motif, no lane.
+  // Every dab carries it: while the hand moves, the dabs ahead repaint the
+  // fringe and the body is untouched; when it stops, that fringe IS the end.
+  // Leading-only — the trailing half is the next dab's solid interior. The
+  // shift scales with the SAME pressure factor the coverage above carries,
+  // so the test P·(body·dryEdge) > threshold + P·K·takeoff is pressure-free
+  // in its leading term: a mouse's stop (simPressure → 1) and a pen's lift
+  // (→ 0) open the frontier in the same proportion. K (uTakeoffShift) clears
+  // a full-pressure body (1.0·0.97) against the paper's -0.25 floor, so the
+  // last half width is specks and paper on every path, never a wall.
+  float takeoff = smoothstep(0.45, 1.05, -q.y);
+  threshold += takeoff * (0.3 + 0.7 * uPressure) * uTakeoffShift;
   float dryEdge = mix(1.0, uDryEdge, smoothstep(0.3, 1.05, lateral));
   // Studio Feather (artist's rulings 2026-11-19, revised 2026-11-20, then the
   // 2026-11-20 white-seam ruling and the 2026-11-22 pale-line rows): Feather
