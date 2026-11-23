@@ -15,6 +15,7 @@ import {
 } from '@efxlab/efx-watercolor/brushes';
 import {
   isAquarelleDryEvent,
+  toStudioStroke,
   type AquarelleAnchor,
   type AquarelleCurveMode,
   type AquarellePoint,
@@ -31,6 +32,7 @@ import {
   markAquarelleStrokeDeleted,
   recordAquarelleStroke,
   resetAquarelleRecordState,
+  restoreAquarelleRecordTimeline,
 } from './aquarelleRecordState';
 import { scriptSelectedStrokeIds, setScriptStrokeSelection } from './scriptStrokeEdition';
 import {
@@ -76,6 +78,7 @@ function stroke(options: {
   anchors?: readonly AquarelleAnchor[];
   curveMode?: AquarelleCurveMode;
   vectorDrawn?: true;
+  relief?: 'erode' | 'deposit';
 }): AquarelleStroke {
   return {
     tool: 'brush',
@@ -97,6 +100,7 @@ function stroke(options: {
     ...(options.anchors === undefined ? {} : { anchors: options.anchors }),
     ...(options.curveMode === undefined ? {} : { curveMode: options.curveMode }),
     ...(options.vectorDrawn === undefined ? {} : { vectorDrawn: options.vectorDrawn }),
+    ...(options.relief === undefined ? {} : { relief: options.relief }),
   };
 }
 
@@ -149,6 +153,7 @@ describe('cloneAquarelleStrokeForDuplicate', () => {
       anchors: [anchor(0.1, 0.2, { width: 1.8, color: '#112233' }), anchor(0.3, 0.4)],
       curveMode: 'spline',
       vectorDrawn: true,
+      relief: 'deposit',
     });
 
     const clone = cloneAquarelleStrokeForDuplicate(source, 1234);
@@ -165,6 +170,7 @@ describe('cloneAquarelleStrokeForDuplicate', () => {
     expect(clone.textureRotation).toBe(45);
     expect(clone.curveMode).toBe('spline');
     expect(clone.vectorDrawn).toBe(true);
+    expect(clone.relief).toBe('deposit');
     expect(clone.pointTicks).toEqual([0, 3]);
     expect(clone.toolOverrides).toEqual(source.toolOverrides);
     expect(clone.anchors).toEqual(source.anchors);
@@ -222,6 +228,55 @@ describe('cloneAquarelleStrokeForDuplicate', () => {
     expect('anchors' in clone).toBe(false);
     expect('curveMode' in clone).toBe(false);
     expect('vectorDrawn' in clone).toBe(false);
+    expect('relief' in clone).toBe(false);
+  });
+});
+
+// ============================================================
+//  quick 261123-kpy — the modifier polarity survives Duplicate
+//  and every full-rebuild seam between the two.
+//
+//  Studio Duplicate rebuilds the clone field-by-field. Without the
+//  latched polarity the duplicate becomes a NORMAL paint stroke
+//  that repaints ink where the source cleared it.
+// ============================================================
+describe('quick 261123-kpy cloned modifier relief', () => {
+  it('keeps the erode polarity on the clone', () => {
+    const source = stroke({ points: [point(0.1, 0.2)], relief: 'erode' });
+    const clone = cloneAquarelleStrokeForDuplicate(source, 7);
+    expect(clone.relief).toBe('erode');
+  });
+
+  it('keeps the deposit polarity on the clone', () => {
+    const source = stroke({ points: [point(0.1, 0.2)], relief: 'deposit' });
+    const clone = cloneAquarelleStrokeForDuplicate(source, 7);
+    expect(clone.relief).toBe('deposit');
+  });
+
+  it('keeps a markerless source free of the relief key', () => {
+    const source = stroke({ points: [point(0.1, 0.2)] });
+    const clone = cloneAquarelleStrokeForDuplicate(source, 7);
+    expect('relief' in clone).toBe(false);
+    expect(Object.keys(clone)).not.toContain('relief');
+  });
+
+  it('replays record -> restore -> duplicate -> project with the polarity intact', () => {
+    for (const [index, relief] of (['erode', 'deposit'] as const).entries()) {
+      const mutationId = 13001 + index;
+      recordAquarelleStroke(
+        mutationId,
+        stroke({ points: [point(0.1, 0.2), point(0.3, 0.4)], playFrame: 9120, relief }),
+      );
+      // The reopen seam consumes the recorded payload events, as a project
+      // load does. Copy: restore clears the same timeline array it reads.
+      restoreAquarelleRecordTimeline([...getRecordedAquarellePayloadTimeline()]);
+      const restored = getRecordedAquarelleStroke(mutationId)!;
+      expect(restored.relief, `restored ${relief}`).toBe(relief);
+
+      // Studio Duplicate then projects the clone back onto the payload.
+      const clone = cloneAquarelleStrokeForDuplicate(restored, mutationId + 100);
+      expect(toStudioStroke(clone).engine.relief, `cloned ${relief}`).toBe(relief);
+    }
   });
 });
 

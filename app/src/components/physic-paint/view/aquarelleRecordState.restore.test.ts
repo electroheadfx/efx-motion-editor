@@ -250,6 +250,48 @@ describe('quick 261116-inu textureRotation carrier (degrees)', () => {
 });
 
 // ============================================================
+//  quick 261123-kpy — the modifier polarity survives restore.
+//
+//  A restored stroke rebuilds its payload explicitly, so the latched
+//  relief must be copied conditionally: present stays present (either
+//  polarity), absent stays absent. Without it a reopened Shift-erode
+//  or Cmd-deposit stroke replays as a NORMAL paint stroke and
+//  repaints ink on every later bake.
+// ============================================================
+describe('quick 261123-kpy restored modifier relief', () => {
+  function reliefFixture(
+    playFrame: number,
+    mutationId: number,
+    relief: 'erode' | 'deposit',
+  ): StudioStroke<AquarelleStrokePayload> {
+    const base = fixtureStroke(playFrame, mutationId);
+    return { ...base, engine: { ...base.engine, relief } };
+  }
+
+  it('preserves an erode polarity through restore and the payload projection', () => {
+    restoreAquarelleRecordTimeline([reliefFixture(7, 42, 'erode')]);
+    const entry = getRecordedAquarellePayloadTimeline()[0] as StudioStroke<AquarelleStrokePayload>;
+    expect(entry.engine.relief).toBe('erode');
+    expect(getRecordedAquarelleStroke(42)!.relief).toBe('erode');
+  });
+
+  it('preserves a deposit polarity through restore and the payload projection', () => {
+    restoreAquarelleRecordTimeline([reliefFixture(7, 45, 'deposit')]);
+    const entry = getRecordedAquarellePayloadTimeline()[0] as StudioStroke<AquarelleStrokePayload>;
+    expect(entry.engine.relief).toBe('deposit');
+    expect(getRecordedAquarelleStroke(45)!.relief).toBe('deposit');
+  });
+
+  it('keeps a markerless restore free of the relief key', () => {
+    restoreAquarelleRecordTimeline([fixtureStroke(7, 43)]);
+    const entry = getRecordedAquarellePayloadTimeline()[0] as StudioStroke<AquarelleStrokePayload>;
+    expect('relief' in getRecordedAquarelleStroke(43)!).toBe(false);
+    expect('relief' in entry.engine).toBe(false);
+    expect(Object.keys(entry.engine)).not.toContain('relief');
+  });
+});
+
+// ============================================================
 //  quick-261024-m20 — a restored session follows the same
 //  key-identity remap law as a live one: strokes, their projected
 //  entries and their playFrame anchors move together, the

@@ -2327,6 +2327,10 @@ export function restoreAquarelleRecordTimeline(
     // quick 261116-inu: the rotation rides the same conditional law, in
     // integer DEGREES — the AQTL body already divided its hundredths.
     const textureRotation = engine.textureRotation;
+    // quick 261123-kpy: the modifier polarity rides the same conditional law —
+    // a reopened Shift-erode or Cmd-deposit stroke must replay as a MODIFIER
+    // stroke, or every later bake would repaint ink where the artist cleared it.
+    const relief = engine.relief;
     const stroke: AquarelleStroke = {
       tool: engine.tool,
       color: engine.color,
@@ -2354,6 +2358,7 @@ export function restoreAquarelleRecordTimeline(
       ...(vectorDrawn !== undefined ? { vectorDrawn } : {}),
       ...(textureId !== undefined ? { textureId } : {}),
       ...(textureRotation !== undefined ? { textureRotation } : {}),
+      ...(relief !== undefined ? { relief } : {}),
     };
     const entry = toStudioStroke(stroke);
     payloadTimeline.push(entry);
