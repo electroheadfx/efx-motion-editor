@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-22 after Phase 64)
 Phase: 64
 Plan: Not started
 Status: All phases complete
-Last activity: 2026-11-24 — Quick task 261124-0l5: Living Script Apply pastes the copied script onto the key — AUTOMATED-READY (5 live UAT rows pending). Apply now records the clipboard's non-Dry strokes on the destination frame under fresh mutation ids anchored to the destination keyId (soft-delete replacement of any existing script, one `aquarelle-script` undo edit recorded only on bake success, failed bake rolls back to the pre-paste script), then bakes THAT recorded timeline grid-projected like applyAquarelleTimeline — the paste is the source of truth, the render its consequence. `applyScript('wet', { paste: true })` is opt-in so Load + Apply, Run Script and applyAquarelleTimeline never paste; HOLD-WET rides the replay. Duplicate/+Key and the paste share ONE Studio record seam (`recordAquarelleEventsOnFrame`); the Studio still holds one `copyAquarelleScriptToFrame(` call. Gates: 3 targeted suites 649 passed, full app suite 9828 passed exit 0, tsc clean; single-seam pins hold (copy call = 1, seam = 3, 'wet' = 2)
+Last activity: 2026-11-24 — Quick task 261124-0l5: Living Script Apply pastes the copied script onto the key — UAT-APPROVED (5/5 live UAT rows passed). Apply now records the clipboard's non-Dry strokes on the destination frame under fresh mutation ids anchored to the destination keyId (soft-delete replacement of any existing script, one `aquarelle-script` undo edit recorded only on bake success, failed bake rolls back to the pre-paste script), then bakes THAT recorded timeline grid-projected like applyAquarelleTimeline — the paste is the source of truth, the render its consequence. `applyScript('wet', { paste: true })` is opt-in so Load + Apply, Run Script and applyAquarelleTimeline never paste; HOLD-WET rides the replay. Duplicate/+Key and the paste share ONE Studio record seam (`recordAquarelleEventsOnFrame`); the Studio still holds one `copyAquarelleScriptToFrame(` call. Gates: 3 targeted suites 649 passed, full app suite 9828 passed exit 0, tsc clean; single-seam pins hold (copy call = 1, seam = 3, 'wet' = 2)
 
 
 ## Performance Metrics
@@ -731,5 +731,6 @@ Resume file: None
 
 ## Operator Next Steps
 
+- 261124-0l5 UAT approved 2026-11-24 (5/5 rows): Living Script Apply pastes — the destination key records the copied strokes (fresh ids, destination keyId anchor, one undo, replaces an existing script) and bakes that recorded timeline; Load + Apply and the Scripts-section Apply still never paste.
 - 261123-vkb UAT approved 2026-11-24 (7/7 rows). Residuals to decide when convenient (task REVIEW.md): WR-01 (probe exact tick equality rides float phase) and WR-02 (stamp floor reads live Dry Speed while the bake's settle cap uses the recorded stroke dry — a mid-window Dry change can reopen the washed fallback).
 - Close milestone v2.2.0 with /gsd-complete-milestone (both phases complete: 63 Tip Pipeline, 64 Medium Engine).
