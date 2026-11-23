@@ -580,6 +580,61 @@ describe('textureRotation on the script engine slot (quick 261116-inu)', () => {
 });
 
 // ---------------------------------------------------------------------------
+// quick 261123-jak: the relief-only latch on the opaque engine slot. Present
+// means exactly `true` — the SAME rule as the payload codec's `isStrokeShape`,
+// duplicated deliberately because a saved or hand-edited Roto script can reach
+// this guard without ever passing through the codec code.
+// ---------------------------------------------------------------------------
+
+describe('reliefOnly on the script engine slot (quick 261123-jak)', () => {
+  function reliefOnlyEvent(reliefOnly: unknown): any {
+    const event = aquarelleStrokeEvent();
+    event.engine = { ...event.engine, reliefOnly };
+    return event;
+  }
+
+  it('accepts reliefOnly: true through the runtime events', async () => {
+    const schema = await loadSchema();
+    const value = schema.serializeAquarelleRotoScript!(aquarelleInput({
+      events: [reliefOnlyEvent(true)],
+    }));
+    const parsed = schema.parseRotoScript!(value);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    const runtime = schema.persistedRotoScriptToRuntime!(parsed.document);
+    expect(runtime.aquarelleEvents![0].engine.reliefOnly).toBe(true);
+  });
+
+  it('absence still parses and stays absent', async () => {
+    const schema = await loadSchema();
+    const value = schema.serializeAquarelleRotoScript!(aquarelleInput({
+      events: [aquarelleStrokeEvent()],
+    }));
+    const parsed = schema.parseRotoScript!(value);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    const runtime = schema.persistedRotoScriptToRuntime!(parsed.document);
+    expect('reliefOnly' in runtime.aquarelleEvents![0].engine).toBe(false);
+  });
+
+  it('refuses false and a string, naming the exact engine slot', async () => {
+    const schema = await loadSchema();
+    const good = schema.serializeAquarelleRotoScript!(aquarelleInput({
+      events: [reliefOnlyEvent(true)],
+    }));
+    for (const bad of [false, 'yes']) {
+      const tampered = structuredClone(good);
+      tampered.strokes[0].engine.reliefOnly = bad;
+      const parsed = schema.parseRotoScript!(tampered);
+      expect(parsed.ok, `reliefOnly ${String(bad)}`).toBe(false);
+      if (!parsed.ok) expect(parsed.refusal.code).toBe('malformed-engine-payload');
+      expect(schema.describePersistedRotoScriptRefusal!(tampered))
+        .toBe('stroke 0: engine.reliefOnly');
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // 63-08 / TIP-14: the inline script carrier. A script cannot point into
 // another project's package, so each custom tip travels with its mask inline
 // as a WebP data URL (D-14) — never an `asset` ref.

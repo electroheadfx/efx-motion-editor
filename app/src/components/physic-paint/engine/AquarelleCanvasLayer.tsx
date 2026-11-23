@@ -719,7 +719,7 @@ export function AquarelleCanvasLayer(props: {
           onLiftDab(x, y, r, amount, angle) {
             onLiftDabRef.current?.(x, y, r, amount, angle);
           },
-          onStrokeEnd(tool) {
+          onStrokeEnd(tool, reliefOnly) {
             painting = false;
             lastWetAt = performance.now();
             settleCapArmed = false;
@@ -764,6 +764,10 @@ export function AquarelleCanvasLayer(props: {
               ...(recordedTool !== 'lift' && snap.textureRotation !== undefined
                 ? { textureRotation: snap.textureRotation }
                 : {}),
+              // Quick 261123-jak: the engine's stroke-start Shift latch rides
+              // the record ONLY when set, so an ordinary stroke keeps its
+              // exact key set — and a re-render replays the smoothing.
+              ...(reliefOnly === true ? { reliefOnly: true } : {}),
               toolOverrides: { ...snap.toolOverrides },
               // Visible settle window (D-19, cap 600) — the SAME cap the live
               // sheet force-dries at and the bake replays.

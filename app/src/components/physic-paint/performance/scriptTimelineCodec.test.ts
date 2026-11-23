@@ -793,10 +793,11 @@ describe('AQTL v2 per-vertex colour (261111-wd6)', () => {
 
   it('still refuses an unknown vector flag bit', () => {
     const bytes = encodeScriptTimelineBinary([coloredVectorStroke()]);
-    // 0x10 is the 62-UAT drawn marker; the next free bit is 0x20.
+    // 0x10 is the 62-UAT drawn marker and 0x20 is the quick 261123-jak
+    // relief-only marker; the next free bit is 0x40.
     new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).setUint8(
       VECTOR_FLAG_OFFSET,
-      VECTOR_FLAG_ANCHOR_COLOR | 0x20,
+      VECTOR_FLAG_ANCHOR_COLOR | 0x40,
     );
     expect(expectedCode(() => decodeScriptTimelineBinary(bytes))).toBe('invalid-value');
   });
@@ -821,6 +822,32 @@ describe('AQTL v2 per-vertex colour (261111-wd6)', () => {
     const decodedPlain = decodeScriptTimelineBinary(plainBytes);
     expect('vectorDrawn' in (decodedPlain[0] as StudioStroke<AquarelleStrokePayload>).engine)
       .toBe(false);
+  });
+
+  it('round-trips the relief-only marker bit with no extra payload byte (quick 261123-jak)', () => {
+    const plain = minimalStroke();
+    const reliefOnly: StudioStroke<AquarelleStrokePayload> = {
+      ...plain,
+      engine: { ...plain.engine, reliefOnly: true },
+    };
+    const plainBytes = encodeScriptTimelineBinary([plain]);
+    const flaggedBytes = encodeScriptTimelineBinary([reliefOnly]);
+    // The bit IS the whole marker: the encoded size never changes.
+    expect(flaggedBytes.byteLength).toBe(plainBytes.byteLength);
+    expect(plainBytes[VECTOR_FLAG_OFFSET] & 0x20).toBe(0);
+    expect(flaggedBytes[VECTOR_FLAG_OFFSET] & 0x20).toBe(0x20);
+
+    const decoded = decodeScriptTimelineBinary(flaggedBytes);
+    expect(decoded).toHaveLength(1);
+    expect((decoded[0] as StudioStroke<AquarelleStrokePayload>).engine.reliefOnly).toBe(true);
+
+    // Absence stays absent — an ordinary stroke gains no key.
+    const decodedPlain = decodeScriptTimelineBinary(plainBytes);
+    expect('reliefOnly' in (decodedPlain[0] as StudioStroke<AquarelleStrokePayload>).engine)
+      .toBe(false);
+
+    // A decoded flagged stroke re-encodes byte-identically.
+    expect(encodeScriptTimelineBinary(decoded)).toEqual(flaggedBytes);
   });
 });
 

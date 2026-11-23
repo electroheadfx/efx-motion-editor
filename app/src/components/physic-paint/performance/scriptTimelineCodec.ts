@@ -39,14 +39,14 @@
 //      presence + i16 hundredths of a degree (quick 261116-inu). The AQTL body
 //      is the ONE hundredths boundary in the feature: `Math.round(degrees*100)`
 //      here, `value/100` on read; every JSON carrier stays in integer DEGREES.
-//    Vector block (61-05 / 61-30 / 261111-wd6 / 62-UAT), AFTER the engine
-//      block's playFrame presence and BEFORE the texture presence byte and
-//      pointCount: u8 vectorFlags
+//    Vector block (61-05 / 61-30 / 261111-wd6 / 62-UAT / 261123-jak), AFTER
+//      the engine block's playFrame presence and BEFORE the texture presence
+//      byte and pointCount: u8 vectorFlags
 //      (bit 0 = a non-empty anchor list follows, bit 1 = LEGACY optional
 //      byte, never written, bit 2 = a curve-mode byte follows, bit 3 = every
 //      anchor carries a colour-presence byte, bit 4 = the stroke was drawn by
-//      the vector pen — the bit IS the whole marker, NO payload byte follows),
-//      then when bit 0 is set u16
+//      the vector pen, bit 5 = the stroke was a Shift relief-only pass — each
+//      is the whole marker, NO payload byte follows), then when bit 0 is set u16
 //      anchorCount + per anchor u8-order: f32 x, f32 y, u8 kindCode
 //      (auto=0, bezier=1), u8 handleFlags (bit 0 in-present, bit 1
 //      out-present), the conditional f32 handle pairs, u8 widthPresent +
@@ -61,9 +61,9 @@
 //      appending there leaves every pre-existing field's offset stable. A
 //      hand-painted stroke with no mode pays exactly one flags byte, a path
 //      with no anchor colour sets no bit 3 and writes no colour byte, and a
-//      converted painted path sets no bit 4. An older reader refuses bit 3
-//      and bit 4 (reserved-flags check): fail closed, exactly like every
-//      other unknown vector flag.
+//      converted painted path sets no bit 4, and an ordinary stroke sets no
+//      bit 5. An older reader refuses bit 3, bit 4 and bit 5 (reserved-flags
+//      check): fail closed, exactly like every other unknown vector flag.
 //    Point record (16 bytes): u16 x, u16 y, u16 p, i16 tx, i16 ty,
 //      i16 tw, u32 tick.
 //
@@ -213,12 +213,16 @@ const VECTOR_FLAG_CURVE_MODE = 1 << 2;
 const VECTOR_FLAG_ANCHOR_COLOR = 1 << 3;
 // 62-UAT: drawn-by-the-vector-pen provenance (the bit IS the whole marker).
 const VECTOR_FLAG_DRAWN = 1 << 4;
+// Quick 261123-jak: the Shift relief-only latch (bit IS the whole marker —
+// no payload byte follows, so a flagged stroke's encoded size is unchanged).
+const VECTOR_FLAG_RELIEF_ONLY = 1 << 5;
 const VECTOR_FLAGS_MASK =
   VECTOR_FLAG_ANCHORS
   | VECTOR_FLAG_LEGACY_BYTE
   | VECTOR_FLAG_CURVE_MODE
   | VECTOR_FLAG_ANCHOR_COLOR
-  | VECTOR_FLAG_DRAWN;
+  | VECTOR_FLAG_DRAWN
+  | VECTOR_FLAG_RELIEF_ONLY;
 const ANCHOR_HANDLE_IN = 1 << 0;
 const ANCHOR_HANDLE_OUT = 1 << 1;
 const ANCHOR_HANDLE_MASK = ANCHOR_HANDLE_IN | ANCHOR_HANDLE_OUT;
@@ -638,6 +642,7 @@ function encodeVectorBlock(
   if (curveMode !== undefined) flags |= VECTOR_FLAG_CURVE_MODE;
   if (hasAnchorColor) flags |= VECTOR_FLAG_ANCHOR_COLOR;
   if (engine.vectorDrawn === true) flags |= VECTOR_FLAG_DRAWN;
+  if (engine.reliefOnly === true) flags |= VECTOR_FLAG_RELIEF_ONLY;
   writer.u8(flags);
 
   if (anchors !== undefined) {
@@ -939,6 +944,7 @@ function decodeVectorBlock(reader: BinaryReader): {
   anchors?: readonly AquarelleAnchor[];
   curveMode?: AquarelleCurveMode;
   vectorDrawn?: true;
+  reliefOnly?: true;
 } {
   const flags = reader.u8();
   if ((flags & ~VECTOR_FLAGS_MASK) !== 0) {
@@ -948,6 +954,7 @@ function decodeVectorBlock(reader: BinaryReader): {
     anchors?: readonly AquarelleAnchor[];
     curveMode?: AquarelleCurveMode;
     vectorDrawn?: true;
+    reliefOnly?: true;
   } = {};
   if ((flags & VECTOR_FLAG_ANCHORS) !== 0) {
     const anchorCount = reader.u16();
@@ -987,6 +994,8 @@ function decodeVectorBlock(reader: BinaryReader): {
   }
   // 62-UAT: the drawn marker is the flag bit alone — no byte follows.
   if ((flags & VECTOR_FLAG_DRAWN) !== 0) result.vectorDrawn = true;
+  // Quick 261123-jak: the relief-only marker is likewise the bit alone.
+  if ((flags & VECTOR_FLAG_RELIEF_ONLY) !== 0) result.reliefOnly = true;
   return result;
 }
 
@@ -1129,6 +1138,7 @@ function decodeStroke(reader: BinaryReader, version: number): {
     ...(vector.anchors !== undefined ? { anchors: vector.anchors } : {}),
     ...(vector.curveMode !== undefined ? { curveMode: vector.curveMode } : {}),
     ...(vector.vectorDrawn === true ? { vectorDrawn: true as const } : {}),
+    ...(vector.reliefOnly === true ? { reliefOnly: true as const } : {}),
   };
 
   return {
