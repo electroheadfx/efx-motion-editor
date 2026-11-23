@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-22 after Phase 64)
 Phase: 64
 Plan: Not started
 Status: All phases complete
-Last activity: 2026-11-23 — Completed quick task 261123-pee: Hold paint wet until Dry — no auto-dry, wet one-frame Re-render/Apply. AUTOMATED-READY (not UAT): the live sheet holds its water/mobile pigment until an explicit Dry; only Shift+R and Apply one frame replay wet; every commit path is dry-first. Gates green (package 1018, app 9809, tsc 0; probes hold+bake assert); code-review blocker CR-01 and WR-01/02/03 fixed in 36f16d74c; 8 human UAT rows await the artist
+Last activity: 2026-11-23 — Quick task 261123-pee: Hold paint wet until Dry — UAT-APPROVED WITH RESERVE. The live Studio sheet holds its water/mobile pigment indefinitely until an explicit Dry; only Shift+R and Apply one frame replay wet; every commit path is dry-first. Reserve: the wet look keeps diffusing until the sim sleeps (~20 s at Dry 50), so the dense 1 s wash visibly softens by 10 s and that state is what Dry/leave commits. Follow-up queued: cap the held sim-awake window at the retired visible settle timing (Dry 50 ≈ 2.75 s) with no fix and no decay, so the dense wet look freezes while staying blendable
 
 
 ## Performance Metrics
@@ -729,4 +729,5 @@ Resume file: None
 
 ## Operator Next Steps
 
+- Quick: freeze the held wet look at the visible settle cap (261123-pee reserve) — cap the sim-awake window while held, no fix/decay, then UAT.
 - Close milestone v2.2.0 with /gsd-complete-milestone (both phases complete: 63 Tip Pipeline, 64 Medium Engine).

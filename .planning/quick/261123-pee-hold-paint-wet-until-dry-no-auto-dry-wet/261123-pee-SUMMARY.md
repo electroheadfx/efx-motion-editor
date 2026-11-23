@@ -319,6 +319,8 @@ None — no new network, auth, file-access or trust-boundary surface beyond the 
 
 **Status: AUTOMATED-READY.** All three gates, both probe scenes, the source pins and the untouchable audit are green; the seven rows above are the artist's live confirmation and are not claimed as passed.
 
+**UAT (2026-11-23): APPROVED WITH RESERVE.** The hold-wet laws behave as specified. Reserve: the wet look keeps diffusing until the sim sleeps (~20 s at Dry 50), so the dense ~1 s look is visibly washed by 10 s and that state is what a later Dry/leave commits. Follow-up queued: cap the held sheet's sim-awake window at the visible settle timing, without fixing or decaying.
+
 ## Next Phase Readiness
 
 The hold-wet law is implemented end-to-end and probe-proven on the real engine. Skill law updates (`Skill("efx-studio-paint")` still documents the retired settle cap / auto-dry surface) are the natural follow-up once the artist confirms the rows live.
