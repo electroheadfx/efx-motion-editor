@@ -7,6 +7,7 @@
 //  Usage:
 //    node probe/wet-hold/run.mjs --scene hold --label hold-hold
 //    node probe/wet-hold/run.mjs --scene hold --dry --label hold-dry
+//    node probe/wet-hold/run.mjs --scene bake --label bake
 //
 //  Bundles probe.ts with esbuild, inlines it into a /tmp copy of index.html
 //  and renders ONE page load through the real vendored WebGL2 engine in
@@ -25,6 +26,12 @@
 //      crosses with `uNow`, so a different colour always lifts (measured;
 //      see probe.ts's header). The cross check reads the held run's JSON and
 //      proves the depth relation and the shared carried canvas colour.
+//    bake (`--scene bake`): ONE recorded session baked twice through the real
+//      `createAquarelleBake` with `frameCount: 1` — `settle: 'wet'` on a
+//      hold-adapter (recorded Dry filtered out) vs `settle: 'dry'` on the
+//      default adapter. The wet sheet keeps `wetPeak > WET_THRESHOLD` with
+//      ZERO settle ticks; the dry sheet force-dried to zero after exactly 72
+//      settle ticks; the ink-layer digests differ.
 // ============================================================
 
 import { spawnSync } from 'node:child_process'
@@ -68,7 +75,9 @@ if (!label) {
   fail('usage: node run.mjs --scene hold [--dry] --label <name> [--size <px>]')
 }
 const sceneRaw = flag('--scene') ?? 'hold'
-if (sceneRaw !== 'hold') fail(`invalid --scene "${sceneRaw}" (this build implements "hold" only)`)
+if (sceneRaw !== 'hold' && sceneRaw !== 'bake') {
+  fail(`invalid --scene "${sceneRaw}" (this build implements "hold" and "bake")`)
+}
 const dry = args.includes('--dry')
 const sizeRaw = flag('--size')
 const blueSize = sizeRaw === undefined ? 17 : Number(sizeRaw)
@@ -297,6 +306,61 @@ function reportDry(result) {
   )
 }
 
+function layerText(layers, id) {
+  const layer = layers?.[id]
+  return layer === undefined ? 'n/a' : `${f(layer.sum, 3)}/${layer.nonZero}`
+}
+
+function reportBake(result) {
+  console.log(`\n[wet-hold] ${label}: scene bake, ${result.config.sheetW}x${result.config.sheetH}, renderer ${result.renderer}`)
+  for (const arm of [result.wet, result.dry]) {
+    console.log(
+      `bake ${arm.settle.padEnd(3)} | ${arm.ok} path ${arm.path} settleTicks ${arm.settleTicks} | ` +
+        `events ${arm.eventCount} (strokes ${arm.strokeCount}) frames ${arm.frames} bytes ${arm.byteLength} | ` +
+        `wetPeak ${f(arm.wetPeak, 5)} wetAgo ${arm.wetAgo === null ? 'null' : f(arm.wetAgo, 4)} bristle ${arm.bristleContent}`,
+    )
+    console.log(
+      `           | inkA ${layerText(arm.layers, 'inkA')} inkB ${layerText(arm.layers, 'inkB')} ` +
+        `fixedA ${layerText(arm.layers, 'fixedA')} wet ${layerText(arm.layers, 'wet')} ` +
+        `cover ${layerText(arm.layers, 'cover')} lastTouch ${layerText(arm.layers, 'lastTouch')}`,
+    )
+  }
+}
+
+function assertBake(result) {
+  check('bake scene recorded the timed path (wet)', result.wet.path === 'timed', String(result.wet.path))
+  check('bake scene recorded the timed path (dry)', result.dry.path === 'timed', String(result.dry.path))
+  check('wet strokeCount 3 (the Dry is filtered)', result.wet.strokeCount === 3 && result.wet.eventCount === 3,
+    `strokes ${result.wet.strokeCount}, events ${result.wet.eventCount}`)
+  check('dry strokeCount 3 + the recorded Dry', result.dry.strokeCount === 3 && result.dry.eventCount === 4,
+    `strokes ${result.dry.strokeCount}, events ${result.dry.eventCount}`)
+  check('wet one frame', result.wet.frames === 1 && result.wet.byteLength > 0, `${result.wet.frames} frames, ${result.wet.byteLength} bytes`)
+  check('dry one frame', result.dry.frames === 1 && result.dry.byteLength > 0, `${result.dry.frames} frames, ${result.dry.byteLength} bytes`)
+  check(
+    'wet.wetPeak > WET_THRESHOLD (the baked sheet keeps mobile water)',
+    num(result.wet.wetPeak) !== null && result.wet.wetPeak > result.config.wetThreshold,
+    `${result.wet.wetPeak} vs ${result.config.wetThreshold}`,
+  )
+  check('wet.settleTicks 0 (no end settle)', result.wet.settleTicks === 0, String(result.wet.settleTicks))
+  check('dry.wetPeak 0 (the bake force-dried)', result.dry.wetPeak === 0, String(result.dry.wetPeak))
+  check(
+    'dry.settleTicks 72 (the forced-fix window)',
+    result.dry.settleTicks === result.config.settleTicks,
+    `${result.dry.settleTicks} vs ${result.config.settleTicks}`,
+  )
+  for (const id of ['inkA', 'inkB']) {
+    const wet = result.wet.layers?.[id]
+    const dry = result.dry.layers?.[id]
+    check(
+      `${id} digest differs between the arms`,
+      wet !== undefined && dry !== undefined && (wet.sum !== dry.sum || wet.nonZero !== dry.nonZero),
+      `wet ${layerText(result.wet.layers, id)} vs dry ${layerText(result.dry.layers, id)}`,
+    )
+  }
+  check('wet.bristleContent (the acrylic stroke reached the carrier)', result.wet.bristleContent === true)
+  check('dry.bristleContent (the acrylic stroke reached the carrier)', result.dry.bristleContent === true)
+}
+
 // ---------------------------------------------------------------------------
 //  Main
 // ---------------------------------------------------------------------------
@@ -307,7 +371,10 @@ const outPath = join(outDir, `${label}.json`)
 writeFileSync(outPath, JSON.stringify(result, null, 2) + '\n')
 
 console.log(`\n[wet-hold] ${label}: assertions`)
-if (result.arm === 'held') {
+if (result.arm === 'bake') {
+  reportBake(result)
+  assertBake(result)
+} else if (result.arm === 'held') {
   reportHeld(result)
   check('evictions 0 (the depth reads are meaningful)', result.evictions === 0, String(result.evictions))
   check('stepRecording on', result.stepRecording === true)

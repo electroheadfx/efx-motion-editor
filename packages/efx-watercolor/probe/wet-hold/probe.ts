@@ -32,7 +32,15 @@
 //                        the hold changes the wet FIELD and the gate, never the
 //                        carrier's colour lift.
 //
-//  One scene today (`hold`); `bake` lands with the bake settle option.
+//    --scene bake        the bake A/B: ONE recorded list (two watercolor
+//                        strokes, one acrylic, one recorded Dry) baked twice
+//                        through the real `createAquarelleBake` with
+//                        `frameCount: 1` — `settle: 'wet'` on a hold-adapter
+//                        (the recorded Dry filtered out, exactly the
+//                        controller's wet law) vs `settle: 'dry'` on a default
+//                        adapter. The commit read is each bake's own
+//                        `captureSheet()`: the wet sheet keeps its peak, the dry
+//                        sheet force-dried to zero, and the ink layers differ.
 //
 //  Everything is deterministic: no wall clock enters a readout, the engine
 //  runs on the adapter's virtual clock, and every stroke is fed through
@@ -49,14 +57,20 @@
 //  settings, not medium claims: the app's records are untouched.
 // ============================================================
 
-import { WatercolorEngine } from '../../src/playground/Engine'
+import { WatercolorEngine, type WholeDoc } from '../../src/playground/Engine'
 import { createAquarelleEngineAdapter } from '../../src/adapter/engineAdapter'
+import { createAquarelleBake, type AquarelleBakeDiagnostics } from '../../src/bake/aquarelleBake'
 import { PAPERS, type PaperPreset } from '../../src/playground/papers'
 import {
   toStudioStroke,
   type AquarellePoint,
   type AquarelleStrokePayload,
 } from '../../src/payload/toStudioStroke'
+import {
+  createDryEvent,
+  isAquarelleDryEvent,
+  type AquarellePayloadEvent,
+} from '../../src/payload/dryEvent'
 import type { StudioStroke } from '@efxlab/efx-paint-host/animation'
 import { f16ToF32 } from '../../src/playground/half'
 import { coeffsToLinear, pigmentFromHex } from '../../src/playground/spectral'
@@ -99,6 +113,15 @@ const BAND_COLOR = '#e8c21a'
 /** The acrylic stroke's colour (the pickup-collapse tested stroke). */
 const BLUE_COLOR = '#5994e4'
 const BRUSH_ID = 'bristle-flat'
+// --- the bake scene's lens (--scene bake) -----------------------------------
+/** The recorded session's end-ms stamps — the bake's own replay clock. */
+const BAKE_BAND_MS = 1000
+const BAKE_ACRYLIC_MS = 1200
+const BAKE_DRY_ORDER = 1300
+const BAKE_DRY_TICK = 3
+const BAKE_SECOND_MS = 1400
+/** The bake's forced-fix settle window — `Math.round(1.2 * 60)` (FIX_SETTLE_TICKS). */
+const BAKE_SETTLE_TICKS = Math.round(FIX_DURATION_S * 60)
 
 const COLD: PaperPreset | undefined = PAPERS.find((preset) => preset.id === 'cold')
 
@@ -365,6 +388,7 @@ function makeStroke(
   color: string,
   bag: Record<string, number>,
   mutationId: number,
+  timestamp = 0,
 ): StudioStroke<AquarelleStrokePayload> {
   return toStudioStroke({
     tool: 'brush',
@@ -373,14 +397,14 @@ function makeStroke(
     brushId: BRUSH_ID,
     points: horizontalPoints(PRESSURE).map((point) => ({ ...point })),
     mutationId,
-    timestamp: 0,
+    timestamp,
   })
 }
 
 // --- the scene config -------------------------------------------------------
 
 interface SceneConfig {
-  scene: 'hold'
+  scene: 'hold' | 'bake'
   dry: boolean
   blueSize: number
   pressure: number
@@ -389,8 +413,8 @@ interface SceneConfig {
 function readSceneConfig(): SceneConfig {
   const params = new URLSearchParams(location.search)
   const sceneRaw = params.get('scene') ?? 'hold'
-  if (sceneRaw !== 'hold') {
-    throw new Error(`invalid scene "${sceneRaw}" (this build implements "hold" only)`)
+  if (sceneRaw !== 'hold' && sceneRaw !== 'bake') {
+    throw new Error(`invalid scene "${sceneRaw}" (this build implements "hold" and "bake")`)
   }
   const dryRaw = params.get('dry') ?? '0'
   if (dryRaw !== '0' && dryRaw !== '1') throw new Error(`invalid dry "${dryRaw}" (use 0 or 1)`)
@@ -404,7 +428,7 @@ function readSceneConfig(): SceneConfig {
   if (!Number.isFinite(pressure) || pressure < 0 || pressure > 1) {
     throw new Error(`invalid pressure "${pressureRaw}"`)
   }
-  return { scene: 'hold', dry: dryRaw === '1', blueSize, pressure }
+  return { scene: sceneRaw, dry: dryRaw === '1', blueSize, pressure }
 }
 
 // --- the runners ------------------------------------------------------------
@@ -497,7 +521,203 @@ function settledExportProof(engine: WatercolorEngine): SettledProof {
   }
 }
 
+// --- the bake scene (--scene bake) ------------------------------------------
+
+// ONE recorded session: a watercolor band, an acrylic stroke, a recorded Dry,
+// a second watercolor stroke. Built fresh per arm (each bake owns its strokes).
+function bakeEvents(blueSize: number): AquarellePayloadEvent[] {
+  const bandSize = Math.round(blueSize * BAND_SIZE_RATIO)
+  return [
+    makeStroke(BAND_COLOR, paramsBag(bandSize, 0, 0), 0x7ec100, BAKE_BAND_MS),
+    makeStroke(BLUE_COLOR, paramsBag(blueSize, 100, 100), 0x7ec101, BAKE_ACRYLIC_MS),
+    createDryEvent(BAKE_DRY_TICK, BAKE_DRY_ORDER),
+    makeStroke(BAND_COLOR, paramsBag(bandSize, 100, 100), 0x7ec102, BAKE_SECOND_MS),
+  ]
+}
+
+interface LayerDigest {
+  sum: number
+  nonZero: number
+}
+
+/**
+ * Per-layer numeric digest of a captured sheet — sum and non-zero count over
+ * the raw arrays. Deterministic and readback-free: the halves decode through
+ * `f16ToF32`, the exact float32 `lastTouch` sums as-is.
+ */
+function layerDigests(whole: WholeDoc): Record<string, LayerDigest> {
+  const out: Record<string, LayerDigest> = {}
+  for (const id of Object.keys(whole.layers) as (keyof WholeDoc['layers'])[]) {
+    const raw = whole.layers[id]
+    let values: Float32Array
+    if (raw instanceof Float32Array) {
+      values = raw
+    } else {
+      values = new Float32Array(raw.length)
+      f16ToF32(raw, values)
+    }
+    let sum = 0
+    let nonZero = 0
+    for (let i = 0; i < values.length; i += 1) {
+      const value = values[i]!
+      if (value !== 0 && Number.isFinite(value)) {
+        sum += value
+        nonZero += 1
+      }
+    }
+    out[id] = { sum: round(sum, 3), nonZero }
+  }
+  return out
+}
+
+interface BakeArmRead {
+  settle: 'dry' | 'wet'
+  ok: boolean
+  path: string | null
+  settleTicks: number | null
+  strokeCount: number
+  eventCount: number
+  frames: number
+  wetPeak: number
+  /** Seconds since the last wet deposit; null in JSON when the sheet never wet (Infinity). */
+  wetAgo: number | null
+  bristleContent: boolean
+  byteLength: number
+  layers: Record<string, LayerDigest> | null
+}
+
+/**
+ * Bake the recorded session once. `settle: 'wet'` runs on a hold-adapter with
+ * the recorded Dry filtered out (the controller's wet law); `settle: 'dry'`
+ * runs the untouched session on a default adapter (today's bake byte for byte).
+ * The commit read is this bake's own `captureSheet()`.
+ */
+async function bakeArm(settle: 'dry' | 'wet', blueSize: number): Promise<BakeArmRead> {
+  if (!COLD) throw new Error("paper preset 'cold' is not in PAPERS")
+  const adapter = createAquarelleEngineAdapter({
+    width: SHEET_W,
+    height: SHEET_H,
+    paperPreset: COLD,
+    paperStrength: PAPER_STRENGTH,
+    paperSeed: PAPER_SEED,
+    holdWet: settle === 'wet',
+  })
+  const bakeDiagnostics: { current: AquarelleBakeDiagnostics | null } = { current: null }
+  const bake = createAquarelleBake(adapter, {
+    width: SHEET_W,
+    height: SHEET_H,
+    frameCount: 1,
+    settle,
+    // Stub encoder: the frame's bytes are not this scene's read (the sheet is).
+    encodeWebp: () => new Uint8Array([1]),
+    onDiagnostics: (record) => {
+      bakeDiagnostics.current = record
+    },
+  })
+  try {
+    const session = bakeEvents(blueSize)
+    // HOLD-WET: the recorded Dry is not applied — its applyDry would flash-dry
+    // the very sheet the mode keeps wet (exactly the controller's filter).
+    const events = settle === 'wet' ? session.filter((event) => !isAquarelleDryEvent(event)) : session
+    const strokeCount = events.filter((event) => !isAquarelleDryEvent(event)).length
+    const result = await bake.bake(events)
+    if (!result.ok) throw new Error(`bake(${settle}) failed: ${result.reason}`)
+    await bake.flush()
+    const last = result.frames[result.frames.length - 1]
+    const snapshot = adapter.captureSheet()
+    const diagnostics = bakeDiagnostics.current
+    return {
+      settle,
+      ok: true,
+      path: diagnostics?.path ?? null,
+      settleTicks: diagnostics?.settleTicks ?? null,
+      strokeCount,
+      eventCount: events.length,
+      frames: result.frames.length,
+      wetPeak: snapshot ? round(snapshot.wetPeak) : -1,
+      wetAgo: snapshot && Number.isFinite(snapshot.wetAgo) ? round(snapshot.wetAgo, 4) : null,
+      bristleContent: snapshot?.bristleContent ?? false,
+      byteLength: last ? last.bytes.byteLength : 0,
+      layers: snapshot ? layerDigests(snapshot.whole) : null,
+    }
+  } finally {
+    bake.dispose()
+    adapter.dispose()
+  }
+}
+
+/** The ink layers as one comparable string — the A/B digests joined. */
+function inkDigestOf(arm: BakeArmRead): string | null {
+  if (!arm.layers) return null
+  const inkA = arm.layers.inkA
+  const inkB = arm.layers.inkB
+  if (!inkA || !inkB) return null
+  return `A:${inkA.sum}/${inkA.nonZero}|B:${inkB.sum}/${inkB.nonZero}`
+}
+
+async function runSceneBake(config: SceneConfig, renderer: string): Promise<Record<string, unknown>> {
+  const blueSize = config.blueSize
+  const wet = await bakeArm('wet', blueSize)
+  const dry = await bakeArm('dry', blueSize)
+  const wetInk = inkDigestOf(wet)
+  const dryInk = inkDigestOf(dry)
+  const assertions = [
+    {
+      name: 'bake.wet.wetPeak > WET_THRESHOLD',
+      ok: wet.wetPeak > WET_THRESHOLD,
+      detail: `${wet.wetPeak} vs ${WET_THRESHOLD}`,
+    },
+    {
+      name: 'bake.wet.settleTicks 0',
+      ok: wet.settleTicks === 0,
+      detail: String(wet.settleTicks),
+    },
+    {
+      name: 'bake.dry.wetPeak 0',
+      ok: dry.wetPeak === 0,
+      detail: String(dry.wetPeak),
+    },
+    {
+      name: 'bake.dry.settleTicks 72',
+      ok: dry.settleTicks === BAKE_SETTLE_TICKS,
+      detail: `${dry.settleTicks} vs ${BAKE_SETTLE_TICKS}`,
+    },
+    {
+      name: 'bake.ink digests differ',
+      ok: wetInk !== null && dryInk !== null && wetInk !== dryInk,
+      detail: `wet ${wetInk} vs dry ${dryInk}`,
+    },
+  ]
+  const failed = assertions.filter((entry) => !entry.ok)
+  if (failed.length > 0) {
+    throw new Error(`bake assertions failed: ${failed.map((entry) => `${entry.name} (${entry.detail})`).join('; ')}`)
+  }
+  return {
+    scene: 'bake',
+    arm: 'bake',
+    config: {
+      sheetW: SHEET_W,
+      sheetH: SHEET_H,
+      paperSeed: PAPER_SEED,
+      paperStrength: PAPER_STRENGTH,
+      blueSize,
+      bandSize: Math.round(blueSize * BAND_SIZE_RATIO),
+      wetSeconds: WET_SECONDS,
+      dryParam: DRY_PARAM,
+      wetThreshold: WET_THRESHOLD,
+      settleTicks: BAKE_SETTLE_TICKS,
+      recordedOrder: [BAKE_BAND_MS, BAKE_ACRYLIC_MS, BAKE_DRY_ORDER, BAKE_SECOND_MS],
+    },
+    renderer,
+    wet,
+    dry,
+    assertions,
+    verdict: 'WET-HOLD CAPTURED',
+  }
+}
+
 function runScene(config: SceneConfig, renderer: string): Record<string, unknown> {
+  if (config.scene !== 'hold') throw new Error(`runScene: wrong scene "${config.scene}"`)
   if (!COLD) throw new Error("paper preset 'cold' is not in PAPERS")
   const blueSize = config.blueSize
   const bandSize = Math.round(blueSize * BAND_SIZE_RATIO)
@@ -672,7 +892,7 @@ function runScene(config: SceneConfig, renderer: string): Record<string, unknown
   }
 }
 
-function main(): void {
+async function main(): Promise<void> {
   let config: SceneConfig = { scene: 'hold', dry: false, blueSize: BLUE_SIZE, pressure: PRESSURE }
   let renderer = '(unknown)'
   try {
@@ -687,7 +907,9 @@ function main(): void {
     } finally {
       probe.destroy()
     }
-    const result = runScene(config, renderer)
+    const result = config.scene === 'bake'
+      ? await runSceneBake(config, renderer)
+      : runScene(config, renderer)
     const pre = document.getElementById('result')
     if (!pre) throw new Error('probe page is missing pre#result')
     pre.textContent = JSON.stringify(result)
@@ -705,4 +927,4 @@ function main(): void {
   }
 }
 
-main()
+void main()

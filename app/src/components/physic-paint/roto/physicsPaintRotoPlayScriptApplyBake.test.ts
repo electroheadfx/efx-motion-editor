@@ -39,6 +39,8 @@ const harness = vi.hoisted(() => ({
   log: [] as string[],
   adapterOptions: [] as Array<Record<string, unknown>>,
   bakeOptions: [] as Array<Record<string, unknown>>,
+  /** The event list each `bake.bake()` call actually received. */
+  bakedEvents: [] as Array<readonly Record<string, unknown>[]>,
   nextDiagnostics: null as Record<string, unknown> | null,
   bakeResult: null as unknown,
   disposed: { bake: 0, adapter: 0 },
@@ -66,7 +68,8 @@ vi.mock('@efxlab/efx-watercolor/bake', () => ({
   createAquarelleBake: (_adapter: unknown, options: Record<string, unknown>) => {
     harness.bakeOptions.push(options);
     return {
-      bake: async () => {
+      bake: async (events: readonly Record<string, unknown>[]) => {
+        harness.bakedEvents.push([...events]);
         const consumer = options.onDiagnostics as ((record: unknown) => void) | undefined;
         if (harness.nextDiagnostics) consumer?.(harness.nextDiagnostics);
         return harness.bakeResult;
@@ -116,6 +119,7 @@ beforeEach(() => {
   harness.log.length = 0;
   harness.adapterOptions.length = 0;
   harness.bakeOptions.length = 0;
+  harness.bakedEvents.length = 0;
   harness.nextDiagnostics = null;
   harness.bakeResult = bakedFrames([9]);
   harness.disposed.bake = 0;
@@ -188,6 +192,73 @@ describe('261029-bks bakeAquarelleEventsToFrame diagnostics', () => {
 
     expect(baked).not.toBeNull();
     expect(Array.from(baked!.bytes)).toEqual([9]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// HOLD-WET (261123-pee): the wet settle plumbed through the ONE Apply/Lift
+// bake helper. A recorded Dry is a timeline ACTION; in wet mode it must never
+// reach the adapter's applyStroke (its applyDry would flash-dry the very sheet
+// the wet mode exists to keep wet). The bake's own end settle is skipped by
+// the `settle: 'wet'` option; the adapter is built with the engine hold.
+// ---------------------------------------------------------------------------
+
+const strokeA = { kind: 'stroke', pts: [{ x: 0.3, y: 0.5 }], recordedOrder: 1000, ticks: 3 };
+const strokeB = { kind: 'stroke', pts: [{ x: 0.6, y: 0.5 }], recordedOrder: 1200, ticks: 3 };
+const recordedDry = { kind: 'dry', tick: 3, recordedOrder: 1100 };
+
+describe('HOLD-WET apply bake settle plumbing (261123-pee)', () => {
+  it("settle: 'wet' filters the recorded Dry out of the bake and still bakes one frame", async () => {
+    const baked = await bakeAquarelleEventsToFrame({
+      events: [strokeA, recordedDry, strokeB] as never,
+      size,
+      paper,
+      settle: 'wet',
+    });
+
+    expect(baked).not.toBeNull();
+    // The Dry never reaches the bake: no adapter applyStroke can flash-dry.
+    expect(harness.bakedEvents).toHaveLength(1);
+    expect(harness.bakedEvents[0]!.map((event) => event.kind)).toEqual(['stroke', 'stroke']);
+    // The wet option reaches the bake and the adapter hold is armed.
+    expect(harness.bakeOptions[0]!.settle).toBe('wet');
+    expect(harness.adapterOptions[0]!.holdWet).toBe(true);
+  });
+
+  it("settle: 'dry' — and the absent option — keeps the recorded Dry and the dry defaults", async () => {
+    for (const settle of ['dry', undefined] as const) {
+      harness.bakedEvents.length = 0;
+      harness.bakeOptions.length = 0;
+      harness.adapterOptions.length = 0;
+      const baked = await bakeAquarelleEventsToFrame({
+        events: [strokeA, recordedDry, strokeB] as never,
+        size,
+        paper,
+        ...(settle === undefined ? {} : { settle }),
+      });
+
+      expect(baked).not.toBeNull();
+      expect(harness.bakedEvents[0]!.map((event) => event.kind)).toEqual(['stroke', 'dry', 'stroke']);
+      expect(harness.bakeOptions[0]!.settle).toBe('dry');
+      expect(harness.adapterOptions[0]!.holdWet).toBe(false);
+    }
+  });
+
+  it('applyAquarelleEventsToKey forwards the settle through to the bake', async () => {
+    const publish = vi.fn(async () => true);
+
+    const ok = await applyAquarelleEventsToKey({
+      events: [strokeA, recordedDry, strokeB] as never,
+      target: { keyId: 'key-7', appFrame: 12 },
+      size,
+      paper,
+      settle: 'wet',
+      publish,
+    });
+
+    expect(ok).toBe(true);
+    expect(harness.bakeOptions[0]!.settle).toBe('wet');
+    expect(harness.bakedEvents[0]!.map((event) => event.kind)).toEqual(['stroke', 'stroke']);
   });
 });
 

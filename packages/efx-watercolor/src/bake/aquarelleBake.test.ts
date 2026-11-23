@@ -610,6 +610,62 @@ describe('261019c visible settle cap', () => {
 })
 
 // ---------------------------------------------------------------------------
+// HOLD-WET (261123-pee): `settle: 'dry' | 'wet'`. 'dry' is the default and
+// keeps today's capped-fix end settle byte for byte; 'wet' means "no end
+// settle: the sheet keeps mobile pigment and water" — the wet-key bake and the
+// wet Apply need a frame that is the live held sheet, not its force-dried
+// capture. The cook window and the Dry grouping are untouched.
+// ---------------------------------------------------------------------------
+
+describe('HOLD-WET bake settle option (261123-pee)', () => {
+  const stroke = () => timedStroke(5, 1000, 2, 1000)
+
+  it("settle: 'wet' omits the end settle — no fix, zero settle ticks, the frame still bakes", async () => {
+    const { adapter, log } = makeTimelineAdapter(1000, true)
+    const records: BakeDiagnostics[] = []
+    const bake = createAquarelleBake(adapter, {
+      encodeWebp: pixelEncoder,
+      width: 8,
+      height: 8,
+      frameCount: 1,
+      settle: 'wet',
+      onDiagnostics: (record) => { records.push(record) },
+    })
+
+    const result = await bake.bake([stroke()])
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    // The sheet is committed as painted: no fix, no settle ticks.
+    expect(result.frames).toHaveLength(1)
+    expect(log.fixes).toBe(0)
+    expect(records).toHaveLength(1)
+    expect(records[0]!.settleTicks).toBe(0)
+  })
+
+  it("settle: 'dry' — and the absent option — keeps today's capped fix exactly", async () => {
+    for (const settle of ['dry', undefined] as const) {
+      const { adapter, log } = makeTimelineAdapter(1000, true)
+      const records: BakeDiagnostics[] = []
+      const bake = createAquarelleBake(adapter, {
+        encodeWebp: pixelEncoder,
+        width: 8,
+        height: 8,
+        frameCount: 1,
+        ...(settle === undefined ? {} : { settle }),
+        onDiagnostics: (record) => { records.push(record) },
+      })
+
+      const result = await bake.bake([stroke()])
+
+      expect(result.ok).toBe(true)
+      expect(log.fixes).toBe(1)
+      expect(records[0]!.settleTicks).toBe(72)
+    }
+  })
+})
+
+// ---------------------------------------------------------------------------
 // 261022 per-stroke progress (Apply parity) — the aquarelle Apply bake runs
 // ONE output frame, so onCommit cannot carry progress. `onStrokeFed` reports
 // each fully fed stroke; the single-frame yield lets the pill paint.

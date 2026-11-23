@@ -32,6 +32,7 @@ import {
   strokeRandomForMutationId,
 } from './engineAdapter'
 import { PAPERS } from '../playground/papers'
+import type { WatercolorEngine } from '../playground/Engine'
 import { pigmentFromHex } from '../playground/spectral'
 import type { AquarelleStrokePayload } from '../payload/toStudioStroke'
 import { toStudioStroke, DIFFUSION_CAP } from '../payload/toStudioStroke'
@@ -879,6 +880,9 @@ describe('adapter render-state options: light + paper seed + wetness seams (64-0
     setPaperSeed(seed: number | null): void {
       record('setPaperSeed', [seed])
     }
+    setHoldWet(held: boolean): void {
+      record('setHoldWet', [held])
+    }
     setLastTouchMode(mode: 0 | 1): void {
       record('setLastTouchMode', [mode])
     }
@@ -896,6 +900,7 @@ describe('adapter render-state options: light + paper seed + wetness seams (64-0
     height: number
     light?: { azimuth: number; elevation: number; intensity: number }
     paperSeed?: number
+    holdWet?: boolean
   }) {
     vi.resetModules()
     vi.doMock('../playground/Engine', () => ({ WatercolorEngine: StubWatercolorEngine }))
@@ -1024,6 +1029,49 @@ describe('adapter render-state options: light + paper seed + wetness seams (64-0
     expect(seedCalls).toHaveLength(1)
     // UNMODIFIED: the adapter is a pass-through; `setPaperSeed` drops the pin.
     expect(seedCalls[0]!.args[0]).toBe(1.5)
+    adapter.dispose()
+  })
+
+  // HOLD-WET (261123-pee): the engine-level hold rides the same
+  // pre-first-stroke seam as the light and the seed — ONE pass-through write,
+  // in place before the first dab so a wet bake's opening samples never decay.
+  it('arms the engine hold exactly once, before the first stroke', async () => {
+    const { canvas } = makeMockCanvas(8, 8)
+    const adapter = await adapterWithStubEngine({
+      canvas,
+      width: 8,
+      height: 8,
+      holdWet: true,
+    })
+
+    adapter.applyStroke(STROKE)
+
+    const holdCalls = calls.filter((call) => call.method === 'setHoldWet')
+    expect(holdCalls).toHaveLength(1)
+    expect(holdCalls[0]!.args[0]).toBe(true)
+    // The hold lands BEFORE the first dab.
+    const holdIndex = calls.findIndex((call) => call.method === 'setHoldWet')
+    const beginIndex = calls.findIndex((call) => call.method === 'scriptBegin')
+    expect(beginIndex).toBeGreaterThan(-1)
+    expect(holdIndex).toBeLessThan(beginIndex)
+    adapter.dispose()
+  })
+
+  it('never calls setHoldWet when holdWet is absent', async () => {
+    const { canvas } = makeMockCanvas(8, 8)
+    const adapter = await adapterWithStubEngine({ canvas, width: 8, height: 8 })
+    adapter.applyStroke(STROKE)
+    // The engine's own default stays in force — the adapter never manufactures one.
+    expect(calls.filter((call) => call.method === 'setHoldWet')).toHaveLength(0)
+    adapter.dispose()
+  })
+
+  it('never writes the hold on an injected engine (the live seed path)', () => {
+    const setHoldWet = vi.fn()
+    const fake = { setHoldWet } as unknown as WatercolorEngine
+    const adapter = createAquarelleEngineAdapter({ engine: fake, holdWet: true })
+    // The injected engine's sheet is the host's — an adapter never touches it.
+    expect(setHoldWet).not.toHaveBeenCalled()
     adapter.dispose()
   })
 

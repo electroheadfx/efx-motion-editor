@@ -84,6 +84,18 @@ export function aquarellePaperCacheFingerprint(paper: AquarelleBakePaper): strin
 export type AquarelleBakePath = 'timed' | 'fallback' | 'legacy'
 
 /**
+ * HOLD-WET (261123-pee): the end-settle law of a bake.
+ *
+ * - `'dry'` (the default): today's law — force-dry at the visible settle cap
+ *   and bake the fix window, so the committed image is the live cache's denser
+ *   capture.
+ * - `'wet'`: NO end settle — the sheet keeps mobile pigment and water, exactly
+ *   the live held sheet. The cook window, the Dry grouping and the cuisson
+ *   clamp are identical; only the end fix is omitted.
+ */
+export type AquarelleBakeSettle = 'dry' | 'wet'
+
+/**
  * 261029-bks: one diagnostics record per `bake()`, emitted exactly once on
  * every path (timed / fallback / legacy, a cancelled or failed bake included).
  * Carries SCALAR counters and timings only — never pixels, canvases, data URLs
@@ -216,6 +228,14 @@ export interface AquarelleBakeOptions {
    * ON costs one full replay per output frame: `paintSeedReplays` reports it.
    */
   paintSeedVariation?: 'progressive' | 'static'
+  /**
+   * HOLD-WET (261123-pee): the end-settle law. `'dry'` is the default and
+   * keeps today's capped-fix settle; `'wet'` means "no end settle: the sheet
+   * keeps mobile pigment and water" — the wet-key bake and the wet Apply
+   * commit the live held look. Absent keeps the dry default, so an unset
+   * caller keeps today's law byte for byte.
+   */
+  settle?: AquarelleBakeSettle
   /**
    * LIVE-SEED (2026-11-22): time-slice the replay. When set (> 0), the bake
    * awaits a MACROTASK yield whenever this many ms of replay work elapsed
@@ -880,8 +900,9 @@ export function createAquarelleBake(
      * End-frame law: force-dry at the visible settle cap — the same fix() the
      * live sheet runs at its cap — and bake the fix window. The resulting state
      * is the live cache's denser capture. Adapters without the seam (older /
-     * test doubles) keep the cook-to-sleep fallback. NEVER skipped (truth table
-     * row 5).
+     * test doubles) keep the cook-to-sleep fallback. Never skipped in dry mode
+     * (truth table row 5); `settle: 'wet'` is the ONE deliberate omission —
+     * the baked sheet must equal the live held sheet, mobile water included.
      */
     const applySettle = async (): Promise<void> => {
       const fixSeam = seams.fix
@@ -921,7 +942,8 @@ export function createAquarelleBake(
           // cursor and a shared feed map. The last frame applies the settle law.
           const state: ReplayState = { cursor: window.windowStart, fedCounts, report: true }
           await walkWindow(frameIndex, window, state)
-          if (isFinalFrame) await applySettle()
+          // HOLD-WET: a wet bake commits the live held look — no end settle.
+          if (isFinalFrame && options.settle !== 'wet') await applySettle()
           return adapter.captureFrame()
         }
 
@@ -939,7 +961,8 @@ export function createAquarelleBake(
           report: isFinalFrame,
         }
         for (let w = 0; w <= lastWindow; w += 1) await walkWindow(w, windows[w]!, state)
-        if (variation === 'static' || isFinalFrame) await applySettle()
+        // HOLD-WET: a wet bake commits the live held look — no end settle.
+        if ((variation === 'static' || isFinalFrame) && options.settle !== 'wet') await applySettle()
         return adapter.captureFrame()
       })
 

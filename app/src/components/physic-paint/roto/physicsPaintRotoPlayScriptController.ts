@@ -38,7 +38,7 @@ import type { EngineAdapter, StudioStroke } from '@efxlab/efx-paint-host';
 // runtime module is still imported lazily inside createDefaultAquarelleAdapter.
 import type { LightSettings, SheetSnapshot } from '@efxlab/efx-watercolor';
 import type { AquarelleStrokePayload } from '@efxlab/efx-watercolor/payload';
-import { toStudioStroke, type AquarellePayloadEvent, type AquarelleStroke } from '@efxlab/efx-watercolor/payload';
+import { isAquarelleDryEvent, toStudioStroke, type AquarellePayloadEvent, type AquarelleStroke } from '@efxlab/efx-watercolor/payload';
 import { getRecordedAquarelleDryEvents, getRecordedAquarellePayload, getRecordedAquarelleStroke, isAquarelleStrokeDeleted } from '../view/aquarelleRecordState';
 import {
   createAquarelleBake as defaultCreateAquarelleBake,
@@ -46,6 +46,7 @@ import {
   type AquarelleBakeDiagnostics,
   type AquarelleBakeOptions,
   type AquarelleBakePaper,
+  type AquarelleBakeSettle,
   type AquarelleStrokeFrameAnchor,
 } from '@efxlab/efx-watercolor/bake';
 import { paperPresetForStudioId } from '../engine/AquarelleCanvasLayer';
@@ -4273,9 +4274,23 @@ export async function bakeAquarelleEventsToFrame(input: {
    * consumer never fails the bake.
    */
   onSheet?: (sheet: SheetSnapshot) => void;
+  /**
+   * HOLD-WET (261123-pee): the end-settle law. Omitted = `'dry'` (today's
+   * capped fix); `'wet'` skips the end settle, filters every recorded Dry out
+   * of the bake (its applyDry would flash-dry the sheet this mode keeps wet)
+   * and builds the adapter with the engine hold. Only the two tool call sites
+   * (Apply Script, Shift+R) pass `'wet'`; every other caller stays dry.
+   */
+  settle?: AquarelleBakeSettle;
 }): Promise<{ bytes: Uint8Array; width: number; height: number } | null> {
   const createStartedAt = readNow();
-  const adapter = await createDefaultAquarelleAdapter(input.size, input.paper, input.light, input.paperSeed);
+  const adapter = await createDefaultAquarelleAdapter(
+    input.size,
+    input.paper,
+    input.light,
+    input.paperSeed,
+    input.settle === 'wet',
+  );
   // Creation span: the dynamic import + engine construction. The teardown
   // span is added in the finally — the field is the adapter's lifecycle cost,
   // never the whole bake.
@@ -4293,13 +4308,22 @@ export async function bakeAquarelleEventsToFrame(input: {
     // reached — the old per-stroke branch stopped at the saved cuisson and
     // came out denser than the paint.
     frameCount: 1,
+    // HOLD-WET: 'wet' means no end settle — the sheet keeps mobile pigment
+    // and water. The cook window is unchanged (a Dry contributes no tick).
+    settle: input.settle ?? 'dry',
     onStrokeFed: input.onStrokeFed,
     onDiagnostics: (record) => {
       bakeDiagnostics.current = record;
     },
   });
   try {
-    const result = await bake.bake(input.events);
+    // HOLD-WET: in wet mode a recorded Dry is not applied — its applyDry
+    // would flash-dry the very sheet the mode exists to keep wet. The filter
+    // only suppresses the application; the event schema and cook window stay.
+    const events = input.settle === 'wet'
+      ? input.events.filter((event) => !isAquarelleDryEvent(event))
+      : input.events;
+    const result = await bake.bake(events);
     if (!result.ok) return null;
     const last = result.frames[result.frames.length - 1];
     if (!last) return null;
@@ -4362,6 +4386,8 @@ export async function applyAquarelleEventsToKey(input: {
   onDiagnostics?: (d: AquarelleApplyDiagnostics) => void;
   /** 2026-11-23: the bake's exact sheet, forwarded unchanged (see below). */
   onSheet?: (sheet: SheetSnapshot) => void;
+  /** HOLD-WET (261123-pee): the end-settle law, forwarded unchanged. */
+  settle?: AquarelleBakeSettle;
   publish: (frame: { keyId: string; appFrame: number; bytes: Uint8Array; width: number; height: number }) => Promise<boolean>;
 }): Promise<boolean> {
   const baked = await bakeAquarelleEventsToFrame({
@@ -4373,6 +4399,7 @@ export async function applyAquarelleEventsToKey(input: {
     onStrokeFed: input.onStrokeFed,
     onDiagnostics: input.onDiagnostics,
     onSheet: input.onSheet,
+    settle: input.settle,
   });
   if (!baked) return false;
   return input.publish({
@@ -4390,6 +4417,7 @@ async function createDefaultAquarelleAdapter(
   paper?: AquarelleBakePaper,
   light?: LightSettings,
   paperSeed?: number,
+  holdWet?: boolean,
 ): Promise<EngineAdapter<AquarelleStrokePayload> & { isAwake?: () => boolean }> {
   const { createAquarelleEngineAdapter } = await import('@efxlab/efx-watercolor');
   return createAquarelleEngineAdapter({
@@ -4402,6 +4430,8 @@ async function createDefaultAquarelleAdapter(
     light,
     // 64-21 (MED-02): the recording's sheet seed — same seam, same pass-through.
     paperSeed,
+    // HOLD-WET (261123-pee): the engine hold — same seam, same pass-through.
+    holdWet: holdWet === true,
   });
 }
 

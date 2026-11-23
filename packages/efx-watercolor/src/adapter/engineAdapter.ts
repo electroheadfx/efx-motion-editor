@@ -101,6 +101,14 @@ export interface AquarelleAdapterOptions {
    * value.
    */
   paperSeed?: number
+  /**
+   * HOLD-WET (261123-pee): the engine-level hold, the same pass-through family
+   * as `light`/`paperSeed`. Applied ONCE before the first `applyStroke` so a
+   * wet bake's sheet never auto-dries mid-replay. Absent leaves the engine's
+   * own default (no hold) in force — the adapter never manufactures one. An
+   * injected engine (the live seed path) is never written.
+   */
+  holdWet?: boolean
 }
 
 /**
@@ -373,6 +381,11 @@ export function createAquarelleEngineAdapter(
   // applyStroke, one pass-through write (the engine setter owns the pin).
   if (!injectedEngine && typeof options.paperSeed === 'number' && engine) {
     engine.setPaperSeed(options.paperSeed)
+  }
+  // HOLD-WET (261123-pee): the engine-level hold rides the same seam — one
+  // write before the first applyStroke, so a wet bake never auto-dries.
+  if (!injectedEngine && options.holdWet === true && engine) {
+    engine.setHoldWet(true)
   }
 
   /** Pending stroke being walked on the tick grid. */

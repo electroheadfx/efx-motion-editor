@@ -202,6 +202,12 @@ export interface RotoScriptClipboardControllerPorts {
      * brush-mode Apply.
      */
     onProgress?: (completed: number, total: number) => void;
+    /**
+     * HOLD-WET (261123-pee): the two-tool wet flag. `'wet'` commits the held
+     * look (no end settle, recorded Drys filtered); absent keeps the dry bake.
+     * Only Apply Script and Shift+R pass it.
+     */
+    settle?: 'dry' | 'wet';
   }) => Promise<boolean>;
   onFirstAcceptedBrush?: () => void;
   setNavigationLocked?: (locked: boolean) => void;
@@ -241,13 +247,17 @@ export interface RotoScriptClipboardController {
   prepareScriptLoadAndApply: () => PreparedRotoScriptLoadAndApply | null;
   applyPreparedScript: (preparation: PreparedRotoScriptLoadAndApply) => Promise<boolean>;
   cancelPreparedScriptLoadAndApply: (preparation: PreparedRotoScriptLoadAndApply) => void;
-  applyScript: () => Promise<boolean>;
+  /** HOLD-WET (261123-pee): `settle` is the two-tool wet flag — the wet-key
+   *  Apply Script passes `'wet'`; every other caller stays dry. */
+  applyScript: (settle?: 'dry' | 'wet') => Promise<boolean>;
   /** 261022-pim: re-bake the LIVE captured script (delete) without the clipboard. */
   applyCurrentScript: () => Promise<boolean>;
   /** 261022-pim: re-bake a recorded aquarelle timeline for the current source.
    *  The timeline is the script — no engine capture, so repeated deletes keep
-   *  working after an Apply refresh clears the guide strokes. */
-  applyAquarelleTimeline: (events: readonly AquarellePayloadEvent[]) => Promise<boolean>;
+   *  working after an Apply refresh clears the guide strokes.
+   *  HOLD-WET (261123-pee): `settle` rides the same two-tool flag — the wet-key
+   *  Shift+R passes `'wet'`; every other caller stays dry. */
+  applyAquarelleTimeline: (events: readonly AquarellePayloadEvent[], settle?: 'dry' | 'wet') => Promise<boolean>;
   /**
    * 261023-cxc: dispatch a PROVIDED script at the current source through the
    * shared apply seam. No clipboard read and no clipboard write — the
@@ -870,7 +880,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     error.value = null;
   }
 
-  async function applyScript(): Promise<boolean> {
+  async function applyScript(settle?: 'dry' | 'wet'): Promise<boolean> {
     if (disposed || disposalRequested || !availability.value.canApply) return false;
     const engine = engineState.peek();
     const script = clipboard.value;
@@ -878,7 +888,8 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     if (!engine || !script || source.selectionKind === 'generated-interpolation') return false;
     error.value = null;
     beginOperation(engine);
-    return dispatchApply(script, source, engine);
+    // HOLD-WET: the wet flag rides the shared dispatch; omitted stays dry.
+    return dispatchApply(script, source, engine, { settle });
   }
 
   /**
@@ -966,6 +977,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
    */
   async function applyAquarelleTimeline(
     events: readonly AquarellePayloadEvent[],
+    settle?: 'dry' | 'wet',
   ): Promise<boolean> {
     if (disposed || disposalRequested) return false;
     const engine = engineState.peek();
@@ -1003,7 +1015,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
         aquarelleEvents: eventsForScript,
       });
       dispatched = true;
-      return await dispatchApply(script, source, engine, { forceAquarelle: true });
+      return await dispatchApply(script, source, engine, { forceAquarelle: true, settle });
     } catch (cause) {
       if (!disposalRequested && launchGeneration === acceptedLaunchGeneration) {
         status.value = 'Failed';
@@ -1061,7 +1073,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     script: RotoPaintScript,
     source: RotoScriptSourceSnapshot,
     engine: RotoScriptEnginePort,
-    options?: { forceAquarelle?: boolean },
+    options?: { forceAquarelle?: boolean; settle?: 'dry' | 'wet' },
   ): Promise<boolean> {
     const acceptedEngineGeneration = engineGeneration;
     const acceptedLaunchGeneration = launchGeneration;
@@ -1139,6 +1151,8 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
           events: aquarelleEvents,
           target,
           onProgress: publishAquarelleProgress,
+          // HOLD-WET: undefined keeps the dry bake (every non-tool caller).
+          settle: options?.settle,
         });
         if (!disposalRequested && launchGeneration === acceptedLaunchGeneration) {
           status.value = ok ? 'Applied' : 'Failed';
