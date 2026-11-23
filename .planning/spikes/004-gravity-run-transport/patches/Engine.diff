@@ -1,0 +1,97 @@
+diff --git a/packages/efx-watercolor/src/playground/Engine.ts b/.planning/spikes/004-gravity-run-transport/workbench/src/playground/Engine.ts
+index 9045d53b5..c7d4f2d04 100644
+--- a/packages/efx-watercolor/src/playground/Engine.ts
++++ b/.planning/spikes/004-gravity-run-transport/workbench/src/playground/Engine.ts
+@@ -28,7 +28,7 @@ import {
+   LAST_TOUCH_DRY_SECONDS,
+   makeBristles,
+ } from './bristles';
+-import { f32ToF16, fromHalf } from './half';
++import { f32ToF16, f16ToF32, fromHalf } from './half';
+ // 64-26 (CR-03): the ping-pong carry law and its state machine, proven on the
+ // CPU in lastTouchCarry.test.ts — the engine only feeds it rects.
+ import { invalidateCarry, newLastTouchCarry, recordStamp, takeCarry } from './lastTouchCarry';
+@@ -127,6 +127,7 @@ export interface Params {
+   pickup: number;      // 64-22: §3.1 carrier pickup rate — how much sheet paint a bristle lifts (0..1)
+   refill: number;      // 64-22: §3.1 carrier refill rate — how fast a bristle refills from the load (0..1)
+   wetSeconds: number;  // 64-22: last-touch wetness lifetime in SECONDS (>= 1) — declared here so the ONE mapping has one destination; consumed by 64-24
++  gravity: number;     // SPIKE 004: downward sag of wet paint, 0..1 (0 = inert)
+ }
+ 
+ export const DEFAULT_PARAMS: Params = {
+@@ -142,6 +143,7 @@ export const DEFAULT_PARAMS: Params = {
+   pickup: 1.0,
+   refill: 0.6,
+   wetSeconds: 7,
++  gravity: 0,   // SPIKE 004: the shipped law has no gravity; 0 is byte-identical
+ };
+ 
+ /**
+@@ -1538,7 +1540,11 @@ export class WatercolorEngine {
+       (this.stroke !== null || this.fixTimer > 0 || now < this.minAwakeUntil || now < this.wetUntil());
+     if (awake) {
+       this.flowSpeed *= Math.exp(-dt * (3.0 - this.params.flow * 2.4));
+-      this.growCarry += 0.4 + Math.min(3, 0.15 * this.flowSpeed * dt * (this.dw / this.velocity.w));
++      // SPIKE 004: gravity moves the wet film at a fixed doc-px speed; the
++      // active rect must grow at least that fast or the sagging front is
++      // clipped away every frame (measured: the water stalled at ~1.5 px/s).
++      this.growCarry += 0.4 + Math.min(3, 0.15 * this.flowSpeed * dt * (this.dw / this.velocity.w))
++        + (this.params.gravity ?? 0) * dt * 0.08 * this.dh;
+       const grow = Math.floor(this.growCarry);
+       if (grow > 0) {
+         this.growCarry -= grow;
+@@ -3692,6 +3698,20 @@ export class WatercolorEngine {
+    * per-bristle state. Order matches the reservoir layout documented in
+    * `bristleCarrierFS`: carried 0..3, carried 4..6 + alpha, load/across/seed/jitter.
+    */
++  /** SPIKE 004: the simulated (active) rect, for the gravity probe. */
++  spikeActiveRect(): { x0: number; y0: number; x1: number; y1: number } | null {
++    return this.active ? { ...this.active } : null
++  }
++
++  /** SPIKE 004: the wet layer (one channel) as f32, whole document — the
++   *  gravity probe's readout of how far the water actually sagged. */
++  readWetField(): Float32Array {
++    const raw = this.g.readHalf(this.wet.read.views[0]!, this.dw, this.dh, 1)
++    const out = new Float32Array(raw.length)
++    f16ToF32(raw, out)
++    return out
++  }
++
+   readBristles(): Uint16Array {
+     const a = this.g.readHalf(this.bristles.read.views[0]!, 1, BRISTLE_CAP, 4);
+     const b = this.g.readHalf(this.bristles.read.views[1]!, 1, BRISTLE_CAP, 4);
+@@ -3943,6 +3963,7 @@ export class WatercolorEngine {
+     gl.uniform1f(P.advectWet.u.uDt, dt);
+     gl.uniform1f(P.advectWet.u.uDecay, Math.exp(-dt / this.dryTau()));
+     gl.uniform1f(P.advectWet.u.uSpread, 0.12 * (1 - viscosity * 0.9));
++    gl.uniform1f(P.advectWet.u.uGravity!, this.params.gravity ?? 0);   // SPIKE 004
+     g.draw(this.wet.write, rect); this.wet.swap();
+ 
+     // fixing: mobile pigment (and its scattering) settles into the paper
+@@ -3974,6 +3995,7 @@ export class WatercolorEngine {
+     gl.uniform1f(p.u.uAspect, this.dw / this.dh);
+     gl.uniform1f(p.u.uKeep, 1 - settle);
+     gl.uniform3f(p.u.uBrush, this.brushNow.x, this.brushNow.y, this.brushNow.r);
++    gl.uniform1f(p.u.uGravity!, this.params.gravity ?? 0);   // SPIKE 004
+     g.draw(this.ink.write, rect); this.ink.swap();
+ 
+     // 64-14: coverage advects with the pigment — the same mobility gate, back-
+@@ -4003,6 +4025,7 @@ export class WatercolorEngine {
+     gl.uniform1f(P.advectCover.u.uAspect, this.dw / this.dh);
+     gl.uniform1f(P.advectCover.u.uGranulation, this.params.granulation * 0.55);
+     gl.uniform3f(P.advectCover.u.uBrush, this.brushNow.x, this.brushNow.y, this.brushNow.r);
++    gl.uniform1f(P.advectCover.u.uGravity!, this.params.gravity ?? 0);   // SPIKE 004
+     g.draw(this.cover.write, rect); this.cover.swap();
+ 
+     this.dirty = union(this.dirty, rect);
+@@ -4176,7 +4199,8 @@ export class WatercolorEngine {
+       // creep plus a share of the (decaying) flow speed
+       this.flowSpeed *= Math.exp(-dt * (3.0 - this.params.flow * 2.4));
+       // (velocity is masked to ~0 at the wet front, so the front itself only creeps)
+-      this.growCarry += 0.4 + Math.min(3, 0.15 * this.flowSpeed * dt * (this.dw / this.velocity.w));
++      this.growCarry += 0.4 + Math.min(3, 0.15 * this.flowSpeed * dt * (this.dw / this.velocity.w))
++        + (this.params.gravity ?? 0) * dt * 0.08 * this.dh;   // SPIKE 004: keep the sagging front inside the rect
+       const grow = Math.floor(this.growCarry);
+       if (grow > 0) {
+         this.growCarry -= grow;

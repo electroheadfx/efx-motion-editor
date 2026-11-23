@@ -1,0 +1,74 @@
+{
+  "gate": "neutral-v5",
+  "engine": "workbench",
+  "gravity": 0,
+  "gain": 0.08,
+  "threshold": 0,
+  "focus": 0,
+  "noise": 0,
+  "noiseScale": 8,
+  "waterSize": 60,
+  "waterPass": false,
+  "waterPasses": 1,
+  "ticks": 120,
+  "sheet": 512,
+  "sizeParam": 60,
+  "params": {
+    "water": 26,
+    "load": 100,
+    "flow": 60,
+    "bleed": 22,
+    "dry": 70,
+    "edge": 65,
+    "granulation": 25,
+    "viscosity": 90,
+    "body": 100,
+    "emboss": 3,
+    "feather": 85,
+    "pickup": 100,
+    "refill": 0,
+    "wetSeconds": 12,
+    "size": 60,
+    "lift": 22
+  },
+  "renderer": "WebKit WebGL",
+  "run": {
+    "digests": {
+      "paper": "77106472",
+      "transparent": "5bb19d2b",
+      "white": "becbaf8d",
+      "pigment": "c994044d"
+    },
+    "bakeMs": 299,
+    "ticksApplied": 121,
+    "paintedPct": 12.2,
+    "geometry": {
+      "paintedPct": 12.2,
+      "topY": 0.7178,
+      "bottomY": 0.5205,
+      "centroidY": 0.6212,
+      "extentY": 0.1973,
+      "columnsPainted": 415,
+      "maxColumnRunPx": 95,
+      "tongueWidthPx": 63,
+      "bottomP50": 0.5459,
+      "bottomP90": 0.5557
+    },
+    "wet": {
+      "peak": 0.0148,
+      "mass": 151.8,
+      "centroidY": 0.6204,
+      "mobileBottomY": 0,
+      "mobileTopY": 0,
+      "mobileFrac": 0,
+      "activeRect": {
+        "x0": 0,
+        "y0": 262,
+        "x1": 458,
+        "y1": 362
+      },
+      "gravityParam": 0
+    }
+  },
+  "verdict": "SPIKE-004 CAPTURED"
+}

@@ -1,0 +1,65 @@
+{
+  "gate": "nom-g1-t60",
+  "engine": "workbench",
+  "gravity": 1,
+  "waterPass": false,
+  "ticks": 60,
+  "sheet": 512,
+  "sizeParam": 60,
+  "params": {
+    "water": 26,
+    "load": 100,
+    "flow": 60,
+    "bleed": 22,
+    "dry": 70,
+    "edge": 65,
+    "granulation": 25,
+    "viscosity": 90,
+    "body": 100,
+    "emboss": 3,
+    "feather": 85,
+    "pickup": 100,
+    "refill": 0,
+    "wetSeconds": 12,
+    "size": 60,
+    "lift": 22
+  },
+  "renderer": "WebKit WebGL",
+  "run": {
+    "digests": {
+      "paper": "e3ab77f0",
+      "transparent": "4bec9dc5",
+      "white": "8819cb26",
+      "pigment": "545c9dc5"
+    },
+    "bakeMs": 91,
+    "ticksApplied": 61,
+    "paintedPct": 0,
+    "geometry": {
+      "paintedPct": 0,
+      "topY": 0,
+      "bottomY": 0,
+      "centroidY": 0,
+      "extentY": 0,
+      "columnsPainted": 0,
+      "bottomP50": 0,
+      "bottomP90": 0
+    },
+    "wet": {
+      "peak": 0.2341,
+      "mass": 2289.4,
+      "centroidY": 0.6137,
+      "mobileBottomY": 0.5713,
+      "mobileTopY": 0.6787,
+      "mobileFrac": 5.9,
+      "activeRect": {
+        "x0": 0,
+        "y0": 257,
+        "x1": 463,
+        "y1": 383
+      },
+      "gravityParam": 1
+    }
+  },
+  "verdict": "SPIKE-004 CAPTURED"
+}

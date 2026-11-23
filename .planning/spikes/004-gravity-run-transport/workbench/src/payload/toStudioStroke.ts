@@ -1,0 +1,276 @@
+// ============================================================
+//  toStudioStroke — the single engine-2 → StudioStroke<P>
+//  projection (HOST-02 / D-19). This is the ONLY place engine-2
+//  field names meet host field names. After it, host schedules
+//  see only StudioStroke<P> shared fields — the host never
+//  reads P (R2.2). Engine-1 parameter names are prohibited
+//  from P (mirror engine-1 projection discipline; never leak
+//  engine-1 param names into P).
+//
+//  FIELD-MAPPING CONTRACT (identical words to engine-1's
+//  toStudioStroke — one law in two places; keep them in lockstep):
+//    pts[].tick   ← the recorded 60 Hz tick offset when `pointTicks` is
+//                   present (raw pointer timing: repeats and gaps kept),
+//                   else the sample index i (legacy index law)
+//    ticks        ← max(1, last pts[].tick)
+//    cuisson      ← diffusionFrames when > 0, else 0 (capped at 600)
+//    motion       ← null
+//    brushId      ← the selected RESPONSE id (stable brush-pack key)
+//    textureId    ← the selected texture (mask) id, written only when
+//                  one was chosen (quick-261115-oh9) — the texture
+//                  replaces the footprint, never the response
+//    toolOverrides ← the tip's 8 numeric multipliers snapshotted
+//                  at record time (R1.7 / D-08) — {} when absent
+//    traceSeed    ← hashMutationId(mutationId)   (D-20 / D-25),
+//                   mixed with `paintSeedSalt` when recorded
+//    recordedOrder ← timestamp (ordering key, never a playback clock)
+//    playFrame    ← playFrame ?? null
+//    engine       ← opaque engine-2 private fields
+//
+//  261031-cf9 — `paintSeedSalt` is a RESERVED HOST KEY inside the open
+//  canonical `engine.params` bag (the persistence carrier, carried by
+//  AQTL's open param record). Engine-2 never reads it: toEngineParams()
+//  is a fixed projection of the canonical keys. `traceSeed` is its only
+//  consumer — a finite, non-negative salt re-keys the per-stroke RNG so a
+//  committed re-bake redraws the stochastic paint texture while points,
+//  pressure, brush params, tool overrides and the paper seed stay fixed.
+//  Absent (or malformed) keeps today's exact seed, byte for byte.
+//
+//  The ONE payload union (D-16) also carries Dry events — see
+//  dryEvent.ts. This module owns the stroke projection; the union
+//  type is re-exported here so callers meet both members at the
+//  payload boundary.
+// ============================================================
+
+import { hashMutationId, mixStrokeSeed } from '@efxlab/efx-paint-host'
+import type { StudioPoint, StudioStroke } from '@efxlab/efx-paint-host/animation'
+import type { AquarelleToolOverrides } from '../brushes/tips'
+import { projectVectorPath } from './vectorPath'
+import type { AquarelleAnchor, AquarelleCurveMode } from './vectorPath'
+
+// The one payload union accepts Dry events alongside strokes (D-16).
+export type { AquarelleDryEvent, AquarellePayloadEvent } from './dryEvent'
+
+/**
+ * The PAYLOAD tool union — five members (261121-mtu).
+ *
+ * The ENGINE union (`Engine.Tool`, `engine/deposit.ts`'s local
+ * `ENGINE_TOOLS`) stays four (brush | water | pen | lift). `'watercolor'`
+ * is a PAYLOAD-ONLY paint tool: it adds no deposit law and maps to the
+ * engine's `brush` at the adapter seam. The distinction it carries is the
+ * brush/medium family the tool exposes (the watercolor group and its
+ * medium), not a fifth engine mode. Dry is a recorded timeline event, not
+ * a paint tool (D-15).
+ */
+export type AquarelleTool = 'brush' | 'watercolor' | 'water' | 'pen' | 'lift'
+
+/** Exhaustive payload tool list, in tool-row order (`'watercolor'` appended). */
+export const AQUARELLE_TOOLS: readonly AquarelleTool[] = Object.freeze([
+  'brush',
+  'watercolor',
+  'water',
+  'pen',
+  'lift',
+] as const)
+
+/**
+ * 261121-mtu: the ONE shared paint-tool predicate. A paint tool deposits
+ * pigment under the active medium; the Water tool only wets/pushes and the
+ * Lift tool only erases. Callers (the auto-promotion gate, the
+ * generated-frame paint guard) use this instead of duplicating the list.
+ */
+export function isAquarellePaintTool(tool: AquarelleTool): boolean {
+  return tool === 'brush' || tool === 'watercolor'
+}
+
+/** Engine-2 private fields carried in the opaque `engine: P` slot. */
+export interface AquarelleStrokePayload {
+  tool: AquarelleTool
+  color: string | null
+  params: Record<string, number>
+  brushId: string
+  toolOverrides?: AquarelleToolOverrides
+  /**
+   * quick-261115-oh9: the texture (mask) id that replaces the footprint.
+   * ABSENT means the response's own tip; `brushId` is never a texture id.
+   */
+  textureId?: string
+  /**
+   * quick 261116-inu: the projected-texture orientation in integer DEGREES
+   * (-180..180). Present only when a texture supplied the tip. The ONE
+   * hundredths boundary is the AQTL byte body; every JSON carrier stays in
+   * degrees.
+   */
+  textureRotation?: number
+  mutationId?: number
+  diffusionFrames?: number
+  timestamp: number
+  playFrame?: number
+  /**
+   * 61-03: the vector path, in document uv. ABSENT means a hand-painted
+   * stroke; a non-empty list is the only vector-ness signal (D-01/D-12).
+   */
+  anchors?: readonly AquarelleAnchor[]
+  /**
+   * 61-30 (G-20): explicit curve-evaluation discriminator. ABSENT means
+   * `bezier`, so a stroke written before this phase evaluates exactly as
+   * it did. An evaluation mode, never a third anchor kind.
+   */
+  curveMode?: AquarelleCurveMode
+  /**
+   * 62-UAT: true only for a stroke CREATED by the vector pen. Absent on a
+   * hand-painted stroke and on a painted stroke later converted to a path,
+   * so the stroke list can name "Vector" apart from "<Tool>-Vector". An
+   * optional boolean keeps schemaVersion 1 (the anchors/curveMode precedent).
+   */
+  vectorDrawn?: true
+}
+
+/** Host cap policy (55 D-20 / D-19) — engine-owned, script-visible. */
+export const DIFFUSION_CAP = 600
+
+/**
+ * 261031-cf9: reserved host param key carrying the persisted paint seed
+ * salt. It lives inside `engine.params` (open canonical bag) and is the
+ * ONLY seed input beyond `mutationId` — never add it to
+ * AQUARELLE_GLOBAL_KEYS (sliders must not write it).
+ */
+export const PAINT_SEED_SALT_PARAM = 'paintSeedSalt'
+
+/**
+ * Read the persisted paint seed salt. Total and fail-closed: only a finite
+ * number is accepted (truncated to its integer part); absent, NaN,
+ * Infinity, a string or a negative value all yield null — the stroke then
+ * keeps today's exact `hashMutationId` seed. 0 is a valid salt.
+ */
+export function paintSeedSaltOf(
+  params: Readonly<Record<string, unknown>> | undefined,
+): number | null {
+  const raw = params?.[PAINT_SEED_SALT_PARAM]
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) return null
+  const salt = Math.trunc(raw)
+  return salt < 0 ? null : salt
+}
+
+/** Raw stylus sample as the engine records it. */
+export interface AquarellePoint {
+  x: number
+  y: number
+  p: number
+  tx: number
+  ty: number
+  tw: number
+}
+
+/** Runtime stroke shape the engine records (pre-projection). */
+export interface AquarelleStroke {
+  tool: AquarelleTool
+  color: string | null
+  params: Record<string, number>
+  brushId: string
+  points: readonly AquarellePoint[]
+  /**
+   * Real 60 Hz tick offsets for `points`, when the recorder captured the raw
+   * pointer timing. ABSENT means the points sit on consecutive ticks (the
+   * legacy index law). Samples may share a tick (a fast pointer reports
+   * several per tick) and may skip ticks (a slow one rests); both are the
+   * deposit the live sheet actually made, so replay must keep them.
+   */
+  pointTicks?: readonly number[]
+  toolOverrides?: AquarelleToolOverrides
+  /** quick-261115-oh9: texture (mask) id; absent keeps the response tip. */
+  textureId?: string
+  /** quick 261116-inu: projected-texture orientation, integer DEGREES. */
+  textureRotation?: number
+  mutationId?: number
+  diffusionFrames?: number
+  timestamp: number
+  playFrame?: number
+  /** 61-03: the vector path in document uv (absent = hand-painted stroke). */
+  anchors?: readonly AquarelleAnchor[]
+  /** 61-30 (G-20): explicit curve-evaluation mode (absent = Bézier). */
+  curveMode?: AquarelleCurveMode
+  /**
+   * 62-UAT: true only for a stroke CREATED by the vector pen (absent on a
+   * hand-painted stroke and on a converted path).
+   */
+  vectorDrawn?: true
+}
+
+/**
+ * Project an engine-2 runtime stroke onto the host `StudioStroke<P>`
+ * contract. The single engine-boundary projection (D-19).
+ */
+export function toStudioStroke(
+  s: Readonly<AquarelleStroke>,
+): StudioStroke<AquarelleStrokePayload> {
+  const baseSeed = hashMutationId(s.mutationId)
+  const salt = paintSeedSaltOf(s.params)
+  const pointTicks = s.pointTicks
+  const pts: StudioPoint[] = s.points.map((p, i) => ({
+    x: p.x,
+    y: p.y,
+    p: p.p,
+    tx: p.tx,
+    ty: p.ty,
+    tw: p.tw,
+    // quick 261116-rp: a raw-timed stroke keeps its REAL tick offsets. They
+    // are nondecreasing but may repeat or skip — the deposit the live sheet
+    // made. Absent/ill-sized timings fall back to the index law.
+    tick: pointTicks !== undefined && pointTicks.length === s.points.length
+      ? Math.max(0, Math.trunc(pointTicks[i] ?? i))
+      : i,
+  }))
+  // The bake's window walk scans ticks forward and stops at the first one
+  // outside the window, so a corrupt trace must never go backwards.
+  let previousTick = 0
+  for (const point of pts) {
+    point.tick = Math.max(previousTick, point.tick)
+    previousTick = point.tick
+  }
+  const lastTick = pts.length > 0 ? pts[pts.length - 1]!.tick : 0
+  return {
+    pts,
+    ticks: Math.max(1, lastTick),
+    cuisson:
+      s.diffusionFrames !== undefined && s.diffusionFrames > 0
+        ? Math.min(DIFFUSION_CAP, Math.trunc(s.diffusionFrames))
+        : 0,
+    motion: null,
+    brushId: s.brushId,
+    toolOverrides: s.toolOverrides ? { ...s.toolOverrides } : {},
+    traceSeed: salt === null ? baseSeed : mixStrokeSeed(baseSeed, salt),
+    recordedOrder: s.timestamp,
+    playFrame: s.playFrame ?? null,
+    color: s.color,
+    engine: {
+      tool: s.tool,
+      color: s.color,
+      params: { ...s.params } as Record<string, number>,
+      brushId: s.brushId,
+      toolOverrides: s.toolOverrides ? { ...s.toolOverrides } : undefined,
+      // quick-261115-oh9: written ONLY when a texture was chosen, so an
+      // untextured stroke keeps its exact pre-texture key set. A LIFT never
+      // carries one — the eraser has no texture, and the one projection is
+      // where that law is enforced for every producer (record, restore,
+      // duplicate, script copy).
+      ...(s.textureId !== undefined && s.tool !== 'lift' ? { textureId: s.textureId } : {}),
+      // quick 261116-inu: the rotation is a texture-side property — written
+      // only when the stroke carries one, never as a `textureRotation:
+      // undefined` residue (the textureId precedent above).
+      ...(s.textureRotation !== undefined && s.tool !== 'lift'
+        ? { textureRotation: s.textureRotation }
+        : {}),
+      mutationId: s.mutationId,
+      diffusionFrames: s.diffusionFrames,
+      timestamp: s.timestamp,
+      playFrame: s.playFrame,
+      // 61-03: conditional canonical terms — each vector field is written
+      // ONLY when present, so a hand-painted stroke keeps its exact
+      // pre-vector key set and a mode-only stroke gains that key alone.
+      ...(s.anchors !== undefined ? { anchors: projectVectorPath(s.anchors) } : {}),
+      ...(s.curveMode !== undefined ? { curveMode: s.curveMode } : {}),
+      ...(s.vectorDrawn === true ? { vectorDrawn: true as const } : {}),
+    },
+  }
+}

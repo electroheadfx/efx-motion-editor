@@ -1,0 +1,119 @@
+--- packages/efx-watercolor/src/playground/shaders.ts	2026-11-23 17:01:40
++++ .planning/spikes/005-drip-beading/workbench/src/playground/shaders.ts	2026-11-23 19:26:55
+@@ -209,14 +209,54 @@
+   o = vec4(m > uThreshold ? 1.0 : 0.0, 0.0, 0.0, 1.0);
+ }`;
+ 
++// SPIKE 004: a document-space value noise for the gravity PATCHES. It is a
++// pure function of the texel position (no time, no RNG), so live and bake can
++// never disagree; document-space means the drips form in fixed lanes, and the
++// noise travels with nothing, so a lane keeps its strength as paint sags
++// through it. uGravityNoise = 0 is inert (multiply by 1).
++const GRAVITY_NOISE = `
++uniform float uGravityNoise, uGravityNoiseScale;
++float gravHash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
++float gravNoise(vec2 uv){
++  vec2 p = uv * uGravityNoiseScale;
++  vec2 i = floor(p), f = fract(p);
++  vec2 u = f * f * (3.0 - 2.0 * f);
++  float a = gravHash(i), b = gravHash(i + vec2(1.0, 0.0));
++  float c = gravHash(i + vec2(0.0, 1.0)), d = gravHash(i + vec2(1.0, 1.0));
++  return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
++}
++float gravPatch(vec2 uv){
++  return mix(1.0, smoothstep(0.30, 0.70, gravNoise(uv)), uGravityNoise);
++}
++`;
++
+ // Water: carried a little by the flow, creeps outward, evaporates.
+-export const advectWetFS = `${HEADER}
++// SPIKE 004: `uGravity` sags the wet film DOWN the sheet (document y-up, so
++// sampling from above moves the content down). 0 keeps the shipped law
++// byte-identical: the offset term is a multiply by zero.
++export const advectWetFS = `${HEADER}${GRAVITY_NOISE}
+ out vec4 o;
+ uniform sampler2D uVelocity, uWet;
+ uniform vec2 uSimTexel, uTexel;
+-uniform float uDt, uDecay, uSpread;
++uniform float uDt, uDecay, uSpread, uGravity;
++uniform float uGravityGain, uGravityThreshold, uGravityFocus;
+ void main(){
+   vec2 coord = vUv - uDt * texture(uVelocity, vUv).xy * uSimTexel * 0.6;
++  float wg = texture(uWet, coord).x;
++  // SPIKE 004: gravity's OWN gate. The pigment-mobility ramp (0.02..0.45) is
++  // nearly zero across a thin wet film, so gating gravity by it cancelled
++  // ~95 % of the motion (measured: 4.7 px instead of 83 px). A thin film
++  // still drips: transport reaches full at 0.08 of water. The THRESHOLD is
++  // the artist's "loaded enough to run" knob: below it nothing sags, so only
++  // the loaded core of the mark feeds the tongue.
++  float gate = smoothstep(0.004, 0.08, wg);
++  gate *= mix(1.0, smoothstep(uGravityThreshold, uGravityThreshold + 0.05, wg), step(0.0001, uGravityThreshold));
++  // SPIKE 004: FOCUS — a power on the wet amount concentrates the sag on the
++  // loaded core, so the run narrows toward a rivulet instead of translating
++  // the whole band rigidly. Focus 0 = 1 (the flat field law, unchanged).
++  gate *= uGravityFocus > 0.0 ? pow(clamp(wg * 5.0, 0.0, 1.0), uGravityFocus) : 1.0;
++  gate *= gravPatch(vUv);   // SPIKE 004: patchy drips, not a uniform sag
++  coord += vec2(0.0, uGravity * uDt * uGravityGain * gate);
+   float w = texture(uWet, coord).x;
+   vec2 b = uTexel * 1.6;
+   float n = (texture(uWet, coord + vec2(b.x, 0.0)).x + texture(uWet, coord - vec2(b.x, 0.0)).x
+@@ -232,13 +272,15 @@
+ // 2 and 3 are written as fluxes across texel faces, gated by the mobility of both
+ // sides, so pigment is conserved and never seeps onto dry paper: wet-on-dry strokes
+ // keep hard edges, wet-in-wet strokes bloom as far as the water reaches.
+-export const advectInkFS = `${HEADER}
++export const advectInkFS = `${HEADER}${GRAVITY_NOISE}
+ layout(location=0) out vec4 oA;
+ layout(location=1) out vec4 oB;
+ uniform sampler2D uVelocity, uInkA, uInkB, uWet;
+ uniform vec2 uSimTexel, uTexel;
+ uniform float uDt, uBleed, uEdge, uAspect, uKeep;
+ uniform vec3 uBrush;  // x, y, radius (radius <= 0: no brush down)
++uniform float uGravity;  // SPIKE 004: same downward sag as the water (0 = inert)
++uniform float uGravityGain, uGravityThreshold, uGravityFocus;
+ 
+ float mobility(float w){ return smoothstep(0.02, 0.45, w); }
+ 
+@@ -264,6 +306,14 @@
+ 
+   vec2 vel = texture(uVelocity, vUv).xy;
+   vec2 coord = vUv - uDt * vel * uSimTexel * m;
++  // SPIKE 004: gravity — the pigment follows the sagging water. Its OWN gate
++  // (0.004..0.08), not the pigment-mobility ramp: that ramp is ~0 on a thin
++  // film and would cancel the sag. The threshold selects the loaded core.
++  float gravGate = smoothstep(0.004, 0.08, w);
++  gravGate *= mix(1.0, smoothstep(uGravityThreshold, uGravityThreshold + 0.05, w), step(0.0001, uGravityThreshold));
++  gravGate *= uGravityFocus > 0.0 ? pow(clamp(w * 5.0, 0.0, 1.0), uGravityFocus) : 1.0;
++  gravGate *= gravPatch(vUv);   // SPIKE 004: patchy drips, not a uniform sag
++  coord += vec2(0.0, uGravity * uDt * uGravityGain * gravGate);
+   vec4 a = mix(A, texture(uInkA, coord), m);
+   vec4 b = mix(B, texture(uInkB, coord), m);
+ 
+@@ -372,12 +422,14 @@
+ // texel its own film leaves bare. This is NOT a keep factor: a frozen texel
+ // keeps its coverage exactly; nothing decays, the wet flow simply cannot
+ // carry coverage through bare paper.
+-export const advectCoverFS = `${HEADER}
++export const advectCoverFS = `${HEADER}${GRAVITY_NOISE}
+ layout(location=0) out vec4 o0;
+ uniform sampler2D uVelocity, uCover, uWet, uPaper;
+ uniform vec2 uSimTexel, uTexel;
+ uniform float uDt, uBleed, uEdge, uAspect;
+ uniform vec3 uBrush;  // x, y, radius (radius <= 0: no brush down)
++uniform float uGravity;  // SPIKE 004: the coverage follows the same gravity sag
++uniform float uGravityGain, uGravityThreshold, uGravityFocus;
+ 
+ ${FILM_PRESENCE}
+ 
+@@ -405,6 +457,11 @@
+   float p = filmPresence(vUv);
+   vec2 vel = texture(uVelocity, vUv).xy;
+   vec2 coord = vUv - uDt * vel * uSimTexel * m;
++  float gravGate = smoothstep(0.004, 0.08, w);
++  gravGate *= mix(1.0, smoothstep(uGravityThreshold, uGravityThreshold + 0.05, w), step(0.0001, uGravityThreshold));
++  gravGate *= uGravityFocus > 0.0 ? pow(clamp(w * 5.0, 0.0, 1.0), uGravityFocus) : 1.0;
++  gravGate *= gravPatch(vUv);   // SPIKE 004: patchy drips, not a uniform sag
++  coord += vec2(0.0, uGravity * uDt * uGravityGain * gravGate);
+   float c = mix(C, texture(uCover, coord).x, m * p);
+ 
+   float brush = 0.0;

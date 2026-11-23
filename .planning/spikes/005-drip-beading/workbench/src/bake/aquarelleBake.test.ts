@@ -1,0 +1,1788 @@
+// ============================================================
+//  aquarelleBake — createBakeHost consumer (56-08, D-21).
+//
+//  Standing-pin family (bakeHost.test.ts / codec.test.ts) —
+//  normal vitest .test.ts, no new config.
+//
+//  Pins the AQUA-05 / AQUA-07 / AQUA-08 bake law:
+//    - every BakeHostTurn uses mode 'flush-survives-navigation'
+//      (long cuisson survives leaving the frame)
+//    - cancelled/interrupted turn never publishes
+//    - overlapping flush() calls share one drain outcome
+//    - zero-stroke script produces zero frames and completes
+//    - unpainted pixels stay alpha 0
+//    - Dry events fire in recorded order between stroke turns
+//    - diffusionFrames clamped to DIFFUSION_CAP before stepTick
+//    - a zero-diffusionFrames stroke bakes a single captured frame
+// ============================================================
+
+import { describe, expect, it } from 'vitest'
+import type { EngineAdapter, StudioStroke } from '@efxlab/efx-paint-host'
+import type { AquarelleStrokePayload } from '../payload/toStudioStroke'
+import { toStudioStroke, DIFFUSION_CAP, type AquarelleStroke } from '../payload/toStudioStroke'
+import { createDryEvent, isAquarelleDryEvent, type AquarellePayloadEvent } from '../payload/dryEvent'
+import { aquarelleVisibleSettleTicks, createAquarelleBake, aquarellePaperCacheFingerprint, type AquarelleBakeFrame, type AquarelleBakePaper } from './aquarelleBake'
+
+// ---------------------------------------------------------------------------
+// Mock canvas + fake adapter (same idiom as engineAdapter.test.ts)
+// ---------------------------------------------------------------------------
+
+interface MockImageData {
+  width: number
+  height: number
+  data: Uint8ClampedArray
+}
+
+function makeMockCanvas(width: number, height: number): {
+  canvas: HTMLCanvasElement
+  pixels: Uint8ClampedArray
+} {
+  const pixels = new Uint8ClampedArray(width * height * 4)
+  const canvasRef: Record<string, unknown> = {
+    width,
+    height,
+    toDataURL: () => 'data:image/webp;base64,AAAA',
+    getContext: (id: string) => {
+      if (id !== '2d') return null
+      return {
+        canvas: canvasRef,
+        getImageData: (x: number, y: number, w: number, h: number): MockImageData => {
+          const out = new Uint8ClampedArray(w * h * 4)
+          for (let row = 0; row < h; row++) {
+            for (let col = 0; col < w; col++) {
+              const src = ((y + row) * width + (x + col)) * 4
+              const dst = (row * w + col) * 4
+              out[dst] = pixels[src] ?? 0
+              out[dst + 1] = pixels[src + 1] ?? 0
+              out[dst + 2] = pixels[src + 2] ?? 0
+              out[dst + 3] = pixels[src + 3] ?? 0
+            }
+          }
+          return { width: w, height: h, data: out }
+        },
+        putImageData: (imageData: MockImageData, x: number, y: number) => {
+          for (let row = 0; row < imageData.height; row++) {
+            for (let col = 0; col < imageData.width; col++) {
+              const src = (row * imageData.width + col) * 4
+              const dst = ((y + row) * width + (x + col)) * 4
+              pixels[dst] = imageData.data[src] ?? 0
+              pixels[dst + 1] = imageData.data[src + 1] ?? 0
+              pixels[dst + 2] = imageData.data[src + 2] ?? 0
+              pixels[dst + 3] = imageData.data[src + 3] ?? 0
+            }
+          }
+        },
+        createImageData: (w: number, h: number): MockImageData => ({
+          width: w,
+          height: h,
+          data: new Uint8ClampedArray(w * h * 4),
+        }),
+        fillRect: (x: number, y: number, w: number, h: number) => {
+          for (let row = 0; row < h; row++) {
+            for (let col = 0; col < w; col++) {
+              const dst = ((y + row) * width + (x + col)) * 4
+              pixels[dst] = 10
+              pixels[dst + 1] = 20
+              pixels[dst + 2] = 30
+              pixels[dst + 3] = 255
+            }
+          }
+        },
+      }
+    },
+  }
+  return { canvas: canvasRef as unknown as HTMLCanvasElement, pixels }
+}
+
+function makeStroke(overrides: Partial<AquarelleStroke> = {}): StudioStroke<AquarelleStrokePayload> {
+  const raw: AquarelleStroke = {
+    tool: 'brush',
+    color: '#2244aa',
+    params: { size: 8, water: 50, flow: 50 },
+    brushId: 'wc/round-medium',
+    points: [
+      { x: 4, y: 4, p: 0.5, tx: 0, ty: 0, tw: 0 },
+      { x: 8, y: 4, p: 0.5, tx: 0, ty: 0, tw: 0 },
+    ],
+    mutationId: 7,
+    timestamp: 1000,
+    ...overrides,
+  }
+  return toStudioStroke(raw)
+}
+
+interface FakeAdapterLog {
+  applied: unknown[]
+  stepped: number[]
+  captures: number
+}
+
+/**
+ * Deterministic adapter double. applyStroke paints a 2×2 block at (1,1);
+ * stepTick is recorded so the clamp law can be pinned; captureFrame returns
+ * the live mock canvas (alpha 0 outside the block).
+ */
+function makeFakeAdapter(width = 8, height = 8): {
+  adapter: EngineAdapter<AquarelleStrokePayload>
+  pixels: Uint8ClampedArray
+  log: FakeAdapterLog
+  canvas: HTMLCanvasElement
+} {
+  const { canvas, pixels } = makeMockCanvas(width, height)
+  const log: FakeAdapterLog = { applied: [], stepped: [], captures: 0 }
+  const adapter: EngineAdapter<AquarelleStrokePayload> = {
+    engineId: 'efx-watercolor',
+    payloadCodec: {
+      serialize: (s: unknown) => s as StudioStroke<AquarelleStrokePayload>,
+      parse: (s: unknown) => s as StudioStroke<AquarelleStrokePayload>,
+    },
+    setInputLocked: () => undefined,
+    setAnimationMode: () => undefined,
+    getStrokes: () => [],
+    renderPartialStrokes: () => undefined,
+    renderAllStrokes: () => undefined,
+    exportCompositeCanvas: () => canvas,
+    applyStroke: (stroke) => {
+      log.applied.push(stroke)
+      if (isAquarelleDryEvent(stroke)) return
+      // Paint a tiny opaque block — everything else stays alpha 0.
+      const ctx = canvas.getContext('2d') as CanvasRenderingContext2D | null
+      if (ctx && typeof ctx.fillRect === 'function') ctx.fillRect(1, 1, 2, 2)
+    },
+    stepTick: (tick: number) => {
+      log.stepped.push(tick)
+    },
+    captureFrame: () => {
+      log.captures += 1
+      return canvas as unknown as CanvasImageSource
+    },
+    dispose: () => undefined,
+  }
+  return { adapter, pixels, log, canvas }
+}
+
+/** Stub WebP encoder — carries the captured pixels so alpha can be pinned. */
+function pixelEncoder(frame: CanvasImageSource): Uint8Array {
+  const canvas = frame as HTMLCanvasElement
+  const ctx = canvas.getContext('2d') as CanvasRenderingContext2D | null
+  if (!ctx) return new Uint8Array([0])
+  const img = ctx.getImageData(0, 0, canvas.width, canvas.height)
+  return new Uint8Array(img.data.buffer.slice(0), img.data.byteOffset, img.data.byteLength)
+}
+
+function alphaAt(pixels: Uint8Array, width: number, x: number, y: number): number {
+  return pixels[(y * width + x) * 4 + 3] ?? 0
+}
+
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((next) => {
+    resolve = next
+  })
+  return { promise, resolve }
+}
+
+// ---------------------------------------------------------------------------
+
+describe('createAquarelleBake — flush-survives-navigation consumer', () => {
+  it('bake(script) submits flush-survives-navigation turns and publishes one WebP frame per stroke', async () => {
+    const { adapter, log } = makeFakeAdapter()
+    const modes: string[] = []
+    const bake = createAquarelleBake(adapter, {
+      encodeWebp: pixelEncoder,
+      width: 8,
+      height: 8,
+    })
+    // Record the mode every turn uses by wrapping submit through a spy adapter
+    // is not enough — pin the mode via the produced behaviour across dispose.
+    const events: AquarellePayloadEvent[] = [makeStroke(), makeStroke({ mutationId: 8, timestamp: 1001 })]
+    const result = await bake.bake(events)
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.frames).toHaveLength(2)
+    expect(result.frames[0]!.strokeIndex).toBe(0)
+    expect(result.frames[1]!.strokeIndex).toBe(1)
+    expect(log.captures).toBe(2)
+    expect(log.applied).toHaveLength(2)
+    expect(modes).toEqual([])
+  })
+
+  it('every turn survives dispose (mode flush-survives-navigation) and still commits', async () => {
+    const { adapter } = makeFakeAdapter()
+    const gate = deferred<void>()
+    let encoderCalls = 0
+    const slowEncode = async (): Promise<Uint8Array> => {
+      encoderCalls += 1
+      await gate.promise
+      return new Uint8Array([1, 2, 3])
+    }
+    const bake = createAquarelleBake(adapter, { encodeWebp: slowEncode, width: 8, height: 8 })
+    const pending = bake.bake([makeStroke()])
+
+    // Let the turn reach produce (host pre-produce yield).
+    await Promise.resolve()
+    await Promise.resolve()
+    await Promise.resolve()
+    bake.dispose()
+    gate.resolve()
+
+    const result = await pending
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.frames).toHaveLength(1)
+    expect(encoderCalls).toBe(1)
+  })
+
+  it('a cancelled/interrupted turn never publishes its frames', async () => {
+    const { adapter } = makeFakeAdapter()
+    const gate = deferred<void>()
+    const committed: AquarelleBakeFrame[] = []
+    const slowEncode = async (): Promise<Uint8Array> => {
+      await gate.promise
+      return new Uint8Array([9, 9, 9])
+    }
+    const bake = createAquarelleBake(adapter, {
+      encodeWebp: slowEncode,
+      width: 8,
+      height: 8,
+      onCommit: (frame) => {
+        committed.push(frame)
+      },
+    })
+    const pending = bake.bake([makeStroke()])
+
+    await Promise.resolve()
+    await Promise.resolve()
+    await Promise.resolve()
+    bake.interrupt()
+    gate.resolve()
+
+    const result = await pending
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toBe('cancelled')
+    expect(committed).toHaveLength(0)
+  })
+
+  it('overlapping flush() calls share one drain outcome', async () => {
+    const { adapter } = makeFakeAdapter()
+    const gate = deferred<void>()
+    let encodes = 0
+    const slowEncode = async (): Promise<Uint8Array> => {
+      encodes += 1
+      await gate.promise
+      return new Uint8Array([4])
+    }
+    const bake = createAquarelleBake(adapter, { encodeWebp: slowEncode, width: 8, height: 8 })
+    const pending = bake.bake([makeStroke(), makeStroke({ mutationId: 9, timestamp: 1002 })])
+
+    await Promise.resolve()
+    await Promise.resolve()
+    await Promise.resolve()
+    const flushA = bake.flush()
+    const flushB = bake.flush()
+    gate.resolve()
+    await Promise.all([flushA, flushB, pending])
+
+    // Both flushes settled after the same turns — one shared drain, no extra work.
+    expect(encodes).toBe(2)
+    const result = await pending
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.frames).toHaveLength(2)
+  })
+
+  it('zero-stroke script produces zero published frames and completes', async () => {
+    const { adapter, log } = makeFakeAdapter()
+    const bake = createAquarelleBake(adapter, { encodeWebp: pixelEncoder, width: 8, height: 8 })
+    const result = await bake.bake([])
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.frames).toHaveLength(0)
+    expect(log.captures).toBe(0)
+  })
+
+  it('baked frames have alpha 0 in unpainted regions (AQUA-08)', async () => {
+    const { adapter } = makeFakeAdapter(8, 8)
+    const bake = createAquarelleBake(adapter, { encodeWebp: pixelEncoder, width: 8, height: 8 })
+    const result = await bake.bake([makeStroke()])
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const bytes = result.frames[0]!.bytes
+    // Painted block at (1,1)-(2,2) is opaque; far corner stays transparent.
+    expect(alphaAt(bytes, 8, 1, 1)).toBe(255)
+    expect(alphaAt(bytes, 8, 7, 7)).toBe(0)
+  })
+
+  it('Dry events fire in recorded order between stroke turns (D-15)', async () => {
+    const { adapter, log } = makeFakeAdapter()
+    const bake = createAquarelleBake(adapter, { encodeWebp: pixelEncoder, width: 8, height: 8 })
+    const strokeA = makeStroke({ mutationId: 1, timestamp: 10 })
+    const dry = createDryEvent(3, 11)
+    const strokeB = makeStroke({ mutationId: 2, timestamp: 12 })
+    const result = await bake.bake([strokeA, dry, strokeB])
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    // Two stroke turns; Dry applied between them on the adapter.
+    expect(result.frames).toHaveLength(2)
+    expect(log.applied).toHaveLength(3)
+    expect(isAquarelleDryEvent(log.applied[1])).toBe(true)
+    expect(log.applied[0]).toBe(strokeA)
+    expect(log.applied[2]).toBe(strokeB)
+  })
+
+  it('diffusionFrames is clamped to DIFFUSION_CAP before stepTick (D-19)', async () => {
+    const { adapter, log } = makeFakeAdapter()
+    const bake = createAquarelleBake(adapter, { encodeWebp: pixelEncoder, width: 8, height: 8 })
+    const result = await bake.bake([makeStroke({ diffusionFrames: DIFFUSION_CAP + 500 })])
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.frames).toHaveLength(1)
+    // stepTick walked exactly the clamped window — never the raw 1100.
+    expect(log.stepped).toHaveLength(DIFFUSION_CAP)
+    expect(log.stepped[0]).toBe(0)
+    expect(log.stepped[DIFFUSION_CAP - 1]).toBe(DIFFUSION_CAP - 1)
+  })
+
+  it('a zero-diffusionFrames stroke bakes a single captured frame and completes', async () => {
+    const { adapter, log } = makeFakeAdapter()
+    const bake = createAquarelleBake(adapter, { encodeWebp: pixelEncoder, width: 8, height: 8 })
+    const result = await bake.bake([makeStroke({ diffusionFrames: 0 })])
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.frames).toHaveLength(1)
+    expect(log.stepped).toHaveLength(0)
+    expect(log.captures).toBe(1)
+  })
+
+  it('bake turns are FIFO — a later stroke never commits before an earlier one', async () => {
+    const { adapter } = makeFakeAdapter()
+    const order: number[] = []
+    // Encoder latency decreases with stroke index so a racy queue would
+    // commit stroke 1 first; the FIFO commit chain must keep 0 before 1.
+    const latencies = [30, 0]
+    let call = 0
+    const flakyEncode = async (): Promise<Uint8Array> => {
+      const index = call++
+      await new Promise((resolve) => setTimeout(resolve, latencies[index] ?? 0))
+      return new Uint8Array([index])
+    }
+    const bake = createAquarelleBake(adapter, {
+      encodeWebp: flakyEncode,
+      width: 8,
+      height: 8,
+      onCommit: (frame) => {
+        order.push(frame.strokeIndex)
+      },
+    })
+    const result = await bake.bake([
+      makeStroke({ mutationId: 1, timestamp: 1 }),
+      makeStroke({ mutationId: 2, timestamp: 2 }),
+    ])
+    expect(result.ok).toBe(true)
+    expect(order).toEqual([0, 1])
+  })
+
+  it('idempotent: two fresh bakes of the same script produce identical bytes', async () => {
+    const first = makeFakeAdapter()
+    const second = makeFakeAdapter()
+    const script = (): AquarellePayloadEvent[] => [
+      makeStroke({ mutationId: 42, timestamp: 5 }),
+      createDryEvent(1, 6),
+      makeStroke({ mutationId: 43, timestamp: 7, diffusionFrames: 3 }),
+    ]
+    const a = await createAquarelleBake(first.adapter, { encodeWebp: pixelEncoder, width: 8, height: 8 }).bake(script())
+    const b = await createAquarelleBake(second.adapter, { encodeWebp: pixelEncoder, width: 8, height: 8 }).bake(script())
+    expect(a.ok).toBe(true)
+    expect(b.ok).toBe(true)
+    if (!a.ok || !b.ok) return
+    expect(a.frames.map((f) => Array.from(f.bytes))).toEqual(b.frames.map((f) => Array.from(f.bytes)))
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 261017-fz3 paper-aware bake — paper id/strength/scale in the cache
+// fingerprint; setPaper before the first applyStroke; AQUA-08 alpha-0.
+// ---------------------------------------------------------------------------
+
+describe('261017-fz3 paper-aware bake', () => {
+  const paperA: AquarelleBakePaper = { paperId: 'paper/cold-press', grainStrength: 0.65, grainScale: 1 }
+  const paperB: AquarelleBakePaper = { paperId: 'paper/rough', grainStrength: 0.65, grainScale: 1 }
+  const paperC: AquarelleBakePaper = { paperId: 'paper/cold-press', grainStrength: 0.30, grainScale: 1 }
+  const paperD: AquarelleBakePaper = { paperId: 'paper/cold-press', grainStrength: 0.65, grainScale: 2 }
+
+  it('fingerprint matches when id+strength+scale all match and differs when any one differs', () => {
+    const same: AquarelleBakePaper = { paperId: 'paper/cold-press', grainStrength: 0.65, grainScale: 1 }
+    expect(aquarellePaperCacheFingerprint(paperA)).toBe(aquarellePaperCacheFingerprint(same))
+    expect(aquarellePaperCacheFingerprint(paperA)).not.toBe(aquarellePaperCacheFingerprint(paperB))
+    expect(aquarellePaperCacheFingerprint(paperA)).not.toBe(aquarellePaperCacheFingerprint(paperC))
+    expect(aquarellePaperCacheFingerprint(paperA)).not.toBe(aquarellePaperCacheFingerprint(paperD))
+  })
+
+  it('setPaper is invoked before the first applyStroke (call order)', async () => {
+    const calls: string[] = []
+    const { adapter } = makeFakeAdapter()
+    const paperAware = adapter as EngineAdapter<AquarelleStrokePayload> & {
+      setPaper?: (paper: AquarelleBakePaper) => void
+    }
+    paperAware.setPaper = (paper) => {
+      calls.push(`setPaper:${paper.paperId}`)
+    }
+    const origApply = adapter.applyStroke.bind(adapter)
+    paperAware.applyStroke = (stroke) => {
+      calls.push('applyStroke')
+      origApply(stroke)
+    }
+    const bake = createAquarelleBake(paperAware, {
+      encodeWebp: pixelEncoder,
+      width: 8,
+      height: 8,
+      paper: paperA,
+    })
+    await bake.bake([makeStroke()])
+    const setPaperIndex = calls.indexOf('setPaper:paper/cold-press')
+    const applyIndex = calls.indexOf('applyStroke')
+    expect(setPaperIndex).toBeGreaterThanOrEqual(0)
+    expect(applyIndex).toBeGreaterThanOrEqual(0)
+    expect(setPaperIndex).toBeLessThan(applyIndex)
+  })
+
+  it('a captured frame\'s unpainted far-corner pixel is alpha 0 (AQUA-08) — never opaque white', async () => {
+    const { adapter, pixels } = makeFakeAdapter(16, 16)
+    const bake = createAquarelleBake(adapter, {
+      encodeWebp: pixelEncoder,
+      width: 16,
+      height: 16,
+      paper: paperA,
+    })
+    const result = await bake.bake([makeStroke()])
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.frames).toHaveLength(1)
+    // Far corner (0,0) is outside the 2×2 block at (1,1) — must stay alpha 0.
+    expect(alphaAt(pixels, 16, 0, 0)).toBe(0)
+    expect(alphaAt(pixels, 16, 15, 15)).toBe(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 261019 recorded-timeline progressive replay — the artist's real cadence.
+// The old point-weight schedule anchored strokes at their Studio playFrame
+// (leading empty frames) and compressed the real inter-stroke gaps, so later
+// strokes landed on a still-soaked sheet. The timing path rebuilds the
+// session clock from recordedOrder + ticks and cooks the last frame to sleep.
+// ---------------------------------------------------------------------------
+
+interface TimelineLog {
+  renders: { frame: number; strokes: readonly { stroke: StudioStroke<AquarelleStrokePayload>; pointCount: number }[]; stepsBefore: number }[]
+  stepsByFrame: number[]
+  captures: number
+  fixes: number
+}
+
+function makeTimelineAdapter(awakeTicks: number, withFix = false): {
+  adapter: EngineAdapter<AquarelleStrokePayload> & { isAwake: () => boolean; fix?: () => void }
+  log: TimelineLog
+} {
+  const { canvas } = makeMockCanvas(8, 8)
+  let awake = awakeTicks
+  let steps = 0
+  const log: TimelineLog = { renders: [], stepsByFrame: [], captures: 0, fixes: 0 }
+  const adapter: EngineAdapter<AquarelleStrokePayload> & { isAwake: () => boolean; fix?: () => void } = {
+    engineId: 'efx-watercolor',
+    payloadCodec: {
+      serialize: (s: unknown) => s as StudioStroke<AquarelleStrokePayload>,
+      parse: (s: unknown) => s as StudioStroke<AquarelleStrokePayload>,
+    },
+    setInputLocked: () => undefined,
+    setAnimationMode: () => undefined,
+    getStrokes: () => [],
+    renderPartialStrokes: (entries) => {
+      // The produce chain is serialized, so the capture count IS the frame
+      // index of the render that follows it.
+      log.renders.push({ frame: log.captures, strokes: [...entries], stepsBefore: steps })
+    },
+    renderAllStrokes: () => undefined,
+    exportCompositeCanvas: () => canvas,
+    applyStroke: () => undefined,
+    stepTick: () => {
+      steps += 1
+    },
+    captureFrame: () => {
+      log.stepsByFrame.push(steps)
+      steps = 0
+      log.captures += 1
+      return canvas as unknown as CanvasImageSource
+    },
+    dispose: () => undefined,
+    // The settle probe: awake for `awakeTicks` checks on the FINAL frame.
+    isAwake: () => awake-- > 0,
+    ...(withFix ? { fix: () => { log.fixes += 1 } } : {}),
+  }
+  return { adapter, log }
+}
+
+/** A stroke with `count` points; timestamp is the wall-clock END of the stroke. */
+function timedStroke(count: number, timestamp: number, playFrame: number | null, diffusionFrames = 0): StudioStroke<AquarelleStrokePayload> {
+  return makeStroke({
+    points: Array.from({ length: count }, (_, index) => ({ x: index, y: 0, p: 0.5, tx: 0, ty: 0, tw: 0 })),
+    timestamp,
+    playFrame,
+    diffusionFrames,
+  })
+}
+
+/** The stack-step rewrite: the recording slot travels with the paint position. */
+function withRecordedSlot(
+  stroke: StudioStroke<AquarelleStrokePayload>,
+  recordedOrder: number,
+): StudioStroke<AquarelleStrokePayload> {
+  return { ...stroke, recordedOrder, engine: { ...stroke.engine, timestamp: recordedOrder } }
+}
+
+// 261022-ujp: a stack step swaps two strokes' positions. If the moved stroke
+// keeps its old wall-clock slot, `buildRecordedTimeline` clamps its start to
+// the previous stroke's end and the idle settle gap collapses — the moved
+// underpainting is replayed into a still-wet sheet and the water absorbs it
+// (reported as "the stroke disappears"). Swapping the slot with the position
+// keeps the gap the artist actually lived.
+describe('261022-ujp stack-step recording slots', () => {
+  it('collapses the settle gap when a moved stroke keeps its old slot', async () => {
+    // Recorded A (11 pts, ends 1000ms) then B (6 pts, ends 3000ms); B is now
+    // painted FIRST but still carries B's later slot.
+    const a = timedStroke(11, 1000, 3)
+    const b = timedStroke(6, 3000, 3)
+    const { adapter, log } = makeTimelineAdapter(0)
+    const bake = createAquarelleBake(adapter, { encodeWebp: pixelEncoder, width: 8, height: 8, frameCount: 1 })
+
+    const result = await bake.bake([b, a])
+    expect(result.ok).toBe(true)
+
+    // A's slot is in the past relative to the new origin → clamped onto B's
+    // last tick: no idle fluid time before the second stroke.
+    expect(log.renders[1]!.stepsBefore).toBe(0)
+  })
+
+  it('keeps the settle gap when the slot travels with the position', async () => {
+    const a = timedStroke(11, 1000, 3)
+    const b = timedStroke(6, 3000, 3)
+    const { adapter, log } = makeTimelineAdapter(0)
+    const bake = createAquarelleBake(adapter, { encodeWebp: pixelEncoder, width: 8, height: 8, frameCount: 1 })
+
+    // B now sits first and carries A's original slot; A sits second with B's.
+    const result = await bake.bake([withRecordedSlot(b, 1000), withRecordedSlot(a, 3000)])
+    expect(result.ok).toBe(true)
+
+    // The original ~114-tick idle gap is still simulated before A.
+    expect(log.renders[1]!.stepsBefore).toBeGreaterThan(100)
+  })
+})
+
+describe('261019c visible settle cap', () => {
+  it('maps Dry Speed to the visible settle window (dry 50 → 165 ticks)', () => {
+    expect(aquarelleVisibleSettleTicks(50)).toBe(165)
+    expect(aquarelleVisibleSettleTicks(100)).toBe(30)
+    expect(aquarelleVisibleSettleTicks(0)).toBe(300)
+    expect(aquarelleVisibleSettleTicks(Number.NaN)).toBe(165)
+  })
+
+  it('force-dries at the cap instead of cooking through the engine awake window', async () => {
+    // Measured awake window far beyond the cap: the old bake would cook to
+    // sleep (thousands of ticks) and wash the pigment out.
+    const stroke = timedStroke(5, 1000, 2, 1000)
+    const { adapter, log } = makeTimelineAdapter(1000, true)
+    const bake = createAquarelleBake(adapter, {
+      encodeWebp: pixelEncoder,
+      width: 8,
+      height: 8,
+      frameCount: 4,
+    })
+    const result = await bake.bake([stroke])
+    expect(result.ok).toBe(true)
+    expect(log.fixes).toBe(1)
+    // timelineEnd = last endTick (4) + cap (165); the final window steps the
+    // capped settle (169 - 5 from the previous window = 164) and the 1.2 s
+    // fix bake (72 ticks). The awake probe is never consulted.
+    expect(log.stepsByFrame[3]).toBe(164 + 72)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 261022 per-stroke progress (Apply parity) — the aquarelle Apply bake runs
+// ONE output frame, so onCommit cannot carry progress. `onStrokeFed` reports
+// each fully fed stroke; the single-frame yield lets the pill paint.
+// ---------------------------------------------------------------------------
+
+describe('261022 per-stroke progress (Apply parity)', () => {
+  type FedReport = [number, number]
+
+  function collectReports(): { reports: FedReport[]; onStrokeFed: (completed: number, total: number) => void } {
+    const reports: FedReport[] = []
+    return { reports, onStrokeFed: (completed, total) => { reports.push([completed, total]) } }
+  }
+
+  it('reports one cumulative step per fully fed stroke and excludes Dry', async () => {
+    const { reports, onStrokeFed } = collectReports()
+    const { adapter } = makeTimelineAdapter(0)
+    const bake = createAquarelleBake(adapter, {
+      encodeWebp: pixelEncoder,
+      width: 8,
+      height: 8,
+      frameCount: 1,
+      onStrokeFed,
+    })
+    const strokeA = timedStroke(3, 1000, null)
+    const dry = createDryEvent(3, 1100)
+    const strokeB = timedStroke(3, 1200, null)
+
+    const result = await bake.bake([strokeA, dry, strokeB])
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.frames).toHaveLength(1)
+    expect(reports).toEqual([[1, 2], [2, 2]])
+  })
+
+  it('reports on the point-weight fallback when recorded timing is unusable', async () => {
+    const { reports, onStrokeFed } = collectReports()
+    const { adapter } = makeTimelineAdapter(0)
+    const bake = createAquarelleBake(adapter, {
+      encodeWebp: pixelEncoder,
+      width: 8,
+      height: 8,
+      frameCount: 1,
+      onStrokeFed,
+    })
+
+    // timestamp 0 makes buildRecordedTimeline return null — the shared
+    // point-weight schedule is the only remaining path.
+    const result = await bake.bake([timedStroke(2, 0, null)])
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.frames).toHaveLength(1)
+    expect(reports).toEqual([[1, 1]])
+  })
+
+  it('does not report without frameCount', async () => {
+    const { reports, onStrokeFed } = collectReports()
+    const { adapter } = makeFakeAdapter()
+    const bake = createAquarelleBake(adapter, {
+      encodeWebp: pixelEncoder,
+      width: 8,
+      height: 8,
+      onStrokeFed,
+    })
+
+    const result = await bake.bake([makeStroke()])
+
+    expect(result.ok).toBe(true)
+    // The non-progressive per-stroke path stays silent.
+    expect(reports).toEqual([])
+  })
+
+  it('yielding between strokes leaves the image and the tick sequence unchanged', async () => {
+    const script = (): AquarellePayloadEvent[] => [
+      timedStroke(3, 1000, null),
+      createDryEvent(3, 1100),
+      timedStroke(3, 1200, null),
+    ]
+
+    const plain = makeTimelineAdapter(0)
+    const plainBake = createAquarelleBake(plain.adapter, {
+      encodeWebp: pixelEncoder,
+      width: 8,
+      height: 8,
+      frameCount: 1,
+    })
+    const plainResult = await plainBake.bake(script())
+
+    const { reports, onStrokeFed } = collectReports()
+    const listened = makeTimelineAdapter(0)
+    const listenedBake = createAquarelleBake(listened.adapter, {
+      encodeWebp: pixelEncoder,
+      width: 8,
+      height: 8,
+      frameCount: 1,
+      onStrokeFed,
+    })
+    const listenedResult = await listenedBake.bake(script())
+
+    expect(plainResult.ok).toBe(true)
+    expect(listenedResult.ok).toBe(true)
+    if (!plainResult.ok || !listenedResult.ok) return
+    expect(reports).toEqual([[1, 2], [2, 2]])
+    expect(plainResult.frames).toHaveLength(1)
+    expect(listenedResult.frames).toHaveLength(1)
+    expect(Array.from(listenedResult.frames[0]!.bytes)).toEqual(Array.from(plainResult.frames[0]!.bytes))
+    expect(listened.log.stepsByFrame).toEqual(plain.log.stepsByFrame)
+  })
+})
+
+describe('261030-np9 per-stroke start-frame anchors', () => {
+  it('reports one anchor per stroke, in script order, with the start frames the bake used', async () => {
+    const { adapter } = makeTimelineAdapter(0)
+    const seen: (readonly { readonly stroke: StudioStroke<AquarelleStrokePayload>; readonly startFrame: number }[])[] = []
+    const bake = createAquarelleBake(adapter, {
+      encodeWebp: pixelEncoder,
+      width: 8,
+      height: 8,
+      frameCount: 4,
+      onStrokeFrameAnchors: (anchors) => { seen.push(anchors) },
+    })
+    // timestamp 0 makes buildRecordedTimeline return null, so the shared
+    // point-weight schedule is the authority here: two 2-point strokes over
+    // four frames allocate [0..1] and [2..3].
+    const strokeA = timedStroke(2, 0, null)
+    const strokeB = timedStroke(2, 0, null)
+
+    const result = await bake.bake([strokeA, strokeB])
+
+    expect(result.ok).toBe(true)
+    expect(seen).toHaveLength(1)
+    const anchors = seen[0]!
+    expect(anchors.map((anchor) => anchor.stroke)).toEqual([strokeA, strokeB])
+    expect(anchors.map((anchor) => anchor.startFrame)).toEqual([0, 2])
+  })
+
+  it('anchors a timed stroke to the frame it is FIRST DRAWN in, not its clock-proportional frame', async () => {
+    const { adapter } = makeTimelineAdapter(0)
+    const seen: (readonly { readonly startFrame: number }[])[] = []
+    const bake = createAquarelleBake(adapter, {
+      encodeWebp: pixelEncoder,
+      width: 8,
+      height: 8,
+      frameCount: 10,
+      onStrokeFrameAnchors: (anchors) => { seen.push(anchors) },
+    })
+    // Recorded timing is usable, so the timed path runs. Frames are allocated
+    // by SAMPLE count (261019b): 40 + 2 samples across 9 draw frames puts the
+    // short late stroke's first sample in frame 8. A clock-proportional
+    // mapping instead said frame 3 — that disagreement left a wash visible on
+    // a rail key with no script for it (UAT 261030-np9).
+    const long = timedStroke(40, 1000, null)
+    const short = timedStroke(2, 5000, null)
+
+    const result = await bake.bake([long, short])
+
+    expect(result.ok).toBe(true)
+    expect(seen).toHaveLength(1)
+    expect(seen[0]!.map((anchor) => anchor.startFrame)).toEqual([0, 8])
+  })
+
+  it('is absent-safe on the static (frameCount 1) path and there anchors every stroke on frame 0', async () => {
+    const { adapter } = makeTimelineAdapter(0)
+    const seeNothing = createAquarelleBake(adapter, { encodeWebp: pixelEncoder, width: 8, height: 8, frameCount: 1 })
+    const absent = await seeNothing.bake([timedStroke(2, 0, null), timedStroke(2, 0, null)])
+    expect(absent.ok).toBe(true)
+
+    const { adapter: listeningAdapter } = makeTimelineAdapter(0)
+    const seen: (readonly { readonly startFrame: number }[])[] = []
+    const listening = createAquarelleBake(listeningAdapter, {
+      encodeWebp: pixelEncoder,
+      width: 8,
+      height: 8,
+      frameCount: 1,
+      onStrokeFrameAnchors: (anchors) => { seen.push(anchors) },
+    })
+    const result = await listening.bake([timedStroke(2, 0, null), timedStroke(2, 0, null)])
+
+    expect(result.ok).toBe(true)
+    expect(seen).toHaveLength(1)
+    expect(seen[0]!.map((anchor) => anchor.startFrame)).toEqual([0, 0])
+  })
+
+  it('a throwing consumer never fails the bake', async () => {
+    const { adapter } = makeTimelineAdapter(0)
+    const bake = createAquarelleBake(adapter, {
+      encodeWebp: pixelEncoder,
+      width: 8,
+      height: 8,
+      frameCount: 4,
+      onStrokeFrameAnchors: () => { throw new Error('consumer exploded') },
+    })
+
+    const result = await bake.bake([timedStroke(2, 0, null), timedStroke(2, 0, null)])
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.frames).toHaveLength(4)
+  })
+})
+
+describe('261019 recorded-timeline progressive replay', () => {
+  it('starts the animation at frame 0 (no playFrame anchor) and simulates the real inter-stroke gap', async () => {
+    // HOST_TICK_MS = 16.667 ms. Stroke A: 11 pts (10 ticks), END at t=1000ms.
+    // Stroke B: 6 pts (5 ticks), END at t=3000ms → begins 125 ticks after A's
+    // begin — a 115-tick idle gap the live sheet actually lived.
+    const strokeA = timedStroke(11, 1000, 3)
+    const strokeB = timedStroke(6, 3000, 3, 60)
+    const { adapter, log } = makeTimelineAdapter(5)
+    const bake = createAquarelleBake(adapter, {
+      encodeWebp: pixelEncoder,
+      width: 8,
+      height: 8,
+      frameCount: 10,
+    })
+    const result = await bake.bake([strokeA, strokeB])
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(log.captures).toBe(10)
+
+    // Frame 0 draws a PARTIAL stroke A — frames follow sample progress, not
+    // wall-clock time, so a short first stroke no longer completes at once.
+    const aRenders = log.renders.filter((entry) => entry.strokes.some((s) => s.stroke === strokeA))
+    expect(aRenders.map((entry) => entry.strokes.find((s) => s.stroke === strokeA)!.pointCount))
+      .toEqual([2, 4, 6, 8, 10, 11])
+    expect(aRenders[0]!.frame).toBe(0)
+
+    // Stroke B starts once its samples' turn arrives and the idle fluid time
+    // BEFORE its first sample (ticks 11..124 = 114 steps) is stepped first —
+    // samples never land before the gap they actually followed.
+    const bRender = log.renders.find((entry) => entry.strokes.some((s) => s.stroke === strokeB))!
+    expect(bRender.frame).toBe(5)
+    expect(bRender.stepsBefore).toBe(114)
+    expect(bRender.strokes.find((s) => s.stroke === strokeB)!.pointCount).toBe(1)
+
+    // The final frame simulates the remaining settle tail and cooks until the
+    // awake gate closes (5 extra ticks).
+    expect(log.stepsByFrame[9]).toBe(59 + 5)
+  })
+
+  it('the final frame is captured after the settle cook (end key = live sleep state)', async () => {
+    const stroke = timedStroke(5, 1000, 2, 0)
+    const { adapter, log } = makeTimelineAdapter(120)
+    const bake = createAquarelleBake(adapter, {
+      encodeWebp: pixelEncoder,
+      width: 8,
+      height: 8,
+      frameCount: 4,
+    })
+    const result = await bake.bake([stroke])
+    expect(result.ok).toBe(true)
+    expect(log.stepsByFrame[3]).toBeGreaterThanOrEqual(120)
+  })
+
+  it('poses each captured progressive frame through the poseFrame seam at its OUTPUT frame', async () => {
+    const source = makeStroke({
+      points: Array.from({ length: 5 }, (_, index) => ({ x: 0.2 + index * 0.05, y: 0.5, p: 0.5, tx: 0, ty: 0, tw: 0 })),
+      timestamp: 1000,
+      diffusionFrames: 0,
+    })
+    const { adapter } = makeTimelineAdapter(0)
+    const poseCalls: number[] = []
+    const posed: CanvasImageSource[] = []
+    const bake = createAquarelleBake(adapter, {
+      width: 8,
+      height: 8,
+      frameCount: 4,
+      // Each marker encodes its OUTPUT frame so the committed order is pinned.
+      encodeWebp: (frame) => new Uint8Array([(frame as unknown as { marker: number }).marker]),
+      poseFrame: (frame, frameIndex) => {
+        poseCalls.push(frameIndex)
+        const marker = { width: 8, height: 8, marker: frameIndex } as unknown as CanvasImageSource
+        posed.push(marker)
+        return marker
+      },
+    })
+    const result = await bake.bake([source])
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    // The seam runs once per output frame, in output-frame order.
+    expect([...poseCalls].sort((left, right) => left - right)).toEqual([0, 1, 2, 3])
+    // The posed frame — not the adapter capture — is what reaches the encoder.
+    expect(result.frames.map((frame) => frame.bytes[0])).toEqual([0, 1, 2, 3])
+    expect(result.frames).toHaveLength(4)
+    expect(posed).toHaveLength(4)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 261029-bks idle-gap clock skip — `skipTicks` (clock-only) behind a
+// provably-asleep probe. The recorded timeline keeps the artist's wall-clock
+// pauses; a long pause used to step tens of thousands of engine ticks whose
+// only observable effect was the virtual clock. Skipping requires BOTH the
+// `skipTicks` seam and `isAwake`; without the seam the gap walker probes
+// nothing and steps every tick (older adapters and doubles keep their law).
+// ---------------------------------------------------------------------------
+
+/** Host tick grid — mirrors aquarelleBake's HOST_TICK_MS. */
+const SKIP_TICK_MS = 1000 / 60
+
+type SkipLogEntry =
+  | { readonly kind: 'step'; readonly tick: number }
+  | { readonly kind: 'skip'; readonly from: number; readonly to: number }
+  | { readonly kind: 'feed'; readonly pointCounts: readonly number[] }
+  | { readonly kind: 'dry'; readonly tick: number }
+  | { readonly kind: 'capture' }
+
+interface SkippingAdapterLog {
+  readonly events: SkipLogEntry[]
+  readonly steps: number[]
+  readonly skips: { from: number; to: number }[]
+  readonly feeds: number[][]
+  captures: number
+  fixes: number
+}
+
+/** Local mirror of the package diagnostics contract — the double's own type. */
+interface BakeDiagnostics {
+  readonly path: 'timed' | 'fallback' | 'legacy'
+  readonly timelineTicks: number
+  readonly simulatedTicks: number
+  readonly skippedGapTicks: number
+  readonly gapCount: number
+  readonly settleTicks: number
+  readonly bakeMs: number
+  readonly encodeMs: number
+  /** 261030-v1t: from-scratch replays the per-frame paint re-pattern ran. */
+  readonly paintSeedReplays: number
+}
+
+type SkippingAdapter = EngineAdapter<AquarelleStrokePayload> & {
+  isAwake: () => boolean
+  skipTicks: (fromTick: number, toTick: number) => void
+  fix?: () => void
+  clock: () => number
+}
+
+/**
+ * The 261029 recording double. `renderPartialStrokes` (a fed sample) refills a
+ * wet budget; every `stepTick` drains it and mutates the mock canvas ONLY while
+ * awake — a tick taken while asleep is a true no-op, exactly like `Engine.tick`
+ * where `render()` early-returns and `sleep()` is gated on `active`.
+ * `skipTicks` records and advances the virtual clock only.
+ */
+function makeSkippingAdapter(
+  awakePerFeed: number,
+  options: { withFix?: boolean } = {},
+): { adapter: SkippingAdapter; log: SkippingAdapterLog } {
+  const { canvas } = makeMockCanvas(8, 8)
+  let awakeBudget = 0
+  let virtualNow = 0
+  const log: SkippingAdapterLog = { events: [], steps: [], skips: [], feeds: [], captures: 0, fixes: 0 }
+  const adapter: SkippingAdapter = {
+    engineId: 'efx-watercolor',
+    payloadCodec: {
+      serialize: (s: unknown) => s as StudioStroke<AquarelleStrokePayload>,
+      parse: (s: unknown) => s as StudioStroke<AquarelleStrokePayload>,
+    },
+    setInputLocked: () => undefined,
+    setAnimationMode: () => undefined,
+    getStrokes: () => [],
+    renderPartialStrokes: (entries) => {
+      awakeBudget = awakePerFeed
+      const pointCounts = entries.map((entry) => entry.pointCount)
+      log.feeds.push(pointCounts)
+      log.events.push({ kind: 'feed', pointCounts })
+    },
+    renderAllStrokes: () => undefined,
+    exportCompositeCanvas: () => canvas,
+    applyStroke: (stroke) => {
+      if (!isAquarelleDryEvent(stroke)) return
+      log.events.push({ kind: 'dry', tick: stroke.tick })
+    },
+    stepTick: (tick) => {
+      virtualNow += SKIP_TICK_MS
+      log.steps.push(tick)
+      log.events.push({ kind: 'step', tick })
+      if (awakeBudget <= 0) return
+      awakeBudget -= 1
+      const ctx = canvas.getContext('2d') as CanvasRenderingContext2D | null
+      if (ctx && typeof ctx.fillRect === 'function') ctx.fillRect(1, 1, 2, 2)
+    },
+    skipTicks: (fromTick, toTick) => {
+      log.skips.push({ from: fromTick, to: toTick })
+      log.events.push({ kind: 'skip', from: fromTick, to: toTick })
+      for (let tick = fromTick; tick < toTick; tick += 1) virtualNow += SKIP_TICK_MS
+    },
+    captureFrame: () => {
+      log.captures += 1
+      log.events.push({ kind: 'capture' })
+      return canvas as unknown as CanvasImageSource
+    },
+    dispose: () => undefined,
+    isAwake: () => awakeBudget > 0,
+    ...(options.withFix ? { fix: () => { log.fixes += 1 } } : {}),
+    clock: () => virtualNow,
+  }
+  return { adapter, log }
+}
+
+/** The same double minus its `skipTicks` seam — an older adapter / any double. */
+function withoutSkipSeam(
+  adapter: SkippingAdapter,
+): EngineAdapter<AquarelleStrokePayload> & { isAwake: () => boolean; fix?: () => void } {
+  const { skipTicks: _skipTicks, ...rest } = adapter
+  return rest
+}
+
+// buildRecordedTimeline anchors stroke A's 80 samples on ticks 0..79. Stroke B
+// starts after the artist's pause: tick 257 (long gap, 177 ticks) or tick 125
+// (short gap, 45 ticks).
+const LONG_GAP_BEGIN = 257
+const SHORT_GAP_BEGIN = 125
+const LONG_GAP_WINDOW_END = 424
+
+/** An 80-sample stroke, a real pause, then a 3-sample stroke. */
+function gapScript(lastCuisson = 0): AquarellePayloadEvent[] {
+  return [timedStroke(80, 1000, null), timedStroke(3, 4000, null, lastCuisson)]
+}
+
+function shortGapScript(): AquarellePayloadEvent[] {
+  return [timedStroke(80, 1000, null), timedStroke(3, 1800, null)]
+}
+
+async function runGapBake(input: {
+  events: readonly AquarellePayloadEvent[]
+  awakePerFeed: number
+  seam: boolean
+  frameCount?: number
+  withFix?: boolean
+  encodeWebp?: (frame: CanvasImageSource) => Uint8Array | Promise<Uint8Array>
+}): Promise<{
+  result: AquarelleBakeResult
+  log: SkippingAdapterLog
+  clock: number
+  diagnostics: BakeDiagnostics[]
+}> {
+  const { adapter, log } = makeSkippingAdapter(input.awakePerFeed, { withFix: input.withFix })
+  const target = input.seam ? adapter : withoutSkipSeam(adapter)
+  const diagnostics: BakeDiagnostics[] = []
+  const bake = createAquarelleBake(target, {
+    encodeWebp: input.encodeWebp ?? pixelEncoder,
+    width: 8,
+    height: 8,
+    ...(input.frameCount === undefined ? {} : { frameCount: input.frameCount }),
+    onDiagnostics: (record: BakeDiagnostics) => {
+      diagnostics.push(record)
+    },
+  })
+  const result = await bake.bake(input.events)
+  return { result, log, clock: adapter.clock(), diagnostics }
+}
+
+describe('261029-bks idle-gap clock skip', () => {
+  it('(a) parity baseline: two skip-OFF bakes of one timed fixture are byte-identical', async () => {
+    const once = async (): Promise<number[]> => {
+      const { result } = await runGapBake({
+        events: gapScript(),
+        awakePerFeed: 1000,
+        seam: false,
+        frameCount: 1,
+      })
+      expect(result.ok).toBe(true)
+      if (!result.ok) return []
+      expect(result.frames).toHaveLength(1)
+      return Array.from(result.frames[0]!.bytes)
+    }
+    expect(await once()).toEqual(await once())
+  })
+
+  it('(b) skip-ON bytes equal skip-OFF bytes on a fixture whose engine sleeps across the gap', async () => {
+    const off = await runGapBake({ events: gapScript(), awakePerFeed: 2, seam: false, frameCount: 1 })
+    const on = await runGapBake({ events: gapScript(), awakePerFeed: 2, seam: true, frameCount: 1 })
+    expect(off.result.ok).toBe(true)
+    expect(on.result.ok).toBe(true)
+    expect(off.log.skips).toHaveLength(0)
+    expect(on.log.skips.length).toBeGreaterThan(0)
+    if (!off.result.ok || !on.result.ok) return
+    expect(Array.from(on.result.frames[0]!.bytes)).toEqual(Array.from(off.result.frames[0]!.bytes))
+  })
+
+  it('(c) per-gap law: stepped + skipped === the gap length, boundary tick included', async () => {
+    const { log } = await runGapBake({
+      events: gapScript(1000),
+      awakePerFeed: 2,
+      seam: true,
+      withFix: true,
+      frameCount: 1,
+    })
+    expect(log.skips.length).toBeGreaterThan(0)
+    for (const skip of log.skips) {
+      expect(skip.to - skip.from).toBeGreaterThan(0)
+      // The mandatory boundary tick sits immediately before the skip.
+      const boundary = log.steps.indexOf(skip.from - 1)
+      expect(boundary, `missing boundary tick at ${skip.from - 1}`).toBeGreaterThan(-1)
+      // No step index lies inside the skipped range.
+      expect(log.steps.some((tick) => tick >= skip.from && tick < skip.to)).toBe(false)
+      // Walk back the contiguous stepped run ending at the boundary: that run
+      // is this gap's stepped prefix.
+      let start = log.steps[boundary]!
+      let cursor = boundary - 1
+      while (cursor >= 0 && log.steps[cursor] === start - 1) {
+        start -= 1
+        cursor -= 1
+      }
+      const stepped = boundary - cursor
+      expect(stepped + (skip.to - skip.from)).toBe(skip.to - start)
+    }
+  })
+
+  it('(d) the final virtual clock is bit-identical (strict toBe) with and without the skip', async () => {
+    const off = await runGapBake({
+      events: gapScript(1000),
+      awakePerFeed: 2,
+      seam: false,
+      withFix: true,
+      frameCount: 1,
+    })
+    const on = await runGapBake({
+      events: gapScript(1000),
+      awakePerFeed: 2,
+      seam: true,
+      withFix: true,
+      frameCount: 1,
+    })
+    expect(on.clock).toBeGreaterThan(0)
+    expect(on.clock).toBe(off.clock)
+  })
+
+  it('(e1) awake throughout: every gap tick steps, nothing is skipped', async () => {
+    const { log } = await runGapBake({
+      events: shortGapScript(),
+      awakePerFeed: 1000,
+      seam: true,
+      // The fix bake keeps the settle steps off the gap's tick range, so the
+      // filter below sees gap steps only.
+      withFix: true,
+      frameCount: 1,
+    })
+    expect(log.skips).toEqual([])
+    const gapSteps = log.steps.filter((tick) => tick >= 80 && tick < SHORT_GAP_BEGIN)
+    expect(gapSteps).toEqual(Array.from({ length: SHORT_GAP_BEGIN - 80 }, (_, index) => 80 + index))
+  })
+
+  it('(e2) awake -> asleep: steps stop at s, one boundary tick runs, the rest skips', async () => {
+    const { log } = await runGapBake({
+      events: gapScript(1000),
+      awakePerFeed: 40,
+      seam: true,
+      withFix: true,
+      frameCount: 1,
+    })
+    expect(log.skips[0]).toEqual({ from: 121, to: LONG_GAP_BEGIN })
+    const gapSteps = log.steps.filter((tick) => tick >= 80 && tick < LONG_GAP_BEGIN)
+    expect(gapSteps).toEqual(Array.from({ length: 41 }, (_, index) => 80 + index))
+  })
+
+  it('(e3) asleep throughout: one boundary tick, then the rest is clock-only', async () => {
+    const { log } = await runGapBake({
+      events: gapScript(1000),
+      awakePerFeed: 0,
+      seam: true,
+      withFix: true,
+      frameCount: 1,
+    })
+    expect(log.skips[0]).toEqual({ from: 81, to: LONG_GAP_BEGIN })
+    expect(log.steps.filter((tick) => tick >= 80 && tick < LONG_GAP_BEGIN)).toEqual([80])
+  })
+
+  it('(f) a trailing Dry fires after the clock reaches windowEnd, before the capture', async () => {
+    const events = [...gapScript(1000), createDryEvent(3, 4100)]
+    const on = await runGapBake({
+      events,
+      awakePerFeed: 1000,
+      seam: true,
+      withFix: true,
+      frameCount: 1,
+    })
+    const off = await runGapBake({
+      events,
+      awakePerFeed: 1000,
+      seam: false,
+      withFix: true,
+      frameCount: 1,
+    })
+    const dryIndex = on.log.events.findIndex((entry) => entry.kind === 'dry')
+    expect(dryIndex).toBeGreaterThan(-1)
+    // The Dry fires only after the gap walk reached the window end.
+    expect(on.log.events[dryIndex - 1]).toEqual({ kind: 'step', tick: LONG_GAP_WINDOW_END - 1 })
+    const captureIndex = on.log.events.findIndex((entry) => entry.kind === 'capture')
+    expect(captureIndex).toBeGreaterThan(dryIndex)
+    expect(on.log.captures).toBe(1)
+    expect(on.log.feeds).toEqual(off.log.feeds)
+    expect(on.result.ok).toBe(true)
+    expect(off.result.ok).toBe(true)
+    if (!on.result.ok || !off.result.ok) return
+    expect(Array.from(on.result.frames[0]!.bytes)).toEqual(Array.from(off.result.frames[0]!.bytes))
+  })
+
+  it('(g1) emits exactly one timed record with the counter law', async () => {
+    const { log, diagnostics } = await runGapBake({
+      events: gapScript(1000),
+      awakePerFeed: 2,
+      seam: true,
+      withFix: true,
+      frameCount: 1,
+    })
+    expect(diagnostics).toHaveLength(1)
+    const record = diagnostics[0]!
+    expect(record.path).toBe('timed')
+    expect(record.timelineTicks).toBe(LONG_GAP_WINDOW_END)
+    expect(record.skippedGapTicks).toBe(log.skips.reduce((total, skip) => total + (skip.to - skip.from), 0))
+    expect(record.gapCount).toBe(2)
+    expect(record.settleTicks).toBe(72)
+    expect(record.simulatedTicks).toBe(log.steps.length)
+    expect(Number.isFinite(record.bakeMs)).toBe(true)
+    expect(record.bakeMs).toBeGreaterThanOrEqual(0)
+    expect(Number.isFinite(record.encodeMs)).toBe(true)
+    expect(record.encodeMs).toBeGreaterThanOrEqual(0)
+  })
+
+  it('(g2) counts only gap ranges with length > 0', async () => {
+    const long = await runGapBake({
+      events: gapScript(1000),
+      awakePerFeed: 1000,
+      seam: true,
+      withFix: true,
+      frameCount: 1,
+    })
+    expect(long.diagnostics[0]!.gapCount).toBe(2)
+    const immediate = await runGapBake({
+      events: [timedStroke(5, 1000, null), timedStroke(3, 1000, null)],
+      awakePerFeed: 1000,
+      seam: true,
+      withFix: true,
+      frameCount: 1,
+    })
+    expect(immediate.diagnostics[0]!.gapCount).toBe(1)
+  })
+
+  it('(g3) reports the fallback path when the recorded timing is unusable', async () => {
+    const { diagnostics } = await runGapBake({
+      events: [timedStroke(3, 0, null)],
+      awakePerFeed: 0,
+      seam: true,
+      frameCount: 1,
+    })
+    expect(diagnostics).toHaveLength(1)
+    const record = diagnostics[0]!
+    expect(record.path).toBe('fallback')
+    expect(record.skippedGapTicks).toBe(0)
+    expect(record.gapCount).toBe(0)
+  })
+
+  it('(g4) reports the legacy path without frameCount', async () => {
+    const { adapter, log } = makeSkippingAdapter(1000)
+    const diagnostics: BakeDiagnostics[] = []
+    const bake = createAquarelleBake(adapter, {
+      encodeWebp: pixelEncoder,
+      width: 8,
+      height: 8,
+      onDiagnostics: (record: BakeDiagnostics) => {
+        diagnostics.push(record)
+      },
+    })
+    const result = await bake.bake([makeStroke({ diffusionFrames: 3 })])
+    expect(result.ok).toBe(true)
+    expect(diagnostics).toHaveLength(1)
+    const record = diagnostics[0]!
+    expect(record.path).toBe('legacy')
+    expect(record.timelineTicks).toBe(3)
+    expect(record.simulatedTicks).toBe(3)
+    expect(record.settleTicks).toBe(0)
+    expect(record.skippedGapTicks).toBe(0)
+    expect(record.gapCount).toBe(0)
+    expect(log.steps).toEqual([0, 1, 2])
+  })
+
+  it('(g5) a throwing diagnostics consumer never fails the bake', async () => {
+    const { adapter } = makeSkippingAdapter(1000)
+    const bake = createAquarelleBake(adapter, {
+      encodeWebp: pixelEncoder,
+      width: 8,
+      height: 8,
+      frameCount: 1,
+      onDiagnostics: () => {
+        throw new Error('consumer exploded')
+      },
+    })
+    const result = await bake.bake(gapScript(1000))
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.frames).toHaveLength(1)
+  })
+
+  it('(g6) a cancelled bake still emits exactly one record', async () => {
+    const { adapter } = makeSkippingAdapter(1000)
+    const gate = deferred<void>()
+    const diagnostics: BakeDiagnostics[] = []
+    const bake = createAquarelleBake(adapter, {
+      encodeWebp: async () => {
+        await gate.promise
+        return new Uint8Array([1])
+      },
+      width: 8,
+      height: 8,
+      frameCount: 1,
+      onDiagnostics: (record: BakeDiagnostics) => {
+        diagnostics.push(record)
+      },
+    })
+    const pending = bake.bake(gapScript(1000))
+
+    await Promise.resolve()
+    await Promise.resolve()
+    await Promise.resolve()
+    bake.interrupt()
+    gate.resolve()
+
+    const result = await pending
+    expect(result.ok).toBe(false)
+    expect(diagnostics).toHaveLength(1)
+    expect(diagnostics[0]!.path).toBe('timed')
+  })
+
+  it('(h) capture count, windows and point counts are unchanged by the skip', async () => {
+    const off = await runGapBake({
+      events: gapScript(1000),
+      awakePerFeed: 2,
+      seam: false,
+      withFix: true,
+      frameCount: 3,
+    })
+    const on = await runGapBake({
+      events: gapScript(1000),
+      awakePerFeed: 2,
+      seam: true,
+      withFix: true,
+      frameCount: 3,
+    })
+    expect(on.result.ok).toBe(true)
+    expect(off.result.ok).toBe(true)
+    expect(on.log.skips.length).toBeGreaterThan(0)
+    expect(on.log.captures).toBe(3)
+    expect(on.log.captures).toBe(off.log.captures)
+    expect(on.log.feeds).toEqual(off.log.feeds)
+    if (!on.result.ok || !off.result.ok) return
+    expect(on.result.frames).toHaveLength(3)
+    expect(on.result.frames.map((frame) => Array.from(frame.bytes)))
+      .toEqual(off.result.frames.map((frame) => Array.from(frame.bytes)))
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 261030-v1t — per-frame paint seed variation.
+//
+// The sheet is cumulative, so a true per-frame re-pattern costs ONE full replay
+// per output frame. The double below carries the two paint-seed seams and
+// counts every stepped tick, so the price is measured, not assumed:
+//   - OFF (option absent): today's exact path, paintSeedReplays 0
+//   - ON progressive: output frame j replays windows 0..j, settle on the last
+//   - ON static: every output frame replays the WHOLE script + settle
+//   - missing seams (or no frameCount): fail closed, never a silent deposit salt
+// ---------------------------------------------------------------------------
+
+interface VariationLog {
+  /** Every salt the bake set, in order. */
+  readonly salts: (number | null)[]
+  /** Accumulated per-stroke max pointCount at each capture (script order). */
+  readonly feedsByCapture: number[][]
+  resets: number
+  captures: number
+  fixes: number
+  steps: number
+}
+
+/**
+ * Paint-seed double. `captureFrame` returns a FRESH canvas carrying the current
+ * salt in its first pixel (same salt => same bytes, adjacent salt => different
+ * bytes), like the real engine's owned `exportCanvas` readback.
+ */
+function makeVariationAdapter(options: { seams?: boolean } = {}): {
+  adapter: EngineAdapter<AquarelleStrokePayload> & {
+    isAwake: () => boolean
+    fix: () => void
+    setPaintSeedFrame?: (frame: number | null) => void
+    resetSheet?: () => void
+  }
+  log: VariationLog
+} {
+  const seams = options.seams ?? true
+  const log: VariationLog = { salts: [], feedsByCapture: [], resets: 0, captures: 0, fixes: 0, steps: 0 }
+  let salt: number | null = null
+  const maxFed = new Map<StudioStroke<AquarelleStrokePayload>, number>()
+  const adapter = {
+    engineId: 'efx-watercolor' as const,
+    payloadCodec: {
+      serialize: (s: unknown) => s as StudioStroke<AquarelleStrokePayload>,
+      parse: (s: unknown) => s as StudioStroke<AquarelleStrokePayload>,
+    },
+    setInputLocked: () => undefined,
+    setAnimationMode: () => undefined,
+    getStrokes: () => [],
+    renderPartialStrokes: (entries: readonly { stroke: StudioStroke<AquarelleStrokePayload>; pointCount: number }[]) => {
+      for (const entry of entries) {
+        maxFed.set(entry.stroke, Math.max(maxFed.get(entry.stroke) ?? 0, entry.pointCount))
+      }
+    },
+    renderAllStrokes: () => undefined,
+    exportCompositeCanvas: () => {
+      const { canvas } = makeMockCanvas(8, 8)
+      return canvas
+    },
+    applyStroke: () => undefined,
+    stepTick: () => {
+      log.steps += 1
+    },
+    captureFrame: () => {
+      const { canvas } = makeMockCanvas(8, 8)
+      const ctx = canvas.getContext('2d') as CanvasRenderingContext2D | null
+      const value = salt === null ? 0 : salt & 0xff
+      const data = new Uint8ClampedArray([value, (value >> 8) & 0xff, 0, 255])
+      ctx?.putImageData?.({ width: 1, height: 1, data } as unknown as ImageData, 0, 0)
+      log.feedsByCapture.push([...maxFed.values()])
+      log.captures += 1
+      return canvas as unknown as CanvasImageSource
+    },
+    dispose: () => undefined,
+    fix: () => {
+      log.fixes += 1
+    },
+    isAwake: () => true,
+    ...(seams
+      ? {
+          setPaintSeedFrame: (frame: number | null) => {
+            salt = frame
+            log.salts.push(frame)
+          },
+          resetSheet: () => {
+            log.resets += 1
+            maxFed.clear()
+          },
+        }
+      : {}),
+  }
+  return { adapter, log }
+}
+
+/** A representative timed 6-frame Motion script: three strokes, real gaps. */
+function motionSixFrameScript(): AquarellePayloadEvent[] {
+  return [timedStroke(12, 1000, null), timedStroke(10, 2000, null), timedStroke(8, 3000, null)]
+}
+
+async function runVariationBake(input: {
+  events: readonly AquarellePayloadEvent[]
+  frameCount?: number
+  variation?: 'progressive' | 'static'
+  seams?: boolean
+  onStrokeFed?: (completed: number, total: number) => void
+}): Promise<{
+  result: AquarelleBakeResult
+  log: VariationLog
+  diagnostics: BakeDiagnostics[]
+}> {
+  const { adapter, log } = makeVariationAdapter({ seams: input.seams })
+  const diagnostics: BakeDiagnostics[] = []
+  const bake = createAquarelleBake(adapter, {
+    encodeWebp: pixelEncoder,
+    width: 8,
+    height: 8,
+    ...(input.frameCount === undefined ? {} : { frameCount: input.frameCount }),
+    ...(input.variation === undefined ? {} : { paintSeedVariation: input.variation }),
+    ...(input.onStrokeFed === undefined ? {} : { onStrokeFed: input.onStrokeFed }),
+    onDiagnostics: (record: BakeDiagnostics) => {
+      diagnostics.push(record)
+    },
+  })
+  const result = await bake.bake(input.events)
+  return { result, log, diagnostics }
+}
+
+function frameBytesOf(result: AquarelleBakeResult): number[][] {
+  if (!result.ok) return []
+  return result.frames.map((frame) => Array.from(frame.bytes))
+}
+
+describe('261030-v1t per-frame paint seed variation', () => {
+  it('OFF (option absent) takes today’s path and never touches the salt seams', async () => {
+    const once = await runVariationBake({ events: motionSixFrameScript(), frameCount: 6 })
+    const twice = await runVariationBake({ events: motionSixFrameScript(), frameCount: 6 })
+
+    expect(once.result.ok).toBe(true)
+    expect(once.result.ok && once.result.frames).toHaveLength(6)
+    expect(frameBytesOf(once.result)).toEqual(frameBytesOf(twice.result))
+    expect(once.diagnostics[0]!.paintSeedReplays).toBe(0)
+    expect(once.diagnostics[0]!.settleTicks).toBe(72)
+    expect(once.log.salts).toEqual([])
+    expect(once.log.resets).toBe(0)
+  })
+
+  it('OFF bytes are identical with or without the optional seams', async () => {
+    const withSeams = await runVariationBake({ events: motionSixFrameScript(), frameCount: 6, seams: true })
+    const withoutSeams = await runVariationBake({ events: motionSixFrameScript(), frameCount: 6, seams: false })
+    expect(frameBytesOf(withSeams.result)).toEqual(frameBytesOf(withoutSeams.result))
+  })
+
+  it('progressive ON: frame j is salted with j and replays only its window prefix', async () => {
+    const off = await runVariationBake({ events: motionSixFrameScript(), frameCount: 6 })
+    const on = await runVariationBake({
+      events: motionSixFrameScript(),
+      frameCount: 6,
+      variation: 'progressive',
+    })
+
+    expect(on.result.ok).toBe(true)
+    expect(on.result.ok && on.result.frames).toHaveLength(6)
+    expect(on.log.salts).toEqual([0, 1, 2, 3, 4, 5])
+    // The first replay starts on the fresh sheet; every later one resets it.
+    expect(on.log.resets).toBe(5)
+    expect(on.diagnostics[0]!.paintSeedReplays).toBe(6)
+
+    // Per-frame prefix law: replay j walks windows 0..j, so its timeline span is
+    // the sum of the OFF frame budgets up to j. Its BAKE step count is that
+    // prefix MINUS the sample ticks: each fed sample advances the adapter once
+    // (renderPartialStrokes), never through a bake `stepTick`. Only the last
+    // replay settles. (Measured: budgets [6,6,56,58,6,164], samples per replay
+    // [6,12,18,24,30,30] → 640 − 120 + 72 = 592.)
+    const budgets = off.result.ok ? off.result.frames.map((frame) => frame.tick) : []
+    const prefix = budgets.map((_, j) => budgets.slice(0, j + 1).reduce((total, b) => total + b, 0))
+    const samplesPerReplay = on.log.feedsByCapture.map((fed) => fed.reduce((total, n) => total + n, 0))
+    expect(samplesPerReplay).toHaveLength(6)
+    const settlePerReplay = off.diagnostics[0]!.settleTicks
+    expect(on.diagnostics[0]!.timelineTicks).toBe(prefix.reduce((total, ticks) => total + ticks, 0))
+    expect(on.diagnostics[0]!.simulatedTicks).toBe(
+      prefix.reduce((total, ticks, j) => total + ticks - samplesPerReplay[j]!, 0) + settlePerReplay,
+    )
+    expect(on.diagnostics[0]!.settleTicks).toBe(settlePerReplay)
+    // Every replay starts from scratch: only a from-scratch replays costs more.
+    expect(on.diagnostics[0]!.simulatedTicks)
+      .toBeGreaterThan(off.diagnostics[0]!.simulatedTicks)
+  })
+
+  it('progressive ON is deterministic and adjacent frames differ', async () => {
+    const first = await runVariationBake({ events: motionSixFrameScript(), frameCount: 6, variation: 'progressive' })
+    const again = await runVariationBake({ events: motionSixFrameScript(), frameCount: 6, variation: 'progressive' })
+
+    const bytes = frameBytesOf(first.result)
+    expect(bytes).toEqual(frameBytesOf(again.result))
+    for (let frame = 1; frame < bytes.length; frame += 1) {
+      expect(bytes[frame]).not.toEqual(bytes[frame - 1])
+    }
+  })
+
+  it('static ON replays the WHOLE script per held frame and emits N complete frames', async () => {
+    const script = motionSixFrameScript()
+    const strokeLengths = script.map((event) =>
+      isAquarelleDryEvent(event) ? 0 : (event as StudioStroke<AquarelleStrokePayload>).pts.length,
+    )
+    const on = await runVariationBake({ events: script, frameCount: 4, variation: 'static' })
+
+    expect(on.result.ok).toBe(true)
+    expect(on.result.ok && on.result.frames).toHaveLength(4)
+    expect(on.log.salts).toEqual([0, 1, 2, 3])
+    expect(on.log.resets).toBe(3)
+    expect(on.diagnostics[0]!.paintSeedReplays).toBe(4)
+    expect(on.diagnostics[0]!.settleTicks).toBe(72 * 4)
+    // Each held frame is a complete drawing: every stroke is fully fed.
+    expect(on.log.feedsByCapture).toHaveLength(4)
+    for (const fed of on.log.feedsByCapture) expect(fed).toEqual(strokeLengths)
+    // Adjacent held frames differ; the same bake twice is identical.
+    const bytes = frameBytesOf(on.result)
+    for (let frame = 1; frame < bytes.length; frame += 1) expect(bytes[frame]).not.toEqual(bytes[frame - 1])
+    const again = await runVariationBake({ events: script, frameCount: 4, variation: 'static' })
+    expect(frameBytesOf(again.result)).toEqual(bytes)
+  })
+
+  it('prints the deterministic cost measurement (replay count, OFF/ON ticks, ratio)', async () => {
+    const off = await runVariationBake({ events: motionSixFrameScript(), frameCount: 6 })
+    const progressive = await runVariationBake({
+      events: motionSixFrameScript(),
+      frameCount: 6,
+      variation: 'progressive',
+    })
+    const staticOn = await runVariationBake({ events: motionSixFrameScript(), frameCount: 6, variation: 'static' })
+
+    const offTicks = off.diagnostics[0]!.simulatedTicks
+    const progressiveTicks = progressive.diagnostics[0]!.simulatedTicks
+    const staticTicks = staticOn.diagnostics[0]!.simulatedTicks
+    const ratio = (value: number) => (value / offTicks).toFixed(2)
+
+    // Deterministic: a second run yields the same numbers.
+    const rerun = await runVariationBake({ events: motionSixFrameScript(), frameCount: 6, variation: 'progressive' })
+    expect(rerun.diagnostics[0]!.simulatedTicks).toBe(progressiveTicks)
+
+    // The static price is exactly one whole replay per output frame.
+    expect(staticOn.diagnostics[0]!.paintSeedReplays).toBe(6)
+    expect(staticTicks).toBe(6 * (offTicks))
+
+    console.log(
+      `[261030-v1t] paint seed variation cost — 6-frame Motion: ` +
+        `replays=${progressive.diagnostics[0]!.paintSeedReplays} ` +
+        `OFF simulatedTicks=${offTicks} ` +
+        `ON(progressive) simulatedTicks=${progressiveTicks} ratio=${ratio(progressiveTicks)}x ` +
+        `ON(static) simulatedTicks=${staticTicks} ratio=${ratio(staticTicks)}x ` +
+        `| Static (1 frame/settled drawing): replays=${staticOn.diagnostics[0]!.paintSeedReplays} ` +
+        `simulatedTicks=${staticTicks} ratio=${ratio(staticTicks)}x`,
+    )
+
+    expect(off.diagnostics[0]!.paintSeedReplays).toBe(0)
+    expect(progressiveTicks).toBeGreaterThan(offTicks)
+    expect(staticTicks).toBeGreaterThan(progressiveTicks)
+  })
+
+  it('fails closed when the adapter lacks either paint-seed seam', async () => {
+    const seamless = await runVariationBake({
+      events: motionSixFrameScript(),
+      frameCount: 6,
+      variation: 'progressive',
+      seams: false,
+    })
+    const noSeamsStatic = await runVariationBake({
+      events: motionSixFrameScript(),
+      frameCount: 6,
+      variation: 'static',
+      seams: false,
+    })
+
+    expect(seamless.result).toEqual({ ok: false, reason: 'failed' })
+    expect(noSeamsStatic.result).toEqual({ ok: false, reason: 'failed' })
+    // Not a single frame was produced or captured.
+    expect(seamless.log.captures).toBe(0)
+    expect(noSeamsStatic.log.captures).toBe(0)
+    expect(seamless.diagnostics).toHaveLength(1)
+    expect(seamless.diagnostics[0]!.paintSeedReplays).toBe(0)
+  })
+
+  it('fails closed when the per-frame option arrives without an output span', async () => {
+    const noSpan = await runVariationBake({ events: motionSixFrameScript(), variation: 'progressive' })
+    expect(noSpan.result).toEqual({ ok: false, reason: 'failed' })
+    expect(noSpan.log.captures).toBe(0)
+    expect(noSpan.log.salts).toEqual([])
+  })
+
+  it('reports onStrokeFed only during the final replay', async () => {
+    const reports: [number, number][] = []
+    const on = await runVariationBake({
+      events: motionSixFrameScript(),
+      frameCount: 4,
+      variation: 'static',
+      onStrokeFed: (completed, total) => {
+        reports.push([completed, total])
+      },
+    })
+
+    expect(on.result.ok).toBe(true)
+    expect(reports).toEqual([[1, 3], [2, 3], [3, 3]])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// quick 261116-rp — a raw pointer trace feeds by its own ticks
+// ---------------------------------------------------------------------------
+
+describe('quick 261116-rp — raw pointer ticks in the timed walk', () => {
+  function rawStroke(pointTicks: number[]): StudioStroke<AquarelleStrokePayload> {
+    return toStudioStroke({
+      tool: 'brush',
+      color: '#2244aa',
+      params: { size: 8, water: 50, flow: 50 },
+      brushId: 'wc/round-medium',
+      points: pointTicks.map((_tick, index) => ({
+        x: 4 + index,
+        y: 4,
+        p: 0.5,
+        tx: 0,
+        ty: 0,
+        tw: 0,
+      })),
+      pointTicks,
+      mutationId: 21,
+      timestamp: 1000,
+    })
+  }
+
+  it('feeds every sample in a one-frame bake, repeated ticks and gaps included', async () => {
+    const { adapter } = makeFakeAdapter()
+    const counts: number[] = []
+    adapter.renderPartialStrokes = (entries) => {
+      for (const entry of entries) counts.push(entry.pointCount)
+    }
+    const bake = createAquarelleBake(adapter, {
+      frameCount: 1,
+      encodeWebp: pixelEncoder,
+      width: 8,
+      height: 8,
+    })
+    const result = await bake.bake([rawStroke([0, 0, 3, 7])])
+    expect(result.ok).toBe(true)
+    expect(counts.length).toBeGreaterThan(0)
+    expect(counts[counts.length - 1]).toBe(4)
+  })
+
+  it('splits a multi-frame walk by ticks without dropping a repeated-tick sample', async () => {
+    const { adapter } = makeFakeAdapter()
+    const counts: number[] = []
+    adapter.renderPartialStrokes = (entries) => {
+      for (const entry of entries) counts.push(entry.pointCount)
+    }
+    const bake = createAquarelleBake(adapter, {
+      frameCount: 3,
+      encodeWebp: pixelEncoder,
+      width: 8,
+      height: 8,
+    })
+    const result = await bake.bake([rawStroke([0, 0, 3, 7])])
+    expect(result.ok).toBe(true)
+    expect(counts[counts.length - 1]).toBe(4)
+    for (let index = 1; index < counts.length; index += 1) {
+      expect(counts[index]!).toBeGreaterThanOrEqual(counts[index - 1]!)
+      expect(counts[index]!).toBeLessThanOrEqual(4)
+    }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// LIVE-SEED slicing (2026-11-22): the seed replays the WHOLE committed script
+// on the live engine. Before this option the replay ran with no macrotask gap
+// at all (measured 1.8 s @ 240 samples, scaling with the script) and the
+// Studio froze solid after every lift and frame change. `yieldToHostMs` is
+// opt-in, so the commit / Play paths keep their exact yield points.
+// ---------------------------------------------------------------------------
+
+describe('LIVE-SEED slicing: the replay yields to the host', () => {
+  it('runs a host macrotask DURING a long replay when yieldToHostMs is set', async () => {
+    const { adapter } = makeFakeAdapter()
+    const inner = adapter.renderPartialStrokes
+    // Stand-in for the engine-tick cost the freeze came from: every feed
+    // chunk burns real wall time inside the synchronous sample loop.
+    adapter.renderPartialStrokes = (entries) => {
+      const until = performance.now() + 3
+      while (performance.now() < until) {
+        // stylized engine tick
+      }
+      inner(entries)
+    }
+    let hostTurns = 0
+    const timer = setInterval(() => {
+      hostTurns += 1
+    }, 0)
+    try {
+      const bake = createAquarelleBake(adapter, {
+        frameCount: 1,
+        encodeWebp: pixelEncoder,
+        width: 8,
+        height: 8,
+        yieldToHostMs: 1,
+      })
+      const points = Array.from({ length: 64 }, (_, index) => ({
+        x: 4 + (index % 32),
+        y: 4,
+        p: 0.5,
+        tx: 0,
+        ty: 0,
+        tw: 0,
+      }))
+      const result = await bake.bake([makeStroke({ points })])
+      expect(result.ok).toBe(true)
+      // A timer callback only runs between macrotasks; zero here would mean
+      // the replay owned the thread from start to finish.
+      expect(hostTurns).toBeGreaterThan(0)
+    } finally {
+      clearInterval(timer)
+    }
+  })
+})

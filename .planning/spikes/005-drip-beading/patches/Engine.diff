@@ -1,0 +1,366 @@
+--- packages/efx-watercolor/src/playground/Engine.ts	2026-11-23 17:09:41
++++ .planning/spikes/005-drip-beading/workbench/src/playground/Engine.ts	2026-11-23 19:31:31
+@@ -28,7 +28,7 @@
+   LAST_TOUCH_DRY_SECONDS,
+   makeBristles,
+ } from './bristles';
+-import { f32ToF16, fromHalf } from './half';
++import { f32ToF16, f16ToF32, fromHalf } from './half';
+ // 64-26 (CR-03): the ping-pong carry law and its state machine, proven on the
+ // CPU in lastTouchCarry.test.ts — the engine only feeds it rects.
+ import { invalidateCarry, newLastTouchCarry, recordStamp, takeCarry } from './lastTouchCarry';
+@@ -127,6 +127,16 @@
+   pickup: number;      // 64-22: §3.1 carrier pickup rate — how much sheet paint a bristle lifts (0..1)
+   refill: number;      // 64-22: §3.1 carrier refill rate — how fast a bristle refills from the load (0..1)
+   wetSeconds: number;  // 64-22: last-touch wetness lifetime in SECONDS (>= 1) — declared here so the ONE mapping has one destination; consumed by 64-24
++  gravity: number;     // SPIKE 004: downward sag of wet paint, 0..1 (0 = inert)
++  gravityGain: number; // SPIKE 004: sag speed in sheet-heights per second at gravity 1
++  gravityThreshold: number; // SPIKE 004: wet amount below which nothing drips (0..1)
++  gravityFocus: number;     // SPIKE 004: power on the wet amount — concentrates the sag on the loaded core (0 = flat)
++  gravityNoise: number;     // SPIKE 004: patchy drips — how much the noise gates gravity (0 = uniform)
++  gravityNoiseScale: number; // SPIKE 004: noise cells per sheet (document space)
++  beadRate: number;     // SPIKE 005: fraction of free lanes that shed a bead per wave (0 = no beads)
++  beadSize: number;     // SPIKE 005: bead radius in doc uv
++  beadThreshold: number; // SPIKE 005: wet amount a cell must hold to feed a bead
++  beadSpeed: number;    // SPIKE 005: bead fall speed relative to the field sag (>1 outruns the tongue)
+ }
+ 
+ export const DEFAULT_PARAMS: Params = {
+@@ -142,6 +152,16 @@
+   pickup: 1.0,
+   refill: 0.6,
+   wetSeconds: 7,
++  gravity: 0,   // SPIKE 004: the shipped law has no gravity; 0 is byte-identical
++  gravityGain: 0.08,
++  gravityThreshold: 0,
++  gravityFocus: 0,
++  gravityNoise: 0,
++  gravityNoiseScale: 8,
++  beadRate: 0,     // SPIKE 005: no beads — the shipped law and spike 004 stay inert
++  beadSize: 0.006,
++  beadThreshold: 0.05,
++  beadSpeed: 1.6,
+ };
+ 
+ /**
+@@ -417,6 +437,25 @@
+ const MASK_BLOCK = 16;         // texels per wet-mask cell
+ const MASK_EVERY = 10;         // frames between wet-mask readbacks that trim the active rect
+ const MASK_MARGIN = MASK_BLOCK + 8;
++// SPIKE 005: the bead law. BEAD_WAVE_MS is the shedding cadence, BEAD_TAU the
++// bead's drying lifetime (s), BEAD_INK the per-tick pigment weight (the trail
++// stacks ~6 stamps per texel). The mask readback is the SAME 16-texel cell
++// grid the active-rect trim already uses — 4 KB, not a full-field stall.
++const BEAD_WAVE_MS = 333;
++const BEAD_TAU = 1.2;
++const BEAD_MAX = 24;
++const BEAD_MIN_WATER = 0.12;
++// A bead stamps a FAINT continuous thread plus a full drop every
++// BEAD_DOT_SPACING doc-uv of fall: the chain reads as drops running, not a
++// hairline. (A blob stamped every tick would just thicken into a straight
++// line — the field has no way to erase the previous head.)
++const BEAD_DOT_SPACING = 0.014;
++const BEAD_DOT_INK = 0.12;
++const BEAD_TRAIL_INK = 0.015;
++const BEAD_DOT_R = 1.15;
++const BEAD_TRAIL_R = 0.45;
++
++interface SpikeBead { x: number; y: number; r: number; water: number; lane: number }
+ const PROTECT_MARGIN = 24;     // texels around a dab / fill band saved for undo, where its water and pigment spread to
+ const DESK = [1, 1, 1];      // the table the sheet lies on (sRGB)
+ const PAPER_UNITS = 1100;      // paper features are drawn for a sheet this many texels tall
+@@ -626,6 +665,16 @@
+   private autoFix = false;
+   private flowSpeed = 0;                       // upper bound on water speed (sim texels / s)
+   private growCarry = 0;                       // fractional texels the active rect still has to grow
++  // SPIKE 005: the discrete drip beads. A CPU list, spawned from the loaded
++  // wet mask and stamped through the shipped splat deposits (no new target,
++  // no new shader); the beads are the only state, and they are a pure
++  // function of the recorded params, the tick sequence and the wet field.
++  private beads: SpikeBead[] = [];
++  private beadNextWave = 0;
++  private beadWave = 0;
++  private beadSpawned = 0;
++  private beadDepositTick = 0;
++  private spikeBeadCoeffs: Float32Array | null = null;
+   private brushNow = { x: 0, y: 0, r: 0 };
+   private raf = 0;
+   private lastFrame = 0;
+@@ -1449,6 +1498,9 @@
+     // The base pigment is whatever configure() installed. It is captured
+     // BEFORE any per-sample swap so it can be restored on every exit path.
+     this.strokeBasePigment = this.pigment;
++    // SPIKE 005: remember the last PAINT colour — Water and Lift carry black
++    // in their payload, and a bead must never inherit it.
++    if (tool !== 'water' && tool !== 'lift') this.spikeBeadCoeffs = Float32Array.from(this.pigment.coeffs);
+     this.stroke = {
+       pointerId: SCRIPT_POINTER, pointerType: 'pen', tool, started: false, ending: false,
+       x: 0, y: 0, cx: 0, cy: 0, pr: 0, t: this.clock(), speed: 0, simPressure: 0.45, carry: 0, travelled: 0, moved: false,
+@@ -1535,10 +1587,14 @@
+     this.processInput(dt);
+     const now = this.clock();
+     const awake = this.active !== null &&
+-      (this.stroke !== null || this.fixTimer > 0 || now < this.minAwakeUntil || now < this.wetUntil());
++      (this.stroke !== null || this.fixTimer > 0 || now < this.minAwakeUntil || now < this.wetUntil() || this.beads.length > 0);
+     if (awake) {
+       this.flowSpeed *= Math.exp(-dt * (3.0 - this.params.flow * 2.4));
+-      this.growCarry += 0.4 + Math.min(3, 0.15 * this.flowSpeed * dt * (this.dw / this.velocity.w));
++      // SPIKE 004: gravity moves the wet film at a fixed doc-px speed; the
++      // active rect must grow at least that fast or the sagging front is
++      // clipped away every frame (measured: the water stalled at ~1.5 px/s).
++      this.growCarry += 0.4 + Math.min(3, 0.15 * this.flowSpeed * dt * (this.dw / this.velocity.w))
++        + (this.params.gravity ?? 0) * dt * 0.08 * this.dh;
+       const grow = Math.floor(this.growCarry);
+       if (grow > 0) {
+         this.growCarry -= grow;
+@@ -1546,6 +1602,7 @@
+         this.touch({ x0: Math.max(0, a.x0 - grow), y0: Math.max(0, a.y0 - grow), x1: Math.min(this.dw, a.x1 + grow), y1: Math.min(this.dh, a.y1 + grow) }, false, false);
+       }
+       this.step(dt);
++      this.spikeBeadStep(dt);   // SPIKE 005: shed, fall and stamp the drip beads
+       if (this.fixTimer <= 0 && ++this.maskCounter >= MASK_EVERY) { this.maskCounter = 0; this.trimActive(); }
+     }
+     this.render();
+@@ -3691,7 +3748,178 @@
+    * (1 × BRISTLE_CAP RGBA each) — the probe's and the tests' window into the
+    * per-bristle state. Order matches the reservoir layout documented in
+    * `bristleCarrierFS`: carried 0..3, carried 4..6 + alpha, load/across/seed/jitter.
++   */
++  /** SPIKE 004: the simulated (active) rect, for the gravity probe. */
++  spikeActiveRect(): { x0: number; y0: number; x1: number; y1: number } | null {
++    return this.active ? { ...this.active } : null
++  }
++
++  /** SPIKE 004: the wet layer (one channel) as f32, whole document — the
++   *  gravity probe's readout of how far the water actually sagged. */
++  readWetField(): Float32Array {
++    const raw = this.g.readHalf(this.wet.read.views[0]!, this.dw, this.dh, 1)
++    const out = new Float32Array(raw.length)
++    f16ToF32(raw, out)
++    return out
++  }
++
++  /** SPIKE 005: the live bead set, for the beading probe. */
++  spikeBeads(): { spawned: number; alive: number; lowestY: number; beads: { x: number; y: number; r: number; water: number }[] } {
++    let lowestY = 1
++    for (const b of this.beads) if (b.y < lowestY) lowestY = b.y
++    return {
++      spawned: this.beadSpawned,
++      alive: this.beads.length,
++      lowestY: this.beads.length > 0 ? Math.round(lowestY * 10000) / 10000 : 0,
++      beads: this.beads.map((b) => ({
++        x: Math.round(b.x * 10000) / 10000,
++        y: Math.round(b.y * 10000) / 10000,
++        r: Math.round(b.r * 10000) / 10000,
++        water: Math.round(b.water * 1000) / 1000,
++      })),
++    }
++  }
++
++  /* ------------------------------------------------- SPIKE 005: drip beads */
++
++  private spikeHash(a: number, b: number): number {
++    const s = Math.sin(a * 127.1 + b * 311.7) * 43758.5453
++    return s - Math.floor(s)
++  }
++
++  /**
++   * One bead tick: shed from the loaded film, fall at the gravity speed (the
++   * beadSpeed factor outruns the field tongue so the drop visibly detaches),
++   * dry out, and stamp its trail. Deposits every other tick — the stamp
++   * radius is 3-6 px and the bead falls < 1 px/tick, so the trail stays
++   * continuous at half the draw cost.
++   */
++  private spikeBeadStep(dt: number) {
++    const P = this.params
++    if (!(P.gravity > 0)) return
++    const now = this.clock()
++    if (P.beadRate > 0 && this.active !== null) {
++      if (this.beadNextWave === 0) this.beadNextWave = now + BEAD_WAVE_MS
++      else if (now >= this.beadNextWave) {
++        this.beadNextWave = now + BEAD_WAVE_MS
++        this.spikeSpawnBeads()
++      }
++    }
++    if (this.beads.length === 0) return
++    const speed = P.gravity * P.gravityGain * P.beadSpeed
++    this.beadDepositTick ^= 1
++    for (const b of this.beads) {
++      const y0 = b.y
++      b.y -= speed * dt
++      b.water *= Math.exp(-dt / BEAD_TAU)
++      const crossed = Math.floor(y0 / BEAD_DOT_SPACING) !== Math.floor(b.y / BEAD_DOT_SPACING)
++      const dying = b.water <= BEAD_MIN_WATER || b.y <= 0
++      if (this.beadDepositTick === 0) this.spikeBeadTrail(b)
++      // A drop is the terminal bulge of the run: it lands a dot every
++      // BEAD_DOT_SPACING, and one last dot when it dries out.
++      if (crossed || (dying && b.y > 0)) this.spikeBeadDot(b)
++    }
++    this.beads = this.beads.filter((b) => b.water > BEAD_MIN_WATER && b.y > 0)
++  }
++
++  /**
++   * A bead is fed by the loaded film: the SAME 16-texel wet mask the active
++   * rect trim already reads, at the bead threshold. Each free lane sheds at
++   * most one bead per wave, at its lowest wet cell. No RNG — the lane/wave
++   * hash is the only entropy, so the set is a pure function of the recorded
++   * params and the tick sequence (the wet field included).
+    */
++  private spikeSpawnBeads() {
++    const { gl, g } = this
++    const P = this.params
++    const m = this.wetMask
++    if (this.beads.length >= BEAD_MAX) return
++    const p = this.programs.wetMask
++    p.bind()
++    gl.uniform1i(p.u.uWet, g.bindTex(0, this.wet.read.tex[0]))
++    gl.uniform2f(p.u.uBlock, 1 / m.w, 1 / m.h)
++    gl.uniform1f(p.u.uThreshold, P.beadThreshold)
++    g.draw(m)
++    gl.bindFramebuffer(gl.FRAMEBUFFER, m.fbo)
++    gl.readPixels(0, 0, m.w, m.h, gl.RGBA, gl.UNSIGNED_BYTE, this.maskPixels)
++    gl.bindFramebuffer(gl.FRAMEBUFFER, null)
++    const px = this.maskPixels
++    const lanes = Math.min(m.w, Math.max(1, Math.round(P.gravityNoiseScale || 1)))
++    const wave = this.beadWave++
++    for (let lane = 0; lane < lanes && this.beads.length < BEAD_MAX; lane++) {
++      if (this.beads.some((b) => b.lane === lane)) continue
++      if (this.spikeHash(lane, wave) >= P.beadRate) continue
++      const cx0 = Math.floor((lane * m.w) / lanes)
++      const cx1 = Math.max(cx0 + 1, Math.floor(((lane + 1) * m.w) / lanes))
++      let row = -1
++      let col = -1
++      for (let y = 0; y < m.h && row < 0; y++) {
++        for (let x = cx0; x < cx1; x++) if (px[(y * m.w + x) * 4]) { row = y; col = x; break }
++      }
++      if (row < 0) continue
++      const jitter = this.spikeHash(lane + 17, wave + 5)
++      const bead: SpikeBead = {
++        x: (col + 0.5) / m.w,
++        y: (row + 0.5) / m.h,
++        r: P.beadSize * (0.75 + 0.5 * jitter),
++        water: 1,
++        lane,
++      }
++      this.beads.push(bead)
++      this.spikeBeadDot(bead)   // the drop's first bulge at the film head
++      this.beadSpawned += 1
++    }
++  }
++
++  /**
++   * One bead pigment stamp through the ONE dab law: attenuate the underlayer
++   * by `a`, then add `C * a` (the coverageDeposit pair, on the splat's round
++   * Gaussian instead of the brush tip). Additive-only would darken every
++   * overlap and drift the hue the way the 2026-11-21 rev-4 law did; this is
++   * the shipped source-over replacement law.
++   */
++  private spikeBeadInk(x: number, y: number, r: number, a: number) {
++    const { gl } = this
++    const c = this.spikeBeadCoeffs
++    if (!c) return
++    this.touch(this.stampRect(x, y, r, this.dw, this.dh, 3.2), true, false)
++    gl.enable(gl.BLEND)
++    gl.blendEquation(gl.FUNC_ADD)
++    // ink <- ink * (1 - a)
++    gl.blendFunc(gl.ZERO, gl.ONE_MINUS_SRC_COLOR)
++    this.drawSplat(this.ink.read, x, y, r, [a, a, a, a], [a, a, a, a], 1, 3.2)
++    // ink <- + C * a
++    gl.blendFunc(gl.ONE, gl.ONE)
++    this.drawSplat(this.ink.read, x, y, r, [c[0]! * a, c[1]! * a, c[2]! * a, c[3]! * a], [c[4]! * a, c[5]! * a, c[6]! * a, 0], 1, 3.2)
++    gl.disable(gl.BLEND)
++  }
++
++  /** The faint wet thread the drop leaves behind. */
++  private spikeBeadTrail(b: SpikeBead) {
++    const { gl } = this
++    this.spikeBeadInk(b.x, b.y, b.r * BEAD_TRAIL_R, BEAD_TRAIL_INK * b.water)
++    gl.enable(gl.BLEND)
++    gl.blendEquation(gl.MAX)
++    this.drawSplat(this.wet.read, b.x, b.y, b.r * 0.9, [0.05 + 0.05 * b.water, 0, 0, 0], [0, 0, 0, 0], 1, 3.2)
++    gl.blendEquation(gl.FUNC_ADD)
++    gl.disable(gl.BLEND)
++    this.wetPeak = Math.max(this.wetPeak * this.wetDecay(), 0.10)
++    this.lastWet = this.clock()
++  }
++
++  /** The drop itself: a round, darker bulge at the run's head. */
++  private spikeBeadDot(b: SpikeBead) {
++    const { gl } = this
++    this.spikeBeadInk(b.x, b.y, b.r * BEAD_DOT_R, BEAD_DOT_INK * (0.5 + 0.5 * b.water))
++    gl.enable(gl.BLEND)
++    gl.blendEquation(gl.MAX)
++    this.drawSplat(this.wet.read, b.x, b.y, b.r * BEAD_DOT_R, [0.10 + 0.08 * b.water, 0, 0, 0], [0, 0, 0, 0], 1, 3.2)
++    gl.blendEquation(gl.FUNC_ADD)
++    gl.disable(gl.BLEND)
++    this.wetPeak = Math.max(this.wetPeak * this.wetDecay(), 0.15)
++    this.lastWet = this.clock()
++  }
++
+   readBristles(): Uint16Array {
+     const a = this.g.readHalf(this.bristles.read.views[0]!, 1, BRISTLE_CAP, 4);
+     const b = this.g.readHalf(this.bristles.read.views[1]!, 1, BRISTLE_CAP, 4);
+@@ -3943,6 +4171,12 @@
+     gl.uniform1f(P.advectWet.u.uDt, dt);
+     gl.uniform1f(P.advectWet.u.uDecay, Math.exp(-dt / this.dryTau()));
+     gl.uniform1f(P.advectWet.u.uSpread, 0.12 * (1 - viscosity * 0.9));
++    gl.uniform1f(P.advectWet.u.uGravity!, this.params.gravity ?? 0);   // SPIKE 004
++    gl.uniform1f(P.advectWet.u.uGravityGain!, this.params.gravityGain ?? 0.08);
++    gl.uniform1f(P.advectWet.u.uGravityThreshold!, this.params.gravityThreshold ?? 0);
++    gl.uniform1f(P.advectWet.u.uGravityFocus!, this.params.gravityFocus ?? 0);
++    gl.uniform1f(P.advectWet.u.uGravityNoise!, this.params.gravityNoise ?? 0);
++    gl.uniform1f(P.advectWet.u.uGravityNoiseScale!, this.params.gravityNoiseScale ?? 8);
+     g.draw(this.wet.write, rect); this.wet.swap();
+ 
+     // fixing: mobile pigment (and its scattering) settles into the paper
+@@ -3974,6 +4208,12 @@
+     gl.uniform1f(p.u.uAspect, this.dw / this.dh);
+     gl.uniform1f(p.u.uKeep, 1 - settle);
+     gl.uniform3f(p.u.uBrush, this.brushNow.x, this.brushNow.y, this.brushNow.r);
++    gl.uniform1f(p.u.uGravity!, this.params.gravity ?? 0);   // SPIKE 004
++    gl.uniform1f(p.u.uGravityGain!, this.params.gravityGain ?? 0.08);
++    gl.uniform1f(p.u.uGravityThreshold!, this.params.gravityThreshold ?? 0);
++    gl.uniform1f(p.u.uGravityFocus!, this.params.gravityFocus ?? 0);
++    gl.uniform1f(p.u.uGravityNoise!, this.params.gravityNoise ?? 0);
++    gl.uniform1f(p.u.uGravityNoiseScale!, this.params.gravityNoiseScale ?? 8);
+     g.draw(this.ink.write, rect); this.ink.swap();
+ 
+     // 64-14: coverage advects with the pigment — the same mobility gate, back-
+@@ -4003,6 +4243,12 @@
+     gl.uniform1f(P.advectCover.u.uAspect, this.dw / this.dh);
+     gl.uniform1f(P.advectCover.u.uGranulation, this.params.granulation * 0.55);
+     gl.uniform3f(P.advectCover.u.uBrush, this.brushNow.x, this.brushNow.y, this.brushNow.r);
++    gl.uniform1f(P.advectCover.u.uGravity!, this.params.gravity ?? 0);   // SPIKE 004
++    gl.uniform1f(P.advectCover.u.uGravityGain!, this.params.gravityGain ?? 0.08);
++    gl.uniform1f(P.advectCover.u.uGravityThreshold!, this.params.gravityThreshold ?? 0);
++    gl.uniform1f(P.advectCover.u.uGravityFocus!, this.params.gravityFocus ?? 0);
++    gl.uniform1f(P.advectCover.u.uGravityNoise!, this.params.gravityNoise ?? 0);
++    gl.uniform1f(P.advectCover.u.uGravityNoiseScale!, this.params.gravityNoiseScale ?? 8);
+     g.draw(this.cover.write, rect); this.cover.swap();
+ 
+     this.dirty = union(this.dirty, rect);
+@@ -4170,13 +4416,14 @@
+     // (LIVE-SEED 2026-11-21). Under the default clock both readings agree.
+     const clockNow = this.clock();
+     const awake = this.active !== null &&
+-      (this.stroke !== null || this.fixTimer > 0 || clockNow < this.minAwakeUntil || clockNow < this.wetUntil());
++      (this.stroke !== null || this.fixTimer > 0 || clockNow < this.minAwakeUntil || clockNow < this.wetUntil() || this.beads.length > 0);
+     if (awake) {
+       // Grow the simulated region as fast as the wet front can move: slow diffusive
+       // creep plus a share of the (decaying) flow speed
+       this.flowSpeed *= Math.exp(-dt * (3.0 - this.params.flow * 2.4));
+       // (velocity is masked to ~0 at the wet front, so the front itself only creeps)
+-      this.growCarry += 0.4 + Math.min(3, 0.15 * this.flowSpeed * dt * (this.dw / this.velocity.w));
++      this.growCarry += 0.4 + Math.min(3, 0.15 * this.flowSpeed * dt * (this.dw / this.velocity.w))
++        + (this.params.gravity ?? 0) * dt * 0.08 * this.dh;   // SPIKE 004: keep the sagging front inside the rect
+       const grow = Math.floor(this.growCarry);
+       if (grow > 0) {
+         this.growCarry -= grow;
+@@ -4184,6 +4431,7 @@
+         this.touch({ x0: Math.max(0, a.x0 - grow), y0: Math.max(0, a.y0 - grow), x1: Math.min(this.dw, a.x1 + grow), y1: Math.min(this.dh, a.y1 + grow) }, false, false);
+       }
+       this.step(dt);
++      this.spikeBeadStep(dt);   // SPIKE 005: shed, fall and stamp the drip beads
+       if (this.fixTimer <= 0 && ++this.maskCounter >= MASK_EVERY) { this.maskCounter = 0; this.trimActive(); }
+     }
+     this.render();

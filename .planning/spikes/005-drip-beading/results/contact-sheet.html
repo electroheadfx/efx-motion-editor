@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<title>Spike 005 — gouttes discrètes (perles)</title>
+<style>
+  :root { color-scheme: light; }
+  body { font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; margin: 32px; color: #1d2430; background: #f5f6f8; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: #5b6675; margin: 0 0 24px; max-width: 1000px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 18px; }
+  .card { background: #fff; border: 1px solid #e2e6ec; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 2px rgba(16,24,40,.05); }
+  .card img { display: block; width: 100%; height: auto; }
+  .cap { padding: 10px 12px 12px; }
+  .cap b { display: block; font-size: 13px; }
+  .cap span { display: block; color: #5b6675; font-size: 12px; margin-top: 2px; }
+  .tag { display: inline-block; font-size: 11px; font-weight: 600; border-radius: 999px; padding: 1px 8px; margin-bottom: 6px; }
+  .ref { background: #eef1f5; color: #39424f; }
+  .ok { background: #e7f2e9; color: #1f6b34; }
+  .mid { background: #eaeefb; color: #2f4ea2; }
+  .warn { background: #fbeee0; color: #8a4a10; }
+  table { border-collapse: collapse; margin-top: 26px; background: #fff; border: 1px solid #e2e6ec; border-radius: 10px; overflow: hidden; width: 100%; }
+  th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid #edf0f4; font-size: 13px; }
+  th { background: #f0f2f5; font-weight: 600; }
+  tr:last-child td { border-bottom: 0; }
+  .note { margin-top: 18px; color: #5b6675; font-size: 13px; max-width: 1000px; }
+  .note b { color: #1d2430; }
+  code { background: #eef1f5; border-radius: 4px; padding: 1px 5px; font-size: 12px; }
+</style>
+</head>
+<body>
+  <h1>Spike 005 — gouttes discrètes (perles)</h1>
+  <p class="sub">Scène croix (trait horizontal x 0.06 → 0.94 + trait vertical x 0.5), feuille 512², eau pleine largeur, gravité 0.5, gain 0.08, bruit 1.0 @ 8 cellules, 4 s (240 ticks) sauf mention.
+  Chaque perle naît du <b>front humide</b> d'une plaque (masque d'eau au seuil), tombe plus vite que la langue du champ (<code>vitesse ×1.6</code>), laisse un chapelet de gouttes et meurt en séchant. « bottom » = point le plus bas de la peinture (uv, plus bas = descend plus).</p>
+
+  <div class="grid">
+    <div class="card">
+      <img src="bead-control.png" alt="champ seul, sans perles" />
+      <div class="cap"><span class="tag ref">référence 004</span><b>Champ seul (sans perles)</b>
+        <span>bottom 0.2959 · langue 10 px · 21.8 % peint</span></div>
+    </div>
+    <div class="card">
+      <img src="bead-s8.png" alt="perles taille 0.008" />
+      <div class="cap"><span class="tag ok">candidat</span><b>Perles · taille 0.008</b>
+        <span>bottom 0.0986 · 16 nées / 8 en vie · 26 % peint</span></div>
+    </div>
+    <div class="card">
+      <img src="bead-s8-crop.png" alt="zoom sur une goutte" />
+      <div class="cap"><span class="tag mid">zoom 1:1</span><b>Le chapelet + la goutte terminale</b>
+        <span>la perle laisse des gouttes et meurt sur un point plus large</span></div>
+    </div>
+    <div class="card">
+      <img src="bead-size12.png" alt="perles taille 0.012" />
+      <div class="cap"><span class="tag mid">plus grosses</span><b>Taille 0.012</b>
+        <span>bottom 0.0654 · 29 % peint · gouttes plus larges</span></div>
+    </div>
+    <div class="card">
+      <img src="bead-rate03.png" alt="débit 0.3" />
+      <div class="cap"><span class="tag mid">moins de gouttes</span><b>Débit 0.3</b>
+        <span>bottom 0.1240 · 9 nées / 5 en vie · 5 gouttes</span></div>
+    </div>
+    <div class="card">
+      <img src="bead-thr15.png" alt="seuil 0.15" />
+      <div class="cap"><span class="tag mid">seuil haut</span><b>Seuil 0.15</b>
+        <span>bottom 0.1514 · 15 nées / 7 en vie · part plus haut sur le film</span></div>
+    </div>
+    <div class="card">
+      <img src="bead-speed10.png" alt="vitesse 1.0" />
+      <div class="cap"><span class="tag warn">sans détachement</span><b>Vitesse ×1.0</b>
+        <span>bottom 0.1572 · la perle ne dépasse plus la langue du champ</span></div>
+    </div>
+    <div class="card">
+      <img src="bead-g10.png" alt="gravité 1.0" />
+      <div class="cap"><span class="tag warn">forte gravité</span><b>Gravité 1.0</b>
+        <span>bottom 0.0010 · 22 nées · les gouttes atteignent le bas de la feuille</span></div>
+    </div>
+    <div class="card">
+      <img src="bead-long.png" alt="600 ticks" />
+      <div class="cap"><span class="tag mid">10 s</span><b>600 ticks</b>
+        <span>bottom 0.0010 · 73 nées · les plaques ressèment en continu</span></div>
+    </div>
+  </div>
+
+  <table>
+    <tr><th>Gate</th><th>Réglage</th><th>bottom (uv)</th><th>Perles nées / en vie</th><th>Goutte la plus basse</th><th>Peint %</th><th>Étalement bas (px)</th></tr>
+    <tr><td>bead-control</td><td>champ seul</td><td>0.2959</td><td>0 / 0</td><td>—</td><td>21.8</td><td>10</td></tr>
+    <tr><td><b>bead-s8</b></td><td><b>taille 0.008, seuil 0.05, débit 1, ×1.6</b></td><td><b>0.0986</b></td><td><b>16 / 8</b></td><td><b>0.1068</b></td><td><b>26.0</b></td><td><b>25</b></td></tr>
+    <tr><td>bead-size12</td><td>taille 0.012</td><td>0.0654</td><td>16 / 8</td><td>0.0756</td><td>29.0</td><td>34</td></tr>
+    <tr><td>bead-rate03</td><td>débit 0.3</td><td>0.1240</td><td>9 / 5</td><td>0.2204</td><td>24.8</td><td>12</td></tr>
+    <tr><td>bead-thr15</td><td>seuil 0.15</td><td>0.1514</td><td>15 / 7</td><td>0.2006</td><td>25.7</td><td>26</td></tr>
+    <tr><td>bead-speed10</td><td>vitesse ×1.0</td><td>0.1572</td><td>16 / 8</td><td>0.1625</td><td>24.5</td><td>14</td></tr>
+    <tr><td>bead-g10</td><td>gravité 1.0</td><td>0.0010</td><td>22 / 8</td><td>0.0105</td><td>31.1</td><td>64</td></tr>
+    <tr><td>bead-long</td><td>600 ticks (10 s)</td><td>0.0010</td><td>73 / 8</td><td>0.0016</td><td>31.6</td><td>140</td></tr>
+    <tr><td>bead-dry-on</td><td>sans eau, perles activées (gravité 1)</td><td>0.3760</td><td>0 / 0</td><td>—</td><td>18.9</td><td>55</td></tr>
+    <tr><td>bead-neutral</td><td>gravité 0, perles activées</td><td>0.3760</td><td>0 / 0</td><td>—</td><td>18.9</td><td>55</td></tr>
+  </table>
+
+  <p class="note">
+    <b>La loi est la même que le pinceau :</b> chaque goutte atténue le dessous par <code>a</code> puis ajoute <code>C·a</code> (source-over dans la couche pigment), sur le Gaussien du splat, pas sur une empreinte de brosse. Aucune cible ni aucun shader nouveau : les perles réutilisent <code>splat</code> et le masque d'eau existant.<br />
+    <b>Déterministe :</b> aucun RNG ; le hash (voie, vague) est la seule entropie, et deux exécutions du même gate donnent les mêmes digests. <b>Neutre à 0 :</b> gravité 0 → aucune perle, digests identiques à HEAD. <b>Le seuil d'eau est réel :</b> sans passe d'eau, l'acrylique (pic 0.0107) reste sous le seuil 0.05 → 0 perle, aucun écoulement.<br />
+    <b>À noter :</b> le trait vertical à x 0.5 tombe pile sur une frontière de voie (8 voies) → deux perles parallèles. Le « débit » règle la fraction de voies qui lâchent une perle par vague ; une voie occupée attend la mort de sa perle (~2.8 s). L'« étalement bas » compte les colonnes à ≤8 px du bas sur toute la feuille — avec plusieurs gouttes il mesure l'étalement, pas la largeur d'une goutte.
+  </p>
+</body>
+</html>

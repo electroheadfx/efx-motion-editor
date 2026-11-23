@@ -1,0 +1,720 @@
+// ============================================================
+//  createAquarelleEngineAdapter — engine-2's EngineAdapter<P>
+//  plug point (HOST-02 / D-19). engineId 'efx-watercolor' is
+//  already named in the host EngineId union.
+//
+//  payloadCodec is the 56-06 script codec (one payload union,
+//  D-16) — parse is total and fail-closed (null on any
+//  malformed input, never throws) — the host never reads P
+//  (T-56-03 mitigation).
+//
+//  Play/bake path (56-12, one engine per script): replay runs
+//  on the vendored WatercolorEngine — the SAME simulation the
+//  live canvas paints with. One stepping law live == bake:
+//  each integer tick feeds that tick's recorded sample through
+//  the engine stamp path, then engine.tick(HOST_DT) advances
+//  the fluid. Dry events call engine.fix() at their recorded
+//  tick (D-15). Frame indices never force-dry (P4 / D-28).
+//
+//  Points are document uv (y up) — the engine's native space —
+//  so live and bake cannot drift. Params are the CANONICAL
+//  AQUA-04 globals mapped through toEngineParams(); never the
+//  mapped 0..1 bag.
+// ============================================================
+
+import { hashMutationId, mixStrokeSeed } from '@efxlab/efx-paint-host'
+import type {
+  EngineAdapter,
+  EngineId,
+  StudioPoint,
+  StudioStroke,
+} from '@efxlab/efx-paint-host'
+import type { AquarelleStrokePayload, AquarelleTool } from '../payload/toStudioStroke'
+import { toStudioStroke } from '../payload/toStudioStroke'
+import {
+  isUniformColorProfile,
+  isUniformWidthProfile,
+  sampleVectorColors,
+  sampleVectorWidths,
+} from '../vector/spine'
+import {
+  isAquarelleDryEvent,
+  type AquarelleDryEvent,
+  type AquarellePayloadEvent,
+} from '../payload/dryEvent'
+import { payloadCodec } from '../payload/codec'
+import { WatercolorEngine, type LightSettings, type SheetSnapshot, type Tool } from '../playground/Engine'
+import { toEngineParams } from '../playground/params'
+import { buildBrushForStroke } from '../playground/brushBridge'
+import { pigmentFromHex, type Pigment } from '../playground/spectral'
+import { DEFAULT_PAPER, PAPERS, type PaperPreset } from '../playground/papers'
+import type { AquarelleBakePaper } from '../bake/aquarelleBake'
+
+/** Host tick grid — 60 Hz, integer ticks (Q2 / DATA-03). */
+export const HOST_TICK_HZ = 60
+const HOST_DT = 1 / HOST_TICK_HZ
+
+export interface AquarelleAdapterOptions {
+  width?: number
+  height?: number
+  canvas?: HTMLCanvasElement
+  /**
+   * LIVE-SEED (2026-11-21): inject the LIVE engine instead of constructing
+   * one. The seed replay must run against the same WebGL2 engine the artist
+   * paints on — a second WatercolorEngine over the same canvas would
+   * double-own the context. Injected mode skips canvas sizing, the
+   * manual/clock/RNG install and the paper/light/paperSeed writes (the live
+   * sheet already carries them); `dispose()` never destroys the engine.
+   */
+  engine?: WatercolorEngine
+  /**
+   * LIVE-SEED: drive the replay through the host's clock state instead of the
+   * adapter's private `virtualNow`. Used with `engine` — the seed controller
+   * owns the clock and hands it to real time at the seed's end.
+   */
+  clock?: { now(): number; advance(ms: number): void }
+  /**
+   * 261017-fz3: resolved Studio paper preset (paperPresetForStudioId, app-side).
+   * The adapter calls engine.setPaper + engine.paperTexture before the first
+   * applyStroke so the deposit carries the Studio paper's tooth. Q5a cold
+   * fallback for paper/real-* stays in paperPresetForStudioId (app-side).
+   */
+  paperPreset?: PaperPreset
+  /** Paper strength 0..1 — engine.paperTexture (deposit grain visibility). */
+  paperStrength?: number
+  /**
+   * 64-07 (MED-17): the paint-layer document's emboss light, applied ONCE
+   * before the first `applyStroke` so the bake's very first dab is lit. Feed
+   * the document value unchanged: `Engine.setLight` owns every band (azimuth
+   * wraps 0..360, elevation 0..90, intensity 0..4, a non-finite field falls
+   * back to `DEFAULT_LIGHT`) and redraws only on a real change. Absent leaves
+   * the engine's own default in force — the adapter never manufactures one.
+   */
+  light?: LightSettings
+  /**
+   * 64-21: the recording's sheet seed (the document's `paperSeed`, or the
+   * layer-id derivation for an old document), applied ONCE before the first
+   * `applyStroke` so the replayed deposit lands on the same grain it was
+   * painted on. `Engine.setPaperSeed` owns the pin (a non-finite value clears
+   * it) and regenerates the sheet only on a real change. Absent leaves the
+   * engine's own per-sheet roll in force — the adapter never manufactures a
+   * value.
+   */
+  paperSeed?: number
+}
+
+/**
+ * Resolve the engine paper for a bake.
+ *
+ * Studio paper ids (e.g. `paper/toned-sand`) are host ids, not vendor preset
+ * ids: the host resolves them through its ONE mapping and passes the result
+ * as `options.paperPreset`. 261027 UAT round 9: resolving them to a hardcoded
+ * `cold` sheet made every re-bake deposit on cold paper while the live sheet
+ * painted on the Studio's (e.g. toned) sheet — the Move/Apply bake lost the
+ * wash density the artist saw. A vendor id always wins; a host id uses the
+ * host-resolved preset; only an unidentifiable id falls back to DEFAULT_PAPER.
+ */
+export function resolveBakePaperPreset(
+  paper: AquarelleBakePaper | undefined,
+  hostPreset?: PaperPreset,
+): PaperPreset | undefined {
+  if (!paper) return hostPreset
+  const vendor = PAPERS.find((preset) => preset.id === paper.paperId)
+  if (vendor) return vendor
+  return hostPreset ?? DEFAULT_PAPER
+}
+
+/**
+ * Accept an in-memory stroke/Dry (play path) by round-tripping it
+ * through the script codec — same fail-closed validation the host
+ * sees, plus the D-19 diffusion clamp.
+ */
+function acceptEvent(raw: unknown): AquarellePayloadEvent | null {
+  if (typeof raw !== 'object' || raw === null) return null
+  if (isAquarelleDryEvent(raw)) {
+    return payloadCodec.parse(payloadCodec.serialize(raw))
+  }
+  return payloadCodec.parse(payloadCodec.serialize(raw as AquarellePayloadEvent))
+}
+
+/** mulberry32 — same family the vendor tip generator uses. */
+function seededRandom(seed: number): () => number {
+  let state = (seed | 0) || 1
+  return () => {
+    state = (state + 0x6d2b79f5) | 0
+    let t = Math.imul(state ^ (state >>> 15), 1 | state)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+/**
+ * LIVE-SEED PARITY (post-UAT 2026-11-21): the RNG factory a LIVE stroke with
+ * this mutation id must paint with. It is the exact stream `configure()` gives
+ * that stroke's later re-bake — `seededRandom(traceSeed || 1)` with the
+ * projected `traceSeed = hashMutationId(mutationId)` and no paint-seed salt —
+ * so an edit or move that re-bakes the script reproduces the live texture
+ * instead of re-rolling its bristles.
+ */
+export function strokeRandomForMutationId(mutationId: number): () => number {
+  return seededRandom(hashMutationId(mutationId) || 1)
+}
+
+/**
+ * 261121-mtu: the payload union is five members, the engine's is four. This
+ * frozen table is the ONE place the two vocabularies meet, and it states the
+ * intent: `watercolor` is a paint stroke and deposits through the engine's
+ * `brush` mode — the distinction it carries (watercolor brush family and
+ * medium) is exposure, not a new deposit law.
+ */
+const PAYLOAD_TOOL_TO_ENGINE: Readonly<Record<AquarelleTool, Tool>> = Object.freeze({
+  brush: 'brush',
+  watercolor: 'brush',
+  water: 'water',
+  pen: 'pen',
+  lift: 'lift',
+})
+
+/**
+ * Resolve a PAYLOAD tool to the engine's closed four-member union.
+ *
+ * A member resolves through the table above; anything genuinely unknown
+ * (corrupt stored data, a future id) falls back to `'brush'` — fail-closed,
+ * never a silent fifth engine mode.
+ */
+export function engineToolForAquarelleTool(raw: string): Tool {
+  return (PAYLOAD_TOOL_TO_ENGINE as Readonly<Record<string, Tool | undefined>>)[raw] ?? 'brush'
+}
+
+function asTool(raw: string): Tool {
+  return engineToolForAquarelleTool(raw)
+}
+
+/**
+ * 61-04: the derived per-sample width factors for one stroke, or null when
+ * the stroke carries no anchors or a uniform width profile. Null means the
+ * feed path passes the literal 1 and deposits byte-identically to before.
+ *
+ * This is the ONE bridge from the sparse anchor profile (61-02) to the
+ * engine's per-sample channel. It runs once per active stroke — never per
+ * tick (T-61-12) — and is a pure function of the payload and the point grid:
+ * no clock read, no RNG, no engine-state write. The array is derived at
+ * replay time and is never persisted (the document keeps anchors and their
+ * sparse factors only).
+ */
+export function resolveStrokeWidthFactors(
+  payload: AquarelleStrokePayload,
+  pts: readonly StudioPoint[],
+): Float32Array | null {
+  const anchors = payload.anchors
+  if (anchors === undefined || anchors.length === 0) return null
+  if (isUniformWidthProfile(anchors)) return null
+  return Float32Array.from(sampleVectorWidths(anchors, pts))
+}
+
+/**
+ * 261111-wd6: the ONE resolution of a stroke's base colour — the stroke-level
+ * colour wins over the engine payload, exactly the order `configure()` has
+ * always read. Null means the stroke names no colour at all.
+ */
+export function resolveStrokeBaseColor(
+  stroke: StudioStroke<AquarelleStrokePayload>,
+): string | null {
+  const hex = stroke.color ?? stroke.engine.color
+  return typeof hex === 'string' && hex.length > 0 ? hex : null
+}
+
+/**
+ * 261111-wd6: the derived per-sample pigments for one stroke, or null when the
+ * stroke carries no anchors, no explicit vertex colour, or no base colour to
+ * inherit. Null means the feed passes no pigment and deposits byte-identically
+ * to before.
+ *
+ * This is the ONE bridge from the per-vertex colour law (the package spine) to
+ * the engine's per-sample pigment channel. Like the width bridge it runs once
+ * per active stroke — never per tick (T-61-12) — and is a pure function of the
+ * stroke payload and the point grid: no clock read, no RNG, no engine-state
+ * write. The array is derived at replay time and is never persisted.
+ */
+export function resolveStrokeColors(
+  stroke: StudioStroke<AquarelleStrokePayload>,
+  pts: readonly StudioPoint[],
+): Pigment[] | null {
+  const anchors = stroke.engine.anchors
+  if (anchors === undefined || anchors.length === 0) return null
+  if (isUniformColorProfile(anchors)) return null
+  const base = resolveStrokeBaseColor(stroke)
+  if (base === null) return null
+  return sampleVectorColors(anchors, pts, base).map((hex) => pigmentFromHex(hex))
+}
+
+export function createAquarelleEngineAdapter(
+  options: AquarelleAdapterOptions = {},
+): EngineAdapter<AquarelleStrokePayload> & {
+  setPaper(paper: AquarelleBakePaper): void
+  /** Live awake gate — the bake's final cook-to-sleep probe. */
+  isAwake(): boolean
+  /** 261019c: force-dry at the visible settle cap (the live sheet's cap). */
+  fix(): void
+  /**
+   * 2026-11-23: the engine's exact sheet (last-touch as AGES). Lets the host
+   * adopt a re-render's bake into its LIVE engine — blend/pickup without a
+   * stroke replay. Null before construction or after dispose.
+   */
+  captureSheet(): SheetSnapshot | null
+  /**
+   * 261029-bks: clock-only advance for an idle gap the bake proved asleep.
+   * Never calls engine.tick or render; one `advanceClock(1000 * HOST_DT)` per
+   * tick so the virtual clock stays bit-identical to per-tick stepping.
+   */
+  skipTicks(fromTick: number, toTick: number): void
+  /**
+   * 261030-v1t: salt every stroke's render RNG with (traceSeed, frame) so the
+   * same script paints a different brush texture on each output frame. `null`
+   * (the default) keeps today's exact stream — seededRandom(traceSeed || 1).
+   */
+  setPaintSeedFrame(frame: number | null): void
+  /**
+   * 261030-v1t: wipe pigment/water back to the naked sheet (paper kept) and
+   * re-arm the virtual clock, the feed cursors and the RNG for one salted
+   * replay. The per-frame re-pattern bake calls this between output frames.
+   */
+  resetSheet(): void
+  /**
+   * 64-24 (D-24): clock-only advance — adds `ms` to the virtual clock with NO
+   * simulation tick and no render, so a bake can age one region of its sheet
+   * deterministically (a wetness acceptance's "thirty seconds later"). Unlike
+   * `skipTicks` this is NOT the per-tick law: it exists precisely to move time
+   * without moving the fluid. TEST-ONLY — the app never calls it.
+   */
+  advanceClock(ms: number): void
+  /**
+   * 64-24 (D-24): the §3.4 A/B seam — 1 (the shipped timestamp law, the
+   * default) or 0 (64-21's `wet × coverage` proxy, retained only as the
+   * recorded control). Compare-then-write, exactly like the engine's own
+   * `setLastTouchMode`. TEST-ONLY — the app never calls it.
+   */
+  setLastTouchMode(mode: 0 | 1): void
+} {
+  const engineId: EngineId = 'efx-watercolor'
+  const strokes: StudioStroke<AquarelleStrokePayload>[] = []
+  const width = Math.max(1, Math.trunc(options.width ?? 0))
+  const height = Math.max(1, Math.trunc(options.height ?? 0))
+  let disposed = false
+
+  // The vendor engine owns a WebGL2 surface. Bake runs on an offscreen
+  // canvas at document resolution (A5: transparent where unpainted).
+  const injectedEngine = options.engine ?? null
+  const canvas =
+    options.canvas ??
+    (typeof document !== 'undefined' ? document.createElement('canvas') : null)
+  if (!injectedEngine && canvas && width > 0 && height > 0) {
+    canvas.width = width
+    canvas.height = height
+  }
+
+  let engine: WatercolorEngine | null = null
+  if (injectedEngine) {
+    // LIVE-SEED: the canvas, the manual/clock/RNG state and the sheet all
+    // belong to the host that owns this engine — this adapter only borrows
+    // it for a deterministic replay.
+    engine = injectedEngine
+  } else if (canvas) {
+    try {
+      engine = new WatercolorEngine(canvas, null, {}, width > 0 && height > 0 ? [width, height] : null)
+      engine.setManual(true)
+    } catch {
+      // No WebGL2 / float targets — fail closed at applyStroke, never crash the host.
+      engine = null
+    }
+  }
+
+  // Virtual clock + seeded RNG so two bakes of one script match (A2). An
+  // injected host clock replaces the private virtualNow (LIVE-SEED).
+  let virtualNow = 0
+  const advanceClock = (ms: number) => {
+    if (options.clock) options.clock.advance(ms)
+    else virtualNow += ms
+  }
+  const clockNow = () => (options.clock ? options.clock.now() : virtualNow)
+  if (!injectedEngine) {
+    engine?.setClock(() => virtualNow)
+    engine?.setRandom(seededRandom(1))
+  }
+
+  // 261030-v1t: per-output-frame paint salt. `null` = today's exact stream.
+  // A negative or fractional frame is not a frame — clamp to an integer >= 0.
+  let paintSeedFrame: number | null = null
+
+  // 261017-fz3: paper feeds the engine BEFORE the first applyStroke so the
+  // replayed deposit carries the Studio paper's tooth / granulation.
+  const applyPaper = (paper: AquarelleBakePaper | undefined, preset?: PaperPreset): void => {
+    if (!engine) return
+    const resolved = preset ?? resolveBakePaperPreset(paper, options.paperPreset)
+    if (resolved) engine.setPaper(resolved)
+    const strength = paper?.grainStrength
+    if (typeof strength === 'number' && Number.isFinite(strength)) {
+      engine.paperTexture = strength < 0 ? 0 : strength > 1 ? 1 : strength
+    }
+  }
+  // LIVE-SEED: an injected engine's sheet is the host's — never re-apply the
+  // paper / light / seed here or the seed would repaint the artist's sheet.
+  if (!injectedEngine) applyPaper(undefined, options.paperPreset)
+  if (!injectedEngine && typeof options.paperStrength === 'number' && engine) {
+    engine.paperTexture = options.paperStrength < 0 ? 0 : options.paperStrength > 1 ? 1 : options.paperStrength
+  }
+  // 64-07 (MED-17): the light is render state and must be in place before the
+  // first applyStroke — one pass-through write, never a clamp or a default on
+  // this path (the engine setter owns the bands, see AquarelleAdapterOptions).
+  if (!injectedEngine && options.light && engine) {
+    engine.setLight({ ...options.light })
+  }
+  // 64-21: the sheet seed rides the same seam — in place before the first
+  // applyStroke, one pass-through write (the engine setter owns the pin).
+  if (!injectedEngine && typeof options.paperSeed === 'number' && engine) {
+    engine.setPaperSeed(options.paperSeed)
+  }
+
+  /** Pending stroke being walked on the tick grid. */
+  let active: {
+    stroke: StudioStroke<AquarelleStrokePayload>
+    index: number
+    started: boolean
+    /** 61-04: one factor per point, derived once at activation; null = feed 1. */
+    widths: Float32Array | null
+    /** 261111-wd6: one pigment per point, derived once; null = feed none. */
+    colors: Pigment[] | null
+  } | null = null
+
+  /**
+   * Per-stroke feed cursor for renderPartialStrokes (261018 progressive
+   * Play). Keyed by the StudioStroke instance — getProgressiveFrameStrokes
+   * returns the same object across frames, so identity is the stable key.
+   * `index` is how many pts are already on the paper; `ended` blocks refit.
+   */
+  const feedStates = new Map<
+    StudioStroke<AquarelleStrokePayload>,
+    {
+      index: number
+      started: boolean
+      ended: boolean
+      widths: Float32Array | null
+      colors: Pigment[] | null
+    }
+  >()
+
+  const configure = (stroke: StudioStroke<AquarelleStrokePayload>): void => {
+    if (!engine) return
+    const payload = stroke.engine
+    const tool = asTool(payload.tool)
+    engine.setParams(toEngineParams(payload.params))
+    engine.setBrush(
+      buildBrushForStroke(payload.brushId ?? stroke.brushId, {
+        // quick-261115-oh9: the texture axis rides the opaque engine slot.
+        // Absent stays absent — the response's own tip is stamped. A LIFT
+        // never carries one (the eraser has no texture, and the punch erased
+        // the response tip): a persisted lift+texture pair — an earlier build
+        // wrote them — replays as the response tip instead of erasing a
+        // silhouette the punch never removed.
+        textureId: tool === 'lift' ? null : payload.textureId ?? null,
+        // quick 261116-inu: the STROKE snapshot is the rotation authority at
+        // replay — never the library row (which the bake cannot read). A
+        // textureless or lift stroke carries no rotation; a textured stroke
+        // with no recorded value stamps the 0-degree default.
+        textureRotation: tool === 'lift' ? null : payload.textureRotation ?? null,
+        overrides: payload.toolOverrides ?? stroke.toolOverrides,
+      }),
+    )
+    // 261111-wd6: ONE base-colour resolution, shared with the per-sample
+    // bridge — configure() and the sampler can never disagree on the base.
+    const hex = resolveStrokeBaseColor(stroke)
+    if (hex !== null) engine.setPigment(pigmentFromHex(hex))
+    engine.setTool(tool)
+    // traceSeed is the D-20 per-stroke determinism key. With a paint-seed
+    // frame set, the key is mixed with that frame (pure host mix) so the same
+    // stroke re-patterns per output frame without touching its geometry.
+    engine.setRandom(
+      seededRandom(
+        paintSeedFrame === null
+          ? stroke.traceSeed || 1
+          : mixStrokeSeed(stroke.traceSeed || 1, paintSeedFrame),
+      ),
+    )
+  }
+
+  /** User-initiated Dry (D-15) — wet-state fix at the event's tick. */
+  const applyDry = (): void => {
+    if (!engine) return
+    engine.fix()
+    // Drain the fix flash synchronously so the next stroke starts dry.
+    for (let i = 0; i < 30; i += 1) {
+      advanceClock(1000 * HOST_DT)
+      engine.tick(HOST_DT)
+    }
+  }
+
+  /**
+   * Feed the first `maxCount` recorded samples for the active stroke.
+   *
+   * COUNT, never a tick index: `pts[].tick` now carries the real 60 Hz pointer
+   * offset (quick 261116-rp), so a sample's tick can exceed its index. The
+   * bake decides how many points are due from their own ticks; the adapter
+   * feeds exactly that many, one engine tick each.
+   */
+  const feedDueSample = (maxCount: number): void => {
+    if (!engine || !active) return
+    const pts = active.stroke.pts
+    const count = Math.max(0, Math.trunc(maxCount))
+    while (active.index < pts.length && active.index < count) {
+      const p = pts[active.index]!
+      // 61-04: the factor is indexed by the sample's OWN position — derived
+      // once at activation, never rebuilt inside the tick loop (T-61-12).
+      // 261111-wd6 mirrors this for the pigment; both read BEFORE the cursor
+      // advances, so a sample only ever deposits its own values.
+      const widthFactor = active.widths === null ? 1 : active.widths[active.index] ?? 1
+      const samplePigment =
+        active.colors === null ? undefined : active.colors[active.index]
+      active.index += 1
+      advanceClock(1000 * HOST_DT)
+      if (!active.started) {
+        active.started = true
+        // p.p keeps the mouse sentinel (-1) — the engine derives pressure from
+        // speed exactly like the live pointer path. Tilt rides through too so
+        // asymmetric tips keep their recorded azimuth. The width factor is the
+        // vector profile's per-sample channel, never a maxRadius clamp (C-03).
+        engine.scriptBegin(
+          asTool(active.stroke.engine.tool),
+          p.x,
+          p.y,
+          p.p,
+          'Stroke',
+          undefined,
+          p.tx,
+          p.ty,
+          widthFactor,
+          samplePigment,
+        )
+      } else {
+        engine.scriptMove(p.x, p.y, p.p, clockNow(), p.tx, p.ty, widthFactor, samplePigment)
+      }
+      // Live==bake law (56-12): one sample then engine.tick advances the
+      // fluid. Skipping the tick deposits the whole stroke in one instant so
+      // the wash never blooms during the draw.
+      engine.tick(HOST_DT)
+    }
+    if (active.index >= pts.length && active.started) {
+      engine.scriptEnd()
+    }
+  }
+
+  return {
+    engineId,
+    // 261017-fz3: the bake calls setPaper before the first applyStroke (the
+    // EngineAdapter interface has no paper seam — optional extension).
+    setPaper(paper: AquarelleBakePaper): void {
+      applyPaper(paper)
+    },
+    // 261019: the bake's final frame steps until this gate closes — the same
+    // settled state the live sheet (and its cache capture) reaches.
+    isAwake(): boolean {
+      return engine?.isAwake ?? false
+    },
+    // 261019c: the live sheet force-dries at the visible settle cap; the bake
+    // runs the same fix so the end key keeps the artist's denser look.
+    fix(): void {
+      engine?.fix()
+    },
+    // 2026-11-23: the bake's EXACT sheet (last-touch stored as ages), so the
+    // host can adopt a re-rendered base into its LIVE engine — painting over
+    // the committed paint then blends and picks up with no stroke replay.
+    captureSheet(): SheetSnapshot | null {
+      if (disposed || !engine) return null
+      return engine.captureSheet()
+    },
+    // 261029-bks: clock-only advance for an idle gap the bake proved asleep.
+    // The guard is the exact `stepTick` law — it must precede every clock add,
+    // so a disposed adapter's clock can never drift from a no-skip run. One
+    // `advanceClock` per tick (never a single multiply) keeps the virtual clock
+    // bit-identical to per-tick stepping.
+    skipTicks(fromTick: number, toTick: number): void {
+      if (disposed || !engine) return
+      if (!(toTick > fromTick)) return
+      let remaining = toTick - fromTick
+      while (remaining > 0) {
+        advanceClock(1000 * HOST_DT)
+        remaining -= 1
+      }
+    },
+    // 261030-v1t: the per-frame paint salt + the sheet reset that makes a
+    // from-scratch replay start on the same naked paper. Both are optional
+    // EXTENSION seams — the host EngineAdapter interface is unchanged.
+    setPaintSeedFrame(frame: number | null): void {
+      paintSeedFrame =
+        typeof frame === 'number' && Number.isFinite(frame)
+          ? Math.max(0, Math.trunc(frame))
+          : null
+    },
+    resetSheet(): void {
+      if (disposed || !engine) return
+      engine.resetSheet()
+      // LIVE-SEED: the injected host owns its clock and RNG stream.
+      if (!options.clock) virtualNow = 0
+      active = null
+      feedStates.clear()
+      strokes.length = 0
+      // Same construction-time stream: the sheet is constant across replays.
+      if (!injectedEngine) engine.setRandom(seededRandom(1))
+    },
+    // 64-24 (D-24): clock-only advance for the wetness acceptance. The guard
+    // is the direction law — the virtual clock never moves backwards — and a
+    // disposed adapter's clock never drifts. No tick, no render: the fluid
+    // state is untouched, which is what makes "thirty seconds older" and
+    // "just re-wetted" two INDEPENDENT facts.
+    advanceClock(ms: number): void {
+      if (disposed || !engine) return
+      if (!Number.isFinite(ms) || ms <= 0) return
+      advanceClock(ms)
+    },
+    // 64-24 (D-24): the recorded A/B seam. 0 selects 64-21's proxy as the
+    // CONTROL of a capture comparison; nothing in the app ever writes it.
+    setLastTouchMode(mode: 0 | 1): void {
+      engine?.setLastTouchMode(mode)
+    },
+    // The 56-06 codec covers the one payload union (strokes + Dry).
+    // The host EngineAdapter type is stroke-shaped because the host
+    // never reads P and never sees Dry — cast through unknown at this
+    // seam only (T-56-17: host never inspects the engine slot).
+    payloadCodec: {
+      serialize: (raw: unknown) => payloadCodec.serialize(raw as AquarellePayloadEvent),
+      parse: (raw: unknown) => payloadCodec.parse(raw),
+    } as unknown as EngineAdapter<AquarelleStrokePayload>['payloadCodec'],
+    setInputLocked(_locked: boolean): void {
+      /* live playback surface — AnimationPlayer wiring lands in a later plan */
+    },
+    setAnimationMode(_mode: boolean): void {
+      /* live playback surface — AnimationPlayer wiring lands in a later plan */
+    },
+    getStrokes(): readonly StudioStroke<AquarelleStrokePayload>[] {
+      return strokes
+    },
+    applyStroke(stroke: StudioStroke<AquarelleStrokePayload>): void {
+      if (disposed) return
+      // Dry is a distinguished payload union member (D-16) — one
+      // applyStroke seam, wet-state fix at the recorded tick.
+      if (isAquarelleDryEvent(stroke)) {
+        applyDry()
+        return
+      }
+      const parsed = acceptEvent(stroke)
+      if (!parsed || isAquarelleDryEvent(parsed)) return
+      strokes.push(parsed)
+      if (!engine) return
+      configure(parsed)
+      active = {
+        stroke: parsed,
+        index: 0,
+        started: false,
+        widths: resolveStrokeWidthFactors(parsed.engine, parsed.pts),
+        colors: resolveStrokeColors(parsed, parsed.pts),
+      }
+      // Bake contract: applyStroke deposits the whole stroke. Feed every
+      // recorded sample on the tick grid, then flush the stamp path once.
+      feedDueSample(Number.MAX_SAFE_INTEGER)
+      advanceClock(1000 * HOST_DT)
+      engine.tick(HOST_DT)
+      active = null
+    },
+    renderAllStrokes(): void {
+      if (disposed || !engine) return
+      for (const stroke of strokes) {
+        configure(stroke)
+        active = {
+          stroke,
+          index: 0,
+          started: false,
+          widths: resolveStrokeWidthFactors(stroke.engine, stroke.pts),
+          colors: resolveStrokeColors(stroke, stroke.pts),
+        }
+        feedDueSample(Number.MAX_SAFE_INTEGER)
+        advanceClock(1000 * HOST_DT)
+        engine.tick(HOST_DT)
+      }
+      active = null
+    },
+    exportCompositeCanvas(): HTMLCanvasElement {
+      const out = engine?.exportCanvas('transparent') ?? canvas
+      if (!out) throw new Error('createAquarelleEngineAdapter: no canvas to export — pass options.canvas')
+      return out as HTMLCanvasElement
+    },
+    renderPartialStrokes(
+      strokeData: ReadonlyArray<{ stroke: StudioStroke<AquarelleStrokePayload>; pointCount: number }>,
+    ): void {
+      if (disposed || !engine) return
+      for (const entry of strokeData) {
+        const { stroke, pointCount } = entry
+        let state = feedStates.get(stroke)
+        if (!state) {
+          // 61-04: derived once per stroke and kept on the feed state, so a
+          // progressive replay never rebuilds the factor array per frame.
+          state = {
+            index: 0,
+            started: false,
+            ended: false,
+            widths: resolveStrokeWidthFactors(stroke.engine, stroke.pts),
+            colors: resolveStrokeColors(stroke, stroke.pts),
+          }
+          feedStates.set(stroke, state)
+          strokes.push(stroke)
+        }
+        if (state.ended) continue
+        // One-open-script law: the engine refuses a second scriptBegin while
+        // a stroke is on the paper, so a not-yet-started stroke waits for the
+        // open one to close (the sequential schedule guarantees it will).
+        if (active && active.stroke !== stroke) continue
+        if (!state.started) configure(stroke)
+        const cursor = {
+          stroke,
+          index: state.index,
+          started: state.started,
+          widths: state.widths,
+          colors: state.colors,
+        }
+        active = cursor
+        // `pointCount` is a SAMPLE COUNT: the first N recorded samples land on
+        // the paper, whatever their real ticks are (quick 261116-rp).
+        feedDueSample(pointCount)
+        state.index = cursor.index
+        state.started = cursor.started
+        // Complete when every sample is on the paper (an empty stroke
+        // completes immediately — no scriptBegin ever ran).
+        if (state.index >= stroke.pts.length) {
+          state.ended = true
+          active = null
+        }
+      }
+    },
+    stepTick(_tick: number): void {
+      if (disposed || !engine) return
+      // Integer ticks only (DATA-03). Frame indices never force-dry (P4).
+      // Diffusion only — the stroke landed in applyStroke.
+      advanceClock(1000 * HOST_DT)
+      engine.tick(HOST_DT)
+    },
+    captureFrame(): CanvasImageSource {
+      const frame = engine?.exportCanvas('transparent') ?? canvas
+      if (!frame) throw new Error('createAquarelleEngineAdapter: no canvas to capture — pass options.canvas')
+      return frame as CanvasImageSource
+    },
+    dispose(): void {
+      disposed = true
+      strokes.length = 0
+      active = null
+      // LIVE-SEED: the injected engine outlives the seed — the host destroys it.
+      if (!injectedEngine) engine?.destroy()
+      engine = null
+    },
+  }
+}
+
+// Re-exported so callers can build a projection without importing payload directly.
+export { toStudioStroke }

@@ -1,0 +1,133 @@
+{
+  "gate": "bead-speed10",
+  "engine": "workbench",
+  "gravity": 0.5,
+  "gain": 0.08,
+  "threshold": 0,
+  "focus": 0,
+  "noise": 1,
+  "noiseScale": 8,
+  "beadRate": 1,
+  "beadSize": 0.008,
+  "beadThreshold": 0.05,
+  "beadSpeed": 1,
+  "waterSize": 60,
+  "waterPass": true,
+  "waterPasses": 1,
+  "ticks": 240,
+  "sheet": 512,
+  "sizeParam": 60,
+  "params": {
+    "water": 26,
+    "load": 100,
+    "flow": 60,
+    "bleed": 22,
+    "dry": 70,
+    "edge": 65,
+    "granulation": 25,
+    "viscosity": 90,
+    "body": 100,
+    "emboss": 3,
+    "feather": 85,
+    "pickup": 100,
+    "refill": 0,
+    "wetSeconds": 12,
+    "size": 60,
+    "lift": 22
+  },
+  "renderer": "WebKit WebGL",
+  "run": {
+    "digests": {
+      "paper": "c38860c8",
+      "transparent": "d9528835",
+      "white": "0c99c036",
+      "pigment": "f9552f42"
+    },
+    "bakeMs": 494,
+    "ticksApplied": 241,
+    "paintedPct": 24.5,
+    "geometry": {
+      "paintedPct": 24.5,
+      "topY": 0.9307,
+      "bottomY": 0.1572,
+      "centroidY": 0.5994,
+      "extentY": 0.7734,
+      "columnsPainted": 465,
+      "maxColumnRunPx": 389,
+      "tongueWidthPx": 14,
+      "bottomP50": 0.501,
+      "bottomP90": 0.5557
+    },
+    "wet": {
+      "peak": 0.1426,
+      "mass": 5295.2,
+      "centroidY": 0.5608,
+      "mobileBottomY": 0.1553,
+      "mobileTopY": 0.8818,
+      "mobileFrac": 21.1,
+      "activeRect": {
+        "x0": 0,
+        "y0": 43,
+        "x1": 509,
+        "y1": 493
+      },
+      "gravityParam": 0.5
+    },
+    "beads": {
+      "spawned": 16,
+      "alive": 8,
+      "lowestY": 0.1625,
+      "beads": [
+        {
+          "x": 0.1094,
+          "y": 0.3812,
+          "r": 0.0088,
+          "water": 0.429
+        },
+        {
+          "x": 0.1406,
+          "y": 0.3812,
+          "r": 0.0087,
+          "water": 0.429
+        },
+        {
+          "x": 0.2969,
+          "y": 0.35,
+          "r": 0.0092,
+          "water": 0.429
+        },
+        {
+          "x": 0.4844,
+          "y": 0.1937,
+          "r": 0.0072,
+          "water": 0.429
+        },
+        {
+          "x": 0.5156,
+          "y": 0.1625,
+          "r": 0.0084,
+          "water": 0.429
+        },
+        {
+          "x": 0.6406,
+          "y": 0.4125,
+          "r": 0.0072,
+          "water": 0.429
+        },
+        {
+          "x": 0.7656,
+          "y": 0.3812,
+          "r": 0.0093,
+          "water": 0.429
+        },
+        {
+          "x": 0.8906,
+          "y": 0.4125,
+          "r": 0.0065,
+          "water": 0.429
+        }
+      ]
+    }
+  },
+  "verdict": "SPIKE-005 CAPTURED"
+}

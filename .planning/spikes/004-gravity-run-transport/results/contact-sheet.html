@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<title>Spike 004 — coulure gravitaire par plaques (bruit)</title>
+<style>
+  :root { color-scheme: light; }
+  body { font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; margin: 32px; color: #1d2430; background: #f5f6f8; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: #5b6675; margin: 0 0 24px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 18px; }
+  .card { background: #fff; border: 1px solid #e2e6ec; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 2px rgba(16,24,40,.05); }
+  .card img { display: block; width: 100%; height: auto; }
+  .cap { padding: 10px 12px 12px; }
+  .cap b { display: block; font-size: 13px; }
+  .cap span { display: block; color: #5b6675; font-size: 12px; margin-top: 2px; }
+  .tag { display: inline-block; font-size: 11px; font-weight: 600; border-radius: 999px; padding: 1px 8px; margin-bottom: 6px; }
+  .ref { background: #eef1f5; color: #39424f; }
+  .ok { background: #e7f2e9; color: #1f6b34; }
+  .mid { background: #eaeefb; color: #2f4ea2; }
+  .warn { background: #fbeee0; color: #8a4a10; }
+  table { border-collapse: collapse; margin-top: 26px; background: #fff; border: 1px solid #e2e6ec; border-radius: 10px; overflow: hidden; width: 100%; }
+  th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid #edf0f4; font-size: 13px; }
+  th { background: #f0f2f5; font-weight: 600; }
+  tr:last-child td { border-bottom: 0; }
+  .note { margin-top: 18px; color: #5b6675; font-size: 13px; max-width: 900px; }
+  code { background: #eef1f5; border-radius: 4px; padding: 1px 5px; font-size: 12px; }
+</style>
+</head>
+<body>
+  <h1>Spike 004 — coulure gravitaire par plaques</h1>
+  <p class="sub">Scène croix avec trait horizontal ALLONGÉ (x 0.06 → 0.94), feuille 512², gravité 0.5, gain 0.08, eau pleine largeur ×1, 4 s.
+  « Langue » = largeur du pied de la coulure ; « bottom » = point le plus bas de la peinture (doc uv, plus bas = descend plus).</p>
+
+  <div class="grid">
+    <div class="card">
+      <img src="cross-dry-g2-t240.png" alt="contrôle sans eau" />
+      <div class="cap"><span class="tag ref">référence</span><b>Sans eau (contrôle)</b>
+        <span>bottom 0.3760 · aucune coulure</span></div>
+    </div>
+    <div class="card">
+      <img src="noise-n0.png" alt="sans bruit" />
+      <div class="cap"><span class="tag warn">uniforme</span><b>Bruit 0 — coule partout</b>
+        <span>bottom 0.2744 · langue 25 px · le trait entier s'affaisse</span></div>
+    </div>
+    <div class="card">
+      <img src="noise-n08.png" alt="bruit 0.8" />
+      <div class="cap"><span class="tag mid">plaques</span><b>Bruit 0.8 @ 8 cellules</b>
+        <span>bottom 0.2822 · langue 13 px · coulures séparées</span></div>
+    </div>
+    <div class="card">
+      <img src="noise-n10.png" alt="bruit 1.0" />
+      <div class="cap"><span class="tag ok">le plus fin</span><b>Bruit 1.0 @ 8 cellules</b>
+        <span>bottom 0.2959 · langue <b>10 px</b> · plaques nettes</span></div>
+    </div>
+    <div class="card">
+      <img src="noise-n10-s4.png" alt="bruit 1.0 grandes plaques" />
+      <div class="cap"><span class="tag mid">grandes plaques</span><b>Bruit 1.0 @ 4 cellules</b>
+        <span>bottom 0.2744 · langue 22 px · moins de plaques, plus grosses</span></div>
+    </div>
+    <div class="card">
+      <img src="noise-n10-s16.png" alt="bruit 1.0 petites plaques" />
+      <div class="cap"><span class="tag mid">petites plaques</span><b>Bruit 1.0 @ 16 cellules</b>
+        <span>bottom 0.2998 · langue 23 px · grain fin, coulure courte</span></div>
+    </div>
+  </div>
+
+  <table>
+    <tr><th>Gate</th><th>Bruit (amplitude @ échelle)</th><th>bottom (uv)</th><th>Coulure sous le trait</th><th>Largeur de langue</th><th>Eau restante</th></tr>
+    <tr><td>cross-dry (contrôle sans eau)</td><td>—</td><td>0.3760</td><td>0 px</td><td>0</td><td>206</td></tr>
+    <tr><td>noise-n0</td><td>0</td><td>0.2744</td><td>52 px</td><td>25 px</td><td>3709</td></tr>
+    <tr><td>noise-n05</td><td>0.5 @ 8</td><td>0.2783</td><td>50 px</td><td>20 px</td><td>4160</td></tr>
+    <tr><td>noise-n08</td><td>0.8 @ 8</td><td>0.2822</td><td>48 px</td><td>13 px</td><td>4560</td></tr>
+    <tr><td><b>noise-n10</b></td><td><b>1.0 @ 8</b></td><td><b>0.2959</b></td><td><b>41 px</b></td><td><b>10 px</b></td><td><b>4746</b></td></tr>
+    <tr><td>noise-n10-s4</td><td>1.0 @ 4</td><td>0.2744</td><td>52 px</td><td>22 px</td><td>5544</td></tr>
+    <tr><td>noise-n10-s16</td><td>1.0 @ 16</td><td>0.2998</td><td>39 px</td><td>23 px</td><td>5231</td></tr>
+  </table>
+
+  <p class="note">
+    <b>Le bruit est un pur fonction de la position</b> (aucun temps, aucun RNG) : il est donc
+    déterministe et re-bake-safe par construction. En espace document, il fixe des « voies » verticales :
+    seules les zones chargées coulent, et l'eau est mieux conservée (3709 → 4746).
+    Échelle 8 = des plaques de ~1/8 de feuille ; 4 = moins de plaques plus grosses ; 16 = grain fin mais coulure courte.
+    L'eau étroite est abandonnée : elle affamait la coulure (bottom 0.32-0.34). Le filet fin vient maintenant du <b>bruit</b>, pas d'un apport d'eau réduit.
+  </p>
+</body>
+</html>

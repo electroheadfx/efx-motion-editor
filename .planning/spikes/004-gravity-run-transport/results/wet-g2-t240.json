@@ -1,0 +1,50 @@
+{
+  "gate": "wet-g2-t240",
+  "engine": "workbench",
+  "gravity": 2,
+  "waterPass": true,
+  "ticks": 240,
+  "sheet": 512,
+  "sizeParam": 60,
+  "params": {
+    "water": 26,
+    "load": 100,
+    "flow": 60,
+    "bleed": 22,
+    "dry": 70,
+    "edge": 65,
+    "granulation": 25,
+    "viscosity": 90,
+    "body": 100,
+    "emboss": 3,
+    "feather": 85,
+    "pickup": 100,
+    "refill": 0,
+    "wetSeconds": 12,
+    "size": 60,
+    "lift": 22
+  },
+  "renderer": "WebKit WebGL",
+  "run": {
+    "digests": {
+      "paper": "2ce98864",
+      "transparent": "af59d36d",
+      "white": "6b6517fe",
+      "pigment": "5a3c8e4e"
+    },
+    "bakeMs": 320,
+    "ticksApplied": 241,
+    "paintedPct": 10.3,
+    "geometry": {
+      "paintedPct": 10.3,
+      "topY": 0.7178,
+      "bottomY": 0.5205,
+      "centroidY": 0.6212,
+      "extentY": 0.1973,
+      "columnsPainted": 370,
+      "bottomP50": 0.5439,
+      "bottomP90": 0.5791
+    }
+  },
+  "verdict": "SPIKE-004 CAPTURED"
+}

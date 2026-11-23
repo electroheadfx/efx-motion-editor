@@ -1,0 +1,64 @@
+diff --git a/packages/efx-watercolor/src/playground/shaders.ts b/.planning/spikes/004-gravity-run-transport/workbench/src/playground/shaders.ts
+index ebe1af1dd..2ce14f8a9 100644
+--- a/packages/efx-watercolor/src/playground/shaders.ts
++++ b/.planning/spikes/004-gravity-run-transport/workbench/src/playground/shaders.ts
+@@ -210,13 +210,23 @@ void main(){
+ }`;
+ 
+ // Water: carried a little by the flow, creeps outward, evaporates.
++// SPIKE 004: `uGravity` sags the wet film DOWN the sheet (document y-up, so
++// sampling from above moves the content down). 0 keeps the shipped law
++// byte-identical: the offset term is a multiply by zero.
+ export const advectWetFS = `${HEADER}
+ out vec4 o;
+ uniform sampler2D uVelocity, uWet;
+ uniform vec2 uSimTexel, uTexel;
+-uniform float uDt, uDecay, uSpread;
++uniform float uDt, uDecay, uSpread, uGravity;
++const float GRAV_UV_PER_S = 0.08;   // SPIKE 004: sheet-heights per second at uGravity = 1
+ void main(){
+   vec2 coord = vUv - uDt * texture(uVelocity, vUv).xy * uSimTexel * 0.6;
++  float wg = texture(uWet, coord).x;
++  // SPIKE 004: gravity's OWN gate. The pigment-mobility ramp (0.02..0.45) is
++  // nearly zero across a thin wet film, so gating gravity by it cancelled
++  // ~95 % of the motion (measured: 4.7 px instead of 83 px). A thin film
++  // still drips: transport reaches full at 0.08 of water.
++  coord += vec2(0.0, uGravity * uDt * GRAV_UV_PER_S * smoothstep(0.004, 0.08, wg));
+   float w = texture(uWet, coord).x;
+   vec2 b = uTexel * 1.6;
+   float n = (texture(uWet, coord + vec2(b.x, 0.0)).x + texture(uWet, coord - vec2(b.x, 0.0)).x
+@@ -239,6 +249,7 @@ uniform sampler2D uVelocity, uInkA, uInkB, uWet;
+ uniform vec2 uSimTexel, uTexel;
+ uniform float uDt, uBleed, uEdge, uAspect, uKeep;
+ uniform vec3 uBrush;  // x, y, radius (radius <= 0: no brush down)
++uniform float uGravity;  // SPIKE 004: same downward sag as the water (0 = inert)
+ 
+ float mobility(float w){ return smoothstep(0.02, 0.45, w); }
+ 
+@@ -264,6 +275,10 @@ void main(){
+ 
+   vec2 vel = texture(uVelocity, vUv).xy;
+   vec2 coord = vUv - uDt * vel * uSimTexel * m;
++  // SPIKE 004: gravity — the pigment follows the sagging water. Its OWN gate
++  // (0.004..0.08), not the pigment-mobility ramp: that ramp is ~0 on a thin
++  // film and would cancel the sag.
++  coord += vec2(0.0, uGravity * uDt * 0.08 * smoothstep(0.004, 0.08, w));
+   vec4 a = mix(A, texture(uInkA, coord), m);
+   vec4 b = mix(B, texture(uInkB, coord), m);
+ 
+@@ -378,6 +393,7 @@ uniform sampler2D uVelocity, uCover, uWet, uPaper;
+ uniform vec2 uSimTexel, uTexel;
+ uniform float uDt, uBleed, uEdge, uAspect;
+ uniform vec3 uBrush;  // x, y, radius (radius <= 0: no brush down)
++uniform float uGravity;  // SPIKE 004: the coverage follows the same gravity sag
+ 
+ ${FILM_PRESENCE}
+ 
+@@ -405,6 +421,7 @@ void main(){
+   float p = filmPresence(vUv);
+   vec2 vel = texture(uVelocity, vUv).xy;
+   vec2 coord = vUv - uDt * vel * uSimTexel * m;
++  coord += vec2(0.0, uGravity * uDt * 0.08 * smoothstep(0.004, 0.08, w));
+   float c = mix(C, texture(uCover, coord).x, m * p);
+ 
+   float brush = 0.0;
