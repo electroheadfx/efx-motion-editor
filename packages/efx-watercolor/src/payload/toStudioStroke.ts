@@ -45,6 +45,7 @@
 import { hashMutationId, mixStrokeSeed } from '@efxlab/efx-paint-host'
 import type { StudioPoint, StudioStroke } from '@efxlab/efx-paint-host/animation'
 import type { AquarelleToolOverrides } from '../brushes/tips'
+import type { ReliefMode } from '../playground/reliefModifier'
 import { projectVectorPath } from './vectorPath'
 import type { AquarelleAnchor, AquarelleCurveMode } from './vectorPath'
 
@@ -125,12 +126,13 @@ export interface AquarelleStrokePayload {
    */
   vectorDrawn?: true
   /**
-   * Quick 261123-jak: true only for a stroke latched as relief-only (Shift
-   * held at stroke start, brush tool, non-zero Emboss). ABSENT on every
-   * ordinary stroke, so its recorded shape stays byte-identical — the same
-   * conditional-spread law as textureId/vectorDrawn above.
+   * Quick 261123-kpy: the modifier POLARITY latched at brush-stroke start
+   * ('erode' from Shift, 'deposit' from Cmd). Pressure-driven — the Emboss
+   * slider is never read. ABSENT on every ordinary stroke, so its recorded
+   * shape stays byte-identical — the same conditional-spread law as
+   * textureId/vectorDrawn above.
    */
-  reliefOnly?: true
+  relief?: ReliefMode
 }
 
 /** Host cap policy (55 D-20 / D-19) — engine-owned, script-visible. */
@@ -202,8 +204,8 @@ export interface AquarelleStroke {
    * hand-painted stroke and on a converted path).
    */
   vectorDrawn?: true
-  /** Quick 261123-jak: the Shift relief-only latch, recorded per stroke. */
-  reliefOnly?: true
+  /** Quick 261123-kpy: the modifier relief polarity, recorded per stroke. */
+  relief?: ReliefMode
 }
 
 /**
@@ -280,10 +282,10 @@ export function toStudioStroke(
       ...(s.anchors !== undefined ? { anchors: projectVectorPath(s.anchors) } : {}),
       ...(s.curveMode !== undefined ? { curveMode: s.curveMode } : {}),
       ...(s.vectorDrawn === true ? { vectorDrawn: true as const } : {}),
-      // Quick 261123-jak: the Shift relief-only latch rides the opaque engine
-      // slot and is written ONLY when set — an ordinary stroke keeps its exact
+      // Quick 261123-kpy: the modifier polarity rides the opaque engine slot
+      // and is written ONLY when latched — an ordinary stroke keeps its exact
       // key set (and its exact stored bytes).
-      ...(s.reliefOnly === true ? { reliefOnly: true as const } : {}),
+      ...(s.relief !== undefined ? { relief: s.relief } : {}),
     },
   }
 }

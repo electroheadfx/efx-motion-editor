@@ -590,14 +590,17 @@ describe('modifier relief (quick 261123-kpy)', () => {
     expect(pointerdown).toContain('pressureless: false,')
     // Exactly two Stroke literals exist (pointerdown and scriptBegin); both
     // carry the fields, so no stroke path can leave them undefined.
-    expect(ENGINE_SOURCE.match(/^\s*relief,$/gm) ?? []).toHaveLength(2)
+    // scriptBegin normalizes its optional parameter to the stroke's null
+    // sentinel — a bare `relief,` cannot satisfy `ReliefMode | null` under
+    // strict TS, so THAT literal is pinned exactly in its own row below.
     expect(ENGINE_SOURCE.match(/^\s*pressureless: false,$/gm) ?? []).toHaveLength(2)
+    expect(ENGINE_SOURCE.match(/^\s*relief: relief \?\? null,$/gm) ?? []).toHaveLength(1)
   })
 
   it('accepts a trailing relief on scriptBegin and records it on the scripted stroke', () => {
     expect(ENGINE_SOURCE).toContain('pigment?: Pigment, relief?: ReliefMode): boolean {')
     const scriptBegin = sliceBetween(ENGINE_SOURCE, 'scriptBegin(tool: Tool,', 'scriptMove(x: number,')
-    expect(scriptBegin).toContain('relief,')
+    expect(scriptBegin).toContain('relief: relief ?? null,')
     expect(scriptBegin).toContain('pressureless: false,')
   })
 

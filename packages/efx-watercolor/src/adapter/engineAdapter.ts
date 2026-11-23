@@ -482,9 +482,9 @@ export function createAquarelleEngineAdapter(
         // speed exactly like the live pointer path. Tilt rides through too so
         // asymmetric tips keep their recorded azimuth. The width factor is the
         // vector profile's per-sample channel, never a maxRadius clamp (C-03).
-        // Quick 261123-jak: the recorded relief-only latch replays through
-        // the same scriptBegin, so a re-render smooths exactly like the live
-        // stroke — absent on every ordinary stroke, so their replay is
+        // Quick 261123-kpy: the recorded modifier POLARITY replays through the
+        // same scriptBegin, so a re-render erodes/deposits exactly like the
+        // live stroke — absent on every ordinary stroke, so their replay is
         // byte-identical.
         engine.scriptBegin(
           asTool(active.stroke.engine.tool),
@@ -497,7 +497,7 @@ export function createAquarelleEngineAdapter(
           p.ty,
           widthFactor,
           samplePigment,
-          active.stroke.engine.reliefOnly === true,
+          active.stroke.engine.relief,
         )
       } else {
         engine.scriptMove(p.x, p.y, p.p, clockNow(), p.tx, p.ty, widthFactor, samplePigment)
