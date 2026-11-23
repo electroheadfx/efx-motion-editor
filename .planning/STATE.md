@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-22 after Phase 64)
 Phase: 64
 Plan: Not started
 Status: All phases complete
-Last activity: 2026-11-23 — Completed quick task 261123-jak: Studio paint: Shift paints relief (relief-only stroke — inverted emboss, zero ink, rides the recorded bag) — closed as superseded by the pressure-driven modifier redesign (Shift erode / Cmd deposit); its persistence layer is kept
+Last activity: 2026-11-23 — Completed quick task 261123-kpy: Studio paint: pressure-driven modifier relief — Shift erode / Cmd deposit latched at stroke start, magnitude from pen pressure only (works at Emboss 0), carried as relief polarity through the bag, JSON codec, AQTL bits 5-6, Roto and adapter replay; probe emboss-relief-modifier proves erode/deposit/pressure arms with byte-identical no-paint controls; UAT automated-ready, artist UAT pending
 
 
 ## Performance Metrics
@@ -709,6 +709,7 @@ Items acknowledged and carried forward from previous milestone close:
 | 261122-gys | Studio paint identity: Brush lands on the family's last brush and applies its medium record; Reset restores the active medium record (wetSeconds included) in one undo batch; UAT approved 2026-11-22 | 2026-11-22 | afc3120b5 | [261122-gys-v2-2-0-studio-paint-identity-switching-a](./quick/261122-gys-v2-2-0-studio-paint-identity-switching-a/) |
 | 261123-hr5 | Studio paint: signed Emboss -15..15 — negative half erodes relief with the brush while keeping paint (calibrated RELIEF_ERODE_NEGATIVE=20, probe + byte-identity gates pass; UAT automated-ready, artist UAT pending) | 2026-11-23 | e82aa2b71 | [261123-hr5-v2-3-0-studio-paint-signed-emboss-subtra](./quick/261123-hr5-v2-3-0-studio-paint-signed-emboss-subtra/) |
 | 261123-jak | Studio paint: Shift paints relief — Shift at stroke start with the brush and a non-zero Emboss latches a per-stroke reliefOnly (inverted signed Emboss, no ink/water/cover/carrier, own ink-rect undo); the marker rides the bag, JSON codec, AQTL bit 5, Roto schema/duplicate and adapter replay; probe control-twin proves zero paint on both arms, +15/Emboss-0 byte-identical (closed as superseded: a pressure-driven modifier quick replaces the Shift semantics with Shift erode / Cmd deposit; persistence layer kept) | 2026-11-23 | 665771878 | [261123-jak-v2-3-0-studio-paint-shift-paints-relief-](./quick/261123-jak-v2-3-0-studio-paint-shift-paints-relief-/) |
+| 261123-kpy | Studio paint: pressure-driven modifier relief — Shift at stroke start erodes relief / Cmd deposits it (Shift wins, latched once, no Emboss gate), magnitude from pen pressure only via reliefModifier.ts (gains 15/15 calibrated; Emboss 0 works; p<0 sentinel = full 1.0); the polarity rides the bag, JSON codec, AQTL bits 5-6 (both-set refused), Roto schema/duplicate and adapter replay; probe emboss-relief-modifier proves erode halving + deposit raise, byte-identical no-paint controls on both polarities, a/b replay parity, pressure ordering (p03 0.7917, none 0.9167) and neutral/+15 identity vs pre-change HEAD; the polarity also survives the restore, duplicate and Play Script fallback rebuild seams (UAT automated-ready, artist UAT pending) | 2026-11-23 | 44ba44cc1 | [261123-kpy-validate-v2-3-0-studio-paint-modifier-re](./quick/261123-kpy-validate-v2-3-0-studio-paint-modifier-re/) |
 
 ## Roadmap Evolution
 
@@ -721,8 +722,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-23T13:26:00.000Z
-Stopped at: Quick 261123-jak closed as superseded — automated gates green and the persistence layer kept; a pressure-driven modifier redesign (Shift erode / Cmd deposit) replaces its Shift semantics, and the relief-volume parameter follows it
+Last session: 2026-11-23T14:43:14.000Z
+Stopped at: Quick 261123-kpy complete — the pressure-driven modifier pair (Shift erode / Cmd deposit, pressure-only) is implemented end-to-end with all probe gates, full suites and identity green; UAT automated-ready pending artist confirmation; the relief-volume parameter follows it
 Resume file: None
 
 ## Operator Next Steps
