@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-22 after Phase 64)
 Phase: 64
 Plan: Not started
 Status: All phases complete
-Last activity: 2026-11-23 — Completed quick task 261123-kpy: Studio paint: pressure-driven modifier relief — Shift erode / Cmd deposit latched at stroke start, magnitude from pen pressure only (works at Emboss 0), carried as relief polarity through the bag, JSON codec, AQTL bits 5-6, Roto and adapter replay; probe emboss-relief-modifier proves erode/deposit/pressure arms with byte-identical no-paint controls; UAT automated-ready, artist UAT pending
+Last activity: 2026-11-23 — REMOVED the Shift/Cmd relief modifier (261123-jak + 261123-kpy). Three calibration passes could not make it read as painting: it stamped a footprint with no ink to hide the paint dab's paper-tooth gate, and once anchored on the existing height it still laid a smooth band the paint did not have. Code reverted; the planning records stay. Separately, the display emboss is GATED OFF pending a new renderer: current shading is a one-texel heightmap gradient that turns to speckle as strokes accumulate, clamps steep slopes to pure black, and has no specular. RELIEF_BUMP 0.0 + the Emboss row hidden; the R16F thickness field, the deposit and Lift are kept so a new renderer consumes the same data with no migration. Next: an emboss spike against a real impasto reference
 
 
 ## Performance Metrics
@@ -722,8 +722,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-23T14:43:14.000Z
-Stopped at: Quick 261123-kpy complete — the pressure-driven modifier pair (Shift erode / Cmd deposit, pressure-only) is implemented end-to-end with all probe gates, full suites and identity green; UAT automated-ready pending artist confirmation; the relief-volume parameter follows it
+Last session: 2026-11-23T17:15:00.000Z
+Stopped at: Shift/Cmd modifier removed and the display emboss gated off (RELIEF_BUMP 0, Emboss row hidden). Nothing emboss-related renders in the app right now; the thickness field is still recorded. Next is an emboss spike — new display shading (smoothed gradient, ambient floor, specular) and whatever stroke-scale structure the height field needs — before any new emboss phase
 Resume file: None
 
 ## Operator Next Steps
