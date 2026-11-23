@@ -48,7 +48,7 @@ import { WET_THRESHOLD, isSheetWet } from './wetState';
 import { bodyCurve, scatteringDeposit } from './scattering';
 // Quick 261123-kpy: the modifier magnitude is the ONE pure pressure law — the
 // Emboss slider is never read, and the pressureless sentinel is exactly full.
-import { reliefModifierErodeAmount, reliefModifierMagnitude, reliefModifierPress, reliefModifierSigned, type ReliefMode } from './reliefModifier';
+import { reliefModifierBand, reliefModifierPress, reliefModifierRate, reliefModifierSigned, type ReliefMode } from './reliefModifier';
 
 export type Tool = 'brush' | 'water' | 'pen' | 'lift';
 
@@ -2807,20 +2807,19 @@ export class WatercolorEngine {
         const embossPress = EMBOSS_PRESS_FLOOR + (1 - EMBOSS_PRESS_FLOOR) * clamp(pr, 0, 1);
         const reliefAmount = P.emboss * amount * RELIEF_GAIN * embossPress;
         // Quick 261123-kpy (modifier relief): a latched polarity replaces the
-        // SLIDER OPERAND with the pure pressure-only band — the Emboss slider
-        // is never read (the modifier works at Emboss 0), a real pen follows
-        // the embossPress floor curve, and the recorded pressureless sentinel
-        // is EXACTLY full strength. The band is in Emboss-slider units (1..3)
-        // and rides the SAME `amount * RELIEF_GAIN` delivery the slider path
-        // uses, so the modifier behaves exactly as if Emboss were set to that
-        // number. The normal path keeps `reliefAmount` untouched, so its
-        // arithmetic is never re-associated.
-        const reliefModifierBand = s.relief === null
+        // SLIDER OPERAND with a pure pressure-only per-dab GAIN — the Emboss
+        // slider is never read, a real pen follows the embossPress floor
+        // curve, and the recorded pressureless sentinel is EXACTLY full
+        // strength. The gain MULTIPLIES the height already in the film (see
+        // modifierRelief / modifierReliefErode), so it enhances or flattens
+        // what is painted and leaves bare paper alone. The normal path keeps
+        // `reliefAmount` untouched, so its arithmetic is never re-associated.
+        const reliefModifierBandValue = s.relief === null
           ? 0
-          : reliefModifierMagnitude(reliefModifierPress(embossPress, s.pressureless));
+          : reliefModifierBand(reliefModifierPress(embossPress, s.pressureless));
         const reliefSigned = s.relief === null
           ? reliefAmount
-          : reliefModifierSigned(s.relief, reliefModifierBand * amount * RELIEF_GAIN);
+          : reliefModifierSigned(s.relief, reliefModifierRate(reliefModifierBandValue));
         // Phase 64 (MED-19..MED-22, spec 06): Body is ORDER. Before a dab
         // deposits, it erodes the settled pigment and the thickness under its
         // own tip. The amount is D-14's one perceptual curve declared in
@@ -2965,9 +2964,11 @@ export class WatercolorEngine {
             // saturates at |reliefSigned| 0.05, which is right for the slider
             // (any negative Emboss smooths hard) but would make the modifier a
             // one-dab wipe at every pressure. MAX magnitude stays one full pass.
+            // A modifier erode IS its own per-dab gain: the same small rate,
+            // applied multiplicatively as `h * (1 - amount * f)`.
             const erodeAmount = s.relief === null
               ? Math.min(1, -reliefSigned * RELIEF_ERODE_NEGATIVE)
-              : reliefModifierErodeAmount(reliefModifierBand);
+              : -reliefSigned;
             // UAT 2026-11-23: `dst *= (1 - amount * f)` at amount 1 is a
             // one-dab wipe. The modifier takes the capped, smooth-footprint
             // path so a Shift pass smooths gradually and evenly.
@@ -3121,30 +3122,37 @@ export class WatercolorEngine {
    * 2026-11-23). So: grain 0 (no tooth gate), rough 0 (smooth tip), jitter 0
    * (no per-dab offset), round 1 (a soft radial blob), a 1.5 stamp rect.
    *
-   * MAX blending rather than additive: overlapping dabs now SATURATE at the
-   * stamp value instead of stacking without bound. Thickness is a heightfield
-   * — "this region is this thick" — so max is the honest composition, and it
-   * is what stops a long stroke from reading as a black, noisy slab.
+   * THE COMPOSITION IS MULTIPLICATIVE ON WHAT IS ALREADY PAINTED:
+   *
+   *   dst = dst + src * dst      (FUNC_ADD, DST_COLOR, ONE)
+   *
+   * with `src = rate * f`, i.e. `h' = h * (1 + rate * f)`. Enhance, never
+   * replace: a bare patch of paper has h = 0 and stays 0, and the mark's own
+   * texture is amplified rather than overwritten by a stamped dome. An
+   * earlier revision used gl.MAX here, which REPLACES the local height — that
+   * read as an "internal emboss" destroying the paint (UAT 2026-11-23).
    */
   private modifierRelief(x: number, y: number, r: number, angle: number, amount: number) {
     const { gl, g } = this;
     const p = this.programs.relief;
     p.bind();
     this.bindFootprint(p, x, y, r, angle, 1, 0, 0, this.brush, 0, 0);
-    gl.uniform1f(p.u.uAmount, Math.min(1, amount));
+    gl.uniform1f(p.u.uAmount, Math.min(1, Math.max(0, amount)));
     gl.enable(gl.BLEND);
-    gl.blendEquation(gl.MAX);
-    gl.blendFunc(gl.ONE, gl.ONE);
+    gl.blendEquation(gl.FUNC_ADD);
+    // src * dst + dst  =>  dst * (1 + src)
+    gl.blendFunc(gl.DST_COLOR, gl.ONE);
     g.draw(this.relief, this.stampRect(x, y, r, this.dw, this.dh, 1.5));
     gl.disable(gl.BLEND);
   }
 
   /**
    * Quick 261123-kpy (modifier relief): the relief-only erode, the mirror of
-   * `modifierRelief`. Same smooth footprint (no tooth dots left behind), and
-   * a saturating subtract `dst = dst * (1 - amount * f)` whose `amount` is
-   * capped by `reliefModifierErodeAmount`, so a pass smooths gradually
-   * instead of setting the thickness to zero in a single dab.
+   * `modifierRelief` — `dst = dst * (1 - rate * f)`, multiplicative on the
+   * height already in the film, so it flattens the paint's own relief and
+   * can never cut below it. Same smooth bell footprint (no tooth dots left
+   * behind); the per-dab gain is the modifier rate, so a pass smooths
+   * gradually instead of clearing the footprint in a single dab.
    */
   private modifierReliefErode(x: number, y: number, r: number, angle: number, amount: number) {
     const { gl, g } = this;

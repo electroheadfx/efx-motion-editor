@@ -511,7 +511,7 @@ describe('signed emboss (quick 261123-hr5)', () => {
     // The slider path keeps the hr5 clamp verbatim; the modifier path grades
     // through the pure law so a light touch is not a one-dab wipe.
     expect(erodeBranch).toContain('? Math.min(1, -reliefSigned * RELIEF_ERODE_NEGATIVE)')
-    expect(erodeBranch).toContain(' : reliefModifierErodeAmount(reliefModifierBand);')
+    expect(erodeBranch).toContain(': -reliefSigned;')
     expect(erodeBranch).toContain(
       'if (bristle) this.bristleReliefErode(dx, dy, dr, angle, erodeAmount, contactPr, alongPx, this.bristleEndCap);',
     )
@@ -628,16 +628,17 @@ describe('modifier relief (quick 261123-kpy)', () => {
     expect(brush).toContain('const reliefAmount = P.emboss * amount * RELIEF_GAIN * embossPress;')
     expect(brush).toContain('const reliefSigned = s.relief === null')
     // Pressure-only band: the embossPress floor curve for a real pen, the
-    // recorded pressureless sentinel as exactly full strength. The band is in
-    // Emboss-slider units (1..3) and rides the SAME `amount * RELIEF_GAIN`
-    // delivery the slider path uses, so a modifier stroke acts exactly like
-    // Emboss set to that number — never like the slider pegged at 15.
+    // recorded pressureless sentinel as exactly full strength. The band maps
+    // onto a small per-dab GAIN that MULTIPLIES the painted height, so the
+    // modifier enhances/flattens what is there — it is never an emboss
+    // magnitude riding `amount * RELIEF_GAIN`.
     expect(brush).toContain(
-      'reliefModifierMagnitude(reliefModifierPress(embossPress, s.pressureless))',
+      'reliefModifierBand(reliefModifierPress(embossPress, s.pressureless))',
     )
     expect(brush).toContain(
-      'reliefModifierSigned(s.relief, reliefModifierBand * amount * RELIEF_GAIN)',
+      'reliefModifierSigned(s.relief, reliefModifierRate(reliefModifierBandValue))',
     )
+    expect(brush).not.toContain('reliefModifierSigned(s.relief, reliefModifierBand * amount')
     expect(ENGINE_SOURCE).toContain("from './reliefModifier'")
   })
 
@@ -684,20 +685,24 @@ describe('modifier relief (quick 261123-kpy)', () => {
     expect(erodeBranch).not.toContain('this.fixed')
   })
 
-  it('draws a modifier dab on a SMOOTH footprint that saturates, never the paint one', () => {
+  it('draws a modifier dab on a SMOOTH footprint MULTIPLYING the painted height', () => {
     // UAT 2026-11-23: the paint footprint gates its output by paper tooth,
     // re-thresholds the tip and jitters it per dab. Ink normally lands through
     // the same gates, so the relief hides inside the paint; with no ink at all
     // those gates put isolated dark specks on the film. The modifier draw must
-    // therefore drop every one of them and cap the height with MAX blending.
+    // drop every one of them.
     const relief = sliceBetween(ENGINE_SOURCE, 'private modifierRelief(', 'private modifierReliefErode(')
     // round 1, grain 0, grainThr 0, brush, rough 0, jitter 0
     expect(relief).toContain('this.bindFootprint(p, x, y, r, angle, 1, 0, 0, this.brush, 0, 0)')
-    expect(relief).toContain('gl.blendEquation(gl.MAX)')
-    expect(relief).not.toContain('gl.blendEquation(gl.FUNC_ADD)')
+    // src * dst + dst => dst * (1 + src): ENHANCE the height that is already
+    // there. gl.MAX would REPLACE it with a stamped dome — the "internal
+    // emboss" that destroyed the paint.
+    expect(relief).toContain('gl.blendFunc(gl.DST_COLOR, gl.ONE)')
+    expect(relief).not.toContain('gl.blendEquation(gl.MAX)')
 
     const erode = sliceBetween(ENGINE_SOURCE, 'private modifierReliefErode(', 'private bristleReliefPass(')
     expect(erode).toContain('this.bindFootprint(p, x, y, r, angle, 1, 0, 0, this.brush, 0, 0)')
+    // dst * (1 - src): flatten toward the film, never below it.
     expect(erode).toContain('gl.blendFunc(gl.ZERO, gl.ONE_MINUS_SRC_COLOR)')
 
     // Both modifier draws are routed from the dab, for BOTH brush kinds — a

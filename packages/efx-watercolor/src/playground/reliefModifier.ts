@@ -1,31 +1,34 @@
 // ============================================================
-//  Quick 261123-kpy — the modifier relief magnitude law (pure).
+//  Quick 261123-kpy — the modifier relief law (pure).
 //
-//  Shift at brush-stroke START erodes relief, Cmd deposits it, and Shift wins
-//  when both are held. The magnitude is PRESSURE-ONLY:
+//  Shift at brush-stroke START flattens relief, Cmd enhances it, and Shift
+//  wins when both are held. Both directions are ANCHORED TO THE EXISTING
+//  HEIGHT — they multiply what is already painted:
 //
-//    - the Emboss slider is NEVER read, so the modifier works at Emboss 0;
+//    Cmd   : h' = h * (1 + rate * f)     // amplify the film's own relief
+//    Shift : h' = h * (1 - rate * f)     // flatten it back toward the film
+//
+//  so bare paper stays bare (0 times anything is 0), the paint's own texture
+//  is enhanced or flattened in place rather than replaced by a stamped dome,
+//  and Shift can never cut below what is there. An earlier revision COMPOSED
+//  with gl.MAX, which REPLACES the paint's relief with a uniform dome and
+//  invents relief where there is no paint — it read as an "internal emboss"
+//  destroying the mark (UAT 2026-11-23).
+//
+//  The magnitude is PRESSURE-ONLY and never reads the Emboss slider, so the
+//  modifier works at Emboss 0 (where there is simply nothing to enhance):
+//
 //    - a real pen follows the existing `embossPress` floor curve
 //      (EMBOSS_PRESS_FLOOR + (1 - FLOOR) * clamp(pr, 0, 1));
 //    - a pressureless pointer (mouse/trackpad) is the recorded per-sample
-//      `p < 0` sentinel, which is EXACTLY full magnitude for ANY input — the
+//      `p < 0` sentinel, which is EXACTLY full strength for ANY input — the
 //      sentinel, never pointerType, so a replayed bag reproduces the live
-//      magnitude exactly.
+//      effect exactly.
 //
-//  The band is expressed in EMBOSS-SLIDER UNITS: MIN at the lightest touch
-//  rising to MAX at full press. These are the SAME numbers the slider shows,
-//  and the engine feeds them through the slider's own delivery law — so a
-//  modifier stroke behaves EXACTLY as if the artist had set Emboss to that
-//  value. Full press means "as if Emboss were MAX", never "as if the slider
-//  were pegged at 15". The first calibration (kpy, gain 15) targeted the
-//  slider's ceiling and read far too strong in UAT.
-//
-//  The engine applies `amount * RELIEF_GAIN` to the band, exactly as it does
-//  to `P.emboss` on the normal path, so the modifier inherits the brush's own
-//  ink-density scaling and matches what that Emboss number really delivers.
-//  `reliefModifierErodeAmount` grades the erode from the BAND (not from the
-//  delivered amount), so a light touch smooths gently on every brush instead
-//  of wiping the band in a single dab.
+//  The band MIN..MAX is the artist-facing dial (lightest touch to full
+//  press); RATE is the per-dab gain it maps onto. RATE is small because the
+//  effect COMPOUNDS across the overlapping dabs of one stroke — `(1 + rate)^n`
+//  — so a large per-dab value saturates in a couple of dabs.
 //
 //  Pure: no imports, no engine state.
 // ============================================================
@@ -33,19 +36,18 @@
 /** The modifier polarity latched at brush-stroke start. */
 export type ReliefMode = 'erode' | 'deposit'
 
-/** Lightest-touch magnitude, in Emboss-slider units. */
+/** Lightest-touch band value. */
 export const RELIEF_MODIFIER_MIN = 1
 
-/** Full-press magnitude, in Emboss-slider units. */
+/** Full-press band value. */
 export const RELIEF_MODIFIER_MAX = 3
 
 /**
- * The largest per-dab erode factor a modifier dab may use. The erode blends
- * `dst = dst * (1 - amount)`, so an amount of 1 clears the footprint in ONE
- * dab — a wipe, not a smoothing. Capping well below 1 makes a Shift pass
- * accumulate across its overlapping dabs.
+ * The per-dab gain at FULL press, for both polarities. Small on purpose: a
+ * stroke's dabs overlap heavily and the factor compounds, so this is roughly
+ * "how much one dab is allowed to move the height".
  */
-export const RELIEF_MODIFIER_ERODE_MAX = 0.35
+export const RELIEF_MODIFIER_RATE = 0.25
 
 /**
  * The pressure factor for a modifier dab. The recorded pressureless sentinel
@@ -57,30 +59,28 @@ export function reliefModifierPress(embossPressAtPr: number, pressureless: boole
 }
 
 /**
- * The unsigned magnitude in Emboss-slider units: MIN at the lightest touch
- * rising linearly to MAX at full press. The floor curve keeps the lightest
- * touch just above MIN instead of collapsing to nothing.
+ * The band value MIN..MAX for a pressure factor: MIN at the lightest touch to
+ * MAX at full press. The floor curve keeps the lightest touch just above MIN
+ * instead of collapsing to nothing.
  */
-export function reliefModifierMagnitude(press: number): number {
+export function reliefModifierBand(press: number): number {
   const t = press < 0 ? 0 : press > 1 ? 1 : press
   return RELIEF_MODIFIER_MIN + (RELIEF_MODIFIER_MAX - RELIEF_MODIFIER_MIN) * t
 }
 
 /**
- * The SIGNED relief amount for a modifier dab: erode is negative (the engine's
- * erode branch requires `reliefSigned < 0`), deposit positive.
+ * The per-dab gain for a band value: RATE at MAX, graded strictly below it.
+ * Never 1, so no single dab replaces the height outright.
  */
-export function reliefModifierSigned(mode: ReliefMode, magnitude: number): number {
-  return mode === 'erode' ? -magnitude : magnitude
+export function reliefModifierRate(band: number): number {
+  const t = band < 0 ? 0 : band > RELIEF_MODIFIER_MAX ? 1 : band / RELIEF_MODIFIER_MAX
+  return RELIEF_MODIFIER_RATE * t
 }
 
 /**
- * The per-dab erode factor for a modifier dab, read from the BAND value (not
- * the amount-scaled relief): MAX band reaches RELIEF_MODIFIER_ERODE_MAX,
- * lighter touches are graded below it. Never reaches 1, so no single dab is
- * a wipe.
+ * The SIGNED gain for a modifier dab: erode is negative (the engine's erode
+ * branch requires `reliefSigned < 0`), deposit positive.
  */
-export function reliefModifierErodeAmount(band: number): number {
-  const t = band < 0 ? 0 : band > RELIEF_MODIFIER_MAX ? 1 : band / RELIEF_MODIFIER_MAX
-  return RELIEF_MODIFIER_ERODE_MAX * t
+export function reliefModifierSigned(mode: ReliefMode, rate: number): number {
+  return mode === 'erode' ? -rate : rate
 }

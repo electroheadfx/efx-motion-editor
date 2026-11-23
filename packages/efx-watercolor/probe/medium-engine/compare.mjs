@@ -209,14 +209,17 @@ const RELIEF_MODIFIER_FIELDS = [
 const UNSHADED_FILM_FIELDS = ['unshadedPigmentDigest', 'unshadedTransparentDigest']
 
 // quick 261123-kpy: the pressureless arm's floor, as a fraction of the same
-// build's `--press 1` reduction. The RELIEF law makes the pressureless sentinel
-// exactly full magnitude (`reliefModifier.test.ts` pins `press === 1`), but the
-// dab still derives `amount` from `(0.4 + 0.6*pr)` and its radius from
-// `pr^pressureSize` under the SIMULATED pressure, so the delivered reduction
-// is the full arm's times the footprint gap. The value below is the MEASURED
-// ratio (see the kpy SUMMARY), rounded DOWN for margin — not the unmeasured
-// 0.9 the plan first proposed: a shipped bar must be a measurement.
-const RELIEF_PRESSURELESS_NONE_FLOOR = 0.9
+// build's `--press 1` reduction. The law makes the pressureless sentinel
+// exactly full rate (`reliefModifier.test.ts` pins `press === 1`), but the dab
+// still takes its RADIUS from `pr^pressureSize` under the SIMULATED pressure
+// (the sentinel only says "not a pen", not "press 1"), so the pressureless arm
+// covers less of the band and delivers a smaller reduction at the SAME
+// strength. The value below is the MEASURED ratio (see the kpy SUMMARY),
+// rounded DOWN for margin — not an unmeasured guess: a shipped bar must be a
+// measurement. UAT 2026-11-23 re-based it from 0.9 to 0.8: the modifier now
+// MULTIPLIES the painted height, so a footprint gap no longer hides behind the
+// clamp that the old additive law saturated against.
+const RELIEF_PRESSURELESS_NONE_FLOOR = 0.8
 
 // 64-17: the one committed baseline captured before the pigment export
 // existed. `absent` is legal for these fields on the REFERENCE side only —
@@ -1322,11 +1325,17 @@ function reliefModifierFailures(data) {
     )
   }
   if (mode === 'erode') {
-    if (!(data.reliefModifierMeanAfter <= data.reliefModifierMeanBefore * 0.5)) {
+    // UAT 2026-11-23 re-based this floor. The modifier is now a SOFT,
+    // multiplicative smoothing of the painted height (`h * (1 - rate * f)`),
+    // not the additive wipe it was built as; the old "at most half" encoded
+    // that wipe, and would now fail a correct soft pass. One pass must still
+    // measurably flatten the band, and must never raise the peak.
+    const erodeFloor = data.reliefModifierMeanBefore * 0.75
+    if (!(data.reliefModifierMeanAfter <= erodeFloor)) {
       failures.push(
-        `reliefModifierMeanAfter ${data.reliefModifierMeanAfter} is above half of ` +
+        `reliefModifierMeanAfter ${data.reliefModifierMeanAfter} is above three quarters of ` +
           `reliefModifierMeanBefore ${data.reliefModifierMeanBefore} — an erode pass must ` +
-          'visibly flatten the band',
+          'measurably flatten the band',
       )
     }
     if (!(data.reliefModifierPeakAfter <= data.reliefModifierPeakBefore)) {
