@@ -4,10 +4,10 @@ milestone: v2.2.0
 current_phase: 64
 status: completed
 stopped_at: Phase 64 complete — all phases complete
-last_updated: "2026-11-23T12:14:15.290Z"
-last_activity: 2026-11-22
+last_updated: "2026-11-23T20:45:15.616Z"
+last_activity: 2026-11-23
 last_activity_desc: Phase 64 complete
-state_head: e82aa2b71934b22ff3cebc9f8f4be2ef8efd542e
+state_head: 36f16d74cd08fd7d1b2c01b721928d478bb3b7e8
 progress:
   total_phases: 2
   completed_phases: 2
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-22 after Phase 64)
 Phase: 64
 Plan: Not started
 Status: All phases complete
-Last activity: 2026-11-23 — REMOVED the Shift/Cmd relief modifier (261123-jak + 261123-kpy). Three calibration passes could not make it read as painting: it stamped a footprint with no ink to hide the paint dab's paper-tooth gate, and once anchored on the existing height it still laid a smooth band the paint did not have. Code reverted; the planning records stay. Separately, the display emboss is GATED OFF pending a new renderer: current shading is a one-texel heightmap gradient that turns to speckle as strokes accumulate, clamps steep slopes to pure black, and has no specular. RELIEF_BUMP 0.0 + the Emboss row hidden; the R16F thickness field, the deposit and Lift are kept so a new renderer consumes the same data with no migration. Next: an emboss spike against a real impasto reference
+Last activity: 2026-11-23 — Completed quick task 261123-pee: Hold paint wet until Dry — no auto-dry, wet one-frame Re-render/Apply. AUTOMATED-READY (not UAT): the live sheet holds its water/mobile pigment until an explicit Dry; only Shift+R and Apply one frame replay wet; every commit path is dry-first. Gates green (package 1018, app 9809, tsc 0; probes hold+bake assert); code-review blocker CR-01 and WR-01/02/03 fixed in 36f16d74c; 8 human UAT rows await the artist
 
 
 ## Performance Metrics
@@ -710,6 +710,7 @@ Items acknowledged and carried forward from previous milestone close:
 | 261123-hr5 | Studio paint: signed Emboss -15..15 — negative half erodes relief with the brush while keeping paint (calibrated RELIEF_ERODE_NEGATIVE=20, probe + byte-identity gates pass; UAT automated-ready, artist UAT pending) | 2026-11-23 | e82aa2b71 | [261123-hr5-v2-3-0-studio-paint-signed-emboss-subtra](./quick/261123-hr5-v2-3-0-studio-paint-signed-emboss-subtra/) |
 | 261123-jak | Studio paint: Shift paints relief — Shift at stroke start with the brush and a non-zero Emboss latches a per-stroke reliefOnly (inverted signed Emboss, no ink/water/cover/carrier, own ink-rect undo); the marker rides the bag, JSON codec, AQTL bit 5, Roto schema/duplicate and adapter replay; probe control-twin proves zero paint on both arms, +15/Emboss-0 byte-identical (closed as superseded: a pressure-driven modifier quick replaces the Shift semantics with Shift erode / Cmd deposit; persistence layer kept) | 2026-11-23 | 665771878 | [261123-jak-v2-3-0-studio-paint-shift-paints-relief-](./quick/261123-jak-v2-3-0-studio-paint-shift-paints-relief-/) |
 | 261123-kpy | Studio paint: pressure-driven modifier relief — Shift at stroke start erodes relief / Cmd deposits it (Shift wins, latched once, no Emboss gate), magnitude from pen pressure only via reliefModifier.ts (gains 15/15 calibrated; Emboss 0 works; p<0 sentinel = full 1.0); the polarity rides the bag, JSON codec, AQTL bits 5-6 (both-set refused), Roto schema/duplicate and adapter replay; probe emboss-relief-modifier proves erode halving + deposit raise, byte-identical no-paint controls on both polarities, a/b replay parity, pressure ordering (p03 0.7917, none 0.9167) and neutral/+15 identity vs pre-change HEAD; the polarity also survives the restore, duplicate and Play Script fallback rebuild seams (UAT automated-ready, artist UAT pending) | 2026-11-23 | 44ba44cc1 | [261123-kpy-validate-v2-3-0-studio-paint-modifier-re](./quick/261123-kpy-validate-v2-3-0-studio-paint-modifier-re/) |
+| 261123-pee | Hold paint wet until Dry — no auto-dry, wet one-frame Re-render/Apply | 2026-11-23 | 36f16d74c | [261123-pee-hold-paint-wet-until-dry-no-auto-dry-wet](./quick/261123-pee-hold-paint-wet-until-dry-no-auto-dry-wet/) |
 
 ## Roadmap Evolution
 
