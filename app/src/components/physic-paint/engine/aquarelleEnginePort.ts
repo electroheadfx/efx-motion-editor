@@ -37,6 +37,17 @@ import type { DocumentSnapshot, WatercolorEngine } from '@efxlab/efx-watercolor'
  */
 export type AquarelleExportBackground = 'transparent' | 'paper' | 'white' | 'pigment' | 'coverage';
 
+/** Mirrors the engine's StepKind union for the Dry ledger alignment guard. */
+export type AquarelleStepKind =
+  | 'stroke'
+  | 'fill'
+  | 'script'
+  | 'dry'
+  | 'clear'
+  | 'resize'
+  | 'paper'
+  | 'reference';
+
 /**
  * The narrow engine surface. `snapshot`/`restore` carry the whole paint
  * document; `exportCanvas` is the read side of the frame snapshot path and
@@ -55,6 +66,14 @@ export interface AquarelleEnginePort {
   undo: () => boolean;
   redo: () => boolean;
   clear: () => void;
+  /**
+   * The step undo/redo would move (261123-pee CR-01). The Dry ledger entry is
+   * only valid while the engine's next step is the matching 'dry' step: a
+   * frame change opens an unledgered 'clear' step, so an unguarded ledger
+   * undo would resurrect another frame's sheet.
+   */
+  peekUndoKind: () => AquarelleStepKind | null;
+  peekRedoKind: () => AquarelleStepKind | null;
 }
 
 /** Raised when a caller holds a live port but the engine has gone away. */
@@ -102,5 +121,7 @@ export function createAquarelleEnginePort(
       return true;
     },
     clear: () => getEngine()?.clear(),
+    peekUndoKind: () => getEngine()?.peekUndoKind ?? null,
+    peekRedoKind: () => getEngine()?.peekRedoKind ?? null,
   };
 }

@@ -195,12 +195,16 @@ describe('aquarelle layer is a compositor pigment layer (56-12)', () => {
     expect(layer).not.toContain('engine.cancelAutoFix()');
     // Schedule-time truth: the sheet must have been wet, and the engine's
     // revision at schedule must survive to the callback.
-    expect(layer).toContain('drySheetWasWet = engine.hasStandingWater;');
+    // WR-02: an in-flight fix is still a wet sheet for the capture decision.
+    expect(layer).toContain('drySheetWasWet = engine.hasStandingWater || engine.isFixing;');
     expect(layer).toContain('if (!drySheetWasWet) {');
     expect(layer).toContain('const dryRevision = engine.historyRevision;');
     expect(layer).toContain('const revisionChanged = engine.historyRevision !== dryRevision;');
     expect(layer).toContain('const settled = !engine.isFixing && !engine.hasStandingWater;');
-    expect(layer).toContain('if (frameChanged || revisionChanged || !settled) return;');
+    // WR-01: `settled` is telemetry only — an unsettled sheet is driven to
+    // completion by settledSnapshot, never dropped on a slow/background rAF.
+    expect(layer).toContain('if (frameChanged || revisionChanged || !hasPaint) return;');
+    expect(layer).not.toContain('revisionChanged || !settled');
     // The capture itself reads through the dry-first factory.
     expect(layer).toContain('onCaptureFrameRef.current?.(dryPlayFrame, settledSnapshot);');
   });

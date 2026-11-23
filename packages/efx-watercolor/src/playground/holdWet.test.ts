@@ -170,6 +170,14 @@ describe('settleForCapture() — the no-step capture settle (261123-pee)', () =>
     expect(body.includes('return true;')).toBe(true)
   })
 
+  it('refuses during a REAL in-flight stroke (settling would abort it)', () => {
+    const body = sliceBetween(ENGINE_SOURCE, 'settleForCapture(): boolean {', 'exportSettledCanvas(): HTMLCanvasElement | null {')
+    const strokeGuard = body.indexOf('if (this.stroke !== null) return false;')
+    const paintGuard = body.indexOf('if (!this.painted || this.fixTimer > 0) return false;')
+    expect(strokeGuard, 'the stroke gate mirrors the settled export').toBeGreaterThan(-1)
+    expect(paintGuard).toBeGreaterThan(strokeGuard)
+  })
+
   it('opens no step, protects nothing, clears nothing and writes no hold', () => {
     const body = sliceBetween(ENGINE_SOURCE, 'settleForCapture(): boolean {', 'exportSettledCanvas(): HTMLCanvasElement | null {')
     expect(body.includes('beginStep'), 'no engine history step').toBe(false)
@@ -268,6 +276,11 @@ describe('historyRevision (261123-pee)', () => {
   it('declares one counter and one read-only getter', () => {
     expect((ENGINE_SOURCE.match(/private historyMoves = 0;/g) ?? [])).toHaveLength(1)
     expect(ENGINE_SOURCE).toContain('get historyRevision(): number { return this.historyMoves; }')
+  })
+
+  it('exposes the pending step kinds for the Dry ledger alignment guard (CR-01)', () => {
+    expect(ENGINE_SOURCE).toContain('get peekUndoKind(): StepKind | null { return this.history.peekUndo()?.kind ?? null; }')
+    expect(ENGINE_SOURCE).toContain('get peekRedoKind(): StepKind | null { return this.history.peekRedo()?.kind ?? null; }')
   })
 
   it('bumps ONLY past a real stack move in travel()', () => {

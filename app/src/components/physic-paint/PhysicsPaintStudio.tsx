@@ -6495,6 +6495,9 @@ export function PhysicsPaintStudio() {
     // refresh afterwards.
     undoPaint: () => rotoFrameEditing.undo(),
     redoPaint: () => rotoFrameEditing.redo(),
+    // 261123-pee CR-01: the Dry ledger's engine-stack alignment guard.
+    peekUndoKind: () => aquarelleEnginePortRef.current?.peekUndoKind() ?? null,
+    peekRedoKind: () => aquarelleEnginePortRef.current?.peekRedoKind() ?? null,
   });
   // 261031-cf9: render-body ref write (the handleAquarelleAppearanceStrokes
   // precedent) — the Rebake handler above records its re-roll edit through it

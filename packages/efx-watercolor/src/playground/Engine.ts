@@ -2104,6 +2104,9 @@ export class WatercolorEngine {
    * resurrect the wrong pixels. The hold lift lives in the host's wrapper.
    */
   settleForCapture(): boolean {
+    // A real in-flight stroke: settling would abort it, so the caller keeps
+    // its raw snapshot (the same raw path exportSettledCanvas takes).
+    if (this.stroke !== null) return false;
     if (!this.painted || this.fixTimer > 0) return false;
     this.beginSettle(this.painted, false);
     return true;
@@ -2220,6 +2223,14 @@ export class WatercolorEngine {
    * that the sheet under it changed; this counter can.
    */
   get historyRevision(): number { return this.historyMoves; }
+
+  /**
+   * The step undo/redo would move. The Dry ledger uses it to fail closed when
+   * a frame change opened an unledgered 'clear' step under the dry entry
+   * (261123-pee CR-01).
+   */
+  get peekUndoKind(): StepKind | null { return this.history.peekUndo()?.kind ?? null; }
+  get peekRedoKind(): StepKind | null { return this.history.peekRedo()?.kind ?? null; }
 
   /** Step through history in either direction. */
   private travel(dir: 'undo' | 'redo', notify = true) {

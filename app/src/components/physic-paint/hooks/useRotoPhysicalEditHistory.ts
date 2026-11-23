@@ -319,6 +319,14 @@ export interface UseRotoPhysicalEditHistoryInput<EngineState> {
   aquarelleScriptHistory?: AquarelleScriptHistoryRoute;
   undoPaint: () => boolean;
   redoPaint: () => boolean;
+  /**
+   * 261123-pee CR-01: the engine step undo/redo would move. A dry ledger entry
+   * is only valid while the engine's next step is the matching 'dry' step — a
+   * frame change opens an unledgered 'clear' step, and an unguarded undo would
+   * resurrect the other frame's sheet. Absent means fail closed.
+   */
+  peekUndoKind?: () => string | null;
+  peekRedoKind?: () => string | null;
 }
 
 interface PendingReplay<EngineState> {
@@ -1070,10 +1078,12 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
     if (!entry) return false;
     if (entry.kind === 'aquarelle-dry') {
       // 261123-pee (HOLD-WET): one Dry is one engine 'dry' step and one entry.
-      // The engine's paint undo restores the wet sheet; a refused move leaves
-      // both stacks and the entry untouched (fail closed — the same discipline
-      // as the unrecorded paint branch, never a script replay). The recorded
-      // Dry SCRIPT event is not removed by this undo (accepted).
+      // CR-01: a frame change opens an unledgered 'clear' step, so undo only
+      // while the engine's next step is the matching 'dry' one; otherwise fail
+      // closed with both stacks and the entry untouched (never undo another
+      // frame's wipe — the unrecorded paint branch's discipline, no replay).
+      // The recorded Dry SCRIPT event is not removed by this undo (accepted).
+      if (inputRef.current.peekUndoKind?.() !== 'dry') return false;
       appliedRef.current.pop();
       redoRef.current.push(entry);
       const changed = inputRef.current.undoPaint();
@@ -1311,8 +1321,10 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
     if (!entry) return false;
     if (entry.kind === 'aquarelle-dry') {
       // 261123-pee: symmetric with undo — the engine's paint redo re-applies
-      // the settled sheet. No fix, no Dry step, no replay; a refused move
-      // leaves both stacks and the entry untouched.
+      // the settled sheet. CR-01: only while the engine's next redo is the
+      // matching 'dry' step; otherwise fail closed. No fix, no Dry step, no
+      // replay; a refused move leaves both stacks and the entry untouched.
+      if (inputRef.current.peekRedoKind?.() !== 'dry') return false;
       redoRef.current.pop();
       appliedRef.current.push(entry);
       const changed = inputRef.current.redoPaint();

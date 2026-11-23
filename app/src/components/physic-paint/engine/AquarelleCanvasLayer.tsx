@@ -1106,7 +1106,9 @@ export function AquarelleCanvasLayer(props: {
     // capture window first.
     const offDry = onAquarelleDry(() => {
       cancelPendingDrySettleCaptures();
-      drySheetWasWet = engine.hasStandingWater;
+      // WR-02: an in-flight fix is still a wet sheet for the capture decision —
+      // a second Dry inside the 1.2 s window must not drop the first capture.
+      drySheetWasWet = engine.hasStandingWater || engine.isFixing;
       const started = engine.fix();
       onDryAppliedRef.current?.(started);
     });
@@ -1182,10 +1184,12 @@ export function AquarelleCanvasLayer(props: {
           frameChanged,
           revisionChanged,
           settled,
-          invoked: !frameChanged && !revisionChanged && settled && hasPaint,
+          invoked: !frameChanged && !revisionChanged && hasPaint,
         });
-        if (frameChanged || revisionChanged || !settled) return;
-        if (!hasPaint) return;
+        // WR-01: never DROP for an unsettled sheet — `settledSnapshot` drives an
+        // in-flight fix through its tick law, so a janky or backgrounded rAF
+        // still commits the Dry's settled look. `settled` stays telemetry only.
+        if (frameChanged || revisionChanged || !hasPaint) return;
         onCaptureFrameRef.current?.(dryPlayFrame, settledSnapshot);
       }, FIX_SETTLE_MS);
       pendingSettleTimers.add(timer);

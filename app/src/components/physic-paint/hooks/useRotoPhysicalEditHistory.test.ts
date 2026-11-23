@@ -3827,7 +3827,12 @@ describe('useRotoPhysicalEditHistory aquarelle script commands (261022-pim Task 
 // the entry untouched (fail closed — the same discipline as the unrecorded
 // paint branch).
 describe('useRotoPhysicalEditHistory aquarelle Dry entries (261123-pee)', () => {
-  function createDryHarness(options: { undoPaint?: boolean; redoPaint?: boolean } = {}) {
+  function createDryHarness(options: {
+    undoPaint?: boolean;
+    redoPaint?: boolean;
+    peekUndoKind?: () => string | null;
+    peekRedoKind?: () => string | null;
+  } = {}) {
     const acceptedOutput = signal<RotoPhysicalEditAcceptedOutput<null> | null>(null);
     const pendingOperationId = signal<string | null>(null);
     const availability = signal({ undo: 0, redo: 0 });
@@ -3836,6 +3841,8 @@ describe('useRotoPhysicalEditHistory aquarelle Dry entries (261123-pee)', () => 
     const replayStroke = vi.fn<(mutationId: number, direction: 'undo' | 'redo') => Promise<boolean>>(async () => true);
     const undoPaint = vi.fn(() => options.undoPaint ?? true);
     const redoPaint = vi.fn(() => options.redoPaint ?? true);
+    const peekUndoKind = vi.fn(() => options.peekUndoKind?.() ?? 'dry');
+    const peekRedoKind = vi.fn(() => options.peekRedoKind?.() ?? 'dry');
     const state = { current: snapshot([record('A', 0)], 'A', 0) };
     const executePhysicalEdit = vi.fn(async () => false);
     const history = useRotoPhysicalEditHistory({
@@ -3868,6 +3875,8 @@ describe('useRotoPhysicalEditHistory aquarelle Dry entries (261123-pee)', () => 
       aquarelleScriptHistory: { replay, hasRecordedStroke, replayStroke },
       undoPaint,
       redoPaint,
+      peekUndoKind,
+      peekRedoKind,
     });
     return {
       availability,
@@ -3875,6 +3884,8 @@ describe('useRotoPhysicalEditHistory aquarelle Dry entries (261123-pee)', () => 
       replayStroke,
       undoPaint,
       redoPaint,
+      peekUndoKind,
+      peekRedoKind,
       executePhysicalEdit,
       history,
     };
@@ -3935,6 +3946,27 @@ describe('useRotoPhysicalEditHistory aquarelle Dry entries (261123-pee)', () => 
     expect(harness.executePhysicalEdit).not.toHaveBeenCalled();
     expect(harness.replay).not.toHaveBeenCalled();
     expect(harness.replayStroke).not.toHaveBeenCalled();
+  });
+
+  it('CR-01: refuses a dry undo when a frame change left another engine step on top', async () => {
+    const harness = createDryHarness({ peekUndoKind: () => 'clear' });
+    harness.history.recordAquarelleDry();
+
+    expect(await harness.history.undo()).toBe(false);
+    expect(harness.undoPaint).not.toHaveBeenCalled();
+    expect(harness.availability.value).toEqual({ undo: 1, redo: 0 });
+  });
+
+  it('CR-01: refuses a dry redo unless the engine redo top is the dry step', async () => {
+    let redoKind: string | null = 'dry';
+    const harness = createDryHarness({ peekRedoKind: () => redoKind });
+    harness.history.recordAquarelleDry();
+    expect(await harness.history.undo()).toBe(true);
+
+    redoKind = 'clear';
+    expect(await harness.history.redo()).toBe(false);
+    expect(harness.redoPaint).not.toHaveBeenCalled();
+    expect(harness.availability.value).toEqual({ undo: 0, redo: 1 });
   });
 
   it('every recorded dry entry is exactly one engine dry step (source alignment)', () => {
