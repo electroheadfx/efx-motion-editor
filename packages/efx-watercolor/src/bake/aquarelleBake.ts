@@ -39,6 +39,7 @@ import {
   type AquarelleStrokePayload,
 } from '../payload/toStudioStroke'
 import { isAquarelleDryEvent, type AquarelleDryEvent, type AquarellePayloadEvent } from '../payload/dryEvent'
+import { aquarelleVisibleSettleTicks } from '../playground/settleCap'
 
 /** One committed WebP frame from a bake turn. */
 export interface AquarelleBakeFrame {
@@ -277,17 +278,13 @@ function clampCuisson(raw: number | undefined): number {
  * 261019c Studio override (user decision 2026-10-19): the sheet force-dries
  * after this VISIBLE settle window instead of cooking through the engine's
  * full awake window — the fully settled wash diffuses until it looks washed
- * out. The live sheet, its cache capture, and the aquarelle bake share this
- * cap so all three keep the denser look the artist sees while painting.
- * Dry Speed still scales it (higher dry % = shorter window); dry 50 → 165
- * ticks ≈ 2.75 s.
+ * out. The formula lives in the zero-import `playground/settleCap` module
+ * (261123-vkb): the live sheet, its cache capture, the aquarelle bake and
+ * the engine's held awake window all consume the ONE definition, so this
+ * module re-exports it (the `./bake` barrel and the main package entry keep
+ * resolving the same binding).
  */
-export function aquarelleVisibleSettleTicks(dryPercent: number): number {
-  const dry = typeof dryPercent === 'number' && Number.isFinite(dryPercent)
-    ? Math.max(0, Math.min(100, dryPercent))
-    : 50
-  return Math.round(30 + 270 * (1 - dry / 100))
-}
+export { aquarelleVisibleSettleTicks }
 
 /** Engine FIX_DURATION (1.2 s) on the host tick grid — the force-dry bake. */
 const FIX_SETTLE_TICKS = Math.round(1.2 * 60)

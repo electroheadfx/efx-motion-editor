@@ -34,6 +34,9 @@ import { f32ToF16, fromHalf } from './half';
 import { invalidateCarry, newLastTouchCarry, recordStamp, takeCarry } from './lastTouchCarry';
 import { agesToStamps, stampsToAges } from './lastTouchClock';
 import { engineScaleToSize } from './params';
+// HOLD-WET (261123-vkb): the ONE visible settle formula (zero-import module)
+// bounds the held awake window — never a second copy of the constants here.
+import { aquarelleVisibleSettleTicks, SETTLE_TICK_MS } from './settleCap';
 import { GL, type DoubleTarget, type Format, type Program, type Rect, type Target } from './gl';
 import { History, type StepInfo, type StepKind } from './history';
 import { DEFAULT_PAPER, linearRGB, PAPERS, type PaperPreset } from './papers';
@@ -635,10 +638,13 @@ export class WatercolorEngine {
   /** Studio settle-cap fix: the last step is a fix a new stroke may reopen (cancelAutoFix). */
   private autoFix = false;
   /**
-   * HOLD-WET (261123-pee): the artist law — the live Studio sheet never
-   * auto-dries. While held, water decay and the automatic settle are
-   * suppressed; the sim still sleeps normally (`isAwake`/`wetUntil` untouched)
-   * and only an explicit Dry (or the host's dry-on-leave commit) lifts it.
+   * HOLD-WET (261123-pee, 261123-vkb): the artist law — the live Studio sheet
+   * never auto-dries. While held, water decay and the automatic settle are
+   * suppressed AND the awake window is bounded at the visible settle cap
+   * (`awakeUntil`), so the sim sleeps at that cap with no fix, no decay and no
+   * mobile-to-fixed — the dense wet look freezes. The sim still sleeps
+   * through the existing sleep paths (no wake loop), and only an explicit Dry
+   * (or the host's dry-on-leave commit) lifts it.
    */
   private holdWet = false;
   private flowSpeed = 0;                       // upper bound on water speed (sim texels / s)
@@ -1244,12 +1250,15 @@ export class WatercolorEngine {
   /**
    * True while a stroke, fix, or wet diffusion still needs frames. Goes false
    * when the sheet settles — the point where the dry (concentrated) look is
-   * what the user sees, and the right moment to capture it.
+   * what the user sees, and the right moment to capture it. While the Studio
+   * holds the sheet, the wet window is the held visible-settle window
+   * (`awakeUntil`): the sim sleeps at that cap instead of running the full
+   * natural window.
    */
   get isAwake(): boolean {
     const now = this.clock();
     return this.active !== null &&
-      (this.stroke !== null || this.fixTimer > 0 || now < this.minAwakeUntil || now < this.wetUntil());
+      (this.stroke !== null || this.fixTimer > 0 || now < this.minAwakeUntil || now < this.awakeUntil());
   }
 
   /**
@@ -1565,7 +1574,7 @@ export class WatercolorEngine {
     this.processInput(dt);
     const now = this.clock();
     const awake = this.active !== null &&
-      (this.stroke !== null || this.fixTimer > 0 || now < this.minAwakeUntil || now < this.wetUntil());
+      (this.stroke !== null || this.fixTimer > 0 || now < this.minAwakeUntil || now < this.awakeUntil());
     if (awake) {
       this.flowSpeed *= Math.exp(-dt * (3.0 - this.params.flow * 2.4));
       this.growCarry += 0.4 + Math.min(3, 0.15 * this.flowSpeed * dt * (this.dw / this.velocity.w));
@@ -3969,6 +3978,22 @@ export class WatercolorEngine {
    *  READER-SIDE (a fix still flash-dries, hence the `fixTimer <= 0`). */
   private wetDecay() { return this.holdWet && this.fixTimer <= 0 ? 1 : Math.exp(-(this.clock() - this.lastWet) / 1000 / this.dryTau()); }
 
+  /**
+   * HOLD-WET (261123-vkb): the awake window's end. While the sheet is held,
+   * the awake window after the LAST WET INPUT is capped at the visible settle
+   * window (`aquarelleVisibleSettleTicks`, the same cap the bake and the
+   * layer's cuisson use) and the sim then SLEEPS through the existing sleep
+   * paths — no fix, no wetness decay, no mobile-to-fixed — so the dense wet
+   * look freezes while staying blendable. The strict `Math.min` never extends
+   * a natural window (a nearly-dry held sheet keeps its shorter one), and the
+   * cap is measured from `lastWet`, never a pointer event. An unheld sheet
+   * keeps today's window exactly.
+   */
+  private awakeUntil() {
+    if (!this.holdWet) return this.wetUntil();
+    return Math.min(this.wetUntil(), this.lastWet + aquarelleVisibleSettleTicks(this.params.dry * 100) * SETTLE_TICK_MS);
+  }
+
   /** Time (ms) until standing water everywhere has dried below the threshold. */
   private wetUntil() {
     if (this.wetPeak <= WET_THRESHOLD) return this.lastWet;
@@ -4187,9 +4212,11 @@ export class WatercolorEngine {
     }
     for (const d of [this.velocity, this.pressure]) { this.g.clearTarget(d.read); this.g.clearTarget(d.write); }
     this.active = null;
-    // HOLD-WET (261123-pee): a held sheet keeps its peak so the Water gate stays
-    // open after the sim sleeps; the water itself was never decayed (the sim
-    // still idles normally — `isAwake`/`wetUntil` are untouched).
+    // HOLD-WET (261123-pee, 261123-vkb): a held sheet keeps its peak so the
+    // Water gate stays open after the sim sleeps; the water itself was never
+    // decayed. While held, `awakeUntil` bounds the awake window at the visible
+    // settle cap, so this sleep lands at that cap — the dense wet look freezes
+    // with no fix, no decay and no mobile-to-fixed.
     if (!this.holdWet) this.wetPeak = 0;
     this.flowSpeed = 0;
   }
@@ -4299,7 +4326,7 @@ export class WatercolorEngine {
     // (LIVE-SEED 2026-11-21). Under the default clock both readings agree.
     const clockNow = this.clock();
     const awake = this.active !== null &&
-      (this.stroke !== null || this.fixTimer > 0 || clockNow < this.minAwakeUntil || clockNow < this.wetUntil());
+      (this.stroke !== null || this.fixTimer > 0 || clockNow < this.minAwakeUntil || clockNow < this.awakeUntil());
     if (awake) {
       // Grow the simulated region as fast as the wet front can move: slow diffusive
       // creep plus a share of the (decaying) flow speed
