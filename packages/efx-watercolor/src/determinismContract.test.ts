@@ -64,8 +64,8 @@ const replayEngine = vi.hoisted(() => {
     private readonly dabs: Array<{ x: number; y: number; p: number }> = []
     /** 64-21: the sheet seed is replay INPUT — folded into the export digest. */
     private paperSeed: number | null = null
-    /** quick 261123-jak: the relief-only flag is replay INPUT too. */
-    private reliefOnlyBegins = 0
+    /** quick 261123-kpy: the modifier POLARITY is replay INPUT too. */
+    private reliefBegins: 'erode' | 'deposit' | null = null
 
     constructor(surface: FakeCanvas) {
       this.surface = surface
@@ -94,9 +94,11 @@ const replayEngine = vi.hoisted(() => {
       _tiltY?: number,
       _widthScale?: number,
       _pigment?: unknown,
-      reliefOnly = false,
+      relief?: 'erode' | 'deposit',
     ): boolean {
-      if (reliefOnly === true) this.reliefOnlyBegins += 1
+      // One replayRun drives one stroke, so the last value IS that stroke's
+      // polarity.
+      if (relief !== undefined) this.reliefBegins = relief
       this.dabs.push({ x, y, p })
       return true
     }
@@ -120,9 +122,11 @@ const replayEngine = vi.hoisted(() => {
       if (!ctx) return this.surface
       const image = ctx.createImageData(this.surface.width, this.surface.height)
       const seedByte = this.paperSeed === null ? 0 : Math.floor(this.paperSeed) & 0xff
-      // quick 261123-jak: the render-mode precedent — the engine received the
-      // relief-only flag as replay INPUT, so it salts the exported digest.
-      const reliefByte = this.reliefOnlyBegins > 0 ? 0x80 : 0
+      // quick 261123-kpy: the render-mode precedent — the engine received the
+      // modifier POLARITY as replay INPUT, so it salts the exported digest.
+      // Salted by polarity, not presence: a presence-only salt would make both
+      // polarities export identical bytes.
+      const reliefByte = this.reliefBegins === 'erode' ? 0x80 : this.reliefBegins === 'deposit' ? 0x40 : 0
       for (const dab of this.dabs) {
         const px =
           ((Math.trunc(dab.x) % this.surface.width) + this.surface.width) % this.surface.width
@@ -230,14 +234,14 @@ function makeMockCanvas(width: number, height: number): {
  * Quick 261123-hr5: the band is SIGNED (-100..100); the negative arm erodes.
  * 64-10: `body` (0..100) is the scattering key. Omitting it is the neutral
  * zero, so a pre-milestone bag replays the pre-milestone script.
- * Quick 261123-jak: `reliefOnly` is the Shift-latched engine flag; written
- * only when true, so an unflagged bag keeps its exact key set.
+ * Quick 261123-kpy: `relief` is the modifier polarity latched at stroke start;
+ * written only when latched, so an unflagged bag keeps its exact key set.
  */
 function makeStroke(
   viscosity?: number,
   emboss?: number,
   body?: number,
-  reliefOnly?: boolean,
+  relief?: 'erode' | 'deposit',
 ): StudioStroke<AquarelleStrokePayload> {
   return toStudioStroke({
     tool: 'brush',
@@ -257,7 +261,7 @@ function makeStroke(
     ],
     mutationId: 42,
     timestamp: 1000,
-    ...(reliefOnly === true ? { reliefOnly: true as const } : {}),
+    ...(relief !== undefined ? { relief } : {}),
   })
 }
 
@@ -391,26 +395,44 @@ describe('determinism contract', () => {
     expect(toEngineParams(first.recorded.engine.params).emboss).toBe(-0.15)
   })
 
-  // Quick 261123-jak (Shift relief-only): the marker is replay INPUT, like the
+  // Quick 261123-kpy (modifier relief): the POLARITY is replay INPUT, like the
   // render mode was (61-07) — the adapter must hand it to the engine's ONE
   // scriptBegin call, the recorded bag must carry it, and an unflagged bag
   // must not gain the key. The real-engine pigment-identity proof (the relief
-  // pass changes NOTHING in the pigment) is the `emboss-relief-only` probe.
-  it('replays identically with a relief-only marker and feeds it to scriptBegin', () => {
-    const first = replayRun(makeStroke(undefined, 15, undefined, true))
-    const second = replayRun(makeStroke(undefined, 15, undefined, true))
+  // pass changes NOTHING in the pigment) is the `emboss-relief-modifier` probe.
+  it("replays identically with the 'erode' marker and feeds it to scriptBegin", () => {
+    const first = replayRun(makeStroke(undefined, 15, undefined, 'erode'))
+    const second = replayRun(makeStroke(undefined, 15, undefined, 'erode'))
 
     expect(first.bytes.length).toBe(second.bytes.length)
     expect(Buffer.from(first.bytes).equals(Buffer.from(second.bytes))).toBe(true)
 
-    expect(first.recorded.engine.reliefOnly).toBe(true)
-    expect(second.recorded.engine.reliefOnly).toBe(true)
-    expect('reliefOnly' in makeStroke(undefined, 15).engine).toBe(false)
+    expect(first.recorded.engine.relief).toBe('erode')
+    expect(second.recorded.engine.relief).toBe('erode')
+    expect('relief' in makeStroke(undefined, 15).engine).toBe(false)
 
-    // The fake received the flag: the flagged run's bytes diverge from the
-    // unflagged run's, so this row cannot pass on a dropped argument.
+    // The fake received the polarity: the flagged run's bytes diverge from
+    // the unflagged run's, so this row cannot pass on a dropped argument.
     const unflagged = replayRun(makeStroke(undefined, 15))
     expect(Buffer.from(first.bytes).equals(Buffer.from(unflagged.bytes))).toBe(false)
+  })
+
+  it("replays identically with the 'deposit' marker, and its bytes differ from the erode arm", () => {
+    const first = replayRun(makeStroke(undefined, 15, undefined, 'deposit'))
+    const second = replayRun(makeStroke(undefined, 15, undefined, 'deposit'))
+
+    expect(first.bytes.length).toBe(second.bytes.length)
+    expect(Buffer.from(first.bytes).equals(Buffer.from(second.bytes))).toBe(true)
+
+    expect(first.recorded.engine.relief).toBe('deposit')
+    expect(second.recorded.engine.relief).toBe('deposit')
+
+    // The POLARITY, not just its presence, reaches the engine: the deposit
+    // arm diverges from both the unflagged arm and the erode arm.
+    const unflagged = replayRun(makeStroke(undefined, 15))
+    const erode = replayRun(makeStroke(undefined, 15, undefined, 'erode'))
+    expect(Buffer.from(first.bytes).equals(Buffer.from(unflagged.bytes))).toBe(false)
+    expect(Buffer.from(first.bytes).equals(Buffer.from(erode.bytes))).toBe(false)
   })
 
   // 64-04 (MED-15 / MED-18): the emboss light is DOCUMENT render state, never

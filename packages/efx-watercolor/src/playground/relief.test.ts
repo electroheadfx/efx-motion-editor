@@ -364,9 +364,9 @@ describe('relief deposit (MED-14)', () => {
     const seam = brush.indexOf("// spec 06: the cover pass draws here, before this dab's deposit")
     const inkAt = brush.indexOf('this.brushInk(')
     const reliefAt = brush.indexOf('this.brushRelief(')
-    // Quick 261123-jak: the wet pass is skipped for a relief-only dab, so its
+    // Quick 261123-kpy: the wet pass is skipped for a modifier dab, so its
     // line carries the guard — the order is unchanged.
-    const wetAt = brush.indexOf('if (!s.reliefOnly && wet > 0) this.brushWet(')
+    const wetAt = brush.indexOf('if (s.relief === null && wet > 0) this.brushWet(')
     expect(seam, 'the spec-06 seam comment is missing').toBeGreaterThanOrEqual(0)
     expect(inkAt).toBeGreaterThan(seam)
     expect(reliefAt).toBeGreaterThan(inkAt)
@@ -496,14 +496,14 @@ describe('signed emboss (quick 261123-hr5)', () => {
     expect(ENGINE_SOURCE).toMatch(/const RELIEF_ERODE_NEGATIVE = [0-9.]+;/)
   })
 
-  // Quick 261123-jak moved the branch operand from `reliefAmount` to
-  // `reliefSigned` (the relief-only inversion) and guarded the wet pass; every
+  // Quick 261123-kpy moved the branch operand from `reliefAmount` to the
+  // polarity latch (the relief-only inversion) and guarded the wet pass; every
   // relation this pin states is unchanged.
   it('branches on the sign after the untouched positive deposit, before the wet pass', () => {
     const brush = sliceBetween(ENGINE_SOURCE, "case 'brush': {", "case 'water': {")
     const positiveAt = brush.indexOf('if (reliefSigned > 0) {')
     const erodeAt = brush.indexOf('else if (reliefSigned < 0) {')
-    const wetAt = brush.indexOf('if (!s.reliefOnly && wet > 0) this.brushWet(')
+    const wetAt = brush.indexOf('if (s.relief === null && wet > 0) this.brushWet(')
     expect(positiveAt, 'positive deposit gate missing').toBeGreaterThanOrEqual(0)
     expect(erodeAt, 'signed erode branch missing').toBeGreaterThan(positiveAt)
     expect(wetAt, 'wet pass missing after the signed slot').toBeGreaterThan(erodeAt)
@@ -549,55 +549,93 @@ describe('signed emboss (quick 261123-hr5)', () => {
 })
 
 // ---------------------------------------------------------------------------
-// 10. Relief-only strokes (quick 261123-jak): Shift at stroke start turns the
-//     brush into a relief smoother — the emboss sign inverts and NOTHING is
-//     painted.
+// 10. Modifier relief (quick 261123-kpy): a pressure-driven polarity latched at
+//     stroke start — Shift erodes, Cmd deposits, and NOTHING is painted.
 // ---------------------------------------------------------------------------
 
-// The artist's gesture: hold Shift at pointerdown with the brush tool and a
-// non-zero Emboss and the stroke flattens (or lifts) an existing impasto
-// without adding a single pigment byte. The latch is stroke-START only (a
-// mid-stroke Shift change cannot flip the stroke), Emboss 0 is inert, and a
-// relief-only dab takes its OWN ink-rect undo protection because no paint pass
-// ran to protect it. The pigment-identity proof is the `emboss-relief-only`
-// probe; these pins carry the source law.
-describe('relief-only strokes (quick 261123-jak)', () => {
-  it('declares the flag on Stroke and latches it ONCE at pointerdown from the resolved tool', () => {
+// The artist's gesture: hold Shift (erode) or Cmd (deposit) at pointerdown
+// with the brush tool and the stroke flattens or lifts an existing impasto
+// without adding a single pigment byte. The latch is stroke-START only on the
+// RESOLVED tool — Shift wins when both are held — and carries NO Emboss gate:
+// the magnitude never reads the slider, so the modifier works at Emboss 0. The
+// magnitude is pressure-only; a pressureless pointer is the recorded
+// per-sample `p < 0` sentinel, which is EXACTLY full strength. A modifier dab
+// takes its OWN ink-rect undo protection because no paint pass ran to protect
+// it. The pigment-identity proof is the `emboss-relief-modifier` probe; these
+// pins carry the source law.
+describe('modifier relief (quick 261123-kpy)', () => {
+  it('declares the polarity and the pressureless sentinel on Stroke, and no reliefOnly', () => {
     const strokeInterface = sliceBetween(ENGINE_SOURCE, 'interface Stroke {', '/** 61-04 / T-61-11')
-    expect(strokeInterface).toContain('reliefOnly: boolean;')
+    expect(strokeInterface).toContain('relief: ReliefMode | null;')
+    expect(strokeInterface).toContain('pressureless: boolean;')
+    expect(strokeInterface).not.toContain('reliefOnly')
+  })
+
+  it('latches the polarity ONCE at pointerdown from the resolved tool, with no Emboss gate', () => {
     const pointerdown = sliceBetween(
       ENGINE_SOURCE,
       "on(c, 'pointerdown', e => {",
       "on(c, 'pointermove', e => {",
     )
+    // Shift wins when both modifiers are held; Alt never reaches here (the
+    // color picker consumes it capture-phase). The latch reads the RESOLVED
+    // tool, so a mid-stroke modifier change cannot flip the stroke.
     expect(pointerdown).toContain(
-      "const reliefOnly = tool === 'brush' && e.shiftKey && this.params.emboss !== 0;",
+      "const relief: ReliefMode | null = tool === 'brush' ? (e.shiftKey ? 'erode' : e.metaKey ? 'deposit' : null) : null;",
     )
-    expect(pointerdown).toContain('reliefOnly,')
+    // NO Emboss gate: the modifier magnitude never reads the slider, so the
+    // gesture works at Emboss 0.
+    expect(pointerdown).not.toContain('this.params.emboss')
+    expect(pointerdown).toContain('relief,')
+    expect(pointerdown).toContain('pressureless: false,')
     // Exactly two Stroke literals exist (pointerdown and scriptBegin); both
-    // carry the field, so no stroke path can leave it undefined.
-    expect(ENGINE_SOURCE.match(/reliefOnly,/g) ?? []).toHaveLength(2)
+    // carry the fields, so no stroke path can leave them undefined.
+    expect(ENGINE_SOURCE.match(/^\s*relief,$/gm) ?? []).toHaveLength(2)
+    expect(ENGINE_SOURCE.match(/^\s*pressureless: false,$/gm) ?? []).toHaveLength(2)
   })
 
-  it('accepts a trailing reliefOnly on scriptBegin and records it on the scripted stroke', () => {
-    expect(ENGINE_SOURCE).toContain('pigment?: Pigment, reliefOnly = false): boolean {')
+  it('accepts a trailing relief on scriptBegin and records it on the scripted stroke', () => {
+    expect(ENGINE_SOURCE).toContain('pigment?: Pigment, relief?: ReliefMode): boolean {')
     const scriptBegin = sliceBetween(ENGINE_SOURCE, 'scriptBegin(tool: Tool,', 'scriptMove(x: number,')
-    expect(scriptBegin).toContain('reliefOnly,')
+    expect(scriptBegin).toContain('relief,')
+    expect(scriptBegin).toContain('pressureless: false,')
   })
 
-  it('inverts the sign from the SAME dab amount and keeps the positive-path literal untouched', () => {
+  it('records the per-sample pressureless sentinel in both consume branches', () => {
+    // The recorded `p < 0` marker is the ONLY authority — never pointerType —
+    // so a replayed bag reproduces the live magnitude exactly.
+    const consume = sliceBetween(ENGINE_SOURCE, 'private processInput(dt: number) {', 'this.queue = [];')
+    expect(consume.match(/s\.pressureless = q\.p < 0;/g) ?? []).toHaveLength(2)
+    const firstPrAt = consume.indexOf('s.pr = this.pressureOf(s, q.p);')
+    const firstPressurelessAt = consume.indexOf('s.pressureless = q.p < 0;')
+    const secondPressurelessAt = consume.indexOf('s.pressureless = q.p < 0;', firstPressurelessAt + 1)
+    const steadyPrAt = consume.indexOf('const pr = this.pressureOf(s, q.p);')
+    expect(firstPrAt, 'the start-dab pressure read is missing').toBeGreaterThanOrEqual(0)
+    expect(firstPressurelessAt).toBeGreaterThan(firstPrAt)
+    expect(secondPressurelessAt).toBeGreaterThan(firstPressurelessAt)
+    expect(steadyPrAt).toBeGreaterThan(secondPressurelessAt)
+  })
+
+  it('keeps the normal amount literal untouched and resolves the modifier through the pure law', () => {
     const brush = sliceBetween(ENGINE_SOURCE, "case 'brush': {", "case 'water': {")
     // The hr5 positive-path law: the amount literal is byte-identical.
     expect(brush).toContain('const reliefAmount = P.emboss * amount * RELIEF_GAIN * embossPress;')
-    expect(brush).toContain('const reliefSigned = s.reliefOnly ? -reliefAmount : reliefAmount;')
+    expect(brush).toContain('const reliefSigned = s.relief === null')
+    // Pressure-only magnitude: the embossPress floor curve for a real pen,
+    // the recorded pressureless sentinel as exactly full strength. The gains
+    // are probe-calibrated; the Emboss slider is never read on this path.
+    expect(brush).toContain(
+      'reliefModifierSigned(s.relief, amount * RELIEF_GAIN, reliefModifierPress(embossPress, s.pressureless))',
+    )
+    expect(ENGINE_SOURCE).toContain("from './reliefModifier'")
   })
 
-  it('skips every paint, water and carrier write behind ONE reliefOnly guard', () => {
+  it('skips every paint, water and carrier write behind ONE polarity guard', () => {
     const brush = sliceBetween(ENGINE_SOURCE, "case 'brush': {", "case 'water': {")
-    expect(brush).toContain('if (!s.reliefOnly && (coverAmount > 0 || bristle)) {')
-    expect(brush).toContain('if (!s.reliefOnly) this.carrierPass(')
-    expect(brush).toContain('if (!s.reliefOnly && moving && b.water > 0) this.splatVelocity(')
-    const blockAt = brush.indexOf('if (!s.reliefOnly) {')
+    expect(brush).toContain('if (s.relief === null && (coverAmount > 0 || bristle)) {')
+    expect(brush).toContain('if (s.relief === null) this.carrierPass(')
+    expect(brush).toContain('if (s.relief === null && moving && b.water > 0) this.splatVelocity(')
+    const blockAt = brush.indexOf('if (s.relief === null) {')
     expect(blockAt, 'the one paint block guard is missing').toBeGreaterThanOrEqual(0)
     const body = extractBracket(brush, brush.indexOf('{', blockAt), '{', '}')
     expect(body).toContain('this.coverPass(')
@@ -605,23 +643,26 @@ describe('relief-only strokes (quick 261123-jak)', () => {
     expect(body).toContain('this.coverageDeposit(')
     expect(body).toContain('this.brushInk(')
     expect(body).toContain('this.bristleTouch(')
+    // The wet pass is guarded by the same literal family (the hr5 ordering
+    // anchors above read it too).
+    expect(brush).toContain('if (s.relief === null && wet > 0) this.brushWet(')
   })
 
-  it('takes its own touch on the ink-pass rects before the relief draw, both signs', () => {
+  it('takes its own touch on the ink-pass rects before the relief draw, both polarities', () => {
     const brush = sliceBetween(ENGINE_SOURCE, "case 'brush': {", "case 'water': {")
     const touchAt = brush.indexOf(
-      'if (s.reliefOnly && reliefSigned !== 0) this.touch(this.stampRect(dx, dy, dr, this.dw, this.dh, bristle ? 1.6 : 1.5));',
+      'if (s.relief !== null && reliefSigned !== 0) this.touch(this.stampRect(dx, dy, dr, this.dw, this.dh, bristle ? 1.6 : 1.5));',
     )
     const positiveAt = brush.indexOf('if (reliefSigned > 0) {')
-    expect(touchAt, 'the relief-only own-protection line is missing').toBeGreaterThanOrEqual(0)
+    expect(touchAt, 'the modifier own-protection line is missing').toBeGreaterThanOrEqual(0)
     expect(positiveAt).toBeGreaterThan(touchAt)
   })
 
-  it('reads the signed branch from reliefSigned and skips the wet pass for a relief-only dab', () => {
+  it('reads the signed branch from reliefSigned and skips the wet pass for a modifier dab', () => {
     const brush = sliceBetween(ENGINE_SOURCE, "case 'brush': {", "case 'water': {")
     expect(brush).toContain('if (reliefSigned > 0) {')
     const erodeAt = brush.indexOf('else if (reliefSigned < 0) {')
-    const wetAt = brush.indexOf('if (!s.reliefOnly && wet > 0) this.brushWet(')
+    const wetAt = brush.indexOf('if (s.relief === null && wet > 0) this.brushWet(')
     expect(erodeAt).toBeGreaterThan(-1)
     expect(wetAt).toBeGreaterThan(erodeAt)
     const erodeBranch = brush.slice(erodeAt, wetAt)
@@ -633,8 +674,8 @@ describe('relief-only strokes (quick 261123-jak)', () => {
     expect(erodeBranch).not.toContain('this.fixed')
   })
 
-  it('reports the latched flag beside the tool at stroke end', () => {
-    expect(ENGINE_SOURCE).toContain('onStrokeEnd?(tool: Tool, reliefOnly?: boolean): void;')
-    expect(ENGINE_SOURCE).toContain('this.callbacks.onStrokeEnd?.(s.tool, s.reliefOnly);')
+  it('reports the latched polarity beside the tool at stroke end', () => {
+    expect(ENGINE_SOURCE).toContain('onStrokeEnd?(tool: Tool, relief?: ReliefMode): void;')
+    expect(ENGINE_SOURCE).toContain('this.callbacks.onStrokeEnd?.(s.tool, s.relief ?? undefined);')
   })
 })

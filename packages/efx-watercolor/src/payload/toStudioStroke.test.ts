@@ -185,19 +185,24 @@ const VECTOR_ANCHORS: readonly AquarelleAnchor[] = [
   { x: 44, y: 32, kind: 'bezier', in: { x: 40, y: 30 }, out: { x: 48, y: 34 } },
 ]
 
-// quick 261123-jak (Shift relief-only): the engine flag rides the opaque engine
-// slot and follows the conditional-spread convention — written ONLY when the
-// engine reported it, so an unflagged stroke keeps its exact key set.
-describe('reliefOnly engine block (quick 261123-jak)', () => {
-  it('projects reliefOnly: true only when the runtime stroke carries it', () => {
-    const flagged = toStudioStroke(makeRuntimeStroke({ reliefOnly: true }))
-    expect(flagged.engine.reliefOnly).toBe(true)
-    expect(Object.keys(flagged.engine)).toEqual([...PRE_VECTOR_ENGINE_KEYS, 'reliefOnly'])
+// quick 261123-kpy (modifier relief): the engine POLARITY rides the opaque
+// engine slot and follows the conditional-spread convention — written ONLY
+// when latched, so an unflagged stroke keeps its exact key set.
+describe('relief engine block (quick 261123-kpy)', () => {
+  it('projects each polarity verbatim only when the runtime stroke carries it', () => {
+    for (const relief of ['erode', 'deposit'] as const) {
+      const flagged = toStudioStroke(makeRuntimeStroke({ relief }))
+      expect(flagged.engine.relief).toBe(relief)
+      expect(Object.keys(flagged.engine), `relief ${relief}`).toEqual([
+        ...PRE_VECTOR_ENGINE_KEYS,
+        'relief',
+      ])
+    }
   })
 
-  it('invents no reliefOnly key when the field is absent (byte-identical shape)', () => {
+  it('invents no relief key when the field is absent (byte-identical shape)', () => {
     const stroke = toStudioStroke(makeRuntimeStroke())
-    expect('reliefOnly' in stroke.engine).toBe(false)
+    expect('relief' in stroke.engine).toBe(false)
     expect(Object.keys(stroke.engine)).toEqual([...PRE_VECTOR_ENGINE_KEYS])
   })
 })
