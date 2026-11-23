@@ -29,6 +29,10 @@
 //  `body` has no row anywhere (bag-only, Reset-only) and
 //  `wetSeconds` has no row (it is seconds, not a 0..100 global) —
 //  neither appears in `AQUARELLE_PARAM_ROWS` by design.
+//
+//  quick 261123-hr5: Emboss becomes the ONE signed row (-15..15).
+//  Negative emboss smooths a dry impasto while keeping the paint;
+//  the sign is recorded per stroke, never in a medium record.
 // ============================================================
 
 import { DEFAULT_MEDIUM_ID, type MediumId } from '@efxlab/efx-watercolor';
@@ -86,7 +90,13 @@ export const AQUARELLE_PARAM_GROUPS: readonly AquarelleParamGroup[] = Object.fre
 
 /** Post-UAT (2026-11-21): emboss relief is very hard above 15, so the
  *  row's band is capped here — this is the ONE home of the cap (the
- *  panel only forwards `row.max`). */
+ *  panel only forwards `row.max`).
+ *  Quick 261123-hr5: Emboss is SIGNED. The row spans -15..15: negative
+ *  emboss SUBTRACTS paint thickness (smooths a dry impasto, keeps the
+ *  paint), positive deposits it. The sign rides the per-stroke recorded
+ *  bag only — a medium record never carries a negative emboss. This pair
+ *  is the ONE home of the band (the panel only forwards `row.min/max`). */
+const EMBOSS_MIN = -15;
 const EMBOSS_MAX = 15;
 
 const WATERCOLOR_ONLY: readonly MediumId[] = Object.freeze(['watercolor']);
@@ -116,7 +126,7 @@ const PICKUP_HIDDEN: readonly MediumId[] = Object.freeze(['watercolor']);
  */
 export const AQUARELLE_PARAM_ROWS: readonly AquarelleParamRow[] = Object.freeze([
   Object.freeze({ key: 'viscosity', label: 'Viscosity', group: 'medium', paint: 'all', water: true }),
-  Object.freeze({ key: 'emboss', label: 'Emboss', group: 'medium', max: EMBOSS_MAX, paint: 'all' }),
+  Object.freeze({ key: 'emboss', label: 'Emboss', group: 'medium', min: EMBOSS_MIN, max: EMBOSS_MAX, paint: 'all' }),
   Object.freeze({ key: 'load', label: 'Pigment', group: 'paint', paint: 'all' }),
   Object.freeze({
     key: 'pickup',

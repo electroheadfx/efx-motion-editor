@@ -85,7 +85,10 @@ export interface AquarelleGlobalParams {
    * emboss — a pre-milestone recorded bag without them replays
    * byte-identically. They ride the one key list below, so the record loop
    * and the selection write allowlist both carry them; the engine mapping
-   * clamps their 0..1 projection (wetSeconds excepted — seconds).
+   * clamps their projection (wetSeconds excepted — seconds).
+   * Quick 261123-hr5: emboss is SIGNED — its recorded bag carries -100..100
+   * (negative subtracts thickness) and the mapping clamps it to -1..1; the
+   * medium records below keep 0..100 and never carry a negative emboss.
    */
   viscosity: number;
   body: number;
