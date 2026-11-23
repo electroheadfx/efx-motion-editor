@@ -580,29 +580,32 @@ describe('textureRotation on the script engine slot (quick 261116-inu)', () => {
 });
 
 // ---------------------------------------------------------------------------
-// quick 261123-jak: the relief-only latch on the opaque engine slot. Present
-// means exactly `true` — the SAME rule as the payload codec's `isStrokeShape`,
-// duplicated deliberately because a saved or hand-edited Roto script can reach
-// this guard without ever passing through the codec code.
+// quick 261123-kpy: the modifier relief polarity on the opaque engine slot.
+// Present means exactly 'erode' or 'deposit' — the SAME rule as the payload
+// codec's `isStrokeShape`, duplicated deliberately because a saved or
+// hand-edited Roto script can reach this guard without ever passing through
+// the codec code.
 // ---------------------------------------------------------------------------
 
-describe('reliefOnly on the script engine slot (quick 261123-jak)', () => {
-  function reliefOnlyEvent(reliefOnly: unknown): any {
+describe('relief polarity on the script engine slot (quick 261123-kpy)', () => {
+  function reliefEvent(relief: unknown): any {
     const event = aquarelleStrokeEvent();
-    event.engine = { ...event.engine, reliefOnly };
+    event.engine = { ...event.engine, relief };
     return event;
   }
 
-  it('accepts reliefOnly: true through the runtime events', async () => {
+  it('accepts each polarity through the runtime events', async () => {
     const schema = await loadSchema();
-    const value = schema.serializeAquarelleRotoScript!(aquarelleInput({
-      events: [reliefOnlyEvent(true)],
-    }));
-    const parsed = schema.parseRotoScript!(value);
-    expect(parsed.ok).toBe(true);
-    if (!parsed.ok) return;
-    const runtime = schema.persistedRotoScriptToRuntime!(parsed.document);
-    expect(runtime.aquarelleEvents![0].engine.reliefOnly).toBe(true);
+    for (const relief of ['erode', 'deposit'] as const) {
+      const value = schema.serializeAquarelleRotoScript!(aquarelleInput({
+        events: [reliefEvent(relief)],
+      }));
+      const parsed = schema.parseRotoScript!(value);
+      expect(parsed.ok, `relief ${relief}`).toBe(true);
+      if (!parsed.ok) return;
+      const runtime = schema.persistedRotoScriptToRuntime!(parsed.document);
+      expect(runtime.aquarelleEvents![0].engine.relief).toBe(relief);
+    }
   });
 
   it('absence still parses and stays absent', async () => {
@@ -614,22 +617,22 @@ describe('reliefOnly on the script engine slot (quick 261123-jak)', () => {
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
     const runtime = schema.persistedRotoScriptToRuntime!(parsed.document);
-    expect('reliefOnly' in runtime.aquarelleEvents![0].engine).toBe(false);
+    expect('relief' in runtime.aquarelleEvents![0].engine).toBe(false);
   });
 
-  it('refuses false and a string, naming the exact engine slot', async () => {
+  it('refuses true, false and an unknown string, naming the exact engine slot', async () => {
     const schema = await loadSchema();
     const good = schema.serializeAquarelleRotoScript!(aquarelleInput({
-      events: [reliefOnlyEvent(true)],
+      events: [reliefEvent('erode')],
     }));
-    for (const bad of [false, 'yes']) {
+    for (const bad of [true, false, 'smooth']) {
       const tampered = structuredClone(good);
-      tampered.strokes[0].engine.reliefOnly = bad;
+      tampered.strokes[0].engine.relief = bad;
       const parsed = schema.parseRotoScript!(tampered);
-      expect(parsed.ok, `reliefOnly ${String(bad)}`).toBe(false);
+      expect(parsed.ok, `relief ${String(bad)}`).toBe(false);
       if (!parsed.ok) expect(parsed.refusal.code).toBe('malformed-engine-payload');
       expect(schema.describePersistedRotoScriptRefusal!(tampered))
-        .toBe('stroke 0: engine.reliefOnly');
+        .toBe('stroke 0: engine.relief');
     }
   });
 });

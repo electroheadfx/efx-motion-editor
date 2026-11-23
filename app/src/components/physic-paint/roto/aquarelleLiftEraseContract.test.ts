@@ -114,11 +114,11 @@ describe('Lift pointerdown gate (261028-k03 D3)', () => {
   });
 
   it('records the ENGINE-resolved tool per stroke, never a stale carried value', () => {
-    // onStrokeEnd(tool, reliefOnly) reports the engine's resolved tool for
-    // THIS stroke (stylus eraser end, pen barrel, finger-water) beside its
-    // relief-only latch (quick 261123-jak). A ref filled from onStrokeTool
-    // would leak across strokes because the engine emits only on a change.
-    expect(layer).toContain('onStrokeEnd(tool, reliefOnly)');
+    // onStrokeEnd(tool, relief) reports the engine's resolved tool for THIS
+    // stroke (stylus eraser end, pen barrel, finger-water) beside its modifier
+    // polarity (quick 261123-kpy). A ref filled from onStrokeTool would leak
+    // across strokes because the engine emits only on a change.
+    expect(layer).toContain('onStrokeEnd(tool, relief)');
     // quick-261115-oh9 lifted the resolution into one `recordedTool` const so
     // the texture can be gated on it (a lift never records a texture). The
     // law is unchanged: the tool comes from the engine's onStrokeEnd argument.

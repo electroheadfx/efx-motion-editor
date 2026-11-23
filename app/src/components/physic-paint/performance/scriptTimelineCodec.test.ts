@@ -793,11 +793,11 @@ describe('AQTL v2 per-vertex colour (261111-wd6)', () => {
 
   it('still refuses an unknown vector flag bit', () => {
     const bytes = encodeScriptTimelineBinary([coloredVectorStroke()]);
-    // 0x10 is the 62-UAT drawn marker and 0x20 is the quick 261123-jak
-    // relief-only marker; the next free bit is 0x40.
+    // 0x10 is the 62-UAT drawn marker; 0x20 is the erode and 0x40 the
+    // deposit polarity marker (quick 261123-kpy); the next free bit is 0x80.
     new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).setUint8(
       VECTOR_FLAG_OFFSET,
-      VECTOR_FLAG_ANCHOR_COLOR | 0x40,
+      VECTOR_FLAG_ANCHOR_COLOR | 0x80,
     );
     expect(expectedCode(() => decodeScriptTimelineBinary(bytes))).toBe('invalid-value');
   });
@@ -824,30 +824,55 @@ describe('AQTL v2 per-vertex colour (261111-wd6)', () => {
       .toBe(false);
   });
 
-  it('round-trips the relief-only marker bit with no extra payload byte (quick 261123-jak)', () => {
+  it('round-trips the relief polarity bits with no extra payload byte (quick 261123-kpy)', () => {
     const plain = minimalStroke();
-    const reliefOnly: StudioStroke<AquarelleStrokePayload> = {
+    const erode: StudioStroke<AquarelleStrokePayload> = {
       ...plain,
-      engine: { ...plain.engine, reliefOnly: true },
+      engine: { ...plain.engine, relief: 'erode' },
+    };
+    const deposit: StudioStroke<AquarelleStrokePayload> = {
+      ...plain,
+      engine: { ...plain.engine, relief: 'deposit' },
     };
     const plainBytes = encodeScriptTimelineBinary([plain]);
-    const flaggedBytes = encodeScriptTimelineBinary([reliefOnly]);
-    // The bit IS the whole marker: the encoded size never changes.
-    expect(flaggedBytes.byteLength).toBe(plainBytes.byteLength);
-    expect(plainBytes[VECTOR_FLAG_OFFSET] & 0x20).toBe(0);
-    expect(flaggedBytes[VECTOR_FLAG_OFFSET] & 0x20).toBe(0x20);
+    const erodeBytes = encodeScriptTimelineBinary([erode]);
+    const depositBytes = encodeScriptTimelineBinary([deposit]);
+    // Each bit IS the whole marker: the encoded size never changes.
+    expect(erodeBytes.byteLength).toBe(plainBytes.byteLength);
+    expect(depositBytes.byteLength).toBe(plainBytes.byteLength);
+    // VECTOR_FLAG_OFFSET is the byte OFFSET (73), not the flags value.
+    expect(plainBytes[VECTOR_FLAG_OFFSET]! & 0x20).toBe(0);
+    expect(plainBytes[VECTOR_FLAG_OFFSET]! & 0x40).toBe(0);
+    expect(erodeBytes[VECTOR_FLAG_OFFSET]! & 0x20).not.toBe(0);
+    expect(erodeBytes[VECTOR_FLAG_OFFSET]! & 0x40).toBe(0);
+    expect(depositBytes[VECTOR_FLAG_OFFSET]! & 0x40).not.toBe(0);
+    expect(depositBytes[VECTOR_FLAG_OFFSET]! & 0x20).toBe(0);
 
-    const decoded = decodeScriptTimelineBinary(flaggedBytes);
-    expect(decoded).toHaveLength(1);
-    expect((decoded[0] as StudioStroke<AquarelleStrokePayload>).engine.reliefOnly).toBe(true);
+    const [erodeDecoded] = decodeScriptTimelineBinary(erodeBytes);
+    const [depositDecoded] = decodeScriptTimelineBinary(depositBytes);
+    expect((erodeDecoded as StudioStroke<AquarelleStrokePayload>).engine.relief).toBe('erode');
+    expect((depositDecoded as StudioStroke<AquarelleStrokePayload>).engine.relief).toBe(
+      'deposit',
+    );
 
     // Absence stays absent — an ordinary stroke gains no key.
-    const decodedPlain = decodeScriptTimelineBinary(plainBytes);
-    expect('reliefOnly' in (decodedPlain[0] as StudioStroke<AquarelleStrokePayload>).engine)
-      .toBe(false);
+    const [plainDecoded] = decodeScriptTimelineBinary(plainBytes);
+    expect('relief' in (plainDecoded as StudioStroke<AquarelleStrokePayload>).engine).toBe(false);
 
     // A decoded flagged stroke re-encodes byte-identically.
-    expect(encodeScriptTimelineBinary(decoded)).toEqual(flaggedBytes);
+    expect(encodeScriptTimelineBinary([erodeDecoded!])).toEqual(erodeBytes);
+    expect(encodeScriptTimelineBinary([depositDecoded!])).toEqual(depositBytes);
+  });
+
+  it('refuses a vector block carrying BOTH relief polarity flags (quick 261123-kpy)', () => {
+    const bytes = encodeScriptTimelineBinary([minimalStroke()]);
+    const conflicting = bytes.slice();
+    new DataView(
+      conflicting.buffer,
+      conflicting.byteOffset,
+      conflicting.byteLength,
+    ).setUint8(VECTOR_FLAG_OFFSET, conflicting[VECTOR_FLAG_OFFSET]! | 0x20 | 0x40);
+    expect(expectedCode(() => decodeScriptTimelineBinary(conflicting))).toBe('invalid-value');
   });
 });
 

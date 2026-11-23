@@ -1,14 +1,14 @@
 // @vitest-environment node
 // ============================================================
-//  Quick 261123-jak — the copy seam must carry `reliefOnly`.
+//  Quick 261123-kpy — the copy seam must carry the relief POLARITY.
 //
 //  Duplicate and +Key re-record a source key's aquarelle timeline on a
 //  destination frame through `aquarelleStrokeFromScriptEvent` (61-24,
 //  shared by `copyAquarelleScriptToFrame` and the rail-key script copy).
-//  The relief-only latch is part of the timeline, not of the pixels: a
-//  copy must stay a relief smoother (and keep AQTL flag bit 5 on
-//  persist), while an absent marker stays absent so a hand-painted
-//  event keeps its exact key set.
+//  The modifier polarity is part of the timeline, not of the pixels: a
+//  copy must stay an erode/deposit stroke (and keep its AQTL flag bit on
+//  persist), while an absent marker stays absent so a hand-painted event
+//  keeps its exact key set.
 // ============================================================
 
 import { describe, expect, it } from 'vitest';
@@ -20,7 +20,7 @@ function point(x: number, y: number, p: number): AquarellePoint {
   return { x, y, p, tx: 10, ty: -10, tw: 5 };
 }
 
-function sourceEvent(reliefOnly: boolean) {
+function sourceEvent(relief?: 'erode' | 'deposit') {
   return toStudioStroke({
     tool: 'brush',
     color: '#103c65',
@@ -30,20 +30,21 @@ function sourceEvent(reliefOnly: boolean) {
     mutationId: 41,
     timestamp: 41,
     playFrame: 601,
-    ...(reliefOnly ? { reliefOnly: true as const } : {}),
+    ...(relief !== undefined ? { relief } : {}),
   });
 }
 
-describe('quick 261123-jak — a copied relief-only stroke stays relief-only', () => {
-  it('carries reliefOnly onto the re-recorded stroke', () => {
-    const projected = aquarelleStrokeFromScriptEvent(sourceEvent(true), 9);
-
-    expect(projected.reliefOnly).toBe(true);
+describe('quick 261123-kpy — a copied modifier stroke keeps its polarity', () => {
+  it('carries each polarity onto the re-recorded stroke', () => {
+    for (const relief of ['erode', 'deposit'] as const) {
+      const projected = aquarelleStrokeFromScriptEvent(sourceEvent(relief), 9);
+      expect(projected.relief, `relief ${relief}`).toBe(relief);
+    }
   });
 
   it('keeps an absent marker absent for an ordinary stroke', () => {
-    const projected = aquarelleStrokeFromScriptEvent(sourceEvent(false), 9);
+    const projected = aquarelleStrokeFromScriptEvent(sourceEvent(), 9);
 
-    expect('reliefOnly' in projected).toBe(false);
+    expect('relief' in projected).toBe(false);
   });
 });

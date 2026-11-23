@@ -80,6 +80,9 @@ describe('Studio catalog accuracy', () => {
       'V',
       'I',
       '⌥ + click',
+      // quick 261123-kpy: the pressure-driven relief modifiers.
+      '⇧ + stroke',
+      '⌘ + stroke',
       'X',
       'D',
       'F',

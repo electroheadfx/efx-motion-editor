@@ -261,13 +261,11 @@ describe('record-time stroke literal (61-07)', () => {
     expect(recordedStrokeLiteral()).not.toContain('anchors');
   });
 
-  // Quick 261123-jak: the engine latches Shift at pointerdown and reports it
-  // beside the resolved tool; the literal writes the marker ONLY when true,
-  // so an ordinary stroke keeps its exact key set (the textureId precedent).
-  it('receives the relief-only latch and writes it only when set', () => {
-    expect(layer).toContain('onStrokeEnd(tool, reliefOnly)');
-    expect(recordedStrokeLiteral()).toContain(
-      '...(reliefOnly === true ? { reliefOnly: true } : {}),',
-    );
+  // Quick 261123-kpy: the engine latches the modifier polarity at pointerdown
+  // and reports it beside the resolved tool; the literal writes it ONLY when
+  // present, so an ordinary stroke keeps its exact key set.
+  it('receives the modifier polarity and writes it only when present', () => {
+    expect(layer).toContain('onStrokeEnd(tool, relief)');
+    expect(recordedStrokeLiteral()).toContain('...(relief !== undefined ? { relief } : {}),');
   });
 });
