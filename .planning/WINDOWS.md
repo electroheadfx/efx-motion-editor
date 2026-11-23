@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 22
+open_count: 23
 waived_count: 18
 fixed_count: 92
-total_count: 132
-last_updated: 2026-11-22T18:42:57.020Z
+total_count: 133
+last_updated: 2026-11-23T22:41:34.929Z
 ---
 
 # Broken Windows Ledger
@@ -147,6 +147,7 @@ last_updated: 2026-11-22T18:42:57.020Z
 | 130 | 64 | deviation | packages/efx-watercolor/probe/medium-engine/probe.ts |  | 64-23: the bristle-edge census reads the transparent export's deposited darkness, not the mode-4 alpha, because the coverage union saturates (measured 0.8 px at Feather 0 and 100) | open |  | 2026-11-19T14:22:41.996Z |  |
 | 131 | 64 | unmet-truth | packages/efx-watercolor/probe/medium-engine/compare.mjs |  | bristle-tip A/B: the probe mask registers (tipMix 1) but adds no separated bands at HEAD (1 vs 1); recorded for 64-35, not fixed | open |  | 2026-11-22T18:42:54.249Z |  |
 | 132 | 64 | unmet-truth | packages/efx-watercolor/probe/medium-engine/compare.mjs |  | bristle-line gate fails its own bars at HEAD on all three surfaces (halo peakRel 0.4628/0.4493 vs 0.4; runs 3/4 vs 2) — recorded in 64-29 for 64-32/64-33/64-34 | open |  | 2026-11-22T18:42:57.020Z |  |
+| 133 | quick/261123-vkb | deviation | packages/efx-watercolor/probe/wet-hold/run.mjs |  | Hold-off control measured 211 ticks, not the plan's 237 (held baseline); corrected constant, assertions kept exact, no threshold loosened | open |  | 2026-11-23T22:41:34.929Z |  |
 
 ````json
 [
@@ -1791,6 +1792,19 @@ last_updated: 2026-11-22T18:42:57.020Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-11-22T18:42:57.020Z",
+    "resolved_at": null,
+    "milestone": "v2.2.0"
+  },
+  {
+    "id": 133,
+    "kind": "deviation",
+    "phase": "quick/261123-vkb",
+    "file": "packages/efx-watercolor/probe/wet-hold/run.mjs",
+    "line": null,
+    "description": "Hold-off control measured 211 ticks, not the plan's 237 (held baseline); corrected constant, assertions kept exact, no threshold loosened",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-23T22:41:34.929Z",
     "resolved_at": null,
     "milestone": "v2.2.0"
   }

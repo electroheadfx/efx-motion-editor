@@ -4,10 +4,10 @@ milestone: v2.2.0
 current_phase: 64
 status: completed
 stopped_at: Phase 64 complete — all phases complete
-last_updated: "2026-11-23T20:45:15.616Z"
+last_updated: "2026-11-23T22:59:10.935Z"
 last_activity: 2026-11-23
 last_activity_desc: Phase 64 complete
-state_head: 36f16d74cd08fd7d1b2c01b721928d478bb3b7e8
+state_head: cecd100219a59ff9409b4f779786eb58275d02ac
 progress:
   total_phases: 2
   completed_phases: 2
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-22 after Phase 64)
 Phase: 64
 Plan: Not started
 Status: All phases complete
-Last activity: 2026-11-23 — Quick task 261123-pee: Hold paint wet until Dry — UAT-APPROVED WITH RESERVE. The live Studio sheet holds its water/mobile pigment indefinitely until an explicit Dry; only Shift+R and Apply one frame replay wet; every commit path is dry-first. Reserve: the wet look keeps diffusing until the sim sleeps (~20 s at Dry 50), so the dense 1 s wash visibly softens by 10 s and that state is what Dry/leave commits. Follow-up queued: cap the held sim-awake window at the retired visible settle timing (Dry 50 ≈ 2.75 s) with no fix and no decay, so the dense wet look freezes while staying blendable
+Last activity: 2026-11-23 — Quick task 261123-vkb: Freeze the held wet look at the visible settle cap — AUTOMATED-READY (7/7 must-haves verified; the 7 live UAT rows remain pending). While the Studio sheet is held, the sim's awake window after the last wet input is min(wetUntil, lastWet + round(30 + 270 × (1 − dry)) ticks at 60 Hz) and then the sim SLEEPS — no fix(), no decay, no mobile→fixed. The Water gate stays open, wetPeak survives the sleep, the dense wash freezes (Dry 50 ≈ 2.75 s) and the next stroke/water re-arms the window. ONE zero-import settleCap module is consumed by the engine (awakeUntil), the bake (re-export) and the layer; the layer's awake→asleep cuisson stamp is floored at the cap so a dry re-render keeps the dense cook. Probe: held window exactly 30 ticks at Dry 100 (cap) vs the pre-change 237; frozen raw + paint-layer digests identical over +30 s; hold-off control 211 ticks with the gate closed; bake wet/dry A/B unchanged. Review residuals: WR-01 (probe exact tick equality is float-phase sensitive) and WR-02 (the stamp floor reads live Dry Speed — a mid-window Dry change can reopen the washed fallback) — see the task REVIEW.md
 
 
 ## Performance Metrics
@@ -711,6 +711,7 @@ Items acknowledged and carried forward from previous milestone close:
 | 261123-jak | Studio paint: Shift paints relief — Shift at stroke start with the brush and a non-zero Emboss latches a per-stroke reliefOnly (inverted signed Emboss, no ink/water/cover/carrier, own ink-rect undo); the marker rides the bag, JSON codec, AQTL bit 5, Roto schema/duplicate and adapter replay; probe control-twin proves zero paint on both arms, +15/Emboss-0 byte-identical (closed as superseded: a pressure-driven modifier quick replaces the Shift semantics with Shift erode / Cmd deposit; persistence layer kept) | 2026-11-23 | 665771878 | [261123-jak-v2-3-0-studio-paint-shift-paints-relief-](./quick/261123-jak-v2-3-0-studio-paint-shift-paints-relief-/) |
 | 261123-kpy | Studio paint: pressure-driven modifier relief — Shift at stroke start erodes relief / Cmd deposits it (Shift wins, latched once, no Emboss gate), magnitude from pen pressure only via reliefModifier.ts (gains 15/15 calibrated; Emboss 0 works; p<0 sentinel = full 1.0); the polarity rides the bag, JSON codec, AQTL bits 5-6 (both-set refused), Roto schema/duplicate and adapter replay; probe emboss-relief-modifier proves erode halving + deposit raise, byte-identical no-paint controls on both polarities, a/b replay parity, pressure ordering (p03 0.7917, none 0.9167) and neutral/+15 identity vs pre-change HEAD; the polarity also survives the restore, duplicate and Play Script fallback rebuild seams (UAT automated-ready, artist UAT pending) | 2026-11-23 | 44ba44cc1 | [261123-kpy-validate-v2-3-0-studio-paint-modifier-re](./quick/261123-kpy-validate-v2-3-0-studio-paint-modifier-re/) |
 | 261123-pee | Hold paint wet until Dry — no auto-dry, wet one-frame Re-render/Apply | 2026-11-23 | 36f16d74c | [261123-pee-hold-paint-wet-until-dry-no-auto-dry-wet](./quick/261123-pee-hold-paint-wet-until-dry-no-auto-dry-wet/) |
+| 261123-vkb | Freeze the held wet look at the visible settle cap — while held, the sim sleeps at round(30+270x(1-dry)) ticks after the last wet input (Dry 50 = 165 ticks); no fix, no decay; Water gate stays open and wetPeak survives; ONE shared settleCap module consumed by engine, bake and layer; probe proves the frozen sheet, cap window and hold-off control | 2026-11-23 | cecd10021 | [261123-vkb-freeze-the-held-wet-look-at-the-visible-](./quick/261123-vkb-freeze-the-held-wet-look-at-the-visible-/) |
 
 ## Roadmap Evolution
 
@@ -729,5 +730,5 @@ Resume file: None
 
 ## Operator Next Steps
 
-- Quick: freeze the held wet look at the visible settle cap (261123-pee reserve) — cap the sim-awake window while held, no fix/decay, then UAT.
+- 261123-vkb live UAT (7 rows): frozen wash at ~1 s vs ~10 s + next stroke blends; acrylic/water over the freeze picks up; Dry (F) dries dense (not washed) + one undo restores wet; Shift+R / Apply one frame wet; PlayScript unchanged; leave a wet key commits dense dry; (optional) Dry → Apply within 1.2 s stays wet. Review residuals to decide after UAT: WR-01 (probe exact tick equality) and WR-02 (stamp floor reads live Dry Speed) in the task REVIEW.md.
 - Close milestone v2.2.0 with /gsd-complete-milestone (both phases complete: 63 Tip Pipeline, 64 Medium Engine).
