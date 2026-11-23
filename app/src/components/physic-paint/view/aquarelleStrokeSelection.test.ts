@@ -71,6 +71,7 @@ import {
   beginAquarellePaintSeedRerollEdit,
   beginAquarellePlaceEdit,
   beginAquarelleReorderEdit,
+  beginAquarelleScriptPasteEdit,
   beginAquarelleStrokeUndoEdit,
   beginAquarelleTransformEdit,
   commitAquarelleSelectionAppearance,
@@ -86,6 +87,7 @@ import {
   resolveAquarelleStrokeBandPx,
   restoreAquarelleEditSnapshot,
   restoreAquarelleSnapshotRaw,
+  rollbackAquarelleScriptPasteEdit,
   selectAquarelleStroke,
   type SelectableAquarelleStroke,
   setAquarelleScriptEditInFlight,
@@ -2554,5 +2556,137 @@ describe('quick 261111-t74 — a selection brush patch is one script edit', () =
     expect(restoreAquarelleEditSnapshot(editId!, 'undo')).not.toBeNull();
     expect(getRecordedAquarelleStroke(10320)).toBe(before);
     expect(paintSeedSaltOf(getRecordedAquarelleStroke(10320)!.params)).toBe(0);
+  });
+});
+
+// ============================================================
+//  quick 261124-0l5 — Apply pastes the copied script.
+//
+//  A paste is ONE undoable script mutation: the destination frame's
+//  existing strokes are soft-deleted (tombstoned, anchors kept) and
+//  the copied strokes are recorded under FRESH ids, both inside one
+//  before/after edit. The caller owns the bake; a failed bake rolls
+//  the script back unconditionally (a rollback, not an undo). Module
+//  state is global — the 6201xx id band and the 970+ frames are
+//  exclusive to this describe.
+// ============================================================
+
+describe('261124-0l5 paste-as-one-edit', () => {
+  function liveFrameStrokeIds(playFrame: number): number[] {
+    const ids: number[] = [];
+    for (const event of getAquarelleEventsForFrame(playFrame)) {
+      if (isAquarelleDryEvent(event)) continue;
+      const mutationId = (event.engine as { mutationId?: number }).mutationId;
+      if (mutationId !== undefined) ids.push(mutationId);
+    }
+    return ids;
+  }
+
+  it('records the paste as one edit: the replace is tombstoned and undo restores both sides', () => {
+    recordAquarelleStroke(620101, stroke({ points: [point(0.1, 0.5)], playFrame: 970 }));
+    const oldStroke = getRecordedAquarelleStroke(620101)!;
+
+    const editId = beginAquarelleScriptPasteEdit(() => {
+      deleteAquarelleStrokesFromScript([620101]);
+      recordAquarelleStroke(620102, stroke({ points: [point(0.9, 0.5)], playFrame: 970 }));
+      return 1;
+    });
+
+    expect(typeof editId).toBe('number');
+    expect(isAquarelleStrokeDeleted(620101)).toBe(true);
+    expect(liveFrameStrokeIds(970)).toEqual([620102]);
+    // The tombstone keeps the old stroke's registry entry (undo material).
+    expect(getRecordedAquarelleStroke(620101)).toBe(oldStroke);
+
+    expect(restoreAquarelleEditSnapshot(editId as number, 'undo')).not.toBeNull();
+    expect(isAquarelleStrokeDeleted(620101)).toBe(false);
+    expect(liveFrameStrokeIds(970)).toEqual([620101]);
+    expect(getRecordedAquarelleStroke(620101)).toBe(oldStroke);
+    expect(getRecordedAquarelleStroke(620102)).toBeUndefined();
+  });
+
+  it('a write that records nothing restores the pre-paste script (a Dry-only paste never wipes)', () => {
+    recordAquarelleStroke(620103, stroke({ points: [point(0.2, 0.5)], playFrame: 971 }));
+    const oldStroke = getRecordedAquarelleStroke(620103)!;
+
+    const editId = beginAquarelleScriptPasteEdit(() => {
+      deleteAquarelleStrokesFromScript([620103]);
+      return 0;
+    });
+
+    expect(editId).toBeNull();
+    expect(isAquarelleStrokeDeleted(620103)).toBe(false);
+    expect(getRecordedAquarelleStroke(620103)).toBe(oldStroke);
+    expect(liveFrameStrokeIds(971)).toEqual([620103]);
+  });
+
+  it('a write that changes nothing at all refuses without a revision bump', () => {
+    recordAquarelleStroke(620104, stroke({ points: [point(0.3, 0.5)], playFrame: 972 }));
+    const revisionBefore = aquarelleStrokesRevision.value;
+
+    expect(beginAquarelleScriptPasteEdit(() => 0)).toBeNull();
+
+    expect(aquarelleStrokesRevision.value).toBe(revisionBefore);
+    expect(isAquarelleStrokeDeleted(620104)).toBe(false);
+    expect(liveFrameStrokeIds(972)).toEqual([620104]);
+  });
+
+  it('a throwing write rethrows and restores the pre-paste timeline', () => {
+    recordAquarelleStroke(620105, stroke({ points: [point(0.4, 0.5)], playFrame: 973 }));
+
+    expect(() => beginAquarelleScriptPasteEdit(() => {
+      deleteAquarelleStrokesFromScript([620105]);
+      recordAquarelleStroke(620106, stroke({ points: [point(0.6, 0.5)], playFrame: 973 }));
+      throw new Error('bake exploded');
+    })).toThrow('bake exploded');
+
+    expect(isAquarelleStrokeDeleted(620105)).toBe(false);
+    expect(liveFrameStrokeIds(973)).toEqual([620105]);
+    expect(getRecordedAquarelleStroke(620106)).toBeUndefined();
+  });
+
+  it('refuses while a script edit is in flight and runs no write', () => {
+    recordAquarelleStroke(620107, stroke({ points: [point(0.5, 0.5)], playFrame: 974 }));
+    let writeCalls = 0;
+    setAquarelleScriptEditInFlight(true);
+    try {
+      expect(beginAquarelleScriptPasteEdit(() => {
+        writeCalls += 1;
+        return 1;
+      })).toBeNull();
+    } finally {
+      setAquarelleScriptEditInFlight(false);
+    }
+    expect(writeCalls).toBe(0);
+    expect(liveFrameStrokeIds(974)).toEqual([620107]);
+  });
+
+  it('rolls the before side back unconditionally; a plain undo fails closed after a later mutation', () => {
+    recordAquarelleStroke(620108, stroke({ points: [point(0.1, 0.25)], playFrame: 975 }));
+    const oldStroke = getRecordedAquarelleStroke(620108)!;
+
+    const editId = beginAquarelleScriptPasteEdit(() => {
+      deleteAquarelleStrokesFromScript([620108]);
+      recordAquarelleStroke(620109, stroke({ points: [point(0.8, 0.25)], playFrame: 975 }));
+      return 1;
+    }) as number;
+    expect(isAquarelleStrokeDeleted(620108)).toBe(true);
+
+    // A LATER script mutation bumps the revision — the authority guard fails
+    // closed, so a plain undo can never roll a failed paste back.
+    recordAquarelleStroke(620110, stroke({ points: [point(0.7, 0.75)], playFrame: 976 }));
+    expect(restoreAquarelleEditSnapshot(editId, 'undo')).toBeNull();
+
+    // The rollback bypasses the authority: the pre-paste script is back,
+    // wholesale (the engine is locked for the whole bake, so nothing can have
+    // been recorded after the paste).
+    expect(rollbackAquarelleScriptPasteEdit(editId)).toBe(true);
+    expect(isAquarelleStrokeDeleted(620108)).toBe(false);
+    expect(getRecordedAquarelleStroke(620108)).toBe(oldStroke);
+    expect(liveFrameStrokeIds(975)).toEqual([620108]);
+    expect(getRecordedAquarelleStroke(620109)).toBeUndefined();
+    expect(getRecordedAquarelleStroke(620110)).toBeUndefined();
+
+    expect(rollbackAquarelleScriptPasteEdit(999999)).toBe(false);
   });
 });

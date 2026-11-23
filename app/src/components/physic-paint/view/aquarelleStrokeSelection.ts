@@ -930,6 +930,73 @@ export function beginAquarelleDeleteEdit(
 }
 
 /**
+ * quick 261124-0l5: Apply a copied script as ONE undoable script mutation —
+ * replace + record, nothing else.
+ *
+ * The caller's `write` soft-deletes the destination frame's existing strokes
+ * (tombstones, anchors kept — the replacement stays undoable) and records the
+ * copied strokes under FRESH mutation ids through the shipped record seam;
+ * it returns the number of recorded strokes. The whole write lands inside one
+ * before/after snapshot pair, so Cmd+Z restores the pre-paste timeline as a
+ * single `aquarelle-script` ledger step.
+ *
+ * The CALLER owns the bake (the render is the replay of what this recorded)
+ * and records the ledger entry only after the bake succeeds — the same
+ * division of labor as `beginAquarelleDeleteEdit`. The in-flight flag is NOT
+ * set here: the Apply controller's `beginOperation` already holds the
+ * mutation lock for the whole paste + bake.
+ *
+ * Refusals write nothing and mint no edit: while a script edit is in flight,
+ * when the write throws (the pre-paste side is restored first unless it never
+ * moved), and when the write records 0 strokes — a Dry-only clipboard must
+ * never silently wipe the destination's script.
+ */
+export function beginAquarelleScriptPasteEdit(write: () => number): number | null {
+  // A paste must never leave a drag ghost behind.
+  clearAquarelleStrokeDrag();
+  if (aquarelleScriptEditInFlight) return null;
+  const before = captureAquarelleSnapshot();
+  let recorded: number;
+  try {
+    recorded = write();
+  } catch (error) {
+    // Restore only what actually moved: a throw before any write needs no
+    // revision bump of its own.
+    if (aquarelleStrokesRevision.value !== before.revision) restoreAquarelleSnapshotRaw(before);
+    throw error;
+  }
+  if (!(recorded > 0)) {
+    if (aquarelleStrokesRevision.value !== before.revision) restoreAquarelleSnapshotRaw(before);
+    return null;
+  }
+  const after = captureAquarelleSnapshot();
+  const editId = storeAquarelleEdit({ before, after });
+  clearSelectionIfGone();
+  // Mirror the delete tail: nothing left to select means the overlay (which
+  // blocks painting) must not outlive the script.
+  if (aquarelleLiveStrokeCount.value === 0) setAquarelleSelectMode(false);
+  return editId;
+}
+
+/**
+ * quick 261124-0l5: undo a paste that never landed. Installs the edit's
+ * `before` side with `restoreAquarelleSnapshotRaw` and returns false for an
+ * unknown id.
+ *
+ * This deliberately bypasses the revision authority of
+ * `restoreAquarelleEditSnapshot`: a failed paste bake is a ROLLBACK, not an
+ * undo. The pre-paste script must be back UNCONDITIONALLY — the engine and
+ * the canvas are locked for the whole bake, so no stroke can have been
+ * recorded after the paste; deleting the pasted strokes wholesale is correct.
+ */
+export function rollbackAquarelleScriptPasteEdit(editId: number): boolean {
+  const edit = aquarelleEdits.get(editId);
+  if (!edit) return false;
+  restoreAquarelleSnapshotRaw(edit.before);
+  return true;
+}
+
+/**
  * 261029-lsr: build the synthetic single-stroke UNDO edit — the one edit that
  * makes a recorded stroke's undo/redo script-authoritative (D-02, D-04).
  *
