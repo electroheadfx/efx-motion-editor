@@ -11,7 +11,8 @@
  *     watercolor (the engine reads refill only in the bristle carrier);
  *     PRESENT for gouache / chalk(pastel) / graphite — the DEFERRED item,
  *     whose records keep 60
- *   `body` and `wetSeconds` never have a row; Emboss keeps the 15 cap
+ *   `body` and `wetSeconds` never have a row; Emboss is the ONE signed
+ *     row (-15..15, quick 261123-hr5) — every other row keeps 0..100
  *   the module is pure data: no Preact, no signals, no DOM
  *
  * Assertion style: scalar predicates (joined key lists) so TAP diagnostics
@@ -208,12 +209,13 @@ describe('the row table itself', () => {
     expect(rowKeys.includes('size')).toBe(false);
   });
 
-  it('keeps the Emboss 15 cap and the 0 floor on every other row', () => {
+  it('keeps the Emboss signed band -15..15 and the 0..100 band on every other row', () => {
     const emboss = AQUARELLE_PARAM_ROWS.find((row) => row.key === 'emboss')!;
-    expect(emboss.max).toBe(15);
-    expect(emboss.min).toBeUndefined();
+    expect(emboss.min, 'the signed Emboss floor').toBe(-15);
+    expect(emboss.max, 'the signed Emboss ceiling').toBe(15);
     for (const row of AQUARELLE_PARAM_ROWS.filter((candidate) => candidate.key !== 'emboss')) {
-      expect(row.max, `${row.key} keeps the default band`).toBeUndefined();
+      expect(row.max, `${row.key} keeps the default ceiling`).toBeUndefined();
+      expect(row.min, `${row.key} keeps the default floor`).toBeUndefined();
     }
   });
 

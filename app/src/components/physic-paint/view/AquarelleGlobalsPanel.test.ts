@@ -790,10 +790,10 @@ describe('quick 261111-ucf globals release commits + Reset batch', () => {
   });
 });
 
-// Post-UAT (2026-11-21): emboss relief is very hard above 15 — its row is
-// capped at 0..15 on the track, the typed-entry commit clamp and the readout,
-// while every other global row keeps the 0..100 band.
-describe('post-UAT 2026-11-21 emboss row cap', () => {
+// Quick 261123-hr5 (signed Emboss): negative emboss smooths a dry impasto and
+// keeps the paint, so the row is -15..15 on the track, the typed-entry commit
+// clamp and the readout, while every other global row keeps the 0..100 band.
+describe('quick 261123-hr5 signed emboss row band', () => {
   function sliderProps(label: string): { value: number; min: number; max: number } {
     const row = [...walk(AquarelleGlobalsPanel())].find(
       (node) => node.props?.['label'] === label && typeof node.props?.['onChange'] === 'function',
@@ -806,17 +806,19 @@ describe('post-UAT 2026-11-21 emboss row cap', () => {
     return slider.props as { value: number; min: number; max: number };
   }
 
-  it('pins min 0 and max 15 on the Emboss row (both drag and typed commits)', () => {
-    setAquarelleParam('emboss', 7);
+  it('pins min -15 and max 15 on the Emboss row (both drag and typed commits)', () => {
+    setAquarelleParam('emboss', -7);
     const props = sliderProps('Emboss');
-    expect(props.min, 'the row floor stays 0').toBe(0);
+    expect(props.min, 'the signed row floor').toBe(-15);
     expect(props.max, 'the row ceiling is 15').toBe(15);
-    expect(props.value, 'an in-band value passes through').toBe(7);
+    expect(props.value, 'an in-band negative value passes through').toBe(-7);
   });
 
-  it('reads a legacy value above the cap as 15', () => {
+  it('reads a legacy value outside the band as the nearest cap', () => {
     setAquarelleParam('emboss', 40);
-    expect(sliderProps('Emboss').value, 'an out-of-band value reads as the cap').toBe(15);
+    expect(sliderProps('Emboss').value, 'an out-of-band value reads as the ceiling').toBe(15);
+    setAquarelleParam('emboss', -40);
+    expect(sliderProps('Emboss').value, 'a negative out-of-band value reads as the floor').toBe(-15);
   });
 
   it('leaves every other global row on the 0..100 band', () => {
