@@ -313,6 +313,28 @@ describe('the last-touch carry (CR-03)', () => {
 })
 
 // ---------------------------------------------------------------------------
+// 2c. The Dry step snapshots the pre-dry pair (261123-pee)
+// ---------------------------------------------------------------------------
+
+describe('the Dry step and the last-touch clear (261123-pee)', () => {
+  it('clears last-touch AFTER the pool-0 snapshot inside the dry step', () => {
+    // `fix()` opens the 'dry' step and the settle tail's `touch(..., save = true)`
+    // protects pool 0 — which INCLUDES the last-touch read half — into that step.
+    // The clear must land after that snapshot or one undo would restore the
+    // cleared (one-week-old) field instead of the pre-dry pair.
+    const body = sliceBetween(ENGINE_SOURCE, 'fix(auto = false): boolean {', 'cancelAutoFix(): boolean {')
+    const stepAt = body.indexOf("this.beginStep('dry', 'Dry');")
+    const settleAt = body.indexOf('this.beginSettle(this.painted, true);')
+    const clearAt = body.indexOf('this.clearLastTouch();')
+    const returnAt = body.indexOf('return true;')
+    expect(stepAt, 'the dry step is opened').toBeGreaterThan(-1)
+    expect(settleAt, 'the settle tail runs inside the step').toBeGreaterThan(stepAt)
+    expect(clearAt, 'the clear lands after the pool-0 snapshot').toBeGreaterThan(settleAt)
+    expect(returnAt, 'the clear precedes the return').toBeGreaterThan(clearAt)
+  })
+})
+
+// ---------------------------------------------------------------------------
 // 3. The exact-float helpers
 // ---------------------------------------------------------------------------
 

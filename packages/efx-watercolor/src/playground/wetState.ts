@@ -20,6 +20,13 @@ export interface WetState {
   nowMs: number;
   /** True while the Dry fix bake is running. */
   fixing: boolean;
+  /**
+   * 261123-pee HOLD-WET: the live Studio sheet never auto-dries — while the
+   * host holds it, standing water stays blendable past its dry window. It
+   * never overrides `fixing` or the threshold: the hold keeps water, it does
+   * not invent it.
+   */
+  held?: boolean;
 }
 
 /**
@@ -32,5 +39,7 @@ export interface WetState {
  * water to blend".
  */
 export function isSheetWet(state: WetState): boolean {
-  return !state.fixing && state.wetPeak > WET_THRESHOLD && state.nowMs < state.wetUntilMs;
+  if (state.fixing) return false;
+  if (state.wetPeak <= WET_THRESHOLD) return false;
+  return state.held === true || state.nowMs < state.wetUntilMs;
 }

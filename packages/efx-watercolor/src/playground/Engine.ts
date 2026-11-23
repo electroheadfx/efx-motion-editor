@@ -210,7 +210,17 @@ export type LayerId = 'inkA' | 'inkB' | 'fixedA' | 'fixedB' | 'wet' | 'relief' |
 export interface WholeDoc { w: number; h: number; rect: Rect | null; layers: Record<LayerId, Uint16Array | Float32Array> }
 
 /** LIVE-SEED CACHE (2026-11-22): an exact sheet capture the host can restore. */
-export interface SheetSnapshot { whole: WholeDoc; bristleContent: boolean }
+export interface SheetSnapshot {
+  whole: WholeDoc;
+  bristleContent: boolean;
+  /** 261123-pee: the wet truth rides the sheet so an adopted wet bake sheet
+   *  reads wet to the Water gate and stays dryable. Peak standing water (0 on
+   *  a dry sheet) and the water AGE (`wetAgo`) — seconds before the capture,
+   *  the same clock-free convention as the last-touch record; Infinity when the
+   *  sheet was never wet. */
+  wetPeak: number;
+  wetAgo: number;
+}
 
 /** Document-level state that undo tracks besides the paint. */
 export interface DocState {
@@ -624,6 +634,13 @@ export class WatercolorEngine {
   private fixTimer = 0;
   /** Studio settle-cap fix: the last step is a fix a new stroke may reopen (cancelAutoFix). */
   private autoFix = false;
+  /**
+   * HOLD-WET (261123-pee): the artist law — the live Studio sheet never
+   * auto-dries. While held, water decay and the automatic settle are
+   * suppressed; the sim still sleeps normally (`isAwake`/`wetUntil` untouched)
+   * and only an explicit Dry (or the host's dry-on-leave commit) lifts it.
+   */
+  private holdWet = false;
   private flowSpeed = 0;                       // upper bound on water speed (sim texels / s)
   private growCarry = 0;                       // fractional texels the active rect still has to grow
   private brushNow = { x: 0, y: 0, r: 0 };
@@ -634,6 +651,9 @@ export class WatercolorEngine {
    *  loop on a dead engine. */
   private destroyed = false;
   private seenEvictions = 0;           // history.evictions as of the last onHistoryChange
+  /** Monotonic count of REAL stack moves — `history.entries().index` cannot
+   *  detect an undo+redo pair that returns to the same depth (261123-pee). */
+  private historyMoves = 0;
 
   // input
   private stroke: Stroke | null = null;
@@ -1108,7 +1128,7 @@ export class WatercolorEngine {
    */
   captureSheet(): SheetSnapshot {
     const whole = this.captureWhole();
-    return { whole, bristleContent: this.bristleContent };
+    return { whole, bristleContent: this.bristleContent, wetPeak: this.wetPeak, wetAgo: Number.isFinite(this.lastWet) ? (this.clock() - this.lastWet) / 1000 : Infinity };
   }
 
   /**
@@ -1126,6 +1146,12 @@ export class WatercolorEngine {
     this.resetSheet();
     this.uploadWhole(whole);
     this.bristleContent = s.bristleContent;
+    // 261123-pee: restore the wet truth beside the layers — an adopted wet
+    // bake sheet must read wet to the gate AND be dryable (a Dry is a real
+    // step only when `painted` names the mobile pigment).
+    this.painted = whole.rect ? { ...whole.rect } : null;
+    this.wetPeak = s.wetPeak ?? 0;
+    this.lastWet = Number.isFinite(s.wetAgo) ? this.clock() - s.wetAgo * 1000 : -Infinity;
     this.dirty = null;
     this.dirtyAll = true;
     this.notifyHistory();
@@ -1237,8 +1263,12 @@ export class WatercolorEngine {
       wetUntilMs: this.wetUntil(),
       nowMs: this.clock(),
       fixing: this.fixTimer > 0,
+      held: this.holdWet,
     });
   }
+
+  /** True while the explicit Dry fix bake is running (the raw fix-timer read). */
+  get isFixing(): boolean { return this.fixTimer > 0; }
 
   /** True when the sheet holds paint (since the last clear) — never capture blank. */
   get hasPaint(): boolean {
@@ -2006,22 +2036,49 @@ export class WatercolorEngine {
   }
 
   /**
+   * HOLD-WET (261123-pee): the ONE hold authority — the live sheet never
+   * auto-dries while held. The hold suppresses AUTOMATIC drying only: an
+   * explicit Dry and the host's dry-on-leave commit clear it (see `fix`), and
+   * the live layer re-arms it on its next tick.
+   */
+  setHoldWet(held: boolean) {
+    this.holdWet = held;
+  }
+
+  /**
+   * HOLD-WET (261123-pee): the shared settle tail — the timer, the wake/touch
+   * and the schedule. `save = true` is reserved for the caller that just
+   * opened a history step (`fix`): `touch`'s save branch protects pool 0 into
+   * the CURRENT step, so a no-step settle must pass `false` or it would
+   * overwrite the previous step's before-image.
+   */
+  private beginSettle(rect: Rect, save: boolean) {
+    this.fixTimer = FIX_DURATION;
+    this.touch(rect, true, save);
+    this.schedule();
+  }
+
+  /**
    * Dry everything and bake the mobile pigment into the paper. `auto` marks the
    * Studio settle-cap fix: a later stroke may reopen it with cancelAutoFix() so
    * wet-on-wet painting still blends. An explicit Dry disarms that reopen even
    * when it cannot start (a fix is already running).
    */
   fix(auto = false): boolean {
+    // HOLD-WET (261123-pee): the automatic (settle-cap) fix never dries the held
+    // live sheet; an explicit Dry lifts the hold (the live layer re-arms it).
+    if (auto) { if (this.holdWet) return false; }
+    else this.holdWet = false;
     if (!auto) this.autoFix = false;
     if (!this.painted || this.fixTimer > 0) return false;
     this.beginStep('dry', 'Dry');
     // the fixed layer changes here AND at lift() (261028-k03 D1), so both snapshot it
     this.protectHistory(1, this.painted, this.fixed.views);
-    this.fixTimer = FIX_DURATION;
     this.autoFix = auto;
     // mobile pigment only exists where strokes have been, so only that needs settling
-    this.touch(this.painted);
-    this.schedule();
+    this.beginSettle(this.painted, true);
+    // the pre-dry last-touch pair must land inside the 'dry' step's pool-0 snapshot
+    this.clearLastTouch();
     return true;
   }
 
@@ -2036,6 +2093,50 @@ export class WatercolorEngine {
     if (!this.history.canUndo) return false;
     this.travel('undo');
     return true;
+  }
+
+  /**
+   * HOLD-WET (261123-pee): the capture-path settle behind every commit capture
+   * (frame leave, flush, Dry-timer settles). The same tick law as the explicit
+   * Dry — the caller drives `tick` while `isFixing` — but NO history step, NO
+   * last-touch clear and no hold write: the caller is committing and dropping
+   * this sheet, and an unledgered engine step would make a later engine undo
+   * resurrect the wrong pixels. The hold lift lives in the host's wrapper.
+   */
+  settleForCapture(): boolean {
+    if (!this.painted || this.fixTimer > 0) return false;
+    this.beginSettle(this.painted, false);
+    return true;
+  }
+
+  /**
+   * HOLD-WET (261123-pee): the non-mutating settled export behind every durable
+   * read of the live sheet (the Save Script thumbnail and the raster-lift eager
+   * sheet). Captures the sheet, settles it through the no-step capture tail,
+   * exports, and ALWAYS restores the capture — the artist's live sheet is
+   * exactly as wet afterwards and no engine history step is opened.
+   */
+  exportSettledCanvas(): HTMLCanvasElement | null {
+    // An in-flight REAL stroke — never the simulated region: settling would
+    // abort the stroke, so this is the one raw export left.
+    if (this.stroke !== null) return this.exportCanvas('transparent');
+    const maxTicks = Math.ceil(FIX_DURATION * 60) + 1;
+    // An explicit Dry already in flight: drive its own tick law to completion —
+    // a save during a settle must never commit a mid-settle image.
+    if (this.fixTimer > 0) {
+      for (let i = 0; i < maxTicks && this.fixTimer > 0; i++) this.tick(1 / 60);
+      return this.exportCanvas('transparent');
+    }
+    if (this.painted === null || !this.hasStandingWater) return this.exportCanvas('transparent');
+    const snap = this.captureSheet();
+    try {
+      // the no-step capture tail: no history step, no last-touch clear, no hold write
+      this.beginSettle(this.painted, false);
+      for (let i = 0; i < maxTicks && this.fixTimer > 0; i++) this.tick(1 / 60);
+      return this.exportCanvas('transparent');
+    } finally {
+      this.restoreSheet(snap);
+    }
   }
 
   /** Wipe the paint as one undo step. The sheet (and its grain) stays. */
@@ -2112,6 +2213,14 @@ export class WatercolorEngine {
   get canUndo() { return this.history.canUndo; }
   get canRedo() { return this.history.canRedo; }
 
+  /**
+   * HOLD-WET (261123-pee): bumps on every REAL stack move (undo, redo, jump,
+   * abort, the settle-cap reopen). `history.entries().index` returns to the
+   * same depth after an undo+redo pair, so it cannot tell a pending capture
+   * that the sheet under it changed; this counter can.
+   */
+  get historyRevision(): number { return this.historyMoves; }
+
   /** Step through history in either direction. */
   private travel(dir: 'undo' | 'redo', notify = true) {
     this.autoFix = false;   // the last step is no longer the settle-cap fix
@@ -2136,6 +2245,10 @@ export class WatercolorEngine {
     ];
     const res = dir === 'undo' ? this.history.undo(layers, metaNow) : this.history.redo(layers, metaNow);
     if (!res) return;
+    // HOLD-WET (261123-pee): only a REAL move invalidates a pending capture —
+    // the live Dry settle-capture timer compares this counter, so an undone
+    // (or redone) Dry can never be settled step-free behind the artist's back.
+    this.historyMoves++;
     // Both halves of the last-touch pair were just restored from history, so a
     // pending carry names texels the restored state no longer holds (IN-03).
     invalidateCarry(this.touchCarry);
@@ -3841,7 +3954,9 @@ export class WatercolorEngine {
 
   private dryTau() { return this.fixTimer > 0 ? 0.25 : 2 + (1 - this.params.dry) * 16; }
 
-  private wetDecay() { return Math.exp(-(this.clock() - this.lastWet) / 1000 / this.dryTau()); }
+  /** HOLD-WET (261123-pee): a held sheet keeps its water — decay is bypassed
+   *  READER-SIDE (a fix still flash-dries, hence the `fixTimer <= 0`). */
+  private wetDecay() { return this.holdWet && this.fixTimer <= 0 ? 1 : Math.exp(-(this.clock() - this.lastWet) / 1000 / this.dryTau()); }
 
   /** Time (ms) until standing water everywhere has dried below the threshold. */
   private wetUntil() {
@@ -3941,7 +4056,7 @@ export class WatercolorEngine {
     gl.uniform2fv(P.advectWet.u.uSimTexel, simTexel);
     gl.uniform2fv(P.advectWet.u.uTexel, texel);
     gl.uniform1f(P.advectWet.u.uDt, dt);
-    gl.uniform1f(P.advectWet.u.uDecay, Math.exp(-dt / this.dryTau()));
+    gl.uniform1f(P.advectWet.u.uDecay, this.holdWet && !fixing ? 1 : Math.exp(-dt / this.dryTau()));
     gl.uniform1f(P.advectWet.u.uSpread, 0.12 * (1 - viscosity * 0.9));
     g.draw(this.wet.write, rect); this.wet.swap();
 
@@ -4061,7 +4176,10 @@ export class WatercolorEngine {
     }
     for (const d of [this.velocity, this.pressure]) { this.g.clearTarget(d.read); this.g.clearTarget(d.write); }
     this.active = null;
-    this.wetPeak = 0;
+    // HOLD-WET (261123-pee): a held sheet keeps its peak so the Water gate stays
+    // open after the sim sleeps; the water itself was never decayed (the sim
+    // still idles normally — `isAwake`/`wetUntil` are untouched).
+    if (!this.holdWet) this.wetPeak = 0;
     this.flowSpeed = 0;
   }
 

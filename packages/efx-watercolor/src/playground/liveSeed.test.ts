@@ -152,7 +152,9 @@ describe('the sheet cache seam (2026-11-22)', () => {
     )
     expect(capture.length, 'captureSheet is declared before restoreSheet').toBeGreaterThan(0)
     expectContains(capture, 'const whole = this.captureWhole();')
-    expectContains(capture, 'return { whole, bristleContent: this.bristleContent };')
+    // 261123-pee: the wet truth rides the sheet beside the layers, so an
+    // adopted wet bake sheet reads wet to the Water gate and stays dryable.
+    expectContains(capture, 'return { whole, bristleContent: this.bristleContent, wetPeak: this.wetPeak, wetAgo: Number.isFinite(this.lastWet) ? (this.clock() - this.lastWet) / 1000 : Infinity };')
     const restore = ENGINE_SOURCE.slice(
       ENGINE_SOURCE.indexOf('restoreSheet(s: SheetSnapshot): boolean {'),
       ENGINE_SOURCE.indexOf('/** Replace the painting with a saved one. History starts afresh. */'),
@@ -192,7 +194,7 @@ describe('the sheet cache seam (2026-11-22)', () => {
       ENGINE_SOURCE.indexOf('restoreSheet(s: SheetSnapshot): boolean {'),
     )
     expectContains(capture, 'const whole = this.captureWhole();')
-    expectContains(capture, 'return { whole, bristleContent: this.bristleContent };')
+    expectContains(capture, 'return { whole, bristleContent: this.bristleContent, wetPeak: this.wetPeak, wetAgo: Number.isFinite(this.lastWet) ? (this.clock() - this.lastWet) / 1000 : Infinity };')
     expect(
       capture.includes('Math.max(now - lastTouch'),
       'captureSheet is pass-through — the AGES law lives at one boundary',
