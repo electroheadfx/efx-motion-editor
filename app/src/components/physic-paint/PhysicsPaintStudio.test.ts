@@ -4948,7 +4948,10 @@ describe('261026 watercolor-loop-render-split final regression pins', () => {
     // Apply (Shift+A) and the Shift+R re-render. No comment repeats it.
     expect(countOccurrences(studio, "'wet'")).toBe(2);
     const applyScript = between(studio, 'const handleApplyScript = useCallback', 'const handleDiscardScript');
-    expect(applyScript).toContain('rotoScript.applyScript(\'wet\')');
+    // quick 261124-0l5: Apply is a PASTE — the wet settle rides the opt-in
+    // whose paste records the copied script onto the destination key first.
+    expect(applyScript).toContain('rotoScript.applyScript(\'wet\', { paste: true })');
+    expect(applyScript).not.toContain('rotoScript.applyScript(\'wet\');');
     const handler = between(studio, 'const handleRebakeScript = useCallback', 'const rotoMoveHistory');
     expect(handler).toContain('rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame), \'wet\')');
     // The Dry ledger entry is minted ONLY from the engine's own outcome —
@@ -5445,16 +5448,26 @@ describe('261027-klx Wave 3 — the app-owned ledger owns stroke acceptance', ()
   });
 
   it('allocates duplicate-script copies through the same ledger, never an engine', () => {
-    // 61-24 (G-15): the body moved out of the inline duplicate port into the
-    // one shared `recordAquarelleScriptCopyForFrames` seam — the pin follows
-    // the same body, with the same markers and the same negative assertion.
+    // 61-24 (G-15) + quick 261124-0l5: the body moved out of the inline
+    // duplicate port into the one shared `recordAquarelleEventsOnFrame` seam —
+    // Duplicate, +Key and the Apply-paste all record through it, with the same
+    // allocation and the same negative assertion.
+    const recordEvents = slice(
+      studio,
+      'const recordAquarelleEventsOnFrame = (',
+      'const recordAquarelleScriptCopyForFrames = async',
+    );
+    expect(recordEvents).toContain('copyAquarelleScriptToFrame({');
+    expect(recordEvents).toContain('allocateMutationId: (stroke) => paintMutationLedger.allocateStrokeMutation({');
+    expect(recordEvents).not.toContain('enqueueRecordedStroke');
+    // The source→destination wrapper delegates — never a second body.
     const recordCopy = slice(
       studio,
       'const recordAquarelleScriptCopyForFrames = async (sourceFrame: number, destinationFrame: number): Promise<boolean> => {',
-      'const rotoNavigation = useRotoNavigationCoordinator',
+      'recordAquarelleScriptPasteRef.current = (input) => {',
     );
-    expect(recordCopy).toContain('allocateMutationId: (stroke) => paintMutationLedger.allocateStrokeMutation({');
-    expect(recordCopy).not.toContain('enqueueRecordedStroke');
+    expect(recordCopy).toContain('recordAquarelleEventsOnFrame(getAquarelleEventsForFrame(sourceFrame), destinationFrame)');
+    expect(recordCopy).not.toContain('copyAquarelleScriptToFrame(');
   });
 
   it('pins KNOWN-EMPTY only on the replace branch of the rail script recorder', () => {
@@ -7948,18 +7961,25 @@ describe('61-24 G-15 — +Key and Duplicate share one script-copy body', () => {
     return source.slice(start, end);
   }
 
-  it('declares one recordAquarelleScriptCopyForFrames body carrying the shipped ledger allocation', () => {
+  it('declares one recordAquarelleEventsOnFrame body carrying the shipped ledger allocation', () => {
     const shared = regionOf(
       studio,
-      'const recordAquarelleScriptCopyForFrames = async (sourceFrame: number, destinationFrame: number): Promise<boolean> => {',
-      'const rotoNavigation = useRotoNavigationCoordinator',
+      'const recordAquarelleEventsOnFrame = (',
+      'const recordAquarelleScriptCopyForFrames = async',
     );
     // The body is the duplicate's shipped one, verbatim.
     expect(shared).toContain('copyAquarelleScriptToFrame({');
     expect(shared).toContain('allocateMutationId: (stroke) => paintMutationLedger.allocateStrokeMutation({');
     expect(shared).toContain('resolveStudioScriptKeyIdForFrame(');
-    expect(shared).toContain('return recorded > 0;');
     expect(shared).not.toContain('enqueueRecordedStroke');
+    // The source→destination wrapper is a delegation, never a second body.
+    const wrapper = regionOf(
+      studio,
+      'const recordAquarelleScriptCopyForFrames = async (sourceFrame: number, destinationFrame: number): Promise<boolean> => {',
+      'recordAquarelleScriptPasteRef.current = (input) => {',
+    );
+    expect(wrapper).toContain('return recorded > 0;');
+    expect(wrapper).toContain('recordAquarelleEventsOnFrame(getAquarelleEventsForFrame(sourceFrame), destinationFrame)');
     // ONE copy implementation in the whole Studio.
     expect(studio.split('copyAquarelleScriptToFrame(').length - 1).toBe(1);
   });
@@ -8730,5 +8750,100 @@ describe('64-19 committed-frame relight wiring (CR-01)', () => {
       studio.split('committedFrameRelightRef.current?.request()').length - 1,
       'still two request sites',
     ).toBe(2);
+  });
+});
+
+// quick 261124-0l5: Apply is a PASTE. The copied script is recorded onto the
+// destination key under fresh ids BEFORE the bake, so the first paint is the
+// replay of the recorded timeline — Shift+R, re-edits and Alt+click all see
+// the pasted script. One Apply mints ONE `aquarelle-script` undo entry; a
+// failed bake restores the pre-paste script and writes none.
+describe('261124-0l5 Apply pastes the copied script', () => {
+  function regionOf(source: string, startMarker: string, endMarker: string): string {
+    const start = source.indexOf(startMarker);
+    expect(start, `missing start marker: ${startMarker}`).toBeGreaterThan(-1);
+    const end = source.indexOf(endMarker, start + startMarker.length);
+    expect(end, `missing end marker: ${endMarker}`).toBeGreaterThan(start);
+    return source.slice(start, end);
+  }
+
+  it('Apply opts into the paste and HOLD-WET still rides it', () => {
+    const applyScript = regionOf(studio, 'const handleApplyScript = useCallback', 'const handleDiscardScript');
+    expect(applyScript).toContain('rotoScript.applyScript(\'wet\', { paste: true })');
+    // The plain call is gone: a raster-only Apply is exactly the bug.
+    expect(applyScript).not.toContain('rotoScript.applyScript(\'wet\');');
+    // No new wet literals: the file-wide count is unchanged.
+    expect(countOccurrences(studio, "'wet'")).toBe(2);
+  });
+
+  it('declares the late-bound paste ref beside the prepare-target seam', () => {
+    expect(studio).toContain('const recordAquarelleScriptPasteRef = useRef<RotoScriptPasteAquarelleScriptPort | null>(null);');
+    // The port type rides the existing physical-target/source type import.
+    expect(studio).toContain('type RotoScriptPasteAquarelleScriptPort');
+  });
+
+  it('forwards the paste implementation through the live ports ref once', () => {
+    const ports = regionOf(
+      studio,
+      'const rotoScript = useRotoScriptClipboardController({',
+      'const rotoScriptRef = useRef(rotoScript);',
+    );
+    expect(ports).toContain('pasteAquarelleScript: (input) => recordAquarelleScriptPasteRef.current?.(input) ?? null,');
+    expect(countOccurrences(studio, 'pasteAquarelleScript:')).toBe(1);
+    // The shipped bake port is untouched: the paste bake still rides it.
+    expect(ports).toContain('onStrokeFed: onProgress,');
+    expect(ports).toContain('settle,');
+  });
+
+  it('pins the record seam: one key-anchored copy call', () => {
+    const seam = regionOf(
+      studio,
+      'const recordAquarelleEventsOnFrame = (',
+      'const recordAquarelleScriptCopyForFrames = async',
+    );
+    expect(seam).toContain('copyAquarelleScriptToFrame({');
+    expect(seam).toContain('allocateMutationId: (stroke) => paintMutationLedger.allocateStrokeMutation({');
+    // The copy belongs to the DESTINATION key the paste targeted, falling back
+    // to the destination frame's real key (the shipped duplicate law).
+    expect(seam).toContain('destinationKeyId ?? resolveStudioScriptKeyIdForFrame(');
+    expect(studio.split('copyAquarelleScriptToFrame(').length - 1).toBe(1);
+  });
+
+  it('records first (replace → fresh ids → key anchor), bakes second', () => {
+    const paste = regionOf(
+      studio,
+      'recordAquarelleScriptPasteRef.current = (input) => {',
+      'const rotoNavigation = useRotoNavigationCoordinator',
+    );
+    // The destination's existing script is collected from the LIVE timeline,
+    // Dry markers excluded (they are global sheet actions, never swept).
+    expect(paste).toContain('for (const event of getAquarelleEventsForFrame(destinationFrame))');
+    expect(paste).toContain('isAquarelleDryEvent(event)');
+    expect(paste).toContain('typeof mutationId === \'number\' && Number.isFinite(mutationId)');
+    // The sweep runs INSIDE the one edit, before the fresh record — so one
+    // undo restores the pre-paste timeline and its pixels together.
+    expect(paste).toContain('const editId = beginAquarelleScriptPasteEdit(() => {');
+    expect(paste).toContain('if (existingIds.length > 0) deleteAquarelleStrokesFromScript(existingIds);');
+    expect(paste).toContain('return recordAquarelleEventsOnFrame(input.events, destinationFrame, input.target.keyId);');
+    const beginAt = paste.indexOf('const editId = beginAquarelleScriptPasteEdit(() => {');
+    const sweepAt = paste.indexOf('deleteAquarelleStrokesFromScript(existingIds);');
+    const recordAt = paste.indexOf('return recordAquarelleEventsOnFrame(input.events, destinationFrame, input.target.keyId);');
+    expect(beginAt).toBeGreaterThan(-1);
+    expect(sweepAt).toBeGreaterThan(beginAt);
+    expect(recordAt).toBeGreaterThan(sweepAt);
+    // A refused edit refuses the paste (the controller then fails the Apply).
+    expect(paste).toContain('if (editId === null) return null;');
+    // The bake is fed the RECORDED destination timeline, never the clipboard.
+    expect(paste).toContain('events: getAquarelleEventsForFrame(destinationFrame),');
+    // ONE ledger entry, minted only after the bake succeeded; the owner
+    // republish follows in the same commit.
+    expect(paste).toContain('aquarelleScriptEditRecorderRef.current?.(editId);');
+    expect(paste).toContain('applyFrameModuleState(destinationFrame);');
+    // A failed/thrown bake restores the pre-paste script unconditionally.
+    expect(paste).toContain('rollbackAquarelleScriptPasteEdit(editId);');
+    // The paste is the ONLY new user of the one-edit primitive outside its
+    // module tests: Begin and rollback pair exactly once in the Studio.
+    expect(countOccurrences(studio, 'beginAquarelleScriptPasteEdit(')).toBe(1);
+    expect(countOccurrences(studio, 'rollbackAquarelleScriptPasteEdit(')).toBe(1);
   });
 });

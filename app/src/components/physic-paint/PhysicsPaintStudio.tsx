@@ -195,7 +195,7 @@ import {
 import { usePhysicsPaintWorkflowIntegration } from './hooks/usePhysicsPaintWorkflowIntegration';
 import { useRotoPlaybackSettingsController } from './hooks/useRotoPlaybackSettingsController';
 import { useRotoScriptClipboardController } from './hooks/useRotoScriptClipboardController';
-import { type RotoScriptPhysicalTarget, type RotoScriptSourceSnapshot } from './roto/physicsPaintRotoScriptClipboard';
+import { type RotoScriptPasteAquarelleScriptPort, type RotoScriptPhysicalTarget, type RotoScriptSourceSnapshot } from './roto/physicsPaintRotoScriptClipboard';
 import { copyAquarelleScriptToFrame, runRotoDuplicateWithScript, waitForRotoDuplicateSourceFrame } from './roto/physicsPaintRotoDuplicateScript';
 import { buildRotoScriptApplyRefusalMessage } from './roto/physicsPaintRotoScriptApplyRefusal';
 import { buildReplayProposal, snapshotRevision, useRotoPhysicalEditHistory } from './hooks/useRotoPhysicalEditHistory';
@@ -300,6 +300,7 @@ import {
   beginAquarellePathEdit,
   beginAquarellePlaceEdit,
   beginAquarelleReorderEdit,
+  beginAquarelleScriptPasteEdit,
   beginAquarelleStrokeUndoEdit,
   beginAquarelleTransformEdit,
   aquarelleScriptEditInFlightRevision,
@@ -313,6 +314,7 @@ import {
   reanchorAquarelleEditRevision,
   restoreAquarelleEditSnapshot,
   restoreAquarelleSnapshotRaw,
+  rollbackAquarelleScriptPasteEdit,
   setAquarelleDeleteInFlight,
   setAquarelleScriptEditInFlight,
   setAquarelleSelectionEditPort,
@@ -1675,6 +1677,10 @@ export function PhysicsPaintStudio() {
   const resetRotoNavigationForLaunchRef = useRef<(settings: PhysicPaintRotoPlaybackSettings) => void>(() => {});
   const acceptRotoScriptBrushRef = useRef<() => void>(() => {});
   const prepareRotoScriptTargetRef = useRef<(source: RotoScriptSourceSnapshot) => Promise<RotoScriptPhysicalTarget | null>>(async () => null);
+  // quick 261124-0l5: Apply = PASTE. The ports object below is built BEFORE
+  // the script-record seam, so the paste implementation is late-bound here
+  // (the prepareRotoScriptTargetRef precedent) and read at call time.
+  const recordAquarelleScriptPasteRef = useRef<RotoScriptPasteAquarelleScriptPort | null>(null);
   // Quick 261023-cxc: Duplicate's script path navigates through the SAME
   // coordinator every other navigation uses. The keyUtilities literal is an
   // ARGUMENT to that coordinator call, so it cannot reference the returned
@@ -2414,6 +2420,11 @@ export function PhysicsPaintStudio() {
         },
       });
     },
+    // quick 261124-0l5: Apply = PASTE. The one paste implementation records
+    // the copied script on the destination key before the bake; a refused
+    // edit returns null and the controller fails the Apply outright (a
+    // raster-only render would leave the key owning no Living Script).
+    pasteAquarelleScript: (input) => recordAquarelleScriptPasteRef.current?.(input) ?? null,
     onFirstAcceptedBrush: () => acceptRotoScriptBrushRef.current(),
     setNavigationLocked: setRotoScriptNavigationLocked,
   });
@@ -2653,10 +2664,12 @@ export function PhysicsPaintStudio() {
   // section). Bodies moved verbatim from the rightPanel scripts props.
   const handleApplyScript = useCallback(() => {
     void (async () => {
-      // 261123-pee (HOLD-WET): Apply commits the WET one-frame look — the bake
-      // skips its end settle and filters recorded Drys; an explicit Dry later
-      // settles the key like it settles the live sheet.
-      const success = await rotoScript.applyScript('wet');
+      // 261123-pee (HOLD-WET) + quick 261124-0l5 (PASTE): Apply records the
+      // copied Living Script onto the destination key under fresh ids, then
+      // commits the WET one-frame look as the replay of those pasted strokes —
+      // the bake skips its end settle and filters recorded Drys; an explicit
+      // Dry later settles the key like it settles the live sheet.
+      const success = await rotoScript.applyScript('wet', { paste: true });
       if (success) {
         setLastError(null);
         clearOwnedScriptApplyRefusal();
@@ -4034,39 +4047,82 @@ export function PhysicsPaintStudio() {
     physicPaintVersion.value++;
   }, []);
 
-  // 61-24 (G-15): the ONE script-copy seam. Duplicate records the source key's
-  // recorded timeline onto the promoted blank key; +Key records the previous
-  // real key's timeline onto the key it just created. Both are RECORD-ONLY —
-  // the bytes already equal base∘script (`ensureAquarelleDurableBase` inverts
-  // them on the next durable edit), so the timeline is recorded, never applied,
-  // and a second implementation must never exist.
-  const recordAquarelleScriptCopyForFrames = async (sourceFrame: number, destinationFrame: number): Promise<boolean> => {
+  // 61-24 (G-15) + quick 261124-0l5: ONE record seam. `recordAquarelleEventsOnFrame(`
+  // holds the Studio's only copyAquarelleScriptToFrame call; Duplicate, +Key
+  // and the Apply-paste all delegate to it. Every record is RECORD-ONLY:
+  // Duplicate/+Key copy bytes that already equal base∘script
+  // (`ensureAquarelleDurableBase` inverts them on the next durable edit), and
+  // the paste bakes the timeline it just recorded — never the clipboard.
+  const recordAquarelleEventsOnFrame = (
+    events: readonly AquarellePayloadEvent[],
+    destinationFrame: number,
+    destinationKeyId?: string,
+  ): number => {
     const launch = launchContextRef.current;
-    if (!launch) return false;
+    if (!launch) return 0;
     // Fresh ids through the SAME allocation the live stroke-end path
-    // uses (allocateStrokeMutation + recordAquarelleStroke): the
-    // duplicate is what Move / Delete / stack-step edit, never the
-    // source. The ledger emits each completion synchronously.
-    const recorded = copyAquarelleScriptToFrame({
-      events: getAquarelleEventsForFrame(sourceFrame),
+    // uses (allocateStrokeMutation + recordAquarelleStroke): the copy is
+    // what Move / Delete / stack-step edit, never the source. The ledger
+    // emits each completion synchronously.
+    return copyAquarelleScriptToFrame({
+      events,
       destinationFrame,
       allocateMutationId: (stroke) => paintMutationLedger.allocateStrokeMutation({
         primary: aquarelleStrokeToPaintStroke(stroke, { width: canvasWidth, height: canvasHeight }),
       }),
       // 261027: the copy belongs to the DESTINATION key, never to
-      // the frame number it happens to occupy.
+      // the frame number it happens to occupy. A paste pins the key
+      // it targeted; Duplicate/+Key resolve the frame's real key.
       record: (mutationId, stroke) => {
         recordAquarelleStroke(
           mutationId,
           stroke,
-          resolveStudioScriptKeyIdForFrame(
+          destinationKeyId ?? resolveStudioScriptKeyIdForFrame(
             studioScriptSnapshotIdentityRef.current,
             destinationFrame,
           ),
         );
       },
     });
+  };
+
+  // The Duplicate / +Key wrapper: guard, then delegate — behavior unchanged.
+  const recordAquarelleScriptCopyForFrames = async (sourceFrame: number, destinationFrame: number): Promise<boolean> => {
+    const recorded = recordAquarelleEventsOnFrame(getAquarelleEventsForFrame(sourceFrame), destinationFrame);
     return recorded > 0;
+  };
+
+  // quick 261124-0l5: the paste implementation. Record FIRST — soft-delete the
+  // destination's existing strokes, then record the clipboard under fresh ids
+  // anchored to the destination key — and bake SECOND: the bake reads the
+  // recorded timeline, so the first paint equals every later replay. ONE
+  // `aquarelle-script` ledger edit is minted only when the bake succeeds; a
+  // failed bake restores the pre-paste script and writes no entry.
+  recordAquarelleScriptPasteRef.current = (input) => {
+    const destinationFrame = input.target.appFrame;
+    // The destination's live strokes: Dry markers are global sheet actions
+    // (D-15) and never part of a frame's script replacement.
+    const existingIds: number[] = [];
+    for (const event of getAquarelleEventsForFrame(destinationFrame)) {
+      if (isAquarelleDryEvent(event)) continue;
+      const mutationId = (event.engine as AquarelleStrokePayload).mutationId;
+      if (typeof mutationId === 'number' && Number.isFinite(mutationId)) existingIds.push(mutationId);
+    }
+    const editId = beginAquarelleScriptPasteEdit(() => {
+      if (existingIds.length > 0) deleteAquarelleStrokesFromScript(existingIds);
+      return recordAquarelleEventsOnFrame(input.events, destinationFrame, input.target.keyId);
+    });
+    if (editId === null) return null;
+    return {
+      events: getAquarelleEventsForFrame(destinationFrame),
+      commit: () => {
+        aquarelleScriptEditRecorderRef.current?.(editId);
+        applyFrameModuleState(destinationFrame);
+      },
+      rollback: () => {
+        rollbackAquarelleScriptPasteEdit(editId);
+      },
+    };
   };
 
   const rotoNavigation = useRotoNavigationCoordinator<RenderedFramePayload>({
