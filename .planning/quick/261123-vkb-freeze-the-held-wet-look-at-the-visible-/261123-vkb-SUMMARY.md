@@ -244,7 +244,7 @@ None — no external service configuration required.
 
 ## Next Phase Readiness
 
-**AUTOMATED-READY only.** The seven live UAT rows stay pending with the artist:
+**UAT (2026-11-24): APPROVED.** The seven live rows passed in the Studio:
 
 1. Paint a dense wash with Dry 50, hold: the look is visibly frozen at ~1 s and still the same at ~10 s; the next stroke blends into it.
 2. Acrylic (or water) over the frozen sheet picks up the canvas colour.
@@ -253,6 +253,8 @@ None — no external service configuration required.
 5. PlayScript is unchanged.
 6. Leaving a wet key commits the dense dry look.
 7. (Optional) Dry → Apply within 1.2 s stays wet.
+
+Open residuals (not blocking the approved behavior): WR-01 (the probe's exact tick equality rides float-accumulation phase; deterministic for this scene) and WR-02 (the layer's stamp floor reads live Dry Speed while the bake's settle cap uses the recorded stroke dry — a mid-window Dry change can reopen the washed fallback) — see REVIEW.md.
 
 No blockers. The engine, bake, adapter hold seam, Dry ledger, shaders and medium records are untouched; only the awake-window law, the ONE formula home and the live settle stamp changed.
 
