@@ -19,6 +19,9 @@ export function useRotoScriptClipboardController(ports: RotoScriptClipboardContr
       flushSourcePublication: (appFrame) => portsRef.current.flushSourcePublication?.(appFrame) ?? Promise.resolve(),
       captureAquarelleCanvas: () => portsRef.current.captureAquarelleCanvas?.() ?? null,
       applyAquarelleEvents: (input) => portsRef.current.applyAquarelleEvents?.(input) ?? Promise.resolve(false),
+      // quick 261124-0l5: the paste port must be forwarded through the live
+      // ref or the Studio's implementation is unreachable (Apply = raster-only).
+      pasteAquarelleScript: (input) => portsRef.current.pasteAquarelleScript?.(input) ?? null,
       onFirstAcceptedBrush: () => portsRef.current.onFirstAcceptedBrush?.(),
       setNavigationLocked: (locked) => portsRef.current.setNavigationLocked?.(locked),
     });

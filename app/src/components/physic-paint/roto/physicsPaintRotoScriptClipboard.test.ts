@@ -5,6 +5,7 @@ import type { CompletedPaintMutation, PaintStroke } from '../types/paintCore';
 import { RotoScriptClipboardReplacementOutcome, createRotoScriptClipboardController, normalizeLogicalBrushes, type RecordedStrokeGroup, type RotoPaintScript, type RotoScriptActionAvailability, type RotoScriptClipboardControllerPorts, type RotoScriptPersistenceCapture, type RotoScriptPhysicalTarget, type RotoScriptSourceSnapshot } from './physicsPaintRotoScriptClipboard';
 import { createDryEvent, isAquarelleDryEvent, toStudioStroke as aquarelleToStudioStroke, type AquarellePayloadEvent, type AquarelleStroke } from '@efxlab/efx-watercolor/payload';
 import { deleteAquarelleStrokeFromScript, emitAquarelleDry, purgeAquarelleFrameScript, purgeAllAquarelleKeyScripts, recordAquarelleStroke, resetAquarelleRecordState, restoreAquarelleRecordTimeline, sendAquarelleStrokeBackwardInScript } from '../view/aquarelleRecordState';
+import { withAquarelleReplayGrid } from './aquarelleReplayGrid';
 import { filterScriptRows } from './physicsPaintRotoScriptScope';
 import { createRotoScriptLibraryController } from './physicsPaintRotoScriptLibrary';
 import { serializeAquarelleRotoScript } from './physicsPaintRotoScriptSchema';
@@ -1249,6 +1250,7 @@ const SCOPE_WEBP = 'data:image/webp;base64,UklGRhIAAABXRUJQVlA4TAUAAAAvAAAAAAA='
 const librarySource = readFileSync(fileURLToPath(new URL('./physicsPaintRotoScriptLibrary.ts', import.meta.url)), 'utf8');
 const clipboardSource = readFileSync(fileURLToPath(new URL('./physicsPaintRotoScriptClipboard.ts', import.meta.url)), 'utf8');
 const scriptsPanelSource = readFileSync(fileURLToPath(new URL('../view/PhysicsPaintScriptsPanel.tsx', import.meta.url)), 'utf8');
+const clipboardControllerHookSource = readFileSync(fileURLToPath(new URL('../hooks/useRotoScriptClipboardController.ts', import.meta.url)), 'utf8');
 
 function scopeLibraryRow(id: string, name: string, layerId: string, layerName: string) {
   return {
@@ -2019,5 +2021,229 @@ describe('261027-klx CR-02 frame-scoped capture', () => {
     expect(test.controller.availability.value.canCopy).toBe(false);
     await expect(test.controller.copyScript()).resolves.toBe(false);
     await expect(test.controller.captureScriptForPersistence()).resolves.toBeNull();
+  });
+});
+
+// ============================================================
+//  quick 261124-0l5 — Apply on the clipboard path PASTES.
+//
+//  The aquarelle branch records the copied strokes on the destination
+//  key first (the paste port) and bakes THAT recorded timeline, so the
+//  key owns a Living Script and every later replay reproduces the
+//  first paint. Commit rides a successful bake; a failed/throwing bake
+//  rolls the script back. Every other apply entry point stays raster-
+//  only (opt-in).
+// ============================================================
+
+type PasteApplyInput = Parameters<NonNullable<RotoScriptClipboardControllerPorts['pasteAquarelleScript']>>[0];
+
+/** Session timeline DISTINCT from the clipboard's: fresh ids + one Dry. */
+function pasteSessionEvents(): AquarellePayloadEvent[] {
+  return [
+    aquarelleStrokeEvent(207, 2000),
+    createDryEvent(3, 2001),
+    aquarelleStrokeEvent(208, 2200),
+  ];
+}
+
+function pasteSessionSpy() {
+  const commit = vi.fn();
+  const rollback = vi.fn();
+  const session = { events: pasteSessionEvents(), commit, rollback };
+  const calls: PasteApplyInput[] = [];
+  return {
+    session,
+    calls,
+    pasteAquarelleScript: (input: PasteApplyInput) => {
+      calls.push(input);
+      return session;
+    },
+  };
+}
+
+/** The exact replay projection the bake must receive for a pasted timeline. */
+function projectedPasteEvents(events: readonly AquarellePayloadEvent[]): AquarellePayloadEvent[] {
+  return events.map((event) => (
+    isAquarelleDryEvent(event) ? { ...event } : withAquarelleReplayGrid(event)
+  ));
+}
+
+describe('261124-0l5 Apply pastes the copied script', () => {
+  it('pastes once, bakes the session timeline grid-projected, then commits once', async () => {
+    const bake = gatedAquarellePort();
+    const paste = pasteSessionSpy();
+    const test = harness([], {
+      applyAquarelleEvents: bake.applyAquarelleEvents,
+      pasteAquarelleScript: paste.pasteAquarelleScript,
+    });
+    expect(test.controller.replaceClipboardFromPersisted(aquarellePersistedScript()))
+      .toBe(RotoScriptClipboardReplacementOutcome.Replaced);
+    const clipboardScript = test.controller.clipboard.value!;
+    const clipboardEvents = clipboardScript.aquarelleEvents!;
+
+    const applying = test.controller.applyScript('wet', { paste: true });
+    await flushMicrotasks();
+
+    // ONE paste call, fed the clipboard's OWN array (never a clone).
+    expect(paste.calls).toHaveLength(1);
+    expect(paste.calls[0]!.events).toBe(clipboardEvents);
+    expect(paste.calls[0]!.target).toMatchObject({ keyId: 'key-4', appFrame: 4 });
+
+    // The bake reads the SESSION's recorded timeline — never the clipboard's.
+    expect(bake.calls).toHaveLength(1);
+    const baked = bake.calls[0]!;
+    expect(baked.events).not.toBe(clipboardEvents);
+    expect(baked.events).toEqual(projectedPasteEvents(paste.session.events));
+    for (let index = 0; index < paste.session.events.length; index += 1) {
+      // Every event is a FRESH object (replace-never-mutate projection).
+      expect(baked.events[index]).not.toBe(paste.session.events[index]);
+    }
+    expect(baked.settle).toBe('wet');
+    // The pill counts the SESSION's stroke events (Dry excluded).
+    expect(test.controller.applyProgress.value).toEqual({ completed: 0, total: 2 });
+    expect(test.controller.status.value).toBe('Applying 0/2');
+    expect(paste.session.commit).not.toHaveBeenCalled();
+    expect(paste.session.rollback).not.toHaveBeenCalled();
+
+    bake.resolve(true);
+    await expect(applying).resolves.toBe(true);
+    expect(paste.session.commit).toHaveBeenCalledOnce();
+    expect(paste.session.rollback).not.toHaveBeenCalled();
+    expect(test.controller.status.value).toBe('Applied');
+  });
+
+  it('a failed bake rolls the paste back exactly once and never commits', async () => {
+    const bake = gatedAquarellePort();
+    const paste = pasteSessionSpy();
+    const test = harness([], {
+      applyAquarelleEvents: bake.applyAquarelleEvents,
+      pasteAquarelleScript: paste.pasteAquarelleScript,
+    });
+    test.controller.replaceClipboardFromPersisted(aquarellePersistedScript());
+
+    const applying = test.controller.applyScript('wet', { paste: true });
+    await flushMicrotasks();
+    bake.resolve(false);
+    await expect(applying).resolves.toBe(false);
+
+    expect(paste.session.rollback).toHaveBeenCalledOnce();
+    expect(paste.session.commit).not.toHaveBeenCalled();
+    expect(test.controller.status.value).toBe('Failed');
+  });
+
+  it('a throwing bake rolls the paste back exactly once and resolves false', async () => {
+    const paste = pasteSessionSpy();
+    const test = harness([], {
+      applyAquarelleEvents: async () => { throw new Error('bake exploded'); },
+      pasteAquarelleScript: paste.pasteAquarelleScript,
+    });
+    test.controller.replaceClipboardFromPersisted(aquarellePersistedScript());
+
+    await expect(test.controller.applyScript('wet', { paste: true })).resolves.toBe(false);
+
+    expect(paste.session.rollback).toHaveBeenCalledOnce();
+    expect(paste.session.commit).not.toHaveBeenCalled();
+    expect(test.controller.status.value).toBe('Failed');
+  });
+
+  it('refuses a paste opt-in without a paste port: no bake, Failed, busy released', async () => {
+    const bake = gatedAquarellePort();
+    const test = harness([], { applyAquarelleEvents: bake.applyAquarelleEvents });
+    test.controller.replaceClipboardFromPersisted(aquarellePersistedScript());
+
+    await expect(test.controller.applyScript('wet', { paste: true })).resolves.toBe(false);
+
+    expect(bake.calls).toHaveLength(0);
+    expect(test.controller.status.value).toBe('Failed');
+    expect(test.controller.error.value).not.toBeNull();
+    expect(test.controller.applying.value).toBe(false);
+    expect(test.controller.mutationLocked.value).toBe(false);
+  });
+
+  it('refuses when the paste port returns null: no bake, Failed, busy released', async () => {
+    const bake = gatedAquarellePort();
+    const test = harness([], {
+      applyAquarelleEvents: bake.applyAquarelleEvents,
+      pasteAquarelleScript: () => null,
+    });
+    test.controller.replaceClipboardFromPersisted(aquarellePersistedScript());
+
+    await expect(test.controller.applyScript('wet', { paste: true })).resolves.toBe(false);
+
+    expect(bake.calls).toHaveLength(0);
+    expect(test.controller.status.value).toBe('Failed');
+    expect(test.controller.error.value).not.toBeNull();
+    expect(test.controller.applying.value).toBe(false);
+    expect(test.controller.mutationLocked.value).toBe(false);
+  });
+
+  it('never pastes from any other apply entry point (opt-in only)', async () => {
+    const bake = gatedAquarellePort();
+    const paste = pasteSessionSpy();
+    const test = harness([stroke(1)], {
+      applyAquarelleEvents: bake.applyAquarelleEvents,
+      pasteAquarelleScript: paste.pasteAquarelleScript,
+    });
+    test.controller.replaceClipboardFromPersisted(aquarellePersistedScript());
+
+    const plain = test.controller.applyScript();
+    await flushMicrotasks();
+    bake.resolve(true);
+    await expect(plain).resolves.toBe(true);
+    expect(paste.calls).toHaveLength(0);
+
+    await expect(test.controller.applyScript('wet')).resolves.toBe(true);
+    expect(paste.calls).toHaveLength(0);
+
+    await expect(test.controller.applyAquarelleTimeline([aquarelleStrokeEvent(51, 500)])).resolves.toBe(true);
+    expect(paste.calls).toHaveLength(0);
+
+    // The live-capture re-bake (delete / Rebake) never pastes either.
+    const current = test.controller.applyCurrentScript();
+    test.controller.observeCompletedMutation(test.engine, completion(1));
+    await flushMicrotasks(20);
+    await expect(current).resolves.toBe(true);
+    expect(paste.calls).toHaveLength(0);
+
+    // Load + Apply to Frame dispatches `applyScript()` with no options.
+    test.setSource({ selectionKind: 'real-key', layerId: 'layer-a', keyId: 'key-8', appFrame: 8 });
+    const preparation = test.controller.prepareScriptLoadAndApply();
+    expect(preparation).not.toBeNull();
+    expect(test.controller.replaceClipboardFromPersisted(aquarellePersistedScript(), preparation!))
+      .toBe(RotoScriptClipboardReplacementOutcome.Replaced);
+    await expect(test.controller.applyPreparedScript(preparation!)).resolves.toBe(true);
+    expect(paste.calls).toHaveLength(0);
+  });
+
+  it('never writes the clipboard back and never mutates the paste input events', async () => {
+    const bake = gatedAquarellePort();
+    const paste = pasteSessionSpy();
+    const test = harness([], {
+      applyAquarelleEvents: bake.applyAquarelleEvents,
+      pasteAquarelleScript: paste.pasteAquarelleScript,
+    });
+    test.controller.replaceClipboardFromPersisted(aquarellePersistedScript());
+    const clipboardScript = test.controller.clipboard.value!;
+    const clipboardEvents = clipboardScript.aquarelleEvents!;
+    const snapshot = JSON.parse(JSON.stringify(clipboardEvents));
+
+    const applying = test.controller.applyScript('wet', { paste: true });
+    await flushMicrotasks();
+    bake.resolve(true);
+    await expect(applying).resolves.toBe(true);
+
+    // No write-back: same script object, same event array, same event refs.
+    expect(test.controller.clipboard.value).toBe(clipboardScript);
+    expect(clipboardScript.aquarelleEvents).toBe(clipboardEvents);
+    for (let index = 0; index < clipboardEvents.length; index += 1) {
+      expect(paste.calls[0]!.events[index]).toBe(clipboardEvents[index]);
+      expect(JSON.parse(JSON.stringify(clipboardEvents[index]))).toEqual(snapshot[index]);
+    }
+  });
+
+  it('PIN: the controller hook forwards pasteAquarelleScript through the live ports ref', () => {
+    expect(clipboardControllerHookSource).toContain(
+      'pasteAquarelleScript: (input) => portsRef.current.pasteAquarelleScript?.(input) ?? null,',
+    );
   });
 });

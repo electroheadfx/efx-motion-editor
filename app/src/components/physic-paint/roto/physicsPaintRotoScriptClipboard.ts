@@ -73,6 +73,24 @@ export interface RotoScriptPhysicalTarget {
   durableBaseBytes?: Uint8Array | null;
 }
 
+/**
+ * quick 261124-0l5: the destination timeline a paste recorded, plus its ledger
+ * settlement. `events` is the destination frame's recorded replay list (the
+ * bake must feed THIS, never the clipboard). `commit` records the one
+ * `aquarelle-script` edit and republishes the frame owner; `rollback` restores
+ * the pre-paste script unconditionally after a failed bake.
+ */
+export interface AquarelleScriptPasteSession {
+  readonly events: readonly AquarellePayloadEvent[];
+  readonly commit: () => void;
+  readonly rollback: () => void;
+}
+
+export type RotoScriptPasteAquarelleScriptPort = (input: {
+  readonly events: readonly AquarellePayloadEvent[];
+  readonly target: RotoScriptPhysicalTarget;
+}) => AquarelleScriptPasteSession | null;
+
 export interface RotoScriptSourceProvenance {
   sessionId: string;
   layerId: string;
@@ -209,6 +227,14 @@ export interface RotoScriptClipboardControllerPorts {
      */
     settle?: 'dry' | 'wet';
   }) => Promise<boolean>;
+  /**
+   * quick 261124-0l5: Apply on a COPIED script RECORDS the strokes on the
+   * destination first and returns the destination timeline the bake must feed
+   * (record-first, bake-second: the first paint is the replay of what was
+   * recorded). A null return REFUSES the apply — never a raster-only Apply
+   * that renders without the key owning a Living Script.
+   */
+  pasteAquarelleScript?: RotoScriptPasteAquarelleScriptPort;
   onFirstAcceptedBrush?: () => void;
   setNavigationLocked?: (locked: boolean) => void;
 }
@@ -248,8 +274,11 @@ export interface RotoScriptClipboardController {
   applyPreparedScript: (preparation: PreparedRotoScriptLoadAndApply) => Promise<boolean>;
   cancelPreparedScriptLoadAndApply: (preparation: PreparedRotoScriptLoadAndApply) => void;
   /** HOLD-WET (261123-pee): `settle` is the two-tool wet flag — the wet-key
-   *  Apply Script passes `'wet'`; every other caller stays dry. */
-  applyScript: (settle?: 'dry' | 'wet') => Promise<boolean>;
+   *  Apply Script passes `'wet'`; every other caller stays dry.
+   *  quick 261124-0l5: `{ paste: true }` is the clipboard Apply's opt-in —
+   *  the copied strokes are recorded on the destination key first and the
+   *  bake replays that recorded timeline. Every other caller omits it. */
+  applyScript: (settle?: 'dry' | 'wet', options?: { paste?: boolean }) => Promise<boolean>;
   /** 261022-pim: re-bake the LIVE captured script (delete) without the clipboard. */
   applyCurrentScript: () => Promise<boolean>;
   /** 261022-pim: re-bake a recorded aquarelle timeline for the current source.
@@ -880,7 +909,10 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     error.value = null;
   }
 
-  async function applyScript(settle?: 'dry' | 'wet'): Promise<boolean> {
+  async function applyScript(
+    settle?: 'dry' | 'wet',
+    options?: { paste?: boolean },
+  ): Promise<boolean> {
     if (disposed || disposalRequested || !availability.value.canApply) return false;
     const engine = engineState.peek();
     const script = clipboard.value;
@@ -889,7 +921,10 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     error.value = null;
     beginOperation(engine);
     // HOLD-WET: the wet flag rides the shared dispatch; omitted stays dry.
-    return dispatchApply(script, source, engine, { settle });
+    // quick 261124-0l5: `paste` is the clipboard Apply's opt-in — the copied
+    // strokes are RECORDED on the destination before the bake. Every other
+    // caller omits it and stays raster-only (Load + Apply, the Scripts panel).
+    return dispatchApply(script, source, engine, { settle, paste: options?.paste });
   }
 
   /**
@@ -1073,7 +1108,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     script: RotoPaintScript,
     source: RotoScriptSourceSnapshot,
     engine: RotoScriptEnginePort,
-    options?: { forceAquarelle?: boolean; settle?: 'dry' | 'wet' },
+    options?: { forceAquarelle?: boolean; settle?: 'dry' | 'wet'; paste?: boolean },
   ): Promise<boolean> {
     const acceptedEngineGeneration = engineGeneration;
     const acceptedLaunchGeneration = launchGeneration;
@@ -1123,10 +1158,41 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
       && ports.applyAquarelleEvents
       && (aquarelleEvents.length > 0 || options?.forceAquarelle)
     ) {
+      // quick 261124-0l5: the clipboard Apply PASTES. Record the copied
+      // strokes on the destination key FIRST (soft-delete replacement + fresh
+      // ids, one undoable edit) and bake THAT recorded timeline — never the
+      // clipboard array. Without the port a paste opt-in is refused outright:
+      // a raster-only Apply would render a key that owns no Living Script.
+      let pasteSession: AquarelleScriptPasteSession | null = null;
+      if (options?.paste) {
+        pasteSession = ports.pasteAquarelleScript?.({ events: aquarelleEvents, target }) ?? null;
+        if (!pasteSession) {
+          status.value = 'Failed';
+          error.value = operationError('apply', 'apply-partial-failure', 'Apply Script could not paste the copied strokes onto this key.');
+          endOperation(engine);
+          return false;
+        }
+      }
+      // The replay projection is the SAME map `applyAquarelleTimeline` uses:
+      // Dry is a shallow marker copy, every stroke re-grids for replay. The
+      // live timeline and the clipboard must stay mutable and untouched.
+      const bakeEvents = pasteSession
+        ? pasteSession.events.map((event) => isAquarelleDryEvent(event) ? { ...event } : withAquarelleReplayGrid(event))
+        : aquarelleEvents;
+      let pasteSettled = false;
+      // Exactly one settlement per paste, driven by the bake outcome: commit
+      // on success (one `aquarelle-script` ledger edit + owner republish),
+      // roll back the pre-paste script otherwise. Never both.
+      const settlePaste = (ok: boolean): void => {
+        if (!pasteSession || pasteSettled) return;
+        pasteSettled = true;
+        if (ok) pasteSession.commit();
+        else pasteSession.rollback();
+      };
       // 261022: the aquarelle Apply bake runs ONE output frame, so the pill
       // must advance per FULLY FED STROKE — the same 0/N → N/N report brush
       // mode drives. Dry events are timeline actions, never progress (D-15).
-      const aquarelleStrokeTotal = countAquarelleStrokeEvents(aquarelleEvents);
+      const aquarelleStrokeTotal = countAquarelleStrokeEvents(bakeEvents);
       let progressSettled = false;
       const publishAquarelleProgress = (completed: number, total: number): void => {
         // AQUA-07: the bake survives navigation, so a progress callback can
@@ -1148,12 +1214,16 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
       }
       try {
         const ok = await ports.applyAquarelleEvents({
-          events: aquarelleEvents,
+          events: bakeEvents,
           target,
           onProgress: publishAquarelleProgress,
           // HOLD-WET: undefined keeps the dry bake (every non-tool caller).
           settle: options?.settle,
         });
+        // Settle the script mutation with the BAKE's outcome (the render is the
+        // paste's consequence) — before the UI-staleness guards, because the
+        // destination script changed regardless of what the pill may show.
+        settlePaste(ok);
         if (!disposalRequested && launchGeneration === acceptedLaunchGeneration) {
           status.value = ok ? 'Applied' : 'Failed';
           if (!ok) error.value = operationError('apply', 'apply-partial-failure', 'Apply Script could not paint the aquarelle wash.');
@@ -1162,6 +1232,8 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
         endOperation(engine);
         return ok;
       } catch (cause) {
+        // Never commit on a throw: the pre-paste script comes back verbatim.
+        settlePaste(false);
         if (!disposalRequested && launchGeneration === acceptedLaunchGeneration) {
           status.value = 'Failed';
           error.value = operationError('apply', 'apply-partial-failure', 'Apply Script could not paint the aquarelle wash.', cause);
