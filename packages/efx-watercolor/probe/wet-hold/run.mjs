@@ -6,8 +6,9 @@
 //
 //  Usage:
 //    node probe/wet-hold/run.mjs --scene hold --label hold-hold
+//    node probe/wet-hold/run.mjs --scene hold --holdoff --label hold-nohold
 //    node probe/wet-hold/run.mjs --scene hold --dry --label hold-dry
-//    node probe/wet-hold/run.mjs --scene bake --label bake
+//    node probe/wet-hold/run.mjs --scene bake --label bake --compare hold-hold
 //
 //  Bundles probe.ts with esbuild, inlines it into a /tmp copy of index.html
 //  and renders ONE page load through the real vendored WebGL2 engine in
@@ -19,6 +20,21 @@
 //      and restores the sheet exactly (gate, wetPeak, undo depth); the second
 //      acrylic stroke carries the SAME canvas colour the pre-idle control
 //      carried (the pickup-retained law).
+//      261123-vkb cap + freeze: the awake window after the last wet input is
+//      bounded at the visible settle cap — `idle.windowTicks ===
+//      config.capTicks === 30` at dry 100, measured to the LAST AWAKE
+//      observation (never the loop-exit clock, which the sleep-detection tick
+//      would push one high). `frozen` / `frozenAfter` bracket a +30 s clock
+//      advance on the asleep sheet: the same raw canvas digest and the same
+//      SEVEN paint-layer digests (`lastTouch` excluded — it stores ages, so it
+//      cannot be stable), gate open, peak unchanged, `active` null.
+//    hold-off (`--holdoff`): `setHoldWet(false)` before the walk, never
+//      re-armed — the UNHELD sim, which keeps decaying the wet field and
+//      therefore sleeps at its own trim/sleep window: 211 ticks measured
+//      (deterministic, repeated), NOT the 237-tick HELD pre-change baseline
+//      the plan expected (the hold bypasses decay; a different setup).
+//      `idle.windowTicks` equals `idle.ticks` under the same last-awake
+//      measure, and the unheld sleep zeroes `wetPeak` and closes the gate.
 //    dry (`--dry`): the explicit fix closes the gate, zeroes wetPeak, lifts the
 //      hold and pushes exactly ONE undo step (the positive control for the
 //      depth read). The pickup does NOT vanish: the carrier's gate is the
@@ -31,7 +47,14 @@
 //      hold-adapter (recorded Dry filtered out) vs `settle: 'dry'` on the
 //      default adapter. The wet sheet keeps `wetPeak > WET_THRESHOLD` with
 //      ZERO settle ticks; the dry sheet force-dried to zero after exactly 72
-//      settle ticks; the ink-layer digests differ.
+//      settle ticks; the ink-layer digests differ. A third `wetSession` arm
+//      bakes the SAME two strokes the held scene applied (`settle: 'wet'`,
+//      hold adapter): its `settleTicks` 0 and `wetPeak > WET_THRESHOLD` are
+//      GATED, while its paint-layer digests and resolved begin ticks are
+//      printed as a `parity: reported` line against the held run's `frozen`
+//      sheet — REPORTED, never asserted (the adapter's per-sample tick law and
+//      `buildRecordedTimeline`'s `previousEnd` clamp make exact equality
+//      unprovable; a mismatch is a readout finding).
 // ============================================================
 
 import { spawnSync } from 'node:child_process'
@@ -72,13 +95,15 @@ if (!chrome) fail('Chrome/Chromium not found; candidates:\n  ' + chromeCandidate
 
 const label = flag('--label')
 if (!label) {
-  fail('usage: node run.mjs --scene hold [--dry] --label <name> [--size <px>]')
+  fail('usage: node run.mjs --scene hold [--dry|--holdoff] --label <name> [--size <px>]')
 }
 const sceneRaw = flag('--scene') ?? 'hold'
 if (sceneRaw !== 'hold' && sceneRaw !== 'bake') {
   fail(`invalid --scene "${sceneRaw}" (this build implements "hold" and "bake")`)
 }
 const dry = args.includes('--dry')
+/** 261123-vkb: the hold-off control — the natural awake window. */
+const holdoff = args.includes('--holdoff')
 const sizeRaw = flag('--size')
 const blueSize = sizeRaw === undefined ? 17 : Number(sizeRaw)
 if (!Number.isInteger(blueSize) || blueSize < 1 || blueSize > 800) {
@@ -103,6 +128,19 @@ const compareLabel = flag('--compare') ?? 'hold-hold'
 const HELD_PICKUP_MAX_DELTA_DEG = 5
 /** The held run's carried hue must also clear this many degrees from the stroke's OWN hue (a pickup happened at all). */
 const HELD_PICKUP_MIN_DEG = 5
+/**
+ * 261123-vkb: the UNHELD sim's natural awake window at this scene's lens, walk
+ * count under the last-awake measure. MEASURED, deterministic (two repeat
+ * runs), and a documented DEVIATION from the plan's 237: 237 is the HELD
+ * pre-change baseline (/tmp/wet-hold/hold-hold.pre-vkb.json) — the hold
+ * bypasses decay, while the unheld sim keeps decaying the wet FIELD and its
+ * trim/sleep path fires early at 211 ticks. The entry natural `wetUntil` bound
+ * (≈ 4255.5 ms) is reported beside it, un-reached. A drift is a measurement
+ * finding, never a range to widen silently.
+ */
+const NATURAL_HOLDOFF_WINDOW_TICKS = 211
+/** The freeze proof's digest set — the same seven paint layers probe.ts reads. */
+const PAINT_LAYER_IDS = ['inkA', 'inkB', 'fixedA', 'fixedB', 'wet', 'relief', 'cover']
 
 function unescapeHtml(text) {
   return text
@@ -137,7 +175,7 @@ function buildBundle() {
 }
 
 function runPage() {
-  const query = `scene=${sceneRaw}&dry=${dry ? 1 : 0}&size=${blueSize}`
+  const query = `scene=${sceneRaw}&dry=${dry ? 1 : 0}&holdoff=${holdoff ? 1 : 0}&size=${blueSize}`
   const run = spawnSync(
     chrome,
     [
@@ -250,10 +288,21 @@ function reportHeld(result) {
     `idle     | ${result.idle.ticks} ticks (${f(result.idle.engineMs, 1)} ms engine), ` +
       `awake ${result.idle.startedAwake} -> asleep ${result.idle.asleep}`,
   )
+  console.log(
+    `window   | ${result.idle.windowTicks} ticks from lastWet ${f(result.idle.lastWetMs, 1)} ms ` +
+      `(cap ${result.config.capTicks}) | natural wetUntil ${f(result.idle.wetUntilMs, 1)} ms`,
+  )
   const p = result.postSleep
   console.log(
     `post     | awake ${p.isAwake}, wet ${p.hasStandingWater}, peak ${f(p.wetPeak, 4)}, ` +
       `stroke null ${p.strokeNull}, active null ${p.activeNull}`,
+  )
+  const fr = result.frozen
+  const fa = result.frozenAfter
+  console.log(
+    `freeze   | raw ${fr.rawDigest} -> ${fa.rawDigest} | layers ${Object.keys(fr.layers).length} ` +
+      `identical ${JSON.stringify(fr.layers) === JSON.stringify(fa.layers)} | ` +
+      `peak ${f(fr.wetPeak, 5)} -> ${f(fa.wetPeak, 5)}, wet ${fa.hasStandingWater}, awake ${fa.isAwake}, active null ${fa.activeNull}`,
   )
   const a = result.settledAsleep
   console.log(
@@ -277,6 +326,27 @@ function reportHeld(result) {
   console.log(
     `capture  | settleForCapture ${cs.called}, ${cs.ticks} ticks, depth ${cs.depthBefore} -> ${cs.depthAfter}, ` +
       `wet ${cs.hasStandingWater}, peak ${f(cs.wetPeak, 5)}`,
+  )
+}
+
+function reportHeldoff(result) {
+  const c = result.control
+  const idle = result.idle
+  const p = result.postSleep
+  console.log(`\n[wet-hold] ${label}: scene hold, arm hold-off (the natural-window control), blue ${result.config.blueSize}, ` +
+    `renderer ${result.renderer}, evictions ${result.evictions}`)
+  console.log(
+    `control  | depth ${c.depth}, wet ${c.hasStandingWater}, peak ${f(c.wetPeak, 4)} | ` +
+      `pickup drag ${f(c.pickupDragDeg, 1)} | centre drag ${f(c.centreDragDeg, 1)}`,
+  )
+  console.log(
+    `idle     | ${idle.ticks} ticks (${f(idle.engineMs, 1)} ms engine), window ${idle.windowTicks} ticks ` +
+      `from lastWet ${f(idle.lastWetMs, 1)} ms to wetUntil ${f(idle.wetUntilMs, 1)} ms | ` +
+      `awake ${idle.startedAwake} -> asleep ${idle.asleep}`,
+  )
+  console.log(
+    `post     | awake ${p.isAwake}, wet ${p.hasStandingWater}, peak ${f(p.wetPeak, 4)}, ` +
+      `stroke null ${p.strokeNull}, active null ${p.activeNull}`,
   )
 }
 
@@ -325,6 +395,54 @@ function reportBake(result) {
         `cover ${layerText(arm.layers, 'cover')} lastTouch ${layerText(arm.layers, 'lastTouch')}`,
     )
   }
+  const w = result.wetSession
+  if (w !== undefined && w !== null) {
+    console.log(
+      `bake wetS | ${w.ok} path ${w.path} settleTicks ${w.settleTicks} | events ${w.eventCount} frames ${w.frames} ` +
+        `bytes ${w.byteLength} | wetPeak ${f(w.wetPeak, 5)} bristle ${w.bristleContent} | ` +
+        `recordedOrder ${JSON.stringify(w.recordedOrder)} ticks ${JSON.stringify(w.ticks)} ` +
+        `begin ${JSON.stringify(w.beginTicks)} end ${JSON.stringify(w.endTicks)}`,
+    )
+  }
+}
+
+/**
+ * 261123-vkb: the NON-GATING live-versus-bake diagnostic. Reads the held run's
+ * `frozen` sheet (the same `lastTouch`-free paint-layer read) and prints it
+ * beside `wetSession`'s digests and both sides' resolved begin ticks. This
+ * NEVER asserts: the adapter burns one clock tick per sample plus one trailing
+ * tick and `buildRecordedTimeline` clamps `beginTick` to `previousEnd`, so exact
+ * equality is unprovable. A divergence is a readout finding, not a failure.
+ */
+function reportParity(result) {
+  const session = result.wetSession
+  const heldPath = join(outDir, `${compareLabel}.json`)
+  const bakeBegins = JSON.stringify(session?.beginTicks ?? null)
+  if (!existsSync(heldPath)) {
+    console.log(`parity: reported (no held run at ${heldPath}) — begin ticks live n/a vs bake ${bakeBegins}`)
+    return
+  }
+  let held = null
+  try {
+    held = JSON.parse(readFileSync(heldPath, 'utf8'))
+  } catch {
+    held = null
+  }
+  const live = held?.frozen?.layers ?? null
+  const bake = session?.layers ?? null
+  console.log('parity: reported (never gated — a mismatch is a readout finding, not a failure)')
+  console.log(
+    `         | begin ticks live ${JSON.stringify(held?.liveBegins ?? null)} vs bake ${bakeBegins} | ` +
+      `recordedOrder bake ${JSON.stringify(session?.recordedOrder ?? null)} ticks ${JSON.stringify(session?.ticks ?? null)}`,
+  )
+  if (!live || !bake) {
+    console.log('         | paint-layer digests n/a (missing the frozen/layers read on one side)')
+    return
+  }
+  console.log(`         | paint-layer digests equal ${JSON.stringify(live) === JSON.stringify(bake)}`)
+  for (const id of Object.keys(live)) {
+    console.log(`         | ${id} live ${layerText(live, id)} bake ${layerText(bake, id)}`)
+  }
 }
 
 function assertBake(result) {
@@ -359,6 +477,15 @@ function assertBake(result) {
   }
   check('wet.bristleContent (the acrylic stroke reached the carrier)', result.wet.bristleContent === true)
   check('dry.bristleContent (the acrylic stroke reached the carrier)', result.dry.bristleContent === true)
+  // 261123-vkb: the same-session wet arm's GATED laws — only the settle law.
+  // The live-versus-bake digests and begin ticks are reportParity's, never here.
+  const w = result.wetSession
+  check('wetSession.settleTicks 0 (no end settle)', w.settleTicks === 0, String(w.settleTicks))
+  check(
+    'wetSession.wetPeak > WET_THRESHOLD (the baked sheet keeps mobile water)',
+    num(w.wetPeak) !== null && w.wetPeak > result.config.wetThreshold,
+    `${w.wetPeak} vs ${result.config.wetThreshold}`,
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -374,6 +501,30 @@ console.log(`\n[wet-hold] ${label}: assertions`)
 if (result.arm === 'bake') {
   reportBake(result)
   assertBake(result)
+  reportParity(result)
+} else if (result.arm === 'heldoff') {
+  reportHeldoff(result)
+  check('stepRecording on', result.stepRecording === true)
+  const idle = result.idle
+  check('holdoff idle.startedAwake', idle.startedAwake === true)
+  check('holdoff idle.asleep (the natural window ends)', idle.awakeToAsleep === true && idle.asleep === true)
+  // DEVIATION (measured, documented): the plan expected 237 — the HELD
+  // pre-change baseline. The unheld sim decays the wet field and sleeps at its
+  // own trim window: 211 ticks, deterministic across two runs.
+  check(
+    'holdoff idle.ticks 211 (the measured unheld window — the plan\'s 237 was the held baseline)',
+    idle.ticks === NATURAL_HOLDOFF_WINDOW_TICKS,
+    `${idle.ticks} vs ${NATURAL_HOLDOFF_WINDOW_TICKS}`,
+  )
+  check(
+    'holdoff idle.windowTicks === idle.ticks (the same last-awake measure)',
+    idle.windowTicks === idle.ticks && idle.windowTicks === NATURAL_HOLDOFF_WINDOW_TICKS,
+    `window ${idle.windowTicks} vs ticks ${idle.ticks} (expected ${NATURAL_HOLDOFF_WINDOW_TICKS})`,
+  )
+  const post = result.postSleep
+  check('holdoff postSleep.gate closed (the unheld sleep zeroes the peak)', post.hasStandingWater === false)
+  check('holdoff postSleep.wetPeak 0', post.wetPeak === 0, String(post.wetPeak))
+  check('holdoff postSleep.activeNull', post.activeNull === true)
 } else if (result.arm === 'held') {
   reportHeld(result)
   check('evictions 0 (the depth reads are meaningful)', result.evictions === 0, String(result.evictions))
@@ -381,6 +532,45 @@ if (result.arm === 'bake') {
   const idle = result.idle
   check('idle.startedAwake', idle.startedAwake === true)
   check('idle.asleep (the awake -> asleep transition)', idle.awakeToAsleep === true && idle.asleep === true)
+  // 261123-vkb cap + freeze.
+  check(
+    'cap window: idle.windowTicks === config.capTicks (the last-awake measure)',
+    idle.windowTicks === result.config.capTicks,
+    `window ${idle.windowTicks} vs cap ${result.config.capTicks}`,
+  )
+  check('cap window: capTicks 30 at dry 100', result.config.capTicks === 30, String(result.config.capTicks))
+  const frozen = result.frozen
+  const frozenAfter = result.frozenAfter
+  check('frozen.isAwake false (the sim sleeps at the cap)', frozen.isAwake === false)
+  check('frozen.activeNull (the cap sleep dropped the region)', frozen.activeNull === true)
+  check('frozenAfter.isAwake false (still asleep after +30 s)', frozenAfter.isAwake === false)
+  check('frozenAfter.hasStandingWater (held past the advance)', frozenAfter.hasStandingWater === true)
+  check(
+    'frozenAfter.wetPeak unchanged (no decay while frozen)',
+    frozenAfter.wetPeak === frozen.wetPeak,
+    `${frozen.wetPeak} vs ${frozenAfter.wetPeak}`,
+  )
+  check('frozenAfter.activeNull', frozenAfter.activeNull === true)
+  check(
+    'freeze: raw canvas digest identical after +30 s',
+    frozen.rawDigest === frozenAfter.rawDigest,
+    `${frozen.rawDigest} vs ${frozenAfter.rawDigest}`,
+  )
+  const frozenIds = Object.keys(frozen.layers).sort()
+  const expectedIds = [...PAINT_LAYER_IDS].sort()
+  check(
+    'freeze: exactly the seven paint layers (lastTouch excluded — it stores ages)',
+    frozenIds.length === expectedIds.length &&
+      frozenIds.every((id, index) => id === expectedIds[index]) &&
+      !('lastTouch' in frozen.layers),
+    frozenIds.join(','),
+  )
+  const frozenLayersSame = JSON.stringify(frozen.layers) === JSON.stringify(frozenAfter.layers)
+  check(
+    'freeze: paint-layer digests identical after +30 s',
+    frozenLayersSame,
+    frozenLayersSame ? undefined : `frozen ${JSON.stringify(frozen.layers)} after ${JSON.stringify(frozenAfter.layers)}`,
+  )
   const post = result.postSleep
   check('postSleep.strokeNull', post.strokeNull === true)
   check('postSleep.hasStandingWater (held past sleep)', post.hasStandingWater === true)

@@ -32,6 +32,18 @@
 //                        the hold changes the wet FIELD and the gate, never the
 //                        carrier's colour lift.
 //
+//    --scene hold --holdoff
+//                        the CONTROL: the same live session with the hold OFF
+//                        (`setHoldWet(false)` before the walk, never re-armed).
+//                        261123-vkb MEASURED: the hold bypasses decay at the
+//                        reader (`wetDecay`), so an UNHELD sim keeps decaying
+//                        the wet FIELD and its trim/sleep path fires well
+//                        before the natural `wetUntil` bound — 211 ticks vs
+//                        the held 237-tick window (the plan's 237 was the
+//                        HELD pre-change baseline, a different physical
+//                        setup). The unheld sleep then zeroes `wetPeak` and
+//                        closes the gate (sleep()'s unheld guard).
+//
 //    --scene bake        the bake A/B: ONE recorded list (two watercolor
 //                        strokes, one acrylic, one recorded Dry) baked twice
 //                        through the real `createAquarelleBake` with
@@ -41,6 +53,24 @@
 //                        adapter. The commit read is each bake's own
 //                        `captureSheet()`: the wet sheet keeps its peak, the dry
 //                        sheet force-dried to zero, and the ink layers differ.
+//                        A third arm (`wetSession`) bakes the SAME two strokes
+//                        the held scene applied (same seeds/params) with
+//                        `settle: 'wet'`; its live-versus-bake paint-layer
+//                        digests and begin ticks are REPORTED, never gated (the
+//                        adapter's per-sample tick law and the timeline's
+//                        `previousEnd` clamp make exact equality unprovable).
+//
+//  261123-vkb THE FREEZE LAW: while held, the awake window after the LAST wet
+//  input is bounded at the visible settle cap (`aquarelleVisibleSettleTicks`,
+//  the bake's own cap), then the sim sleeps through the existing sleep paths —
+//  no fix, no decay, no mobile-to-fixed. The held walk therefore reports its
+//  `windowTicks` (ticks from `lastWet` to the LAST AWAKE observation — the
+//  engine sleeps INSIDE the crossing stepTick, so the loop-exit clock is one
+//  tick too late), records the sheet (`frozen`), advances the clock 1800 ticks
+//  (+30 s) and re-reads it (`frozenAfter`): the raw canvas digest and the seven
+//  paint-layer digests must be IDENTICAL. `lastTouch` is EXCLUDED: the capture
+//  stores it as AGES from the capture clock, so every age rises with the
+//  advance by construction and equality there would prove nothing.
 //
 //  Everything is deterministic: no wall clock enters a readout, the engine
 //  runs on the adapter's virtual clock, and every stroke is fed through
@@ -57,9 +87,10 @@
 //  settings, not medium claims: the app's records are untouched.
 // ============================================================
 
-import { WatercolorEngine, type WholeDoc } from '../../src/playground/Engine'
+import { WatercolorEngine, type LayerId, type WholeDoc } from '../../src/playground/Engine'
 import { createAquarelleEngineAdapter } from '../../src/adapter/engineAdapter'
 import { createAquarelleBake, type AquarelleBakeDiagnostics } from '../../src/bake/aquarelleBake'
+import { aquarelleVisibleSettleTicks } from '../../src/playground/settleCap'
 import { PAPERS, type PaperPreset } from '../../src/playground/papers'
 import {
   toStudioStroke,
@@ -88,8 +119,12 @@ const FIX_DURATION_S = 1.2
 const MAX_FIX_TICKS = Math.ceil(FIX_DURATION_S * 60) + 1
 /** The live host tick (HOST_TICK_HZ = 60), seconds. */
 const HOST_TICK_S = 1 / 60
+/** The host tick in ms — the bake's own `HOST_TICK_MS` (aquarelleBake.ts:293). */
+const HOST_TICK_MS = 1000 / 60
 /** Bound on the idle walk: two minutes of engine time dwarfs the window. */
 const MAX_IDLE_TICKS = 60 * 120
+/** The freeze proof's clock advance: 1800 host ticks = +30 s of engine time. */
+const FREEZE_ADVANCE_TICKS = 1800
 // Probe scene lens (see the header): a slow tack time keeps the stamp age
 // readable across the idle; dry 100 pins the dry tau to its 2 s floor so the
 // idle (wetUntil = lastWet + tau * ln(wetPeak / WET_THRESHOLD)) stays small.
@@ -113,6 +148,27 @@ const BAND_COLOR = '#e8c21a'
 /** The acrylic stroke's colour (the pickup-collapse tested stroke). */
 const BLUE_COLOR = '#5994e4'
 const BRUSH_ID = 'bristle-flat'
+/**
+ * The held scene's two stroke seeds — shared with the `wetSession` bake arm so
+ * the live and baked sessions cannot drift apart.
+ */
+const HOLD_BAND_SEED = 0x7ec000
+const HOLD_ACRYLIC_SEED = 0x7ec001
+/**
+ * The `wetSession` arm's recorded-order anchors — a plain nonzero ORDERING
+ * device for `buildRecordedTimeline`'s timed path, never a tick-alignment
+ * claim (its `previousEnd` clamp plus the adapter's per-sample tick law make
+ * exact live/bake begin equality unprovable).
+ */
+const HOLD_BAND_ORDER = 1000
+const HOLD_ACRYLIC_ORDER = 1200
+/**
+ * The freeze proof's digest set — the seven PAINT layers. `lastTouch` is
+ * excluded: the capture stores it as AGES from the capture clock
+ * (`captureWhole` -> `stampsToAges(..., nowSec())`), so a clock advance raises
+ * every age by construction and its digest cannot be stable.
+ */
+const PAINT_LAYER_IDS: readonly LayerId[] = ['inkA', 'inkB', 'fixedA', 'fixedB', 'wet', 'relief', 'cover']
 // --- the bake scene's lens (--scene bake) -----------------------------------
 /** The recorded session's end-ms stamps — the bake's own replay clock. */
 const BAKE_BAND_MS = 1000
@@ -174,6 +230,10 @@ interface EngineInternals {
   stroke: unknown
   bristleCount: number
   stepRecording: boolean
+  /** 261123-vkb: the live clock reads behind the window measure (diagnostics only). */
+  clock: () => number
+  lastWet: number
+  wetUntil: () => number
 }
 
 function internals(engine: WatercolorEngine): EngineInternals {
@@ -406,6 +466,8 @@ function makeStroke(
 interface SceneConfig {
   scene: 'hold' | 'bake'
   dry: boolean
+  /** 261123-vkb: the hold-off control — `setHoldWet(false)` before the walk. */
+  holdoff: boolean
   blueSize: number
   pressure: number
 }
@@ -418,6 +480,8 @@ function readSceneConfig(): SceneConfig {
   }
   const dryRaw = params.get('dry') ?? '0'
   if (dryRaw !== '0' && dryRaw !== '1') throw new Error(`invalid dry "${dryRaw}" (use 0 or 1)`)
+  const holdoffRaw = params.get('holdoff') ?? '0'
+  if (holdoffRaw !== '0' && holdoffRaw !== '1') throw new Error(`invalid holdoff "${holdoffRaw}" (use 0 or 1)`)
   const sizeRaw = params.get('size')
   const blueSize = sizeRaw === null || sizeRaw === '' ? BLUE_SIZE : Number(sizeRaw)
   if (!Number.isInteger(blueSize) || blueSize < 1 || blueSize > 800) {
@@ -428,7 +492,7 @@ function readSceneConfig(): SceneConfig {
   if (!Number.isFinite(pressure) || pressure < 0 || pressure > 1) {
     throw new Error(`invalid pressure "${pressureRaw}"`)
   }
-  return { scene: sceneRaw, dry: dryRaw === '1', blueSize, pressure }
+  return { scene: sceneRaw, dry: dryRaw === '1', holdoff: holdoffRaw === '1', blueSize, pressure }
 }
 
 // --- the runners ------------------------------------------------------------
@@ -439,6 +503,17 @@ interface IdleWalk {
   startedAwake: boolean
   asleep: boolean
   awakeToAsleep: boolean
+  /**
+   * THE WINDOW MEASURE (261123-vkb): ticks from `lastWet` to the LAST AWAKE
+   * OBSERVATION — never the loop-exit clock, which is the sleep-detection tick
+   * and reads one too high (the engine sleeps INSIDE the stepTick that crosses
+   * the bound). The first top-of-loop read is already one tick past `lastWet`,
+   * so this equals the walk count on both the capped and the natural window.
+   */
+  windowTicks: number
+  /** Diagnostics only — never feed the measure. */
+  lastWetMs: number
+  wetUntilMs: number
 }
 
 /**
@@ -446,15 +521,32 @@ interface IdleWalk {
  * every tick while the engine is not fixing, until `isAwake` is false (the sim
  * sleeps) or the bound trips. The tick IS the clock advance (adapter.stepTick
  * advances 1000 * HOST_DT), exactly the per-frame law the layer runs.
+ *
+ * `hold = false` is the 261123-vkb hold-off control: `setHoldWet(false)` BEFORE
+ * the loop and never re-armed — the engine's own natural window.
  */
-function idleWalk(engine: WatercolorEngine, adapter: ReturnType<typeof createAquarelleEngineAdapter>): IdleWalk {
+function idleWalk(
+  engine: WatercolorEngine,
+  adapter: ReturnType<typeof createAquarelleEngineAdapter>,
+  hold = true,
+): IdleWalk {
+  const read = internals(engine)
   const startedAwake = engine.isAwake
-  engine.setHoldWet(true)
+  const lastWet = read.lastWet
+  // Read BEFORE the walk: after an unheld sleep the peak is zeroed and
+  // `wetUntil()` collapses to `lastWet`, which would hide the entry bound.
+  const wetUntil = read.wetUntil()
+  // The last clock the isAwake loop condition accepted as awake. Initialised to
+  // the entry clock so the field is defined even if the engine starts asleep.
+  let lastAwakeClock = read.clock()
+  if (hold) engine.setHoldWet(true)
+  else engine.setHoldWet(false)
   let ticks = 0
   while (engine.isAwake && ticks < MAX_IDLE_TICKS) {
+    lastAwakeClock = read.clock()
     adapter.stepTick(ticks)
     ticks += 1
-    if (!engine.isFixing) engine.setHoldWet(true)
+    if (hold && !engine.isFixing) engine.setHoldWet(true)
   }
   return {
     ticks,
@@ -462,6 +554,9 @@ function idleWalk(engine: WatercolorEngine, adapter: ReturnType<typeof createAqu
     startedAwake,
     asleep: !engine.isAwake,
     awakeToAsleep: startedAwake && !engine.isAwake,
+    windowTicks: Number.isFinite(lastWet) ? Math.round((lastAwakeClock - lastWet) / HOST_TICK_MS) : -1,
+    lastWetMs: Number.isFinite(lastWet) ? round(lastWet, 3) : -1,
+    wetUntilMs: round(wetUntil, 3),
   }
 }
 
@@ -521,6 +616,42 @@ function settledExportProof(engine: WatercolorEngine): SettledProof {
   }
 }
 
+// --- the freeze proof (261123-vkb) ------------------------------------------
+
+interface FrozenRead {
+  rawDigest: string
+  /** The SEVEN paint layers only — `lastTouch` stores ages and cannot be stable. */
+  layers: Record<string, LayerDigest>
+  isAwake: boolean
+  hasStandingWater: boolean
+  wetPeak: number
+  activeNull: boolean
+}
+
+/**
+ * The held-asleep sheet, read clock-free: the raw canvas digest and the seven
+ * paint-layer digests. `lastTouch` is deliberately absent — `captureWhole` puts
+ * it through `stampsToAges(..., nowSec())`, so every entry is stored as AGES
+ * before the capture and a clock advance raises every age by construction.
+ */
+function frozenRead(engine: WatercolorEngine): FrozenRead {
+  const rawDigest = digestCanvas(engine.exportCanvas('transparent'))
+  const snapshot = engine.captureSheet()
+  return {
+    rawDigest,
+    layers: layerDigests(snapshot.whole, PAINT_LAYER_IDS),
+    isAwake: engine.isAwake,
+    hasStandingWater: engine.hasStandingWater,
+    wetPeak: round(snapshot.wetPeak),
+    activeNull: internals(engine).active === null,
+  }
+}
+
+/** The probe's host-tick position on the adapter's virtual clock (parity read). */
+function hostTicksOf(engine: WatercolorEngine): number {
+  return Math.round(internals(engine).clock() / HOST_TICK_MS)
+}
+
 // --- the bake scene (--scene bake) ------------------------------------------
 
 // ONE recorded session: a watercolor band, an acrylic stroke, a recorded Dry,
@@ -535,6 +666,48 @@ function bakeEvents(blueSize: number): AquarellePayloadEvent[] {
   ]
 }
 
+/**
+ * The held scene's two strokes as a recorded session for the `wetSession` bake
+ * arm — the SAME seeds and params the live applies use (`HOLD_BAND_SEED` /
+ * `HOLD_ACRYLIC_SEED`), with plain nonzero `recordedOrder` anchors so
+ * `buildRecordedTimeline` takes its timed path. The anchors are an ORDERING
+ * device only: the live path ignores `recordedOrder` and keeps its timestamp-0
+ * applies byte-identical, and the bake's `previousEnd` clamp plus the
+ * adapter's per-sample tick law make exact live/bake begin equality
+ * unprovable.
+ */
+function holdSession(blueSize: number): StudioStroke<AquarelleStrokePayload>[] {
+  const bandSize = Math.round(blueSize * BAND_SIZE_RATIO)
+  return [
+    makeStroke(BAND_COLOR, paramsBag(bandSize, 0, 0), HOLD_BAND_SEED, HOLD_BAND_ORDER),
+    makeStroke(BLUE_COLOR, paramsBag(blueSize, 100, 100), HOLD_ACRYLIC_SEED, HOLD_ACRYLIC_ORDER),
+  ]
+}
+
+/**
+ * REPORT-ONLY mirror of `buildRecordedTimeline` (aquarelleBake.ts:426-447) —
+ * the same `originMs` / `previousEnd` formula, so the readout can carry both
+ * sides' resolved begin ticks beside the parity digests. It is a diagnostic,
+ * NEVER a tick-alignment claim or an assertion source.
+ */
+function mirrorRecordedTimeline(
+  strokes: readonly StudioStroke<AquarelleStrokePayload>[],
+): { beginTick: number; endTick: number }[] {
+  const entries: { beginTick: number; endTick: number }[] = []
+  let originMs: number | null = null
+  let previousEnd = 0
+  for (const stroke of strokes) {
+    const endMs = stroke.recordedOrder
+    const durationTicks = Math.max(1, Math.trunc(stroke.ticks))
+    if (originMs === null) originMs = endMs - durationTicks * HOST_TICK_MS
+    const rawBegin = Math.round((endMs - durationTicks * HOST_TICK_MS - originMs) / HOST_TICK_MS)
+    const beginTick = Math.max(previousEnd, Math.max(0, rawBegin))
+    entries.push({ beginTick, endTick: beginTick + durationTicks })
+    previousEnd = beginTick + durationTicks
+  }
+  return entries
+}
+
 interface LayerDigest {
   sum: number
   nonZero: number
@@ -543,11 +716,12 @@ interface LayerDigest {
 /**
  * Per-layer numeric digest of a captured sheet — sum and non-zero count over
  * the raw arrays. Deterministic and readback-free: the halves decode through
- * `f16ToF32`, the exact float32 `lastTouch` sums as-is.
+ * `f16ToF32`, the exact float32 `lastTouch` sums as-is. `ids` filters the read
+ * (the freeze proof uses `PAINT_LAYER_IDS`; the bake arms keep all keys).
  */
-function layerDigests(whole: WholeDoc): Record<string, LayerDigest> {
+function layerDigests(whole: WholeDoc, ids?: readonly LayerId[]): Record<string, LayerDigest> {
   const out: Record<string, LayerDigest> = {}
-  for (const id of Object.keys(whole.layers) as (keyof WholeDoc['layers'])[]) {
+  for (const id of ids ?? (Object.keys(whole.layers) as LayerId[])) {
     const raw = whole.layers[id]
     let values: Float32Array
     if (raw instanceof Float32Array) {
@@ -646,6 +820,87 @@ async function bakeArm(settle: 'dry' | 'wet', blueSize: number): Promise<BakeArm
   }
 }
 
+interface WetSessionRead {
+  settle: 'wet'
+  ok: boolean
+  path: string | null
+  settleTicks: number | null
+  strokeCount: number
+  eventCount: number
+  frames: number
+  wetPeak: number
+  bristleContent: boolean
+  byteLength: number
+  /** The recorded anchors and durations (ordering device only). */
+  recordedOrder: number[]
+  ticks: number[]
+  /** `buildRecordedTimeline` mirror — REPORT ONLY, never a tick-alignment claim. */
+  beginTicks: number[]
+  endTicks: number[]
+  /** The seven PAINT layers — the same `lastTouch`-free read as the freeze proof. */
+  layers: Record<string, LayerDigest> | null
+}
+
+/**
+ * 261123-vkb: bake the SAME two-stroke session the held scene applied, on a
+ * hold adapter with `settle: 'wet'` (the controller's live law). The gated read
+ * is only the settle law (`settleTicks` 0, peak above threshold); the paint-layer
+ * digests and begin ticks ride the readout for run.mjs's non-gating parity line.
+ */
+async function wetSessionArm(blueSize: number): Promise<WetSessionRead> {
+  if (!COLD) throw new Error("paper preset 'cold' is not in PAPERS")
+  const adapter = createAquarelleEngineAdapter({
+    width: SHEET_W,
+    height: SHEET_H,
+    paperPreset: COLD,
+    paperStrength: PAPER_STRENGTH,
+    paperSeed: PAPER_SEED,
+    holdWet: true,
+  })
+  const bakeDiagnostics: { current: AquarelleBakeDiagnostics | null } = { current: null }
+  const bake = createAquarelleBake(adapter, {
+    width: SHEET_W,
+    height: SHEET_H,
+    frameCount: 1,
+    settle: 'wet',
+    // Stub encoder: the frame's bytes are not this arm's read (the sheet is).
+    encodeWebp: () => new Uint8Array([1]),
+    onDiagnostics: (record) => {
+      bakeDiagnostics.current = record
+    },
+  })
+  try {
+    const session = holdSession(blueSize)
+    const result = await bake.bake(session)
+    if (!result.ok) throw new Error(`bake(wetSession) failed: ${result.reason}`)
+    await bake.flush()
+    const last = result.frames[result.frames.length - 1]
+    const snapshot = adapter.captureSheet()
+    const diagnostics = bakeDiagnostics.current
+    const timeline = mirrorRecordedTimeline(session)
+    return {
+      settle: 'wet',
+      ok: true,
+      path: diagnostics?.path ?? null,
+      settleTicks: diagnostics?.settleTicks ?? null,
+      strokeCount: session.length,
+      eventCount: session.length,
+      frames: result.frames.length,
+      wetPeak: snapshot ? round(snapshot.wetPeak) : -1,
+      bristleContent: snapshot?.bristleContent ?? false,
+      byteLength: last ? last.bytes.byteLength : 0,
+      recordedOrder: session.map((stroke) => stroke.recordedOrder),
+      ticks: session.map((stroke) => Math.max(1, Math.trunc(stroke.ticks))),
+      beginTicks: timeline.map((entry) => entry.beginTick),
+      endTicks: timeline.map((entry) => entry.endTick),
+      layers: snapshot ? layerDigests(snapshot.whole, PAINT_LAYER_IDS) : null,
+    }
+  } finally {
+    bake.dispose()
+    adapter.dispose()
+  }
+}
+
 /** The ink layers as one comparable string — the A/B digests joined. */
 function inkDigestOf(arm: BakeArmRead): string | null {
   if (!arm.layers) return null
@@ -659,6 +914,7 @@ async function runSceneBake(config: SceneConfig, renderer: string): Promise<Reco
   const blueSize = config.blueSize
   const wet = await bakeArm('wet', blueSize)
   const dry = await bakeArm('dry', blueSize)
+  const wetSession = await wetSessionArm(blueSize)
   const wetInk = inkDigestOf(wet)
   const dryInk = inkDigestOf(dry)
   const assertions = [
@@ -687,6 +943,16 @@ async function runSceneBake(config: SceneConfig, renderer: string): Promise<Reco
       ok: wetInk !== null && dryInk !== null && wetInk !== dryInk,
       detail: `wet ${wetInk} vs dry ${dryInk}`,
     },
+    {
+      name: 'wetSession.settleTicks 0 (the held session baked wet)',
+      ok: wetSession.settleTicks === 0,
+      detail: String(wetSession.settleTicks),
+    },
+    {
+      name: 'wetSession.wetPeak > WET_THRESHOLD',
+      ok: wetSession.wetPeak > WET_THRESHOLD,
+      detail: `${wetSession.wetPeak} vs ${WET_THRESHOLD}`,
+    },
   ]
   const failed = assertions.filter((entry) => !entry.ok)
   if (failed.length > 0) {
@@ -711,6 +977,7 @@ async function runSceneBake(config: SceneConfig, renderer: string): Promise<Reco
     renderer,
     wet,
     dry,
+    wetSession,
     assertions,
     verdict: 'WET-HOLD CAPTURED',
   }
@@ -740,16 +1007,23 @@ function runScene(config: SceneConfig, renderer: string): Record<string, unknown
     // The live layer's construction arm: the ONE hold authority.
     engine.setHoldWet(true)
 
+    // 261123-vkb parity read: the probe's host-tick position immediately before
+    // each live applyStroke (the same seeds/params as `holdSession`). MEASURED
+    // for the bake scene's non-gating parity line, never asserted.
+    const liveBegins: { band: number; acrylic: number } = { band: 0, acrylic: 0 }
+
     // 1. The watercolor underpaint (the 64-21 band): Body 0 on the bristle
     //    path keeps the coverage channel at its Body-0 floor, so the carrier's
     //    gate has paint to read (the non-bristle Body-0 path writes no cover).
-    adapter.applyStroke(makeStroke(BAND_COLOR, paramsBag(bandSize, 0, 0), 0x7ec000))
+    liveBegins.band = hostTicksOf(engine)
+    adapter.applyStroke(makeStroke(BAND_COLOR, paramsBag(bandSize, 0, 0), HOLD_BAND_SEED))
     settle()
     const depthAfterBand = depthOf(engine)
 
     // 2. The acrylic stroke — the PICKUP CONTROL. Fresh stamps, so its carried
     //    hue drag is the level the held run's post-idle stroke must retain.
-    adapter.applyStroke(makeStroke(BLUE_COLOR, paramsBag(blueSize, 100, 100), 0x7ec001))
+    liveBegins.acrylic = hostTicksOf(engine)
+    adapter.applyStroke(makeStroke(BLUE_COLOR, paramsBag(blueSize, 100, 100), HOLD_ACRYLIC_SEED))
     const controlCarried = readCarried(engine)
     const controlFilm = filmStats(engine.exportCanvas('transparent'), engine.exportCoverageCanvas())
     const blueHue = pigmentHue(BLUE_COLOR)
@@ -768,10 +1042,64 @@ function runScene(config: SceneConfig, renderer: string): Record<string, unknown
       filmTexels: controlFilm.texels,
     }
 
+    const reportConfig = {
+      sheetW: SHEET_W,
+      sheetH: SHEET_H,
+      paperSeed: PAPER_SEED,
+      paperStrength: PAPER_STRENGTH,
+      blueSize,
+      bandSize,
+      pressure: PRESSURE,
+      wetSeconds: WET_SECONDS,
+      dryParam: DRY_PARAM,
+      settleTicks: SETTLE_TICKS,
+      maxFixTicks: MAX_FIX_TICKS,
+      maxIdleTicks: MAX_IDLE_TICKS,
+      wetThreshold: WET_THRESHOLD,
+      // 261123-vkb: the visible settle cap the held awake window is bounded at.
+      capTicks: aquarelleVisibleSettleTicks(DRY_PARAM),
+      holdoff: config.holdoff,
+    }
+
+    // 3a. The hold-off control (261123-vkb): the SAME session with the hold
+    //     lifted before the idle — the engine's own natural window, then its
+    //     own unheld sleep (peak zeroed, gate closed). The wet-dependent blocks
+    //     below cannot run on a dry sheet, so the report stops after the reads.
+    if (config.holdoff) {
+      const idle = idleWalk(engine, adapter, false)
+      const postSleep = {
+        isAwake: engine.isAwake,
+        hasStandingWater: engine.hasStandingWater,
+        wetPeak: round(engine.captureSheet().wetPeak),
+        strokeNull: internals(engine).stroke === null,
+        activeNull: internals(engine).active === null,
+      }
+      return {
+        scene: config.scene,
+        arm: 'heldoff',
+        config: reportConfig,
+        renderer,
+        evictions: internals(engine).history.evictions,
+        stepRecording: internals(engine).stepRecording,
+        control,
+        liveBegins,
+        idle,
+        postSleep,
+        settledAsleep: null,
+        fix: null,
+        second: null,
+        settledAwake: null,
+        captureSettle: null,
+        verdict: 'WET-HOLD CAPTURED',
+      }
+    }
+
     // 3. Idle (held) or the explicit Dry (the control).
     let idle: IdleWalk | null = null
     let postSleep: Record<string, unknown> | null = null
     let settledAsleep: SettledProof | null = null
+    let frozen: FrozenRead | null = null
+    let frozenAfter: FrozenRead | null = null
     let fix: Record<string, unknown> | null = null
     if (config.dry) {
       const depthBeforeFix = depthOf(engine)
@@ -801,6 +1129,15 @@ function runScene(config: SceneConfig, renderer: string): Record<string, unknown
         activeNull: internals(engine).active === null,
       }
       settledAsleep = settledExportProof(engine)
+      // 3b. THE FREEZE PROOF (261123-vkb): the settled-export capture above
+      //     restores the sheet exactly (its own read proves the raw digest
+      //     identical), so the two reads below still bracket the cap state.
+      //     +30 s of clock (1800 host ticks, argument ignored by stepTick) must
+      //     leave the sheet byte-identical — no fix, no decay and no
+      //     mobile-to-fixed while held and asleep.
+      frozen = frozenRead(engine)
+      for (let i = 0; i < FREEZE_ADVANCE_TICKS; i += 1) adapter.stepTick(i)
+      frozenAfter = frozenRead(engine)
     }
 
     // 4. The SECOND acrylic stroke over the same footprint — the artist's
@@ -855,21 +1192,7 @@ function runScene(config: SceneConfig, renderer: string): Record<string, unknown
     return {
       scene: config.scene,
       arm: config.dry ? 'dry' : 'held',
-      config: {
-        sheetW: SHEET_W,
-        sheetH: SHEET_H,
-        paperSeed: PAPER_SEED,
-        paperStrength: PAPER_STRENGTH,
-        blueSize,
-        bandSize,
-        pressure: PRESSURE,
-        wetSeconds: WET_SECONDS,
-        dryParam: DRY_PARAM,
-        settleTicks: SETTLE_TICKS,
-        maxFixTicks: MAX_FIX_TICKS,
-        maxIdleTicks: MAX_IDLE_TICKS,
-        wetThreshold: WET_THRESHOLD,
-      },
+      config: reportConfig,
       renderer,
       // The depth reads are only meaningful while no step was evicted: the
       // history's tile pools drop the oldest step to make room, so an eviction
@@ -878,9 +1201,12 @@ function runScene(config: SceneConfig, renderer: string): Record<string, unknown
       evictions: internals(engine).history.evictions,
       stepRecording: internals(engine).stepRecording,
       control,
+      liveBegins,
       idle,
       postSleep,
       settledAsleep,
+      frozen,
+      frozenAfter,
       fix,
       second,
       settledAwake,
@@ -893,7 +1219,7 @@ function runScene(config: SceneConfig, renderer: string): Record<string, unknown
 }
 
 async function main(): Promise<void> {
-  let config: SceneConfig = { scene: 'hold', dry: false, blueSize: BLUE_SIZE, pressure: PRESSURE }
+  let config: SceneConfig = { scene: 'hold', dry: false, holdoff: false, blueSize: BLUE_SIZE, pressure: PRESSURE }
   let renderer = '(unknown)'
   try {
     config = readSceneConfig()
