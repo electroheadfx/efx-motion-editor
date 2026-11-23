@@ -68,19 +68,27 @@ describe('toEngineParams', () => {
   });
 
   // Phase 64 (v2.2.0): Body and Emboss join the medium bag. 0 is neutral —
-  // a pre-milestone stroke must replay byte-identically.
-  it('maps the Body and Emboss globals 0..100 onto the 0..1 medium bag', () => {
+  // a pre-milestone stroke must replay byte-identically. Quick 261123-hr5:
+  // Emboss is SIGNED — canonical -100..100 onto engine -1..1 — because the
+  // negative half subtracts thickness; Body keeps its 0..100 band.
+  it('maps the Body global 0..100 and the signed Emboss global -100..100 onto the medium bag', () => {
     expect(toEngineParams({ body: 0 }).body).toBe(0);
     expect(toEngineParams({ body: 50 }).body).toBe(0.5);
     expect(toEngineParams({ body: 100 }).body).toBe(1);
     // T-64-01: out-of-track values are clamped in the ONE mapping.
     expect(toEngineParams({ body: 250 }).body).toBe(1);
     expect(toEngineParams({ body: -40 }).body).toBe(0);
+    // The Emboss sign IS the law (deposit above 0, erode below), so the
+    // clamp must keep it: -100..100 canonical onto -1..1 engine.
     expect(toEngineParams({ emboss: 0 }).emboss).toBe(0);
     expect(toEngineParams({ emboss: 50 }).emboss).toBe(0.5);
     expect(toEngineParams({ emboss: 100 }).emboss).toBe(1);
+    expect(toEngineParams({ emboss: 15 }).emboss).toBe(0.15);
+    expect(toEngineParams({ emboss: -15 }).emboss).toBe(-0.15);
+    expect(toEngineParams({ emboss: -40 }).emboss).toBe(-0.4);
+    expect(toEngineParams({ emboss: -100 }).emboss).toBe(-1);
     expect(toEngineParams({ emboss: 250 }).emboss).toBe(1);
-    expect(toEngineParams({ emboss: -40 }).emboss).toBe(0);
+    expect(toEngineParams({ emboss: -250 }).emboss).toBe(-1);
   });
 
   it('replays a stroke without the Body or Emboss key at the neutral default', () => {

@@ -219,6 +219,7 @@ function makeMockCanvas(width: number, height: number): {
  * pre-existing rows still replay the pre-milestone script.
  * 64-03: `emboss` (0..100) joins the optional medium keys — the thickness
  * deposit is driven by it, and its determinism row turns it on.
+ * Quick 261123-hr5: the band is SIGNED (-100..100); the negative arm erodes.
  * 64-10: `body` (0..100) is the scattering key. Omitting it is the neutral
  * zero, so a pre-milestone bag replays the pre-milestone script.
  */
@@ -356,6 +357,22 @@ describe('determinism contract', () => {
     expect(first.recorded.engine.params.emboss).toBe(100)
     expect(second.recorded.engine.params.emboss).toBe(100)
     expect(toEngineParams(first.recorded.engine.params).emboss).toBe(1)
+  })
+
+  // Quick 261123-hr5 (signed emboss): the negative half is a per-stroke
+  // recorded-bag property like the positive half. It must not perturb replay
+  // identity, and the ONE mapping must carry the sign into the engine bag so
+  // the erode branch reads the number the artist set.
+  it('replays identically with emboss -15 and carries the signed value', () => {
+    const first = replayRun(makeStroke(undefined, -15))
+    const second = replayRun(makeStroke(undefined, -15))
+
+    expect(first.bytes.length).toBe(second.bytes.length)
+    expect(Buffer.from(first.bytes).equals(Buffer.from(second.bytes))).toBe(true)
+
+    expect(first.recorded.engine.params.emboss).toBe(-15)
+    expect(second.recorded.engine.params.emboss).toBe(-15)
+    expect(toEngineParams(first.recorded.engine.params).emboss).toBe(-0.15)
   })
 
   // 64-04 (MED-15 / MED-18): the emboss light is DOCUMENT render state, never

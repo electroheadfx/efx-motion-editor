@@ -380,7 +380,7 @@ describe('relief deposit (MED-14)', () => {
   })
 
   it('blends the deposit additively and draws only into the thickness target', () => {
-    const brushRelief = sliceBetween(ENGINE_SOURCE, 'private brushRelief(', 'private brushInk(')
+    const brushRelief = sliceBetween(ENGINE_SOURCE, 'private brushRelief(', 'private reliefErode(')
     expect(brushRelief).toContain('gl.enable(gl.BLEND);')
     expect(brushRelief).toContain('gl.blendEquation(gl.FUNC_ADD);')
     expect(brushRelief).toContain('gl.blendFunc(gl.ONE, gl.ONE);')
@@ -422,15 +422,21 @@ describe('thickness never flows (MED-14 prohibitions)', () => {
     expect(vector, 'a vector stroke deposits no thickness').not.toContain('relief')
   })
 
-  it('draws relief from exactly two call sites: the guarded deposit and the Lift erosion', () => {
+  it('draws relief from exactly three drawRelief sites: the deposit, the signed erode and the Lift erosion', () => {
     expect(ENGINE_SOURCE.match(/this\.brushRelief\(/g) ?? []).toHaveLength(1)
-    expect(ENGINE_SOURCE.match(/this\.drawRelief\(/g) ?? []).toHaveLength(2)
+    expect(ENGINE_SOURCE.match(/this\.drawRelief\(/g) ?? []).toHaveLength(3)
     const brush = sliceBetween(ENGINE_SOURCE, "case 'brush': {", "case 'water': {")
     expect(brush.match(/this\.brushRelief\(/g) ?? []).toHaveLength(1)
     // Post-UAT 2026-11-21: the bristle thickness deposit is the gather's
     // coverage, called once from the same guarded slot.
     expect(ENGINE_SOURCE.match(/this\.bristleReliefPass\(/g) ?? []).toHaveLength(1)
     expect(brush.match(/this\.bristleReliefPass\(/g) ?? []).toHaveLength(1)
+    // Quick 261123-hr5: the signed erode pair, called once each from the
+    // negative half of the same signed slot.
+    expect(ENGINE_SOURCE.match(/this\.reliefErode\(/g) ?? []).toHaveLength(1)
+    expect(ENGINE_SOURCE.match(/this\.bristleReliefErode\(/g) ?? []).toHaveLength(1)
+    expect(brush.match(/this\.reliefErode\(/g) ?? []).toHaveLength(1)
+    expect(brush.match(/this\.bristleReliefErode\(/g) ?? []).toHaveLength(1)
   })
 })
 
@@ -458,7 +464,7 @@ describe('bristleReliefFS — thickness follows the real bristle mark', () => {
     const pass = sliceBetween(
       ENGINE_SOURCE,
       'private bristleReliefPass(',
-      'private brushInk(',
+      'private reliefErode(',
     )
     expect(pass).toContain('this.bindGather(p, x, y, r, angle, pr, alongPx, endCap);')
     expect(pass).toContain('gl.uniform1f(p.u.uAmount!, amount);')
@@ -468,5 +474,70 @@ describe('bristleReliefFS — thickness follows the real bristle mark', () => {
     expect(pass).not.toContain('this.ink')
     expect(pass).not.toContain('this.cover')
     expect(pass).not.toContain('bristleSnapshot(')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 9. Signed emboss (quick 261123-hr5): the negative half SUBTRACTS thickness
+// ---------------------------------------------------------------------------
+
+// The artist's row spans -15..15: negative smooths a dry impasto and keeps the
+// paint. The erode is the Lift blend law (destination minus the relief mask),
+// gated ONLY by the recorded emboss sign — paint never auto-erodes the relief
+// under its own coverage (GAP-1). Undo rides the dab's own touch: both erode
+// passes draw after brushInk / bristleInk protected the identical rect, so no
+// new protection site exists.
+describe('signed emboss (quick 261123-hr5)', () => {
+  it('declares the signed erode gain beside the Lift erode constant', () => {
+    expect(ENGINE_SOURCE).toContain('const RELIEF_ERODE = 0.5;')
+    expect(ENGINE_SOURCE).toMatch(/const RELIEF_ERODE_NEGATIVE = [0-9.]+;/)
+  })
+
+  it('branches on the sign after the untouched positive deposit, before the wet pass', () => {
+    const brush = sliceBetween(ENGINE_SOURCE, "case 'brush': {", "case 'water': {")
+    const positiveAt = brush.indexOf('if (reliefAmount > 0) {')
+    const erodeAt = brush.indexOf('else if (reliefAmount < 0) {')
+    const wetAt = brush.indexOf('if (wet > 0) this.brushWet(')
+    expect(positiveAt, 'positive deposit gate missing').toBeGreaterThanOrEqual(0)
+    expect(erodeAt, 'signed erode branch missing').toBeGreaterThan(positiveAt)
+    expect(wetAt, 'wet pass missing after the signed slot').toBeGreaterThan(erodeAt)
+    const erodeBranch = brush.slice(erodeAt, wetAt)
+    expect(erodeBranch).toContain('const erodeAmount = Math.min(1, -reliefAmount * RELIEF_ERODE_NEGATIVE);')
+    expect(erodeBranch).toContain(
+      'if (bristle) this.bristleReliefErode(dx, dy, dr, angle, erodeAmount, contactPr, alongPx, this.bristleEndCap);',
+    )
+    expect(erodeBranch).toContain(
+      'else this.reliefErode(dx, dy, dr, angle, erodeAmount, dryness, grainThr);',
+    )
+    // GAP-1: the erode is gated by the recorded sign only — no coverage, no
+    // ink and no settled-pigment term may appear in the branch.
+    expect(erodeBranch).not.toContain('this.cover')
+    expect(erodeBranch).not.toContain('this.ink')
+    expect(erodeBranch).not.toContain('this.fixed')
+  })
+
+  it('subtracts thickness in reliefErode under ZERO / ONE_MINUS_SRC_COLOR into the thickness target only', () => {
+    const erode = sliceBetween(ENGINE_SOURCE, 'private reliefErode(', 'private bristleReliefErode(')
+    expect(erode).toContain('gl.enable(gl.BLEND);')
+    expect(erode).toContain('gl.blendEquation(gl.FUNC_ADD);')
+    expect(erode).toContain('gl.blendFunc(gl.ZERO, gl.ONE_MINUS_SRC_COLOR);')
+    expect(erode).toContain('this.drawRelief(amount, x, y, r, angle, grain, grainThr);')
+    expect(erode).not.toContain('this.ink')
+    expect(erode).not.toContain('this.fixed')
+    expect(erode).not.toContain('this.cover')
+    // brushInk already protected the identical rect in this same callback.
+    expect(erode).not.toContain('touch(')
+  })
+
+  it('subtracts through the bristle gather for a bristle response, thickness target only', () => {
+    const erode = sliceBetween(ENGINE_SOURCE, 'private bristleReliefErode(', 'private brushInk(')
+    expect(erode).toContain('const p = this.programs.bristleRelief;')
+    expect(erode).toContain('this.bindGather(p, x, y, r, angle, pr, alongPx, endCap);')
+    expect(erode).toContain('gl.uniform1f(p.u.uAmount!, amount);')
+    expect(erode).toContain('gl.blendFunc(gl.ZERO, gl.ONE_MINUS_SRC_COLOR);')
+    expect(erode).toContain('g.draw(this.relief, this.stampRect(x, y, r, this.dw, this.dh, 1.6));')
+    expect(erode).not.toContain('this.ink')
+    expect(erode).not.toContain('this.cover')
+    expect(erode).not.toContain('bristleSnapshot(')
   })
 })
