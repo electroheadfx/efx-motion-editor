@@ -266,7 +266,15 @@ AQTL stays **version 4**. A project containing a relief-only stroke sets `vector
 
 None — no external service configuration, no package installs.
 
-## Live UAT Rows (automated-ready — the artist confirms live; NOT reported done)
+## Live UAT Rows (SUPERSEDED 2026-11-23 — see the note below)
+
+> **Superseded before UAT.** The artist replaced jak's Shift semantics: relief
+> is now pressure-driven, Shift erodes and Cmd deposits (Alt stays the colour
+> picker), and the Emboss slider is not read in modifier modes. The engine
+> latch, recording, AQTL bit, Roto boundaries, adapter replay and the probe
+> instrument from this quick are kept; only the modifier rule and magnitude
+> change. The rows below are kept as the record of what jak shipped, not as
+> pending validation.
 
 | # | Surface | Row | Expected |
 |---|---|---|---|
