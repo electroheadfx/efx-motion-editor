@@ -64,6 +64,8 @@ const replayEngine = vi.hoisted(() => {
     private readonly dabs: Array<{ x: number; y: number; p: number }> = []
     /** 64-21: the sheet seed is replay INPUT — folded into the export digest. */
     private paperSeed: number | null = null
+    /** quick 261123-jak: the relief-only flag is replay INPUT too. */
+    private reliefOnlyBegins = 0
 
     constructor(surface: FakeCanvas) {
       this.surface = surface
@@ -91,7 +93,10 @@ const replayEngine = vi.hoisted(() => {
       _tiltX?: number,
       _tiltY?: number,
       _widthScale?: number,
+      _pigment?: unknown,
+      reliefOnly = false,
     ): boolean {
+      if (reliefOnly === true) this.reliefOnlyBegins += 1
       this.dabs.push({ x, y, p })
       return true
     }
@@ -115,6 +120,9 @@ const replayEngine = vi.hoisted(() => {
       if (!ctx) return this.surface
       const image = ctx.createImageData(this.surface.width, this.surface.height)
       const seedByte = this.paperSeed === null ? 0 : Math.floor(this.paperSeed) & 0xff
+      // quick 261123-jak: the render-mode precedent — the engine received the
+      // relief-only flag as replay INPUT, so it salts the exported digest.
+      const reliefByte = this.reliefOnlyBegins > 0 ? 0x80 : 0
       for (const dab of this.dabs) {
         const px =
           ((Math.trunc(dab.x) % this.surface.width) + this.surface.width) % this.surface.width
@@ -123,7 +131,7 @@ const replayEngine = vi.hoisted(() => {
         const at = (py * this.surface.width + px) * 4
         image.data[at] = 0x11
         image.data[at + 1] = Math.min(255, Math.max(0, Math.round(dab.p * 255)))
-        image.data[at + 2] = (this.dabs.length ^ seedByte) & 0xff
+        image.data[at + 2] = (this.dabs.length ^ seedByte ^ reliefByte) & 0xff
         image.data[at + 3] = 255
       }
       ctx.putImageData(image, 0, 0)
@@ -222,8 +230,15 @@ function makeMockCanvas(width: number, height: number): {
  * Quick 261123-hr5: the band is SIGNED (-100..100); the negative arm erodes.
  * 64-10: `body` (0..100) is the scattering key. Omitting it is the neutral
  * zero, so a pre-milestone bag replays the pre-milestone script.
+ * Quick 261123-jak: `reliefOnly` is the Shift-latched engine flag; written
+ * only when true, so an unflagged bag keeps its exact key set.
  */
-function makeStroke(viscosity?: number, emboss?: number, body?: number): StudioStroke<AquarelleStrokePayload> {
+function makeStroke(
+  viscosity?: number,
+  emboss?: number,
+  body?: number,
+  reliefOnly?: boolean,
+): StudioStroke<AquarelleStrokePayload> {
   return toStudioStroke({
     tool: 'brush',
     color: '#2244aa',
@@ -242,6 +257,7 @@ function makeStroke(viscosity?: number, emboss?: number, body?: number): StudioS
     ],
     mutationId: 42,
     timestamp: 1000,
+    ...(reliefOnly === true ? { reliefOnly: true as const } : {}),
   })
 }
 
@@ -373,6 +389,28 @@ describe('determinism contract', () => {
     expect(first.recorded.engine.params.emboss).toBe(-15)
     expect(second.recorded.engine.params.emboss).toBe(-15)
     expect(toEngineParams(first.recorded.engine.params).emboss).toBe(-0.15)
+  })
+
+  // Quick 261123-jak (Shift relief-only): the marker is replay INPUT, like the
+  // render mode was (61-07) — the adapter must hand it to the engine's ONE
+  // scriptBegin call, the recorded bag must carry it, and an unflagged bag
+  // must not gain the key. The real-engine pigment-identity proof (the relief
+  // pass changes NOTHING in the pigment) is the `emboss-relief-only` probe.
+  it('replays identically with a relief-only marker and feeds it to scriptBegin', () => {
+    const first = replayRun(makeStroke(undefined, 15, undefined, true))
+    const second = replayRun(makeStroke(undefined, 15, undefined, true))
+
+    expect(first.bytes.length).toBe(second.bytes.length)
+    expect(Buffer.from(first.bytes).equals(Buffer.from(second.bytes))).toBe(true)
+
+    expect(first.recorded.engine.reliefOnly).toBe(true)
+    expect(second.recorded.engine.reliefOnly).toBe(true)
+    expect('reliefOnly' in makeStroke(undefined, 15).engine).toBe(false)
+
+    // The fake received the flag: the flagged run's bytes diverge from the
+    // unflagged run's, so this row cannot pass on a dropped argument.
+    const unflagged = replayRun(makeStroke(undefined, 15))
+    expect(Buffer.from(first.bytes).equals(Buffer.from(unflagged.bytes))).toBe(false)
   })
 
   // 64-04 (MED-15 / MED-18): the emboss light is DOCUMENT render state, never

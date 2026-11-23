@@ -170,8 +170,8 @@ export interface EngineCallbacks {
   onViewChange?(zoom: number, docSize: [number, number]): void;
   /** Studio record seam: one pointer sample entered the stroke (doc uv, y up). */
   onStrokeSample?(sample: { x: number; y: number; p: number; tx: number; ty: number; t: number }): void;
-  /** Studio record seam: the pointer stroke ended. */
-  onStrokeEnd?(tool: Tool): void;
+  /** Studio record seam: the pointer stroke ended (with the relief-only latch). */
+  onStrokeEnd?(tool: Tool, reliefOnly?: boolean): void;
   /**
    * 261028-k03b: one applied Lift dab (doc uv y up, radius in document
    * heights, amount = the effective per-dab erase). The Studio previews it on
@@ -320,6 +320,10 @@ interface Stroke {
   // sample boundary. Both null = the stroke paints with `this.pigment`.
   pigFrom: Pigment | null;
   pigTo: Pigment | null;
+  // Quick 261123-jak (Shift relief-only): latched at pointerdown (or carried
+  // by a replayed bag). Inverts the emboss sign and suppresses every
+  // paint/water/carrier channel — a pure relief smoother for this stroke.
+  reliefOnly: boolean;
 }
 
 /** 61-04 / T-61-11: bound a scripted width factor and default a bad one. */
@@ -1432,8 +1436,12 @@ export class WatercolorEngine {
    * keeps the pigment `configure()` installed — today's exact deposit. When
    * present it rides the queued sample and is swapped in only around that
    * sample's stamps, then the base pigment is restored (no leak).
+   *
+   * `reliefOnly` (quick 261123-jak) is the recorded Shift latch: the replayed
+   * stroke smooths thickness exactly like a live Shift stroke, and paints
+   * nothing. Omitted keeps every pre-existing script a normal paint stroke.
    */
-  scriptBegin(tool: Tool, x: number, y: number, pressure: number, step: string | false = 'Stroke', maxRadius?: number, tiltX = 0, tiltY = 0, widthScale = 1, pigment?: Pigment): boolean {
+  scriptBegin(tool: Tool, x: number, y: number, pressure: number, step: string | false = 'Stroke', maxRadius?: number, tiltX = 0, tiltY = 0, widthScale = 1, pigment?: Pigment, reliefOnly = false): boolean {
     if (this.stroke) return false;
     if (step !== false) this.beginStep('script', step);
     this.scriptScale = maxRadius ? Math.min(1, maxRadius / this.radius(tool, 1, 0)) : 1;
@@ -1446,6 +1454,7 @@ export class WatercolorEngine {
       dx: this.lastDir[0], dy: this.lastDir[1], angle: this.lastAngle, azimuth: null,
       widthFrom: 1, widthTo: 1,
       pigFrom: null, pigTo: null,
+      reliefOnly,
     };
     this.queue.push({ x, y, p: scriptPressure(pressure), t: this.clock(), tx: tiltX, ty: tiltY, w: scriptWidthFactor(widthScale), pig: pigment });
     this.schedule();
@@ -2285,12 +2294,18 @@ export class WatercolorEngine {
       if (e.pointerType === 'touch' && this.pencilSeen && this.fingerIsWater) tool = 'water';
       if (e.pointerType === 'pen' && e.buttons & 32) tool = 'lift';          // eraser end
       else if (e.pointerType === 'pen' && e.buttons & 2) tool = tool === 'water' ? 'brush' : 'water'; // barrel button
+      // Quick 261123-jak (Shift relief-only): the latch is stroke-START only,
+      // computed from the RESOLVED tool and this pointerdown's modifier — a
+      // mid-stroke Shift change can never flip the current stroke, and Emboss
+      // 0 is inert (there is no sign to invert).
+      const reliefOnly = tool === 'brush' && e.shiftKey && this.params.emboss !== 0;
       this.stroke = {
         pointerId: e.pointerId, pointerType: e.pointerType, tool, started: false, ending: false,
         x: 0, y: 0, cx: 0, cy: 0, pr: 0, t: e.timeStamp, speed: 0, simPressure: 0.45, carry: 0, travelled: 0, moved: false,
         dx: this.lastDir[0], dy: this.lastDir[1], angle: this.lastAngle, azimuth: null,
         widthFrom: 1, widthTo: 1,
         pigFrom: null, pigTo: null,
+        reliefOnly,
       };
       if (tool !== this.tool) this.callbacks.onStrokeTool?.(tool);
       this.beginStep('stroke', STROKE_LABEL[tool]);
@@ -2608,7 +2623,7 @@ export class WatercolorEngine {
       this.restoreStrokePigment();
       if (s.pointerId !== SCRIPT_POINTER) {
         this.callbacks.onStrokeTool?.(null);
-        this.callbacks.onStrokeEnd?.(s.tool);
+        this.callbacks.onStrokeEnd?.(s.tool, s.reliefOnly);
       }
     }
   }
@@ -2771,6 +2786,10 @@ export class WatercolorEngine {
         // readable; full pressure reaches the delivered thickness.
         const embossPress = EMBOSS_PRESS_FLOOR + (1 - EMBOSS_PRESS_FLOOR) * clamp(pr, 0, 1);
         const reliefAmount = P.emboss * amount * RELIEF_GAIN * embossPress;
+        // Quick 261123-jak (Shift relief-only): the SAME dab amount, sign
+        // inverted — slider +N erodes and slider −N deposits with exactly the
+        // hr5 magnitudes. Nothing else about the dab law moves.
+        const reliefSigned = s.reliefOnly ? -reliefAmount : reliefAmount;
         // Phase 64 (MED-19..MED-22, spec 06): Body is ORDER. Before a dab
         // deposits, it erodes the settled pigment and the thickness under its
         // own tip. The amount is D-14's one perceptual curve declared in
@@ -2816,7 +2835,7 @@ export class WatercolorEngine {
         const c = this.pigment.coeffs;
         const c0 = [c[0] * amount, c[1] * amount, c[2] * amount, c[3] * amount];
         const c1 = [c[4] * amount, c[5] * amount, c[6] * amount, scatteringDeposit(P.body, amount)];
-        if (coverAmount > 0 || bristle) {
+        if (!s.reliefOnly && (coverAmount > 0 || bristle)) {
           // Ordering hazard (spec 06): the cover pass runs BEFORE brushInk, so
           // the deposit's own touch() comes too late to restore a relief this
           // pass already eroded. These two protections are the ONLY undo
@@ -2848,33 +2867,41 @@ export class WatercolorEngine {
           if (bristle) {
             const t = this.bristleTravel(dx, dy, dr);
             alongPx = t.alongPx;
-            this.carrierPass(dx, dy, dr, angle, t.travel, t.travelPx, t.alongPx, contactPr);
+            // Quick 261123-jak (Shift relief-only): skip the canvas read — a
+            // relief-only pass moves no pigment, so there is nothing to pick
+            // up; skipping also keeps the gather mask at its initial charge.
+            if (!s.reliefOnly) this.carrierPass(dx, dy, dr, angle, t.travel, t.travelPx, t.alongPx, contactPr);
           }
+          // Quick 261123-jak (Shift relief-only): ONE guard owns every paint
+          // write. A relief-only dab draws the thickness target and nothing
+          // else — no cover, no pigment, no gather and no ink last-touch.
           // spec 06: the cover pass draws here, before this dab's deposit.
           // Post-UAT (GAP-1): a bristle response has NO erode pass at all —
           // Body is the film's opacity inside the one deposit lerp (below), so
           // nothing may dim the underlayer outside the paint that replaces it.
           // Every other response keeps the shipped footprint mask, untouched.
-          if (coverAmount > 0 && !bristle) {
-            this.coverPass(dx, dy, dr, angle, coverAmount, coverDensity, coverRelief, dryness, grainThr);
+          if (!s.reliefOnly) {
+            if (coverAmount > 0 && !bristle) {
+              this.coverPass(dx, dy, dr, angle, coverAmount, coverDensity, coverRelief, dryness, grainThr);
+            }
+            // SPIKE 001: source-over inside the pigment layer, replacing "erase
+            // the underlayer, then deposit". No snapshot, no full-document pass,
+            // no cached-base punch callback. Body 0 keeps the additive brushInk
+            // path unchanged, so the neutral gate stays byte-identical.
+            // Post-UAT (GAP-1): a bristle response deposits the five nearest
+            // bristles' CARRIED coefficients through the shared gather as the
+            // reference's ONE lerp — `canvas <- mix(canvas, carried, coverage)`
+            // in coefficient space — and its layer alpha is the same lerp's
+            // weight times Body's opacity, so the film and its paint can never
+            // disagree. Every other response keeps the shipped chain, untouched.
+            if (bristle) this.bristleInk(dx, dy, dr, angle, bristleBodyAlpha, contactPr, c1[3]!, alongPx, this.bristleEndCap);
+            else if (coverAmount > 0) this.coverageDeposit(dx, dy, dr, angle, coverAmount, coverDensity, c, c1[3]!, dryness, grainThr);
+            else this.brushInk(dx, dy, dr, angle, c0, c1, dryness, grainThr);
+            // 64-24 (D-24): the dab records its own touch AFTER depositing and
+            // after its one coverage write — the next dab's carrier reads an
+            // honest age of the paint it crosses.
+            if (bristle) this.bristleTouch(dx, dy, dr, angle);
           }
-          // SPIKE 001: source-over inside the pigment layer, replacing "erase
-          // the underlayer, then deposit". No snapshot, no full-document pass,
-          // no cached-base punch callback. Body 0 keeps the additive brushInk
-          // path unchanged, so the neutral gate stays byte-identical.
-          // Post-UAT (GAP-1): a bristle response deposits the five nearest
-          // bristles' CARRIED coefficients through the shared gather as the
-          // reference's ONE lerp — `canvas <- mix(canvas, carried, coverage)`
-          // in coefficient space — and its layer alpha is the same lerp's
-          // weight times Body's opacity, so the film and its paint can never
-          // disagree. Every other response keeps the shipped chain, untouched.
-          if (bristle) this.bristleInk(dx, dy, dr, angle, bristleBodyAlpha, contactPr, c1[3]!, alongPx, this.bristleEndCap);
-          else if (coverAmount > 0) this.coverageDeposit(dx, dy, dr, angle, coverAmount, coverDensity, c, c1[3]!, dryness, grainThr);
-          else this.brushInk(dx, dy, dr, angle, c0, c1, dryness, grainThr);
-          // 64-24 (D-24): the dab records its own touch AFTER depositing and
-          // after its one coverage write — the next dab's carrier reads an
-          // honest age of the paint it crosses.
-          if (bristle) this.bristleTouch(dx, dy, dr, angle);
           // Post-UAT (2026-11-21): a bristle response's thickness follows the
           // gather's REAL coverage, never the solid base footprint — the
           // footprint's boundary lit as a dark/white seam inside the
@@ -2884,24 +2911,32 @@ export class WatercolorEngine {
           // exactly as before; below 0 SUBTRACTS it under the same footprint,
           // so the artist smooths a dry impasto and keeps the paint. Undo
           // rides the dab's own touch above — no new protection site.
-          if (reliefAmount > 0) {
-            if (bristle) this.bristleReliefPass(dx, dy, dr, angle, reliefAmount, contactPr, alongPx, this.bristleEndCap);
-            else this.brushRelief(dx, dy, dr, angle, reliefAmount, dryness, grainThr);
-          } else if (reliefAmount < 0) {
+          // Quick 261123-jak (Shift relief-only): no paint pass ran above, so
+          // the ink-rect protection never happened — take it HERE, on the
+          // same rects the ink passes protect (the bristle one is the wider
+          // 1.6). History merges repeated protections inside one step, so the
+          // per-dab call adds no undo step of its own.
+          if (s.reliefOnly && reliefSigned !== 0) this.touch(this.stampRect(dx, dy, dr, this.dw, this.dh, bristle ? 1.6 : 1.5));
+          if (reliefSigned > 0) {
+            if (bristle) this.bristleReliefPass(dx, dy, dr, angle, reliefSigned, contactPr, alongPx, this.bristleEndCap);
+            else this.brushRelief(dx, dy, dr, angle, reliefSigned, dryness, grainThr);
+          } else if (reliefSigned < 0) {
             // GAP-1: gated by the recorded emboss SIGN only — the paint's own
             // coverage must never erode the relief under it.
-            const erodeAmount = Math.min(1, -reliefAmount * RELIEF_ERODE_NEGATIVE);
+            const erodeAmount = Math.min(1, -reliefSigned * RELIEF_ERODE_NEGATIVE);
             if (bristle) this.bristleReliefErode(dx, dy, dr, angle, erodeAmount, contactPr, alongPx, this.bristleEndCap);
             else this.reliefErode(dx, dy, dr, angle, erodeAmount, dryness, grainThr);
           }
           // soft brushes wet a little beyond the tip; textured ones keep their
           // edges. A waterless brush never wakes the fluid sim at all.
-          if (wet > 0) this.brushWet(dx, dy, dr * (1 + 0.12 * b.wetRound), angle, wet, b.wetRound, dryness, grainThr);
+          // Quick 261123-jak: a relief-only dab wets nothing — the sheet must
+          // stay exactly as dry as the artist left it.
+          if (!s.reliefOnly && wet > 0) this.brushWet(dx, dy, dr * (1 + 0.12 * b.wetRound), angle, wet, b.wetRound, dryness, grainThr);
         });
         // A waterless brush (dry media) imparts no flow: the velocity splat
         // was stirring the sheet under chalk, making separate strokes blend
-        // like a wet medium.
-        if (moving && b.water > 0) this.splatVelocity(x, y, r * 1.2, vx, vy, (15 + P.flow * 95) * 0.25 * b.flow);
+        // like a wet medium. A relief-only stroke never splats either.
+        if (!s.reliefOnly && moving && b.water > 0) this.splatVelocity(x, y, r * 1.2, vx, vy, (15 + P.flow * 95) * 0.25 * b.flow);
         break;
       }
       case 'water': {

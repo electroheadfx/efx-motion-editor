@@ -52,12 +52,12 @@ function sliceBetween(source: string, startAnchor: string, endAnchor: string): s
 }
 
 /** The inside of the bracket that opens at `openIndex` (balanced). */
-function extractBracket(text: string, openIndex: number): string {
-  expect(text[openIndex], `expected '[' at index ${openIndex}`).toBe('[')
+function extractBracket(text: string, openIndex: number, open = '[', close = ']'): string {
+  expect(text[openIndex], `expected '${open}' at index ${openIndex}`).toBe(open)
   let depth = 0
   for (let i = openIndex; i < text.length; i += 1) {
-    if (text[i] === '[') depth += 1
-    else if (text[i] === ']') {
+    if (text[i] === open) depth += 1
+    else if (text[i] === close) {
       depth -= 1
       if (depth === 0) return text.slice(openIndex + 1, i)
     }
@@ -364,18 +364,21 @@ describe('relief deposit (MED-14)', () => {
     const seam = brush.indexOf("// spec 06: the cover pass draws here, before this dab's deposit")
     const inkAt = brush.indexOf('this.brushInk(')
     const reliefAt = brush.indexOf('this.brushRelief(')
-    const wetAt = brush.indexOf('if (wet > 0) this.brushWet(')
+    // Quick 261123-jak: the wet pass is skipped for a relief-only dab, so its
+    // line carries the guard — the order is unchanged.
+    const wetAt = brush.indexOf('if (!s.reliefOnly && wet > 0) this.brushWet(')
     expect(seam, 'the spec-06 seam comment is missing').toBeGreaterThanOrEqual(0)
     expect(inkAt).toBeGreaterThan(seam)
     expect(reliefAt).toBeGreaterThan(inkAt)
     expect(wetAt).toBeGreaterThan(reliefAt)
     // Post-UAT 2026-11-21: a bristle response deposits through the gather's
-    // real coverage; every other response keeps reliefFS's footprint.
+    // real coverage; every other response keeps reliefFS's footprint. Quick
+    // 261123-jak: the value passed is the SIGNED amount.
     expect(brush).toContain(
-      'if (bristle) this.bristleReliefPass(dx, dy, dr, angle, reliefAmount, contactPr, alongPx, this.bristleEndCap);',
+      'if (bristle) this.bristleReliefPass(dx, dy, dr, angle, reliefSigned, contactPr, alongPx, this.bristleEndCap);',
     )
     expect(brush).toContain(
-      'else this.brushRelief(dx, dy, dr, angle, reliefAmount, dryness, grainThr);',
+      'else this.brushRelief(dx, dy, dr, angle, reliefSigned, dryness, grainThr);',
     )
   })
 
@@ -493,16 +496,19 @@ describe('signed emboss (quick 261123-hr5)', () => {
     expect(ENGINE_SOURCE).toMatch(/const RELIEF_ERODE_NEGATIVE = [0-9.]+;/)
   })
 
+  // Quick 261123-jak moved the branch operand from `reliefAmount` to
+  // `reliefSigned` (the relief-only inversion) and guarded the wet pass; every
+  // relation this pin states is unchanged.
   it('branches on the sign after the untouched positive deposit, before the wet pass', () => {
     const brush = sliceBetween(ENGINE_SOURCE, "case 'brush': {", "case 'water': {")
-    const positiveAt = brush.indexOf('if (reliefAmount > 0) {')
-    const erodeAt = brush.indexOf('else if (reliefAmount < 0) {')
-    const wetAt = brush.indexOf('if (wet > 0) this.brushWet(')
+    const positiveAt = brush.indexOf('if (reliefSigned > 0) {')
+    const erodeAt = brush.indexOf('else if (reliefSigned < 0) {')
+    const wetAt = brush.indexOf('if (!s.reliefOnly && wet > 0) this.brushWet(')
     expect(positiveAt, 'positive deposit gate missing').toBeGreaterThanOrEqual(0)
     expect(erodeAt, 'signed erode branch missing').toBeGreaterThan(positiveAt)
     expect(wetAt, 'wet pass missing after the signed slot').toBeGreaterThan(erodeAt)
     const erodeBranch = brush.slice(erodeAt, wetAt)
-    expect(erodeBranch).toContain('const erodeAmount = Math.min(1, -reliefAmount * RELIEF_ERODE_NEGATIVE);')
+    expect(erodeBranch).toContain('const erodeAmount = Math.min(1, -reliefSigned * RELIEF_ERODE_NEGATIVE);')
     expect(erodeBranch).toContain(
       'if (bristle) this.bristleReliefErode(dx, dy, dr, angle, erodeAmount, contactPr, alongPx, this.bristleEndCap);',
     )
@@ -539,5 +545,96 @@ describe('signed emboss (quick 261123-hr5)', () => {
     expect(erode).not.toContain('this.ink')
     expect(erode).not.toContain('this.cover')
     expect(erode).not.toContain('bristleSnapshot(')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 10. Relief-only strokes (quick 261123-jak): Shift at stroke start turns the
+//     brush into a relief smoother — the emboss sign inverts and NOTHING is
+//     painted.
+// ---------------------------------------------------------------------------
+
+// The artist's gesture: hold Shift at pointerdown with the brush tool and a
+// non-zero Emboss and the stroke flattens (or lifts) an existing impasto
+// without adding a single pigment byte. The latch is stroke-START only (a
+// mid-stroke Shift change cannot flip the stroke), Emboss 0 is inert, and a
+// relief-only dab takes its OWN ink-rect undo protection because no paint pass
+// ran to protect it. The pigment-identity proof is the `emboss-relief-only`
+// probe; these pins carry the source law.
+describe('relief-only strokes (quick 261123-jak)', () => {
+  it('declares the flag on Stroke and latches it ONCE at pointerdown from the resolved tool', () => {
+    const strokeInterface = sliceBetween(ENGINE_SOURCE, 'interface Stroke {', '/** 61-04 / T-61-11')
+    expect(strokeInterface).toContain('reliefOnly: boolean;')
+    const pointerdown = sliceBetween(
+      ENGINE_SOURCE,
+      "on(c, 'pointerdown', e => {",
+      "on(c, 'pointermove', e => {",
+    )
+    expect(pointerdown).toContain(
+      "const reliefOnly = tool === 'brush' && e.shiftKey && this.params.emboss !== 0;",
+    )
+    expect(pointerdown).toContain('reliefOnly,')
+    // Exactly two Stroke literals exist (pointerdown and scriptBegin); both
+    // carry the field, so no stroke path can leave it undefined.
+    expect(ENGINE_SOURCE.match(/reliefOnly,/g) ?? []).toHaveLength(2)
+  })
+
+  it('accepts a trailing reliefOnly on scriptBegin and records it on the scripted stroke', () => {
+    expect(ENGINE_SOURCE).toContain('pigment?: Pigment, reliefOnly = false): boolean {')
+    const scriptBegin = sliceBetween(ENGINE_SOURCE, 'scriptBegin(tool: Tool,', 'scriptMove(x: number,')
+    expect(scriptBegin).toContain('reliefOnly,')
+  })
+
+  it('inverts the sign from the SAME dab amount and keeps the positive-path literal untouched', () => {
+    const brush = sliceBetween(ENGINE_SOURCE, "case 'brush': {", "case 'water': {")
+    // The hr5 positive-path law: the amount literal is byte-identical.
+    expect(brush).toContain('const reliefAmount = P.emboss * amount * RELIEF_GAIN * embossPress;')
+    expect(brush).toContain('const reliefSigned = s.reliefOnly ? -reliefAmount : reliefAmount;')
+  })
+
+  it('skips every paint, water and carrier write behind ONE reliefOnly guard', () => {
+    const brush = sliceBetween(ENGINE_SOURCE, "case 'brush': {", "case 'water': {")
+    expect(brush).toContain('if (!s.reliefOnly && (coverAmount > 0 || bristle)) {')
+    expect(brush).toContain('if (!s.reliefOnly) this.carrierPass(')
+    expect(brush).toContain('if (!s.reliefOnly && moving && b.water > 0) this.splatVelocity(')
+    const blockAt = brush.indexOf('if (!s.reliefOnly) {')
+    expect(blockAt, 'the one paint block guard is missing').toBeGreaterThanOrEqual(0)
+    const body = extractBracket(brush, brush.indexOf('{', blockAt), '{', '}')
+    expect(body).toContain('this.coverPass(')
+    expect(body).toContain('this.bristleInk(')
+    expect(body).toContain('this.coverageDeposit(')
+    expect(body).toContain('this.brushInk(')
+    expect(body).toContain('this.bristleTouch(')
+  })
+
+  it('takes its own touch on the ink-pass rects before the relief draw, both signs', () => {
+    const brush = sliceBetween(ENGINE_SOURCE, "case 'brush': {", "case 'water': {")
+    const touchAt = brush.indexOf(
+      'if (s.reliefOnly && reliefSigned !== 0) this.touch(this.stampRect(dx, dy, dr, this.dw, this.dh, bristle ? 1.6 : 1.5));',
+    )
+    const positiveAt = brush.indexOf('if (reliefSigned > 0) {')
+    expect(touchAt, 'the relief-only own-protection line is missing').toBeGreaterThanOrEqual(0)
+    expect(positiveAt).toBeGreaterThan(touchAt)
+  })
+
+  it('reads the signed branch from reliefSigned and skips the wet pass for a relief-only dab', () => {
+    const brush = sliceBetween(ENGINE_SOURCE, "case 'brush': {", "case 'water': {")
+    expect(brush).toContain('if (reliefSigned > 0) {')
+    const erodeAt = brush.indexOf('else if (reliefSigned < 0) {')
+    const wetAt = brush.indexOf('if (!s.reliefOnly && wet > 0) this.brushWet(')
+    expect(erodeAt).toBeGreaterThan(-1)
+    expect(wetAt).toBeGreaterThan(erodeAt)
+    const erodeBranch = brush.slice(erodeAt, wetAt)
+    expect(erodeBranch).toContain(
+      'const erodeAmount = Math.min(1, -reliefSigned * RELIEF_ERODE_NEGATIVE);',
+    )
+    expect(erodeBranch).not.toContain('this.cover')
+    expect(erodeBranch).not.toContain('this.ink')
+    expect(erodeBranch).not.toContain('this.fixed')
+  })
+
+  it('reports the latched flag beside the tool at stroke end', () => {
+    expect(ENGINE_SOURCE).toContain('onStrokeEnd?(tool: Tool, reliefOnly?: boolean): void;')
+    expect(ENGINE_SOURCE).toContain('this.callbacks.onStrokeEnd?.(s.tool, s.reliefOnly);')
   })
 })

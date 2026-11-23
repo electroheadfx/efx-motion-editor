@@ -659,6 +659,9 @@ describe('resolveStrokeWidthFactors (61-04)', () => {
     const beginBlock = feed.slice(feed.indexOf('scriptBegin('), feed.indexOf('scriptMove('))
     expect(beginBlock).toContain('widthFactor,')
     expect(beginBlock).toContain('samplePigment,')
+    // quick 261123-jak: the relief-only marker rides the engine's ONE begin
+    // call as the trailing argument, read from the stroke payload in hand.
+    expect(beginBlock).toContain('active.stroke.engine.reliefOnly === true')
     expect(moveLine!.trimEnd().endsWith('widthFactor, samplePigment)')).toBe(true)
     // Both read the per-sample entry derived once at activation.
     expect(feed).toContain('active.widths')

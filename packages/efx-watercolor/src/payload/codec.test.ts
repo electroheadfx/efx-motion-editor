@@ -252,6 +252,50 @@ describe('textureId carrier (quick-261115-oh9)', () => {
 })
 
 // ---------------------------------------------------------------------------
+// quick 261123-jak (Shift relief-only) — the engine flag on the JSON carrier.
+//
+// `engine.reliefOnly` is a per-stroke ENGINE mode: written only when the
+// pointerdown latch fired, and — the `vectorDrawn` precedent — when present it
+// must be exactly `true`. A false / string / null value is malformed and
+// refuses the event. Absent stays absent, so schemaVersion stays 1.
+// ---------------------------------------------------------------------------
+
+describe('reliefOnly carrier (quick 261123-jak)', () => {
+  it('round-trips a stroke whose engine.reliefOnly is true', () => {
+    const stroke = makeStrokeEvent({ reliefOnly: true })
+    expect(stroke.engine.reliefOnly).toBe(true)
+    const round = parse(serialize(stroke)) as StudioStroke<AquarelleStrokePayload>
+    expect(round).not.toBeNull()
+    expect(round.engine.reliefOnly).toBe(true)
+    expect(round).toEqual(stroke)
+  })
+
+  it('absent stays absent: no reliefOnly key is invented and schemaVersion is still 1', () => {
+    const stroke = makeStrokeEvent()
+    const wire = serialize(stroke)
+    expect(wire.schemaVersion).toBe(AQUARELLE_SCHEMA_VERSION)
+    expect(AQUARELLE_SCHEMA_VERSION).toBe(1)
+    const round = parse(wire) as StudioStroke<AquarelleStrokePayload>
+    expect('reliefOnly' in round.engine).toBe(false)
+  })
+
+  it('refuses a present non-true marker (fail closed)', () => {
+    const stroke = makeStrokeEvent({ reliefOnly: true })
+    const wire = serialize(stroke) as {
+      schemaVersion: number
+      event: StudioStroke<AquarelleStrokePayload>
+    }
+    for (const bad of [false, 'true', 1, null]) {
+      const tampered = {
+        schemaVersion: wire.schemaVersion,
+        event: { ...wire.event, engine: { ...wire.event.engine, reliefOnly: bad } },
+      }
+      expect(parse(tampered), `reliefOnly ${String(bad)}`).toBeNull()
+    }
+  })
+})
+
+// ---------------------------------------------------------------------------
 // 3. Dry event shape (D-16) — distinguished union member, one payload union
 // ---------------------------------------------------------------------------
 

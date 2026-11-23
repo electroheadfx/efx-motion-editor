@@ -124,6 +124,13 @@ export interface AquarelleStrokePayload {
    * optional boolean keeps schemaVersion 1 (the anchors/curveMode precedent).
    */
   vectorDrawn?: true
+  /**
+   * Quick 261123-jak: true only for a stroke latched as relief-only (Shift
+   * held at stroke start, brush tool, non-zero Emboss). ABSENT on every
+   * ordinary stroke, so its recorded shape stays byte-identical — the same
+   * conditional-spread law as textureId/vectorDrawn above.
+   */
+  reliefOnly?: true
 }
 
 /** Host cap policy (55 D-20 / D-19) — engine-owned, script-visible. */
@@ -195,6 +202,8 @@ export interface AquarelleStroke {
    * hand-painted stroke and on a converted path).
    */
   vectorDrawn?: true
+  /** Quick 261123-jak: the Shift relief-only latch, recorded per stroke. */
+  reliefOnly?: true
 }
 
 /**
@@ -271,6 +280,10 @@ export function toStudioStroke(
       ...(s.anchors !== undefined ? { anchors: projectVectorPath(s.anchors) } : {}),
       ...(s.curveMode !== undefined ? { curveMode: s.curveMode } : {}),
       ...(s.vectorDrawn === true ? { vectorDrawn: true as const } : {}),
+      // Quick 261123-jak: the Shift relief-only latch rides the opaque engine
+      // slot and is written ONLY when set — an ordinary stroke keeps its exact
+      // key set (and its exact stored bytes).
+      ...(s.reliefOnly === true ? { reliefOnly: true as const } : {}),
     },
   }
 }
