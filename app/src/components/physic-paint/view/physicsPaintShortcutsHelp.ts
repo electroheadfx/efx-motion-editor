@@ -41,9 +41,6 @@ export const PHYSICS_PAINT_SHORTCUT_GROUPS: ShortcutGroup[] = [
       {keys: 'V', description: 'Vector pen'},
       {keys: 'I', description: 'Color picker'},
       {keys: '⌥ + click', description: 'Pick a color temporarily'},
-      // quick 261123-kpy: the pressure-driven modifier is latched at stroke start.
-      {keys: '⇧ + stroke', description: 'Erode relief — pressure-driven (works at Emboss 0; wins over ⌘)'},
-      {keys: '⌘ + stroke', description: 'Deposit relief — pressure-driven (works at Emboss 0)'},
       {keys: 'X', description: 'Swap foreground / background'},
       {keys: 'D', description: 'Reset foreground / background'},
       {keys: 'F', description: 'Flash-dry the sheet'},

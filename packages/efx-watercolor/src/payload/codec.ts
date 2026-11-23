@@ -128,12 +128,6 @@ function isStrokeShape(value: unknown): value is StudioStroke<AquarelleStrokePay
   // 62-UAT: drawn provenance is optional and, when present, must be `true`.
   const vectorDrawn = engine['vectorDrawn']
   if (vectorDrawn !== undefined && vectorDrawn !== true) return false
-  // Quick 261123-kpy: the modifier polarity is optional and, when present,
-  // must be exactly 'erode' or 'deposit' — an unknown value is refused, never
-  // defaulted. The Roto script schema runs the same rule at its own boundary
-  // — a script can meet that guard without passing through here.
-  const relief = engine['relief']
-  if (relief !== undefined && relief !== 'erode' && relief !== 'deposit') return false
   // quick-261115-oh9: the texture axis. Absent is valid (no texture); a
   // present value must be a non-empty string. The Roto script schema runs
   // the same rule at its own boundary — a script can meet that guard

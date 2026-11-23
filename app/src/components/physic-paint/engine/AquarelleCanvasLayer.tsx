@@ -719,7 +719,7 @@ export function AquarelleCanvasLayer(props: {
           onLiftDab(x, y, r, amount, angle) {
             onLiftDabRef.current?.(x, y, r, amount, angle);
           },
-          onStrokeEnd(tool, relief) {
+          onStrokeEnd(tool) {
             painting = false;
             lastWetAt = performance.now();
             settleCapArmed = false;
@@ -764,12 +764,6 @@ export function AquarelleCanvasLayer(props: {
               ...(recordedTool !== 'lift' && snap.textureRotation !== undefined
                 ? { textureRotation: snap.textureRotation }
                 : {}),
-              // Quick 261123-kpy: the ENGINE latched the modifier polarity at
-              // pointerdown (Shift = erode, Cmd = deposit, Shift wins). It
-              // rides the record ONLY when latched, so an ordinary stroke
-              // keeps its exact key set — and a re-render replays the same
-              // polarity against the modified brush's pressure.
-              ...(relief !== undefined ? { relief } : {}),
               toolOverrides: { ...snap.toolOverrides },
               // Visible settle window (D-19, cap 600) — the SAME cap the live
               // sheet force-dries at and the bake replays.

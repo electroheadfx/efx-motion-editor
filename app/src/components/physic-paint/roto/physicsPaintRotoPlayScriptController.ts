@@ -4452,10 +4452,6 @@ function aquarelleEventsFromScript(script: RotoPaintScript): AquarellePayloadEve
       ...(stored?.textureRotation !== undefined
         ? { textureRotation: stored.textureRotation }
         : {}),
-      // quick 261123-kpy: the modifier polarity is copied verbatim, beside the
-      // texture — the recorded latch (read off the recorded STROKE; the
-      // params-only payload view does not carry it), never the brush row.
-      ...(storedStroke?.relief !== undefined ? { relief: storedStroke.relief } : {}),
       // 56-11: prefer the recorded aquarelle stroke's own points (the live
       // surface is the record source of truth). Fall back to the script's
       // points only when no aquarelle stroke was recorded for this id.

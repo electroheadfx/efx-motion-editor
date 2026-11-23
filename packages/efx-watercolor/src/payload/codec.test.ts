@@ -252,52 +252,6 @@ describe('textureId carrier (quick-261115-oh9)', () => {
 })
 
 // ---------------------------------------------------------------------------
-// quick 261123-kpy (modifier relief) — the polarity on the JSON carrier.
-//
-// `engine.relief` is a per-stroke ENGINE mode: written only when the
-// pointerdown latch fired, and when present it must be exactly 'erode' or
-// 'deposit' — any other value is malformed and refuses the event (fail closed,
-// never defaulted). Absent stays absent, so schemaVersion stays 1.
-// ---------------------------------------------------------------------------
-
-describe('relief carrier (quick 261123-kpy)', () => {
-  it('round-trips a stroke for each polarity', () => {
-    for (const relief of ['erode', 'deposit'] as const) {
-      const stroke = makeStrokeEvent({ relief })
-      expect(stroke.engine.relief).toBe(relief)
-      const round = parse(serialize(stroke)) as StudioStroke<AquarelleStrokePayload>
-      expect(round, `relief ${relief}`).not.toBeNull()
-      expect(round.engine.relief).toBe(relief)
-      expect(round).toEqual(stroke)
-    }
-  })
-
-  it('absent stays absent: no relief key is invented and schemaVersion is still 1', () => {
-    const stroke = makeStrokeEvent()
-    const wire = serialize(stroke)
-    expect(wire.schemaVersion).toBe(AQUARELLE_SCHEMA_VERSION)
-    expect(AQUARELLE_SCHEMA_VERSION).toBe(1)
-    const round = parse(wire) as StudioStroke<AquarelleStrokePayload>
-    expect('relief' in round.engine).toBe(false)
-  })
-
-  it('refuses a present non-polarity marker (fail closed, never defaulted)', () => {
-    const stroke = makeStrokeEvent({ relief: 'erode' })
-    const wire = serialize(stroke) as {
-      schemaVersion: number
-      event: StudioStroke<AquarelleStrokePayload>
-    }
-    for (const bad of [true, 'smooth', '', 1, null]) {
-      const tampered = {
-        schemaVersion: wire.schemaVersion,
-        event: { ...wire.event, engine: { ...wire.event.engine, relief: bad } },
-      }
-      expect(parse(tampered), `relief ${String(bad)}`).toBeNull()
-    }
-  })
-})
-
-// ---------------------------------------------------------------------------
 // 3. Dry event shape (D-16) — distinguished union member, one payload union
 // ---------------------------------------------------------------------------
 

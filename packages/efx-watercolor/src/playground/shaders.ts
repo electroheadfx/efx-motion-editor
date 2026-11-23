@@ -107,13 +107,7 @@ void main(){
   float dry = smoothstep(th, th + 0.02, t);
   float sharp = mix(t, dry, step(0.0001, uRough));
   float d = dot(q, q);
-  // Quick 261123-kpy (modifier relief): a BELL, not a flat-topped disk. The
-  // uRound branch is reached only by the relief MODIFIER — every paint path
-  // passes uRound 0 and takes the sharp branch — so this is modifier-only.
-  // Both polarities MULTIPLY the existing height, and this profile is what
-  // that smoothing/enhancing looks like: a plateau reads as a flat-bottomed
-  // trough cut into the paint, a bell feathers into it.
-  float round = exp(-4.0 * d);
+  float round = 1.0 - smoothstep(0.15, 1.0, d);
   float f = mix(sharp, round, uRound);
   float h = texture(uPaper, vUv).g;
   f *= mix(1.0, smoothstep(uGrainThr - 0.08, uGrainThr + 0.08, h), uGrain);

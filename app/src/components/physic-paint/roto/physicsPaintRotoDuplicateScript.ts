@@ -218,10 +218,6 @@ export function aquarelleStrokeFromScriptEvent(
     ...(engine.textureRotation !== undefined
       ? { textureRotation: engine.textureRotation }
       : {}),
-    // quick 261123-kpy: a copied/+Key stroke must keep its modifier polarity
-    // (and its AQTL flag bit on persist); absent stays absent so an ordinary
-    // event keeps its exact key set.
-    ...(engine.relief !== undefined ? { relief: engine.relief } : {}),
   };
 }
 

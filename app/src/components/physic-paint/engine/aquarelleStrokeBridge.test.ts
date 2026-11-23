@@ -260,12 +260,4 @@ describe('record-time stroke literal (61-07)', () => {
   it('writes no anchors key on the hand-painted path', () => {
     expect(recordedStrokeLiteral()).not.toContain('anchors');
   });
-
-  // Quick 261123-kpy: the engine latches the modifier polarity at pointerdown
-  // and reports it beside the resolved tool; the literal writes it ONLY when
-  // present, so an ordinary stroke keeps its exact key set.
-  it('receives the modifier polarity and writes it only when present', () => {
-    expect(layer).toContain('onStrokeEnd(tool, relief)');
-    expect(recordedStrokeLiteral()).toContain('...(relief !== undefined ? { relief } : {}),');
-  });
 });

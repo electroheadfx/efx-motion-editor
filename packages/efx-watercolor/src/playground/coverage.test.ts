@@ -212,9 +212,7 @@ describe('the per-stamp protections (T-64-37)', () => {
     const brush = BRUSH_CASE()
     // Post-UAT 2026-11-19 (GAP-1): the block now also runs for a bristle
     // response, whose canvas lerp reaches the settled pool too.
-    // quick 261123-kpy: a modifier stroke writes no cover and no history,
-    // so the whole block sits behind the same per-stroke polarity guard.
-    const block = sliceBetween(brush, 'if (s.relief === null && (coverAmount > 0 || bristle)) {', 'this.eachDab(')
+    const block = sliceBetween(brush, 'if (coverAmount > 0 || bristle) {', 'this.eachDab(')
     expectContains(
       block,
       'const coverRect = this.stampRect(x, y, r * (1 + b.sizeJitter + b.scatter), this.dw, this.dh, 2);',

@@ -1044,10 +1044,6 @@ export function cloneAquarelleStrokeForDuplicate(
     ...(stroke.textureRotation !== undefined
       ? { textureRotation: stroke.textureRotation }
       : {}),
-    // quick 261123-kpy: the modifier polarity rides the clone — without it a
-    // duplicated erode/deposit stroke replays as a NORMAL paint stroke and
-    // repaints ink where the source cleared it.
-    ...(stroke.relief !== undefined ? { relief: stroke.relief } : {}),
     ...(stroke.diffusionFrames !== undefined
       ? { diffusionFrames: stroke.diffusionFrames }
       : {}),

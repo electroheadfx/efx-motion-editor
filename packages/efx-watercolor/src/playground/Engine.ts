@@ -46,9 +46,6 @@ import { WET_THRESHOLD, isSheetWet } from './wetState';
 // Phase 64 (D-14): the ONE perceptual Body curve, shared by the cover pass
 // here and the scattering deposit — never a second inline curve.
 import { bodyCurve, scatteringDeposit } from './scattering';
-// Quick 261123-kpy: the modifier magnitude is the ONE pure pressure law — the
-// Emboss slider is never read, and the pressureless sentinel is exactly full.
-import { reliefModifierBand, reliefModifierPress, reliefModifierRate, reliefModifierSigned, type ReliefMode } from './reliefModifier';
 
 export type Tool = 'brush' | 'water' | 'pen' | 'lift';
 
@@ -173,8 +170,8 @@ export interface EngineCallbacks {
   onViewChange?(zoom: number, docSize: [number, number]): void;
   /** Studio record seam: one pointer sample entered the stroke (doc uv, y up). */
   onStrokeSample?(sample: { x: number; y: number; p: number; tx: number; ty: number; t: number }): void;
-  /** Studio record seam: the pointer stroke ended (with the modifier polarity, when latched). */
-  onStrokeEnd?(tool: Tool, relief?: ReliefMode): void;
+  /** Studio record seam: the pointer stroke ended. */
+  onStrokeEnd?(tool: Tool): void;
   /**
    * 261028-k03b: one applied Lift dab (doc uv y up, radius in document
    * heights, amount = the effective per-dab erase). The Studio previews it on
@@ -323,15 +320,6 @@ interface Stroke {
   // sample boundary. Both null = the stroke paints with `this.pigment`.
   pigFrom: Pigment | null;
   pigTo: Pigment | null;
-  // Quick 261123-kpy (modifier relief): latched at pointerdown (or carried by
-  // a replayed bag) as the POLARITY of the relief-only pass — 'erode' from
-  // Shift, 'deposit' from Cmd, null for a normal stroke. Suppresses every
-  // paint/water/carrier channel; the magnitude is pressure-only.
-  relief: ReliefMode | null;
-  // The last consumed sample carried the recorded `p < 0` sentinel (a mouse or
-  // finger pointer). Never derived from pointerType, so a replayed bag
-  // reproduces the live magnitude exactly.
-  pressureless: boolean;
 }
 
 /** 61-04 / T-61-11: bound a scripted width factor and default a bad one. */
@@ -1444,13 +1432,8 @@ export class WatercolorEngine {
    * keeps the pigment `configure()` installed — today's exact deposit. When
    * present it rides the queued sample and is swapped in only around that
    * sample's stamps, then the base pigment is restored (no leak).
-   *
-   * `relief` (quick 261123-kpy) is the recorded modifier POLARITY latched at
-   * the live stroke's start: the replayed stroke erodes/deposits thickness
-   * exactly like a live Shift/Cmd stroke, and paints nothing. Omitted keeps
-   * every pre-existing script a normal paint stroke.
    */
-  scriptBegin(tool: Tool, x: number, y: number, pressure: number, step: string | false = 'Stroke', maxRadius?: number, tiltX = 0, tiltY = 0, widthScale = 1, pigment?: Pigment, relief?: ReliefMode): boolean {
+  scriptBegin(tool: Tool, x: number, y: number, pressure: number, step: string | false = 'Stroke', maxRadius?: number, tiltX = 0, tiltY = 0, widthScale = 1, pigment?: Pigment): boolean {
     if (this.stroke) return false;
     if (step !== false) this.beginStep('script', step);
     this.scriptScale = maxRadius ? Math.min(1, maxRadius / this.radius(tool, 1, 0)) : 1;
@@ -1463,10 +1446,6 @@ export class WatercolorEngine {
       dx: this.lastDir[0], dy: this.lastDir[1], angle: this.lastAngle, azimuth: null,
       widthFrom: 1, widthTo: 1,
       pigFrom: null, pigTo: null,
-      // The optional parameter normalizes to the stroke's null sentinel — a
-      // bare `relief,` cannot satisfy `ReliefMode | null` under strict TS.
-      relief: relief ?? null,
-      pressureless: false,
     };
     this.queue.push({ x, y, p: scriptPressure(pressure), t: this.clock(), tx: tiltX, ty: tiltY, w: scriptWidthFactor(widthScale), pig: pigment });
     this.schedule();
@@ -2306,21 +2285,12 @@ export class WatercolorEngine {
       if (e.pointerType === 'touch' && this.pencilSeen && this.fingerIsWater) tool = 'water';
       if (e.pointerType === 'pen' && e.buttons & 32) tool = 'lift';          // eraser end
       else if (e.pointerType === 'pen' && e.buttons & 2) tool = tool === 'water' ? 'brush' : 'water'; // barrel button
-      // Quick 261123-kpy (modifier relief): the latch is stroke-START only,
-      // computed from the RESOLVED tool and this pointerdown's modifiers — a
-      // mid-stroke change can never flip the current stroke. Shift wins when
-      // both are held; Alt never reaches here (the color picker consumes it
-      // capture-phase). NO Emboss gate: the magnitude never reads the slider,
-      // so the modifier works at Emboss 0.
-      const relief: ReliefMode | null = tool === 'brush' ? (e.shiftKey ? 'erode' : e.metaKey ? 'deposit' : null) : null;
       this.stroke = {
         pointerId: e.pointerId, pointerType: e.pointerType, tool, started: false, ending: false,
         x: 0, y: 0, cx: 0, cy: 0, pr: 0, t: e.timeStamp, speed: 0, simPressure: 0.45, carry: 0, travelled: 0, moved: false,
         dx: this.lastDir[0], dy: this.lastDir[1], angle: this.lastAngle, azimuth: null,
         widthFrom: 1, widthTo: 1,
         pigFrom: null, pigTo: null,
-        relief,
-        pressureless: false,
       };
       if (tool !== this.tool) this.callbacks.onStrokeTool?.(tool);
       this.beginStep('stroke', STROKE_LABEL[tool]);
@@ -2565,8 +2535,6 @@ export class WatercolorEngine {
         s.started = true;
         s.x = s.cx = q.x; s.y = s.cy = q.y; s.t = q.t;
         s.pr = this.pressureOf(s, q.p);
-        // Quick 261123-kpy: the recorded pressureless sentinel is per sample.
-        s.pressureless = q.p < 0;
         // 61-04: a stroke starts at its own sample's width — there is no
         // preceding segment to ramp from. 261111-wd6 mirrors the pair for
         // the pigment, so the first dab carries its own vertex colour.
@@ -2600,9 +2568,6 @@ export class WatercolorEngine {
       // flick keeps a visible wash, a pause still presses.
       const target = clamp(1.05 - s.speed * SIM_PRESSURE_SLOPE, SIM_PRESSURE_FLOOR, 1);
       s.simPressure += (target - s.simPressure) * (1 - Math.exp(-sdt * 6));
-      // Quick 261123-kpy: the modifier magnitude reads the sentinel of the
-      // sample being consumed — the dwell/catch-up traces add no sample.
-      s.pressureless = q.p < 0;
       const pr = this.pressureOf(s, q.p);
       const vx = (nx - s.cx) / sdt, vy = (ny - s.cy) / sdt;
       if (s.pointerId === SCRIPT_POINTER) {
@@ -2643,7 +2608,7 @@ export class WatercolorEngine {
       this.restoreStrokePigment();
       if (s.pointerId !== SCRIPT_POINTER) {
         this.callbacks.onStrokeTool?.(null);
-        this.callbacks.onStrokeEnd?.(s.tool, s.relief ?? undefined);
+        this.callbacks.onStrokeEnd?.(s.tool);
       }
     }
   }
@@ -2806,20 +2771,6 @@ export class WatercolorEngine {
         // readable; full pressure reaches the delivered thickness.
         const embossPress = EMBOSS_PRESS_FLOOR + (1 - EMBOSS_PRESS_FLOOR) * clamp(pr, 0, 1);
         const reliefAmount = P.emboss * amount * RELIEF_GAIN * embossPress;
-        // Quick 261123-kpy (modifier relief): a latched polarity replaces the
-        // SLIDER OPERAND with a pure pressure-only per-dab GAIN — the Emboss
-        // slider is never read, a real pen follows the embossPress floor
-        // curve, and the recorded pressureless sentinel is EXACTLY full
-        // strength. The gain MULTIPLIES the height already in the film (see
-        // modifierRelief / modifierReliefErode), so it enhances or flattens
-        // what is painted and leaves bare paper alone. The normal path keeps
-        // `reliefAmount` untouched, so its arithmetic is never re-associated.
-        const reliefModifierBandValue = s.relief === null
-          ? 0
-          : reliefModifierBand(reliefModifierPress(embossPress, s.pressureless));
-        const reliefSigned = s.relief === null
-          ? reliefAmount
-          : reliefModifierSigned(s.relief, reliefModifierRate(reliefModifierBandValue));
         // Phase 64 (MED-19..MED-22, spec 06): Body is ORDER. Before a dab
         // deposits, it erodes the settled pigment and the thickness under its
         // own tip. The amount is D-14's one perceptual curve declared in
@@ -2865,7 +2816,7 @@ export class WatercolorEngine {
         const c = this.pigment.coeffs;
         const c0 = [c[0] * amount, c[1] * amount, c[2] * amount, c[3] * amount];
         const c1 = [c[4] * amount, c[5] * amount, c[6] * amount, scatteringDeposit(P.body, amount)];
-        if (s.relief === null && (coverAmount > 0 || bristle)) {
+        if (coverAmount > 0 || bristle) {
           // Ordering hazard (spec 06): the cover pass runs BEFORE brushInk, so
           // the deposit's own touch() comes too late to restore a relief this
           // pass already eroded. These two protections are the ONLY undo
@@ -2897,41 +2848,33 @@ export class WatercolorEngine {
           if (bristle) {
             const t = this.bristleTravel(dx, dy, dr);
             alongPx = t.alongPx;
-            // Quick 261123-kpy (modifier relief): skip the canvas read — a
-            // modifier pass moves no pigment, so there is nothing to pick
-            // up; skipping also keeps the gather mask at its initial charge.
-            if (s.relief === null) this.carrierPass(dx, dy, dr, angle, t.travel, t.travelPx, t.alongPx, contactPr);
+            this.carrierPass(dx, dy, dr, angle, t.travel, t.travelPx, t.alongPx, contactPr);
           }
-          // Quick 261123-kpy (modifier relief): ONE guard owns every paint
-          // write. A modifier dab draws the thickness target and nothing
-          // else — no cover, no pigment, no gather and no ink last-touch.
           // spec 06: the cover pass draws here, before this dab's deposit.
           // Post-UAT (GAP-1): a bristle response has NO erode pass at all —
           // Body is the film's opacity inside the one deposit lerp (below), so
           // nothing may dim the underlayer outside the paint that replaces it.
           // Every other response keeps the shipped footprint mask, untouched.
-          if (s.relief === null) {
-            if (coverAmount > 0 && !bristle) {
-              this.coverPass(dx, dy, dr, angle, coverAmount, coverDensity, coverRelief, dryness, grainThr);
-            }
-            // SPIKE 001: source-over inside the pigment layer, replacing "erase
-            // the underlayer, then deposit". No snapshot, no full-document pass,
-            // no cached-base punch callback. Body 0 keeps the additive brushInk
-            // path unchanged, so the neutral gate stays byte-identical.
-            // Post-UAT (GAP-1): a bristle response deposits the five nearest
-            // bristles' CARRIED coefficients through the shared gather as the
-            // reference's ONE lerp — `canvas <- mix(canvas, carried, coverage)`
-            // in coefficient space — and its layer alpha is the same lerp's
-            // weight times Body's opacity, so the film and its paint can never
-            // disagree. Every other response keeps the shipped chain, untouched.
-            if (bristle) this.bristleInk(dx, dy, dr, angle, bristleBodyAlpha, contactPr, c1[3]!, alongPx, this.bristleEndCap);
-            else if (coverAmount > 0) this.coverageDeposit(dx, dy, dr, angle, coverAmount, coverDensity, c, c1[3]!, dryness, grainThr);
-            else this.brushInk(dx, dy, dr, angle, c0, c1, dryness, grainThr);
-            // 64-24 (D-24): the dab records its own touch AFTER depositing and
-            // after its one coverage write — the next dab's carrier reads an
-            // honest age of the paint it crosses.
-            if (bristle) this.bristleTouch(dx, dy, dr, angle);
+          if (coverAmount > 0 && !bristle) {
+            this.coverPass(dx, dy, dr, angle, coverAmount, coverDensity, coverRelief, dryness, grainThr);
           }
+          // SPIKE 001: source-over inside the pigment layer, replacing "erase
+          // the underlayer, then deposit". No snapshot, no full-document pass,
+          // no cached-base punch callback. Body 0 keeps the additive brushInk
+          // path unchanged, so the neutral gate stays byte-identical.
+          // Post-UAT (GAP-1): a bristle response deposits the five nearest
+          // bristles' CARRIED coefficients through the shared gather as the
+          // reference's ONE lerp — `canvas <- mix(canvas, carried, coverage)`
+          // in coefficient space — and its layer alpha is the same lerp's
+          // weight times Body's opacity, so the film and its paint can never
+          // disagree. Every other response keeps the shipped chain, untouched.
+          if (bristle) this.bristleInk(dx, dy, dr, angle, bristleBodyAlpha, contactPr, c1[3]!, alongPx, this.bristleEndCap);
+          else if (coverAmount > 0) this.coverageDeposit(dx, dy, dr, angle, coverAmount, coverDensity, c, c1[3]!, dryness, grainThr);
+          else this.brushInk(dx, dy, dr, angle, c0, c1, dryness, grainThr);
+          // 64-24 (D-24): the dab records its own touch AFTER depositing and
+          // after its one coverage write — the next dab's carrier reads an
+          // honest age of the paint it crosses.
+          if (bristle) this.bristleTouch(dx, dy, dr, angle);
           // Post-UAT (2026-11-21): a bristle response's thickness follows the
           // gather's REAL coverage, never the solid base footprint — the
           // footprint's boundary lit as a dark/white seam inside the
@@ -2941,51 +2884,24 @@ export class WatercolorEngine {
           // exactly as before; below 0 SUBTRACTS it under the same footprint,
           // so the artist smooths a dry impasto and keeps the paint. Undo
           // rides the dab's own touch above — no new protection site.
-          // Quick 261123-kpy (modifier relief): no paint pass ran above, so
-          // the ink-rect protection never happened — take it HERE, for BOTH
-          // polarities, on the same rects the ink passes protect (the bristle
-          // one is the wider 1.6). History merges repeated protections inside
-          // one step, so the per-dab call adds no undo step of its own.
-          if (s.relief !== null && reliefSigned !== 0) this.touch(this.stampRect(dx, dy, dr, this.dw, this.dh, bristle ? 1.6 : 1.5));
-          if (reliefSigned > 0) {
-            // UAT 2026-11-23: a relief-only dab has no ink to hide the paint
-            // footprint's paper-tooth gate, tip crumble and per-dab jitter, so
-            // reusing it laid isolated dark specks on the film. The modifier
-            // takes its OWN smooth footprint and saturates (MAX blend) instead
-            // of stacking one dab on the next — for bristle too, because a
-            // relief-only pass has no gather to look like anyway.
-            if (s.relief !== null) this.modifierRelief(dx, dy, dr, angle, reliefSigned);
-            else if (bristle) this.bristleReliefPass(dx, dy, dr, angle, reliefSigned, contactPr, alongPx, this.bristleEndCap);
-            else this.brushRelief(dx, dy, dr, angle, reliefSigned, dryness, grainThr);
-          } else if (reliefSigned < 0) {
+          if (reliefAmount > 0) {
+            if (bristle) this.bristleReliefPass(dx, dy, dr, angle, reliefAmount, contactPr, alongPx, this.bristleEndCap);
+            else this.brushRelief(dx, dy, dr, angle, reliefAmount, dryness, grainThr);
+          } else if (reliefAmount < 0) {
             // GAP-1: gated by the recorded emboss SIGN only — the paint's own
             // coverage must never erode the relief under it.
-            // Quick 261123-kpy: a modifier erode is GRADED — RELIEF_ERODE_NEGATIVE
-            // saturates at |reliefSigned| 0.05, which is right for the slider
-            // (any negative Emboss smooths hard) but would make the modifier a
-            // one-dab wipe at every pressure. MAX magnitude stays one full pass.
-            // A modifier erode IS its own per-dab gain: the same small rate,
-            // applied multiplicatively as `h * (1 - amount * f)`.
-            const erodeAmount = s.relief === null
-              ? Math.min(1, -reliefSigned * RELIEF_ERODE_NEGATIVE)
-              : -reliefSigned;
-            // UAT 2026-11-23: `dst *= (1 - amount * f)` at amount 1 is a
-            // one-dab wipe. The modifier takes the capped, smooth-footprint
-            // path so a Shift pass smooths gradually and evenly.
-            if (s.relief !== null) this.modifierReliefErode(dx, dy, dr, angle, erodeAmount);
-            else if (bristle) this.bristleReliefErode(dx, dy, dr, angle, erodeAmount, contactPr, alongPx, this.bristleEndCap);
+            const erodeAmount = Math.min(1, -reliefAmount * RELIEF_ERODE_NEGATIVE);
+            if (bristle) this.bristleReliefErode(dx, dy, dr, angle, erodeAmount, contactPr, alongPx, this.bristleEndCap);
             else this.reliefErode(dx, dy, dr, angle, erodeAmount, dryness, grainThr);
           }
           // soft brushes wet a little beyond the tip; textured ones keep their
           // edges. A waterless brush never wakes the fluid sim at all.
-          // Quick 261123-kpy: a modifier dab wets nothing — the sheet must
-          // stay exactly as dry as the artist left it.
-          if (s.relief === null && wet > 0) this.brushWet(dx, dy, dr * (1 + 0.12 * b.wetRound), angle, wet, b.wetRound, dryness, grainThr);
+          if (wet > 0) this.brushWet(dx, dy, dr * (1 + 0.12 * b.wetRound), angle, wet, b.wetRound, dryness, grainThr);
         });
         // A waterless brush (dry media) imparts no flow: the velocity splat
         // was stirring the sheet under chalk, making separate strokes blend
-        // like a wet medium. A modifier stroke never splats either.
-        if (s.relief === null && moving && b.water > 0) this.splatVelocity(x, y, r * 1.2, vx, vy, (15 + P.flow * 95) * 0.25 * b.flow);
+        // like a wet medium.
+        if (moving && b.water > 0) this.splatVelocity(x, y, r * 1.2, vx, vy, (15 + P.flow * 95) * 0.25 * b.flow);
         break;
       }
       case 'water': {
@@ -3108,62 +3024,6 @@ export class WatercolorEngine {
     gl.blendEquation(gl.FUNC_ADD);
     gl.blendFunc(gl.ONE, gl.ONE);
     this.drawRelief(amount, x, y, r, angle, grain, grainThr);
-    gl.disable(gl.BLEND);
-  }
-
-  /**
-   * Quick 261123-kpy (modifier relief): the relief-only deposit.
-   *
-   * The paint dab's footprint is WRONG here. `reliefFS` gates its output by
-   * paper tooth (`smoothstep(uGrainThr ± 0.08, h)`), re-thresholds the tip
-   * (`uRough`) and offsets it per dab (`uJitter`) — all of which the ink
-   * normally lands through, so the relief hides inside the paint. With no ink
-   * to hide it those gates put isolated dark specks on the film (UAT
-   * 2026-11-23). So: grain 0 (no tooth gate), rough 0 (smooth tip), jitter 0
-   * (no per-dab offset), round 1 (a soft radial blob), a 1.5 stamp rect.
-   *
-   * THE COMPOSITION IS MULTIPLICATIVE ON WHAT IS ALREADY PAINTED:
-   *
-   *   dst = dst + src * dst      (FUNC_ADD, DST_COLOR, ONE)
-   *
-   * with `src = rate * f`, i.e. `h' = h * (1 + rate * f)`. Enhance, never
-   * replace: a bare patch of paper has h = 0 and stays 0, and the mark's own
-   * texture is amplified rather than overwritten by a stamped dome. An
-   * earlier revision used gl.MAX here, which REPLACES the local height — that
-   * read as an "internal emboss" destroying the paint (UAT 2026-11-23).
-   */
-  private modifierRelief(x: number, y: number, r: number, angle: number, amount: number) {
-    const { gl, g } = this;
-    const p = this.programs.relief;
-    p.bind();
-    this.bindFootprint(p, x, y, r, angle, 1, 0, 0, this.brush, 0, 0);
-    gl.uniform1f(p.u.uAmount, Math.min(1, Math.max(0, amount)));
-    gl.enable(gl.BLEND);
-    gl.blendEquation(gl.FUNC_ADD);
-    // src * dst + dst  =>  dst * (1 + src)
-    gl.blendFunc(gl.DST_COLOR, gl.ONE);
-    g.draw(this.relief, this.stampRect(x, y, r, this.dw, this.dh, 1.5));
-    gl.disable(gl.BLEND);
-  }
-
-  /**
-   * Quick 261123-kpy (modifier relief): the relief-only erode, the mirror of
-   * `modifierRelief` — `dst = dst * (1 - rate * f)`, multiplicative on the
-   * height already in the film, so it flattens the paint's own relief and
-   * can never cut below it. Same smooth bell footprint (no tooth dots left
-   * behind); the per-dab gain is the modifier rate, so a pass smooths
-   * gradually instead of clearing the footprint in a single dab.
-   */
-  private modifierReliefErode(x: number, y: number, r: number, angle: number, amount: number) {
-    const { gl, g } = this;
-    const p = this.programs.relief;
-    p.bind();
-    this.bindFootprint(p, x, y, r, angle, 1, 0, 0, this.brush, 0, 0);
-    gl.uniform1f(p.u.uAmount, Math.min(1, Math.max(0, amount)));
-    gl.enable(gl.BLEND);
-    gl.blendEquation(gl.FUNC_ADD);
-    gl.blendFunc(gl.ZERO, gl.ONE_MINUS_SRC_COLOR);
-    g.draw(this.relief, this.stampRect(x, y, r, this.dw, this.dh, 1.5));
     gl.disable(gl.BLEND);
   }
 
