@@ -36,12 +36,15 @@ const PAINT_TOOLS: readonly AquarelleTool[] = ['brush', 'watercolor', 'pen'];
 /** The five medium ids in the engine's fixed order. */
 const MEDIA = ['watercolor', 'gouache', 'pastel', 'graphite', 'acrylic'] as const;
 
-const P_A = 'viscosity|emboss|load|pickup|water|dry|feather';
+// 2026-11-23: Emboss is gated off — hidden in every context until a new
+// display renderer replaces the first-order heightmap shade (see RELIEF_BUMP).
+// The ROW survives in AQUARELLE_PARAM_ROWS; only its visibility went.
+const P_A = 'viscosity|load|pickup|water|dry|feather';
 // rev 3: Pickup joins Refill as bristle-only — `uPickupRate` (carrier) and
 // `uSmear` (gather) are the only bindings, so the fluid row is dead and the
 // watercolor context hides it.
-const P_W = 'viscosity|emboss|load|water|dry|flow|bleed|edge|granulation';
-const P_D = 'viscosity|emboss|load|pickup|refill|water|dry|feather';
+const P_W = 'viscosity|load|water|dry|flow|bleed|edge|granulation';
+const P_D = 'viscosity|load|pickup|refill|water|dry|feather';
 const W_KEYS = 'viscosity|dry|flow|bleed|edge|granulation';
 const L_KEYS = 'lift';
 
@@ -93,14 +96,28 @@ describe('Matrix 2 — the row set per (tool, medium) context', () => {
     }
   });
 
-  it('reproduces Matrix 2 row counts: P-A 7, P-W 9, P-D 8, W 6, L 1', () => {
-    expect(visibleAquarelleParamRows('brush', 'acrylic'), 'P-A').toHaveLength(7);
-    expect(visibleAquarelleParamRows('brush', 'watercolor'), 'P-W').toHaveLength(9);
-    expect(visibleAquarelleParamRows('brush', 'gouache'), 'P-D').toHaveLength(8);
-    expect(visibleAquarelleParamRows('brush', 'pastel'), 'P-D (chalk)').toHaveLength(8);
-    expect(visibleAquarelleParamRows('brush', 'graphite'), 'P-D').toHaveLength(8);
+  it('reproduces the gated row counts: P-A 6, P-W 8, P-D 7, W 6, L 1', () => {
+    expect(visibleAquarelleParamRows('brush', 'acrylic'), 'P-A').toHaveLength(6);
+    expect(visibleAquarelleParamRows('brush', 'watercolor'), 'P-W').toHaveLength(8);
+    expect(visibleAquarelleParamRows('brush', 'gouache'), 'P-D').toHaveLength(7);
+    expect(visibleAquarelleParamRows('brush', 'pastel'), 'P-D (chalk)').toHaveLength(7);
+    expect(visibleAquarelleParamRows('brush', 'graphite'), 'P-D').toHaveLength(7);
     expect(visibleAquarelleParamRows('water', 'watercolor'), 'W').toHaveLength(6);
     expect(visibleAquarelleParamRows('lift', 'watercolor'), 'L').toHaveLength(1);
+  });
+
+  it('keeps Emboss out of EVERY context while the display emboss is gated', () => {
+    // Hidden everywhere, for every medium, but still a row: the medium record,
+    // the Reset key set and the recorded thickness keep their shape.
+    for (const tool of PAINT_TOOLS) {
+      for (const medium of MEDIA) {
+        expect(
+          visibleAquarelleParamRows(tool, medium).map((row) => row.key).includes('emboss'),
+          `${tool}/${medium} must not render the Emboss row`,
+        ).toBe(false);
+      }
+    }
+    expect(AQUARELLE_PARAM_ROWS.find((row) => row.key === 'emboss')?.hidden).toBe(true);
   });
 });
 

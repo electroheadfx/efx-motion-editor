@@ -235,7 +235,16 @@ const MODE = { screen: 0, paper: 1, transparent: 2, white: 3, pigment: 4 } as co
 const MAX_REF_SIDE = 4096;
 // Phase 64: the emboss gradient is one document texel wide with this fixed
 // bump scale — a document-space constant, never a function of zoom (D-13).
-const RELIEF_BUMP = 1.0;
+//
+// GATED OFF 2026-11-23. At 0 the display normal is flat AND `litDelta` is 0
+// (both terms carry the bump), so `shade` is exactly 1 and the emboss is
+// inert — the deposit still records thickness, nothing is displayed. The
+// shipped shading was a first-order heightmap term: a one-texel central
+// difference over a grain-gated field turns to high-frequency speckle as
+// strokes accumulate, `clamp(1 + litDelta, 0.0, 1.5)` drives any steep slope
+// to pure black, and there is no specular. A new renderer spiked against a
+// real impasto reference replaces the display term and restores this to 1.
+const RELIEF_BUMP = 0.0;
 // Phase 64 post-delivery tuning (UAT): Body must read as a true cover and the
 // emboss as a relief the user can see, without touching the delivered colours.
 // Three separate multipliers, never a change to the shared curve:

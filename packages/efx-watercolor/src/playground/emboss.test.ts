@@ -284,7 +284,11 @@ describe('engine light state (MED-15)', () => {
     // Degrees become radians once, at this boundary.
     expect(body.match(/Math\.PI\) \/ 180/g) ?? []).toHaveLength(2)
     // The bump is a fixed document-space scale, never a zoom-dependent value.
-    expectContains(ENGINE_SOURCE, 'const RELIEF_BUMP = 1.0;')
+    // 2026-11-23: gated to 0 — the display emboss is off until a new renderer
+    // replaces the first-order heightmap shade. Both the normal's slope and
+    // `litDelta` carry the bump, so 0 makes `shade` exactly 1 (inert); the
+    // deposit still records thickness.
+    expectContains(ENGINE_SOURCE, 'const RELIEF_BUMP = 0.0;')
     expectContains(body, 'gl.uniform1f(p.u.uReliefBump, RELIEF_BUMP);')
   })
 

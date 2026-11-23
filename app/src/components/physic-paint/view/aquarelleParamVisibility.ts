@@ -68,6 +68,13 @@ export interface AquarelleParamRow {
   readonly max?: number;
   readonly paint?: readonly MediumId[] | 'all';
   readonly hiddenForMedia?: readonly MediumId[];
+  /**
+   * Hidden in EVERY context, for every medium. Used while a row's feature is
+   * gated off: the row stays in the list (and keeps its band) so the medium
+   * record, the Reset key set and the persistence keep working, but no panel
+   * renders it. See the Emboss row.
+   */
+  readonly hidden?: boolean;
   readonly water?: boolean;
   readonly lift?: boolean;
 }
@@ -126,7 +133,12 @@ const PICKUP_HIDDEN: readonly MediumId[] = Object.freeze(['watercolor']);
  */
 export const AQUARELLE_PARAM_ROWS: readonly AquarelleParamRow[] = Object.freeze([
   Object.freeze({ key: 'viscosity', label: 'Viscosity', group: 'medium', paint: 'all', water: true }),
-  Object.freeze({ key: 'emboss', label: 'Emboss', group: 'medium', min: EMBOSS_MIN, max: EMBOSS_MAX, paint: 'all' }),
+  // Gated off 2026-11-23: the display emboss is a first-order heightmap shade
+  // (one-texel gradient, black clamp, no specular) that turns to speckle as
+  // strokes accumulate. The row stays so the medium record, the Reset key set
+  // and the recorded thickness keep their shape; a new renderer re-enables it
+  // by dropping `hidden`. See RELIEF_BUMP in the engine.
+  Object.freeze({ key: 'emboss', label: 'Emboss', group: 'medium', min: EMBOSS_MIN, max: EMBOSS_MAX, paint: 'all', hidden: true }),
   Object.freeze({ key: 'load', label: 'Pigment', group: 'paint', paint: 'all' }),
   Object.freeze({
     key: 'pickup',
@@ -177,6 +189,7 @@ export function visibleAquarelleParamRows(
   const medium = mediumId ?? DEFAULT_MEDIUM_ID;
   return AQUARELLE_PARAM_ROWS.filter((row) => {
     if (row.paint === undefined) return false;
+    if (row.hidden === true) return false;
     if (row.paint !== 'all' && !row.paint.includes(medium)) return false;
     if (row.hiddenForMedia?.includes(medium)) return false;
     return true;
