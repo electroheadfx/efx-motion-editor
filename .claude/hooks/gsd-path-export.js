@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// gsd-hook-version: 1.22.0
+// gsd-hook-version: 1.23.0
 // SessionStart hook: put the installed gsd-core `bin/` directory (which holds `gsd_run`) on the
 // PATH of every later Bash tool call in this Claude Code session (#5465).
 //
@@ -28,7 +28,9 @@ const { allow } = require('./lib/hook-exit.js');
  */
 function resolveBinDir(hookDir) {
   try {
-    const bin = fs.realpathSync(path.join(hookDir, '..', 'gsd-core', 'bin'));
+    // `.native` (realpath(3)) returns the spelling stored on disk; the JS realpathSync keeps the caller's letter
+    // case on a case-insensitive volume, so one install reached by two spellings would persist two PATH lines (#6107).
+    const bin = fs.realpathSync.native(path.join(hookDir, '..', 'gsd-core', 'bin'));
     return fs.statSync(path.join(bin, 'gsd_run')).isFile() ? bin : null;
   } catch {
     return null;

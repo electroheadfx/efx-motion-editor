@@ -28,6 +28,12 @@ const { planningDir, planningRoot, resolveEnvWorkstream, withPlanningLock } = pl
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const modelProfiles = require("./model-profiles.cjs");
 const { VALID_PROFILES, getAgentToModelMapForProfile, formatAgentToModelMapAsTable } = modelProfiles;
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- #5096 CJS interop import, as in the sibling config modules
+const schemaDefaults = require("./config-schema-defaults.cjs");
+const { resolveSchemaDefault } = schemaDefaults;
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- #6030 CJS interop import, as in the sibling config modules
+const configValueResolver = require("./config-value-resolver.cjs");
+const { resolveConfigValue } = configValueResolver;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const configSchema = require("./config-schema.cjs");
 const { VALID_CONFIG_KEYS, DYNAMIC_KEY_PATTERNS, isValidConfigKey, getCapabilityConfigSchema } = configSchema;
@@ -76,103 +82,6 @@ const VALID_PHASE_ID_CONVENTIONS = Object.freeze([
     'milestone-prefixed',
     'bracket',
 ]);
-/**
- * Schema-level defaults for well-known config keys.
- * When a key is absent from config.json and no --default flag was supplied,
- * cmdConfigGet checks here before emitting "Key not found".
- */
-const SCHEMA_DEFAULTS = {
-    'context_window': 200000,
-    'executor.stall_detect_interval_minutes': 5,
-    'executor.stall_threshold_minutes': 10,
-    'planner.stall_detection_enabled': CONFIG_DEFAULTS.planner_stall_detection_enabled,
-    'planner.stall_detect_interval_minutes': 5,
-    'planner.stall_threshold_minutes': 10,
-    'git.create_tag': true,
-    // #5706 (epic #3628): per-repository milestone tagging mode. `single` is
-    // exactly the pre-existing behavior; `per_repo` is opt-in.
-    'git.repo_tagging': 'single',
-    // #1689: per-plan agent_hint executor routing — default-on. A no-op for plans
-    // without an agent_hint field, so existing dispatch is byte-identical.
-    'workflow.agent_hint_routing': true,
-    // #6302 (ADR-3711 D1): the opt-in gate for dispatching a plan to a foreign executor; off unless set.
-    'workflow.cross_runtime_execution': false,
-    // #4401: Compact Content mode gate — derived from the defaults manifest via
-    // CONFIG_DEFAULTS (added in config-loader.cts) so the manifest stays the
-    // single source of truth, matching workflow.smart_zone_tokens /
-    // planning.pr_strict / workflow.inline_plan_threshold below.
-    'workflow.compact_content': CONFIG_DEFAULTS.compact_content,
-    // Derived from the defaults manifest rather than restated, so the manifest
-    // stays the single source of truth for the smart-zone budget (#2630).
-    'workflow.smart_zone_tokens': CONFIG_DEFAULTS.smart_zone_tokens,
-    // #2971: /gsd:pr-branch reads this key directly; an absent key must resolve to the
-    // manifest default rather than "Key not found". Derived from the defaults manifest so
-    // the manifest stays the single source of truth.
-    'planning.pr_strict': CONFIG_DEFAULTS.pr_strict,
-    // #3801: execute-plan reads this key on every run; an absent key must resolve
-    // to the manifest default (2) rather than "Key not Found" — previously the
-    // effective default existed only as the workflow's shell fallback and the
-    // docs disagreed (settings-advanced said 3). Manifest stays the one owner.
-    'workflow.inline_plan_threshold': CONFIG_DEFAULTS.inline_plan_threshold,
-    // #4285 review: an absent threshold resolved to "Key not found" while the
-    // hook silently used 35/25 — the query surface disagreeing with the reader.
-    //
-    // Restated here rather than derived: `CONFIG_DEFAULTS` is re-exported with a
-    // FLATTENED shape that drops the manifest's nested blocks, so
-    // `CONFIG_DEFAULTS.hooks` is undefined at runtime and the manifest cannot
-    // feed these two rows the way `workflow.smart_zone_tokens` above is fed.
-    //
-    // Not added to `buildNewProjectConfig` either, and that one is deliberate
-    // rather than incidental: it writes a `hooks` object into every NEW project's
-    // config.json, which would freeze today's fire-points as an explicit
-    // per-project override everywhere — the opposite of this PR's premise that an
-    // absent key tracks the shipped default. (The manifest alone would NOT have
-    // that effect; `buildNewProjectConfig` builds its own literal. Correcting an
-    // earlier version of this comment that ran the two together.)
-    //
-    // That leaves ONE copy of 35/25 outside the hook — these two rows — and
-    // `tests/config.test.cjs` pins them against the hook's exported
-    // WARNING_THRESHOLD/CRITICAL_THRESHOLD so the copies cannot drift.
-    'hooks.context_warning_threshold': 35,
-    'hooks.context_critical_threshold': 25,
-    // #4974: gates.* confirmation toggles — an absent key must resolve to the
-    // documented default (true) rather than "Key not found", matching
-    // config-defaults.manifest.json's `gates` block. Literal here (like
-    // git.create_tag above) rather than derived from config-loader.cjs's flat
-    // CONFIG_DEFAULTS: that flat projection is enumerated 1:1 against
-    // gsd-core/references/planning-config.md by
-    // tests/config-field-docs.test.cjs, and these 3 keys are internal workflow
-    // wiring, not part of that public flat-key surface. Only the 3 keys
-    // actually read by workflow conditions are registered — see
-    // gsd-core/bin/shared/config-schema.manifest.json.
-    'gates.execute_next_plan': true,
-    'gates.confirm_transition': true,
-    'gates.confirm_milestone_scope': true,
-};
-/**
- * Resolve a schema-level default for an absent key (#2256). Checks the legacy
- * hardcoded SCHEMA_DEFAULTS first, then the capability-registry configSchema
- * default — the same registry default the runtime's capability-activation
- * resolver (resolveConfigKey Level 4, capability-activation.cts) already honors,
- * so `query config-get` can no longer disagree with the runtime about an absent
- * key's effective value.
- */
-function resolveSchemaDefault(cwd, kp) {
-    if (Object.prototype.hasOwnProperty.call(SCHEMA_DEFAULTS, kp)) {
-        return { found: true, value: SCHEMA_DEFAULTS[kp] };
-    }
-    const capSchema = getCapabilityConfigSchema(cwd);
-    if (capSchema && typeof capSchema === 'object'
-        && Object.prototype.hasOwnProperty.call(capSchema, kp)) {
-        const entry = capSchema[kp];
-        if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
-            const def = entry['default'];
-            if (def !== undefined)
-                return { found: true, value: def };
-        }
-    }
-    return { found: false, value: undefined };
-}
 /**
  * A decimal number literal as a person types it: optional sign, digits with an optional
  * fraction (`5`, `5.`, `.5`, `5.0`, `007`), optional exponent. No surrounding whitespace and
@@ -373,7 +282,7 @@ function planNewProjectConfig(userChoices) {
     const jinaKeyFile = node_path_1.default.join(gsdHome, '.gsd', 'jina_api_key');
     const hasJina = !!(process.env['JINA_API_KEY'] || node_fs_1.default.existsSync(jinaKeyFile));
     // Load user-level defaults from $GSD_HOME/.gsd/defaults.json if available
-    const globalDefaultsPath = node_path_1.default.join(gsdHome, '.gsd', 'defaults.json');
+    const globalDefaultsPath = configLoader.globalDefaultsPath(gsdHome);
     let userDefaults = {};
     try {
         if (node_fs_1.default.existsSync(globalDefaultsPath)) {
@@ -886,6 +795,26 @@ function unsetConfigValue(cwd, keyPath) {
     });
 }
 /**
+ * Runtime-state flags whose absence already reads as `false` (config-loader.cts, init.cts). Clearing one of them
+ * when the key is absent changes nothing a reader can see, so it must not touch the committed config (#6124):
+ * the workflows clear `workflow._auto_chain_active` on every plan-phase, execute-phase and transition run, and the
+ * write left `.planning/config.json` modified in every project created without `--auto`.
+ */
+const ABSENT_MEANS_FALSE_FLAGS = new Set(['workflow._auto_chain_active']);
+function isNoopFlagClear(config, keyPath, parsedValue) {
+    if (parsedValue !== false || !ABSENT_MEANS_FALSE_FLAGS.has(keyPath))
+        return false;
+    let current = config;
+    for (const key of keyPath.split('.')) {
+        if (current === null || typeof current !== 'object' || Array.isArray(current))
+            return false;
+        if (!Object.prototype.hasOwnProperty.call(current, key))
+            return true;
+        current = current[key];
+    }
+    return current === undefined;
+}
+/**
  * Sets a value in the config file, allowing nested values via dot notation (e.g.,
  * "workflow.research").
  *
@@ -896,6 +825,9 @@ function setConfigValue(cwd, keyPath, parsedValue) {
     const configPath = node_path_1.default.join(planningDir(cwd), 'config.json');
     return withPlanningLock(cwd, () => {
         const config = loadConfigJson(cwd);
+        if (isNoopFlagClear(config, keyPath, parsedValue)) {
+            return { updated: false, key: keyPath, value: parsedValue, previousValue: undefined };
+        }
         const previousValue = _setNestedValue(config, keyPath, parsedValue);
         // Write back
         try {
@@ -918,8 +850,12 @@ function setConfigValue(cwd, keyPath, parsedValue) {
  */
 function previewConfigValue(cwd, keyPath, parsedValue) {
     const config = loadConfigJson(cwd);
+    // The preview states exactly what the write would do (#4444), so it asks the write's own predicate.
+    if (isNoopFlagClear(config, keyPath, parsedValue)) {
+        return { key: keyPath, value: parsedValue, previousValue: undefined, wouldWrite: false };
+    }
     const previousValue = _setNestedValue(config, keyPath, parsedValue);
-    return { key: keyPath, value: parsedValue, previousValue };
+    return { key: keyPath, value: parsedValue, previousValue, wouldWrite: true };
 }
 /**
  * #4444: read-only preview counterpart to `unsetConfigValue` — same pattern
@@ -1046,7 +982,7 @@ function cmdConfigSet(cwd, keyPath, value, raw, options = {}) {
             output({ dry_run: true, would_update: true, key: kp, value: masked, previousValue: maskedPrev, masked: true }, raw, `${kp}=${masked} (dry run)`);
             return;
         }
-        output({ dry_run: true, would_update: true, key: kp, value: parsedValue, previousValue: preview.previousValue }, raw, `${kp}=${String(parsedValue)} (dry run)`);
+        output({ dry_run: true, would_update: preview.wouldWrite, key: kp, value: parsedValue, previousValue: preview.previousValue }, raw, `${kp}=${String(parsedValue)} (dry run)`);
         return;
     }
     const setConfigValueResult = setConfigValue(cwd, kp, parsedValue);
@@ -1387,7 +1323,7 @@ function cmdConfigGet(cwd, keyPath, raw, defaultValue) {
      * schema default. With none of them, fail with the caller's reason.
      */
     const emitAbsentKey = (message, reason) => {
-        const rootVal = resolveFromRootConfig(cwd, kp);
+        const rootVal = resolveInheritedValue(cwd, kp);
         if (rootVal.found) {
             emitConfigValue(kp, rootVal.value, raw);
             return;
@@ -1510,43 +1446,43 @@ function cmdConfigGet(cwd, keyPath, raw, defaultValue) {
  * active, because `planningDir === planningRoot` and the caller already read
  * that file directly.
  */
-function resolveFromRootConfig(cwd, kp) {
-    // Only meaningful when a workstream is active (GSD_WORKSTREAM set) — that is what
-    // redirects planningDir away from root AND what loadConfigResolved gates root-reading
-    // on. Gating on `process.env.GSD_WORKSTREAM` (not on a planningDir !== planningRoot
-    // path inequality) avoids a false trigger under GSD_PROJECT alone, where planningDir
-    // diverges from planningRoot without a workstream and loadConfigResolved does NOT
-    // inherit root — matching the runtime's own `if (ws)` gate keeps the two surfaces
-    // from diverging on the project-scoped (non-workstream) case.
+function resolveUndeclaredFromRoot(cwd, kp) {
     if (!resolveEnvWorkstream())
         return { found: false, value: undefined };
-    const root = planningRoot(cwd);
-    const rootConfigPath = node_path_1.default.join(root, 'config.json');
-    let rootConfig;
+    let current;
     try {
         // Bounded read (#5759): null is an absent root config; a FIFO/device/oversized one throws.
-        const rawRoot = configLoader.readConfigFileBounded(rootConfigPath);
+        const rawRoot = configLoader.readConfigFileBounded(node_path_1.default.join(planningRoot(cwd), 'config.json'));
         if (rawRoot === null)
             return { found: false, value: undefined };
-        rootConfig = JSON.parse(rawRoot);
+        current = JSON.parse(rawRoot);
     }
     catch {
-        // Unparseable root config → don't inherit (do not let a corrupt root file
-        // change config-get's verdict). Fall through to schema default / error.
+        // An unusable root config is not inherited: it must not change config-get's verdict.
         return { found: false, value: undefined };
     }
-    let current = rootConfig;
     for (const key of kp.split('.')) {
-        if (current === undefined || current === null || typeof current !== 'object') {
+        if (current === undefined || current === null || typeof current !== 'object')
             return { found: false, value: undefined };
-        }
-        current = Object.prototype.hasOwnProperty.call(current, key)
-            ? current[key]
-            : undefined;
+        current = Object.prototype.hasOwnProperty.call(current, key) ? current[key] : undefined;
     }
-    if (current === undefined)
+    return current === undefined ? { found: false, value: undefined } : { found: true, value: current };
+}
+function resolveInheritedValue(cwd, kp) {
+    // #6030 (ADR-1411 Decision 5): the resolver owns the walk; this rung keeps only the layers
+    // below the file `cmdConfigGet` already read. The root layer counts only when a workstream is
+    // active (GSD_WORKSTREAM set): under GSD_PROJECT alone the loader does not inherit root, so
+    // neither does config-get. The global defaults layer counts everywhere, as the documented
+    // precedence says (#4071). An ineligible key reports not-configured, as before this rung read it.
+    const resolved = resolveConfigValue(kp, { cwd, family: 'A', honorGlobal: configLoader.honorsGlobalDefaults });
+    if (!resolved.found && resolved.reason === configLoader.CONFIG_REASON.NOT_CONFIGURED) {
+        // A key the resolver does not declare keeps the root-config walk this rung always had.
+        return resolveUndeclaredFromRoot(cwd, kp);
+    }
+    if (!resolved.found)
         return { found: false, value: undefined };
-    return { found: true, value: current };
+    const inherited = resolved.layer === 'global-defaults' || (resolved.layer === 'root' && Boolean(resolveEnvWorkstream()));
+    return inherited ? { found: true, value: resolved.value } : { found: false, value: undefined };
 }
 /**
  * Command to set the model profile in the config file.

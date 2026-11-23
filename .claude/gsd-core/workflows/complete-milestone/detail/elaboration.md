@@ -146,11 +146,11 @@ Check branching strategy and offer merge options.
 Use `init milestone-op` for context, or load config directly:
 
 ```bash
-IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_ecf322f229ac84d767fe3d3e505aeb60' || true
+IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_9c683c7f5d86dba592a67f57d6c31a3f' || true
 $ARGUMENTS
-GSD_ARGS_END_ecf322f229ac84d767fe3d3e505aeb60
+GSD_ARGS_END_9c683c7f5d86dba592a67f57d6c31a3f
 GSD_ARGS=${GSD_ARGS%$'\n'}
-GSD_WS=$(echo " $GSD_ARGS" | sed -nE 's/.* --ws +([A-Za-z0-9][A-Za-z0-9._-]*).*/--ws \1/p' | head -n 1) # Read-loaded file: write the command's original argument string in place of $GSD_ARGS
+GSD_WS=$(echo " $GSD_ARGS" | sed -nE 's/.* --ws +["'\'']?([A-Za-z0-9][A-Za-z0-9._-]*).*/--ws \1/p' | head -1) # Read-loaded file: write the command's original argument string in place of $GSD_ARGS
 INIT=$(gsd_run query init.execute-phase ${GSD_WS:+--ws=${GSD_WS##* }} "1")
 if [[ "$INIT" == @file:* ]]; then INIT=$(cat "${INIT#@file:}"); fi
 INIT_CM=$(gsd_run query init.complete-milestone ${GSD_WS:+--ws=${GSD_WS##* }})

@@ -7,6 +7,8 @@
  * merges built-in defaults (`CONFIG_DEFAULTS`/`CANONICAL_CONFIG_DEFAULTS`),
  * normalizes legacy keys, applies the active-workstream overlay, validates
  * against the config schema, and warns on unknown keys/profile overrides.
+ * A present non-object section blocks inherited projections from that section;
+ * fail-safe projections such as the planner watchdog remain default-on.
  * Behaviour is preserved byte-for-behaviour from the prior location; only
  * the module boundary moved. The core.cjs re-export spine was retired in
  * epic #1267; callers import loadConfig from config-loader.cjs directly.
@@ -124,6 +126,73 @@ function _getConfigNested(parsed, section, field) {
     return undefined;
 }
 /**
+ * A present non-object section is an explicit inheritance barrier. Remove every
+ * projection the assembled loader would otherwise repopulate from defaults so
+ * its effective object agrees with per-key resolution (#5096 Major 2).
+ */
+const BLOCKED_SECTION_PROJECTIONS = Object.freeze({
+    workflow: [
+        'workflow', 'research', 'plan_checker', 'verifier', 'nyquist_validation',
+        'ai_integration_phase', 'api_coverage_gate', 'post_planning_gaps',
+        'research_before_questions', 'mvp_mode', 'tdd_mode', 'text_mode',
+        'compact_content', 'auto_advance', '_auto_chain_active', 'subagent_timeout',
+        'security_enforcement', 'security_asvs_level', 'security_block_on',
+        'smart_zone_tokens', 'inline_plan_threshold',
+    ],
+    git: [
+        'git', 'branching_strategy', 'base_branch', 'protected_branches',
+        'allow_default_branch_commits', 'repo_tagging', 'phase_branch_template',
+        'milestone_branch_template', 'quick_branch_template',
+    ],
+    planning: ['planning', 'commit_docs', 'search_gitignored', 'sub_repos', 'pr_strict'],
+    // #4570 fail-safe exception: a malformed planner section must not disable
+    // the watchdog merely because consumers read an absent projection as falsy.
+    planner: ['planner', 'planner_stall_detection_enabled'],
+    review: ['review', 'max_prompt_tokens'],
+});
+const BARRIER_FAIL_SAFE_PROJECTIONS = new Set(['planner_stall_detection_enabled']);
+function _explicitFlatFieldsInContainer(parsed, section, container) {
+    if (!(0, configuration_cjs_1.isConfigSection)(container))
+        return null;
+    const prefix = `${section}.`;
+    const kept = {};
+    for (const alias of CONFIG_KEY_ALIASES) {
+        if (alias.section !== section || !alias.resolvedAt.startsWith(prefix) || !Object.hasOwn(parsed, alias.key))
+            continue;
+        const field = alias.resolvedAt.slice(prefix.length);
+        if (Object.hasOwn(container, field))
+            kept[field] = container[field];
+    }
+    return Object.keys(kept).length > 0 ? kept : null;
+}
+function _removeBlockedSectionDefaults(parsed, assembled, flatReadKeys = _ALIAS_KEYS) {
+    for (const [section, projections] of Object.entries(BLOCKED_SECTION_PROJECTIONS)) {
+        if (!Object.prototype.hasOwnProperty.call(parsed, section) || (0, configuration_cjs_1.isConfigSection)(parsed[section]))
+            continue;
+        for (const projection of projections) {
+            if (BARRIER_FAIL_SAFE_PROJECTIONS.has(projection))
+                continue;
+            // A flat value in the effective (root plus workstream) config outranks the
+            // blocked nested alias. Only a key the calling branch reads flat (`flatReadKeys`)
+            // counts; every other projection comes from its nested spelling alone, so a stray
+            // top-level key of the same name is not an explicit value and does not keep it.
+            if (projection !== section && flatReadKeys.has(projection) && Object.hasOwn(parsed, projection))
+                continue;
+            // The container itself is not a flat alias, but the loader may publish a
+            // flat key inside it (`max_prompt_tokens` → `review.max_prompt_tokens`,
+            // CONFIG_KEY_ALIASES `resolvedAt`). Keep only those explicit fields.
+            if (projection === section) {
+                const kept = _explicitFlatFieldsInContainer(parsed, section, assembled[section]);
+                if (kept) {
+                    assembled[section] = kept;
+                    continue;
+                }
+            }
+            delete assembled[projection];
+        }
+    }
+}
+/**
  * #5470: every key the project-config branch of the loader reads from two
  * spellings — the flat top-level key and its nested `<section>.<field>` alias.
  * (With no `.planning/`, the global-defaults branch below projects its own
@@ -168,6 +237,13 @@ const CONFIG_KEY_ALIASES = Object.freeze([
     { key: 'max_prompt_tokens', section: 'review', field: 'max_prompt_tokens', resolvedAt: 'review.max_prompt_tokens', configGet: 'resolver' },
     { key: 'parallelization', section: 'parallelization', field: 'enabled', resolvedAt: 'parallelization', configGet: 'resolver' },
 ]);
+/** The flat spellings the loader reads; the blocked-section barrier keeps only these. */
+const _ALIAS_KEYS = new Set(CONFIG_KEY_ALIASES.map((alias) => alias.key));
+/**
+ * The global-defaults branch (no project config) also reads `research_before_questions` flat
+ * (#3894), which has no alias entry because the project branch reads it nested only.
+ */
+const _GLOBAL_DEFAULTS_FLAT_KEYS = new Set([..._ALIAS_KEYS, 'research_before_questions']);
 /**
  * The alias entry a `config-get` key path names — by its flat key or by its
  * `<section>.<field>` spelling — or `undefined` when the loader reads that
@@ -417,19 +493,21 @@ function _resetRuntimeWarningCacheForTests() {
     _warnedConfigKeys.clear();
     _warnedUnknownConfigKeys.clear();
     _warnedUnusableConfig.clear();
-    _warnedShadowedGlobalKeys.clear();
 }
-// ─── #3532 (10b): shadowed global-defaults diagnostic ────────────────────────
-// The keys Branch D's `_globalBaseCfg` demonstrably honors from
-// ~/.gsd/defaults.json when no project config exists. Under a project
-// .planning/config.json (Branch A — every real project) the global file is
-// never opened, so each of these set globally is silently inert for resolution.
-// `effort` is in Branch D's honored set but is EXCLUDED from the shadow warning:
-// the install-time effort sync (readGsdEffectiveEffortConfig) DOES merge the
-// global file, so warning on it would be false for the channel users actually
-// control via `effort sync`. Keep this list in lockstep with `_globalBaseCfg`
-// below — the per-key canary in tests/config-loader.test.cjs fails first on
-// drift in either direction.
+// #6332: both the warning dedup sets and the git-ignore cache are per
+// invocation. An in-process caller runs many invocations in one process, so
+// they are reset between calls: each call warns as a fresh process would and
+// re-reads a .gitignore that changed.
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- invocation-scope.cjs is an export= CommonJS module
+const invocationScopeMod = require("./invocation-scope.cjs");
+invocationScopeMod.registerInvocationReset('config-loader.warnings', _resetRuntimeWarningCacheForTests);
+invocationScopeMod.registerInvocationReset('config-loader.gitIgnoredCache', () => { _gitIgnoredCache.clear(); });
+// ─── #4071: the global defaults layer (the #3532 shadow warning it replaced is gone) ─────
+// The keys ~/.gsd/defaults.json contributes to resolution: Branch D's `_globalBaseCfg`
+// projects them when no project config exists, and under a project config (Branch A)
+// `_underGlobalDefaults` merges them per key beneath the project's own (#4071).
+// Keep this list in lockstep with `_globalBaseCfg` below: the per-key canary in
+// tests/config-loader.test.cjs fails first on drift in either direction.
 const GLOBAL_DEFAULTS_RESOLUTION_KEYS = [
     'model_profile', 'commit_docs', 'research', 'plan_checker', 'verifier',
     'nyquist_validation', 'post_planning_gaps', 'research_before_questions', 'parallelization', 'text_mode',
@@ -438,38 +516,79 @@ const GLOBAL_DEFAULTS_RESOLUTION_KEYS = [
     'effort', 'fast_mode', 'agent_skills', 'response_language', 'runtime',
     'model_profile_overrides', 'model_policy',
 ];
-// Module-level dedup keyed on the SORTED shadowed-key set: a later call with
-// the same shadowed set stays quiet, while a config that grows a new shadowed
-// key re-arms the warning. Stronger than _warnedUnknownConfigKeys (which keys
-// on insertion order) — same discipline, order-independent key.
-const _warnedShadowedGlobalKeys = new Set();
-function _warnShadowedGlobalDefaults(globalDefaults, globalPath) {
-    const shadowed = GLOBAL_DEFAULTS_RESOLUTION_KEYS.filter(k => k !== 'effort' && Object.prototype.hasOwnProperty.call(globalDefaults, k));
-    // Branch D also honors the nested alias workflow.post_planning_gaps (the
-    // `?? globalDefaults['workflow']?.['post_planning_gaps']` fallback in
-    // _globalBaseCfg) — a global file using only the nested form is equally
-    // shadowed, so it reports under its dotted name.
-    // #3894: research_before_questions gets the same nested-alias reporting.
-    const nestedAliasKeys = ['post_planning_gaps', 'research_before_questions'];
-    const wf = globalDefaults['workflow'];
-    if (wf && typeof wf === 'object' && !Array.isArray(wf)) {
-        for (const k of nestedAliasKeys) {
-            if (!shadowed.includes(k) && Object.prototype.hasOwnProperty.call(wf, k)) {
-                shadowed.push(`workflow.${k}`);
-            }
+// Nested spelling the loader also reads for a global key that has no CONFIG_KEY_ALIASES entry.
+const _NESTED_ONLY_GLOBAL_KEYS = Object.freeze({
+    research_before_questions: { section: 'workflow', field: 'research_before_questions' },
+});
+/**
+ * #4071: the part of ~/.gsd/defaults.json that sits under a project config, restated in the
+ * canonical nested spelling so a flat global key can never outrank a nested project key.
+ * `runtime` is left out: the installer stamps it with whichever runtime installed first, which
+ * is an install identity and not an operator preference (#2840, #4717), so it never fills in.
+ */
+function _globalDefaultsLayer(globalDefaults) {
+    let layer = {};
+    for (const key of GLOBAL_DEFAULTS_RESOLUTION_KEYS) {
+        // `planning` is a section, and only its `commit_docs` field (an alias below) is a global key:
+        // `sub_repos`, `pr_strict` and `search_gitignored` were never read from the global file.
+        if (key === 'runtime' || key === 'planning')
+            continue;
+        const alias = CONFIG_KEY_ALIASES.find((entry) => entry.key === key) ?? _NESTED_ONLY_GLOBAL_KEYS[key];
+        if (!alias) {
+            if (Object.hasOwn(globalDefaults, key))
+                layer = _deepMergeConfig(layer, { [key]: globalDefaults[key] });
+            continue;
         }
+        const value = _getConfigValue(globalDefaults, key, { section: alias.section, field: alias.field });
+        // A null alias value is "not set", as Branch D's `??` reads it.
+        if (value === undefined || value === null)
+            continue;
+        // `parallelization` is a boolean or an object holding `enabled`; the object is already nested.
+        const nested = key === 'parallelization' && (0, configuration_cjs_1.isConfigSection)(value)
+            ? { [alias.section]: value }
+            : { [alias.section]: { [alias.field]: value } };
+        layer = _deepMergeConfig(layer, nested);
     }
-    if (shadowed.length === 0)
-        return;
-    const dedupKey = shadowed.slice().sort().join(',');
-    if (_warnedShadowedGlobalKeys.has(dedupKey))
-        return;
-    _warnedShadowedGlobalKeys.add(dedupKey);
+    return layer;
+}
+/**
+ * The one place that names the global defaults file (ADR-1411 Decision 5, #6030): seeding a new
+ * project and the install-time readers resolve it here instead of each building the path.
+ * `home` defaults to the GSD home the loader itself reads.
+ */
+function globalDefaultsPath(home = (0, runtime_homes_cjs_1.resolveGsdHome)()) {
+    return node_path_1.default.join(home, '.gsd', 'defaults.json');
+}
+/**
+ * Does the global defaults file supply this dotted key at runtime? The same set the loader merges
+ * (GLOBAL_DEFAULTS_RESOLUTION_KEYS and the spellings it reads for them). Everything else, the whole
+ * `git.*` namespace included, is project-scoped and never resolves from the global file. A reader
+ * that adopts the Config Value Resolution Module passes this as `honorGlobal` so it never reads the
+ * global layer further than the loader does (#6030).
+ */
+function honorsGlobalDefaults(dottedKey) {
+    const top = dottedKey.split('.')[0];
+    // `runtime` in the shared file is the installer's identity stamp, never an operator preference.
+    if (top === 'runtime')
+        return false;
+    // `planning` is a section: only its aliased `commit_docs` field is a global key (below).
+    if (top !== 'planning' && GLOBAL_DEFAULTS_RESOLUTION_KEYS.includes(top))
+        return true;
+    const spelledAs = (entry) => `${entry.section}.${entry.field}` === dottedKey && GLOBAL_DEFAULTS_RESOLUTION_KEYS.includes(entry.key);
+    return CONFIG_KEY_ALIASES.some(spelledAs) || Object.entries(_NESTED_ONLY_GLOBAL_KEYS)
+        .some(([key, spelling]) => spelledAs({ key, ...spelling }));
+}
+/** Project config over the global defaults layer, per key. A faulty or absent global file adds nothing. */
+function _underGlobalDefaults(projectParsed) {
     try {
-        process.stderr.write(`gsd-tools: warning: ${globalPath} sets ${shadowed.join(', ')} but a project config ` +
-            `takes precedence here — those global keys are ignored for model resolution. (#3532)\n`);
+        const read = _readConfigFile(globalDefaultsPath());
+        if (read.kind !== 'ok')
+            return projectParsed;
+        return _deepMergeConfig(_globalDefaultsLayer(read.data), projectParsed) ?? projectParsed;
     }
-    catch { /* stderr might be closed in some test harnesses */ }
+    catch {
+        return projectParsed;
+    }
 }
 // ─── FIX 2: Federated overlay helpers ────────────────────────────────────────
 /**
@@ -604,6 +723,8 @@ const CONFIG_REASON = Object.freeze({
     CONFIG_UNPARSEABLE: 'config_unparseable',
     /** The file exists but could not be read (EACCES/EIO/…) — NOT applied. */
     CONFIG_UNREADABLE: 'config_unreadable',
+    /** A configured federated value has the wrong declared type or enum member. */
+    CONFIG_TYPE_MISMATCH: 'config_type_mismatch',
 });
 // CONFIG_MAX_BYTES and readConfigFileBounded live in ./config-file-read.cjs (#5759), the leaf
 // every config.json reader shares; they are re-exported below for existing importers.
@@ -857,9 +978,13 @@ function loadConfigResolvedInternal(cwd, options = {}) {
             }
             catch { /* ignore */ }
         }
-        const parsed = rootParsed
+        const projectParsed = rootParsed
             ? (_deepMergeConfig(rootParsed, fileData) ?? fileData)
             : fileData;
+        // #4071 (C3 of #4633): ~/.gsd/defaults.json is the lowest file layer, merged per key under
+        // the project's own keys, never dropped wholesale because a project config exists. The
+        // project layer stays `projectParsed` for diagnostics and federated slices.
+        const parsed = _underGlobalDefaults(projectParsed);
         const KNOWN_TOP_LEVEL = new Set([
             ...[...VALID_CONFIG_KEYS].map((k) => k.split('.')[0]),
             ...DYNAMIC_KEY_PATTERNS.map(p => p.topLevel),
@@ -873,7 +998,7 @@ function loadConfigResolvedInternal(cwd, options = {}) {
                 const _earlyOverlay = mergeFederatedConfig({
                     configSchema: _fedRegistrySchemaEarly,
                     isCentralKey: (key) => _isCentralConfigKeyFn(key),
-                    userConfig: parsed,
+                    userConfig: projectParsed,
                 });
                 _preWarningFedValidKeys = _earlyOverlay.validKeys;
                 for (const dottedKey of _preWarningFedValidKeys) {
@@ -887,7 +1012,7 @@ function loadConfigResolvedInternal(cwd, options = {}) {
         catch {
             // Defensive
         }
-        const unknownKeys = Object.keys(parsed).filter(k => !KNOWN_TOP_LEVEL.has(k));
+        const unknownKeys = Object.keys(projectParsed).filter(k => !KNOWN_TOP_LEVEL.has(k));
         if (unknownKeys.length > 0) {
             const warnKey = unknownKeys.join(',');
             if (!_warnedUnknownConfigKeys.has(warnKey)) {
@@ -895,7 +1020,7 @@ function loadConfigResolvedInternal(cwd, options = {}) {
                 process.stderr.write(`gsd-tools: warning: unknown config key(s) in .planning/config.json: ${unknownKeys.join(', ')} — these will be ignored\n`);
             }
         }
-        _warnUnknownProfileOverrides(parsed, '.planning/config.json');
+        _warnUnknownProfileOverrides(projectParsed, '.planning/config.json');
         // One spelling only: a key read from a second spelling goes through
         // `getAliased` and CONFIG_KEY_ALIASES, so config-get can answer it (#5470).
         const get = (key) => _getConfigValue(parsed, key);
@@ -927,12 +1052,14 @@ function loadConfigResolvedInternal(cwd, options = {}) {
         const _baseConfig = {
             model_profile: get('model_profile') ?? defaults.model_profile,
             commit_docs: (() => {
-                const explicit = getAliased('commit_docs');
-                if (explicit !== undefined)
-                    return explicit;
+                // A value the PROJECT sets wins; a gitignored `.planning/` outranks one that only the
+                // global defaults supply, which would otherwise commit docs the user keeps out of git (#4071).
+                const projectExplicit = _getConfigValue(projectParsed, 'commit_docs', { section: 'planning', field: 'commit_docs' });
+                if (projectExplicit !== undefined)
+                    return projectExplicit;
                 if (isGitIgnored(cwd, '.planning/'))
                     return false;
-                return defaults.commit_docs;
+                return getAliased('commit_docs') ?? defaults.commit_docs;
             })(),
             search_gitignored: getAliased('search_gitignored') ?? defaults.search_gitignored,
             branching_strategy: getAliased('branching_strategy') ?? defaults.branching_strategy,
@@ -1008,7 +1135,7 @@ function loadConfigResolvedInternal(cwd, options = {}) {
                     const _fedOverlay = mergeFederatedConfig({
                         configSchema: _fedRegistrySchema,
                         isCentralKey: (key) => _isCentralConfigKeyFn(key),
-                        userConfig: parsed,
+                        userConfig: projectParsed,
                     });
                     _applyFederatedValues(_baseConfig, _fedOverlay.values, _fedOverlay.validKeys);
                 }
@@ -1017,25 +1144,10 @@ function loadConfigResolvedInternal(cwd, options = {}) {
         catch {
             // Defensive: keep no-throw contract
         }
+        _removeBlockedSectionDefaults(parsed, _baseConfig);
         // A1 vs A2: disambiguate by whether a real workstream was requested.
         // Fix 4: empty-string ws ('') resolves the root path → source:'root'.
         const source = wsRequested ? 'workstream' : 'root';
-        // #3532 (10b): a parsed project config means Branch D never runs, so every
-        // key ~/.gsd/defaults.json sets that Branch D would honor is silently inert
-        // here. Observation only — one deduped stderr warning; precedence is
-        // untouched. Faults in the global file stay silent in this branch (the
-        // project config governs; the nearer file is the actionable one).
-        try {
-            const shadowHome = (0, runtime_homes_cjs_1.resolveGsdHome)();
-            const shadowPath = node_path_1.default.join(shadowHome, '.gsd', 'defaults.json');
-            const shadowRead = _readConfigFile(shadowPath);
-            if (shadowRead.kind === 'ok') {
-                _warnShadowedGlobalDefaults(shadowRead.data, shadowPath);
-            }
-        }
-        catch {
-            // Observation only — never let the diagnostic perturb resolution.
-        }
         // This config parsed — but a DIFFERENT file on the resolution path may not
         // have. A workstream config that loads cleanly while the root config it
         // inherits from is corrupt is still a degraded resolution: the root's
@@ -1088,9 +1200,7 @@ function loadConfigResolvedInternal(cwd, options = {}) {
         }
         // Branch D or E: no .planning/
         try {
-            const home = (0, runtime_homes_cjs_1.resolveGsdHome)();
-            const globalDefaultsPath = node_path_1.default.join(home, '.gsd', 'defaults.json');
-            const globalRead = _readConfigFile(globalDefaultsPath);
+            const globalRead = _readConfigFile(globalDefaultsPath());
             if (globalRead.kind === 'fault') {
                 // ~/.gsd/defaults.json is present but unusable. Only report it when the
                 // project config did not already fail — the nearer file is the one the
@@ -1145,12 +1255,15 @@ function loadConfigResolvedInternal(cwd, options = {}) {
                 model_policy: (globalDefaults['model_policy']) || null,
             };
             // Branch D: global-defaults
+            let globalConfig;
             try {
-                return fallback({ config: _applyFederatedOverlay(_globalBaseCfg, globalDefaults, cwd), source: 'global-defaults', degraded: false });
+                globalConfig = _applyFederatedOverlay(_globalBaseCfg, globalDefaults, cwd);
             }
             catch {
-                return fallback({ config: _globalBaseCfg, source: 'global-defaults', degraded: false });
+                globalConfig = _globalBaseCfg;
             }
+            _removeBlockedSectionDefaults(globalDefaults, globalConfig, _GLOBAL_DEFAULTS_FLAT_KEYS);
+            return fallback({ config: globalConfig, source: 'global-defaults', degraded: false });
         }
         catch {
             // Branch E: no global defaults
@@ -1213,6 +1326,8 @@ function loadConfig(cwd, options = {}) {
     return loadConfigResolved(cwd, options).config;
 }
 module.exports = {
+    BLOCKED_SECTION_PROJECTIONS,
+    BARRIER_FAIL_SAFE_PROJECTIONS,
     loadConfig,
     loadConfigResolved,
     CONFIG_REASON,
@@ -1230,8 +1345,9 @@ module.exports = {
     _getConfigNested,
     resolvePlannerStallDetectionEnabled,
     _deepMergeConfig,
+    globalDefaultsPath,
+    honorsGlobalDefaults,
     _warnedUnknownConfigKeys,
-    _warnedShadowedGlobalKeys,
     GLOBAL_DEFAULTS_RESOLUTION_KEYS,
     _warnUnknownProfileOverrides,
     _resetRuntimeWarningCacheForTests,

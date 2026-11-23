@@ -59,7 +59,7 @@ for the plan-checker gate to be meaningful.
 
 ## 0. Git Branch Invariant
 
-**Do not create, rename, or switch git branches during plan-phase.** Branch identity is established at discuss-phase and is owned by the user's git workflow. A phase rename in ROADMAP.md is a plan-level change only — it does not mutate git branch names. If `phase_slug` in the init JSON differs from the current branch name, that is expected and correct; leave the branch unchanged.
+**Do not create, rename, or switch git branches during plan-phase.** Branch identity is established at discuss-phase and is owned by the user's git workflow. A ROADMAP.md phase rename never mutates branch names; if `phase_slug` in the init JSON differs from the current branch name, that is expected — leave the branch unchanged.
 
 ## 0.5. Compact Content Gate
 
@@ -70,9 +70,9 @@ Read and follow `gsd-core/references/compact-content-gate.md` now — it states 
 Load all context in one call (paths only to minimize orchestrator context):
 
 ```bash
-IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_ecf322f229ac84d767fe3d3e505aeb60' || true
+IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_9c683c7f5d86dba592a67f57d6c31a3f' || true
 $ARGUMENTS
-GSD_ARGS_END_ecf322f229ac84d767fe3d3e505aeb60
+GSD_ARGS_END_9c683c7f5d86dba592a67f57d6c31a3f
 GSD_ARGS=${GSD_ARGS%$'\n'}
 _GSD_SHIM_NAME="gsd-tools.cjs"; _GSD_RUNTIME_ROOT="${RUNTIME_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"; GSD_TOOLS="${_GSD_RUNTIME_ROOT}/gsd-core/bin/${_GSD_SHIM_NAME}"; _gsd_at() { for _p; do if [ -f "$_p" ]; then GSD_TOOLS="$_p"; return 0; fi; done; return 1; }; _gsd_id_ok() { case "$("$1" runtime-identity --raw 2>/dev/null || true)" in '{"packageName":"@opengsd/gsd-core"'*'}') return 0;; *) return 1;; esac; }; _gsd_homes() { set -- "${CLAUDE_CONFIG_DIR:-/Users/lmarques/Dev/efx-motion-editor/.claude}" "${ANTIGRAVITY_CONFIG_DIR:-$HOME/.gemini/antigravity}" "$HOME/.gemini/antigravity-ide" "$HOME/.gemini/antigravity-cli" "${AUGMENT_CONFIG_DIR:-$HOME/.augment}" "${CLINE_CONFIG_DIR:-$HOME/.cline}" "${CODEBUDDY_CONFIG_DIR:-$HOME/.codebuddy}" "${CODEX_HOME:-$HOME/.codex}" "${COPILOT_CONFIG_DIR:-${COPILOT_HOME:-$HOME/.copilot}}" "${CURSOR_CONFIG_DIR:-$HOME/.cursor}" "${HERMES_HOME:-$HOME/.hermes}" "${KILO_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/kilo}" "${KIMI_CONFIG_DIR:-$HOME/.config/agents}" "$HOME/.agents" "${KIMI_CODE_HOME:-$HOME/.kimi-code}" "${OPENCODE_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/opencode}" "${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}" "${QWEN_CONFIG_DIR:-$HOME/.qwen}" "${TRAE_CONFIG_DIR:-$HOME/.trae}" "${WINDSURF_CONFIG_DIR:-$HOME/.codeium/windsurf}" "${ZCODE_CONFIG_DIR:-$HOME/.zcode}" "${GROK_AGENTS_HOME:-$HOME/.agents}"; for _h; do _gsd_at "$_h/gsd-core/bin/${_GSD_SHIM_NAME}" && return 0; done; return 1; }; if _gsd_at "${_GSD_RUNTIME_ROOT}/gsd-core/bin/${_GSD_SHIM_NAME}" "${_GSD_RUNTIME_ROOT}/.claude/gsd-core/bin/${_GSD_SHIM_NAME}" "${_GSD_RUNTIME_ROOT}/.codex/gsd-core/bin/${_GSD_SHIM_NAME}"; then gsd_run() { node "$GSD_TOOLS" "$@"; }; elif _gsd_homes; then gsd_run() { node "$GSD_TOOLS" "$@"; }; elif unset -f gsd_run; _G="$(command -v gsd_run)"; [ -n "$_G" ] && _gsd_id_ok "$_G"; then GSD_TOOLS="$_G"; gsd_run() { "$GSD_TOOLS" "$@"; }; else echo "ERROR: gsd-tools.cjs not found at $GSD_TOOLS and no identity-proving gsd_run is on PATH. Run: npx -y @opengsd/gsd-core@latest --claude --local" >&2; exit 1; fi; GSD_IDENTITY_STATUS=unverified; _gsd_id_ok gsd_run && GSD_IDENTITY_STATUS=ok; export GSD_IDENTITY_STATUS; [ "$GSD_IDENTITY_STATUS" = ok ] || echo "WARNING: \"$GSD_TOOLS\" did not prove it is @opengsd/gsd-core - it is either a different package or an @opengsd/gsd-core older than the runtime-identity verb. See docs/how-to/diagnose-a-foreign-gsd-tools.md" >&2; if [ -n "${CLAUDE_ENV_FILE:-}" ] && [ -n "${GSD_TOOLS:-}" ]; then printf "export PATH='%s':\"\$PATH\"\n" "${GSD_TOOLS%/*}" >> "$CLAUDE_ENV_FILE" 2>/dev/null || true; fi
 GRAN_PARAM=""; if [[ "$GSD_ARGS" =~ (^|[[:space:]])--granularity[[:space:]]+([^[:space:]-][^[:space:]]*) ]]; then GRAN_PARAM="--granularity ${BASH_REMATCH[2]}"; fi
@@ -89,7 +89,7 @@ GAPS_MODE=false
 if [[ "$GSD_ARGS" =~ (^|[[:space:]])--gaps([[:space:]]|$) ]]; then GAPS_MODE=true; fi
 GAPS_EXEC_FLAG=""
 if [ "$GAPS_MODE" = "true" ]; then GAPS_EXEC_FLAG="--gaps-only"; fi
-GSD_WS=$(echo " $GSD_ARGS" | sed -nE 's/.* --ws +([A-Za-z0-9][A-Za-z0-9._-]*).*/--ws \1/p' | head -n 1)
+GSD_WS=$(echo " $GSD_ARGS" | sed -nE 's/.* --ws +["'\'']?([A-Za-z0-9][A-Za-z0-9._-]*).*/--ws \1/p' | head -1)
 INIT=$(gsd_run query init.plan-phase ${GSD_WS:+--ws=${GSD_WS##* }} "$PHASE" $GRAN_PARAM $PRD_PARAM $INGEST_PARAM $RESEARCH_PHASE_PARAM $REVIEWS_PARAM $CHUNKED_PARAM)
 if [[ "$INIT" == @file:* ]]; then INIT=$(cat "${INIT#@file:}"); fi
 AGENT_SKILLS_RESEARCHER=$(gsd_run query agent-skills gsd-phase-researcher ${GSD_WS:+--ws=${GSD_WS##* }})
@@ -123,7 +123,7 @@ Read and execute `gsd-core/workflows/plan-phase/steps/closed-phase-gate.md` — 
 
 Extract from $ARGUMENTS: phase number (integer or decimal like `2.1`), flags (`--research`, `--skip-research`, `--research-phase <N>`, `--gaps`, `--skip-verify`, `--skip-ui`, `--prd <filepath>`, `--ingest <path-or-glob>`, `--ingest-format <auto|nygard|madr|narrative>`, `--reviews`, `--text`, `--bounce`, `--skip-bounce`, `--chunked`, `--mvp`, `--no-tracer`, `--no-reversibility-gates`, `--tdd`, `--granularity <coarse|standard|fine>`, `--force` (override closed-phase gate, see §1.5)).
 
-**`--research-phase <N>` — research-only mode (#3042 + #3044).** When this flag is present, parse `<N>` as the phase number (overrides any positional phase argument), set `RESEARCH_ONLY=true`, and treat the rest of this workflow as a research-dispatch only — the planner spawn (step 8), plan-checker, verification, gaps, bounce, and post-planning-gaps blocks all skip on `RESEARCH_ONLY`. Use this for cross-phase research, doc review before committing to a planning approach, and correction-without-replanning loops. Replaces the deleted `/gsd-research-phase` command.
+**`--research-phase <N>` — research-only mode (#3042 + #3044).** When this flag is present, parse `<N>` as the phase number, set `RESEARCH_ONLY=true`, and treat the rest of this workflow as a research-dispatch only — the planner spawn (step 8), plan-checker, verification, gaps, bounce, and post-planning-gaps blocks all skip on `RESEARCH_ONLY`. Use it for cross-phase research and doc review before planning. Replaces the deleted `/gsd-research-phase` command.
 
 In research-only mode, two modifiers control behavior when `RESEARCH.md` already exists:
 
@@ -131,9 +131,9 @@ In research-only mode, two modifiers control behavior when `RESEARCH.md` already
 - **`--view`** — view-only: print existing `RESEARCH.md` to stdout, do **not** spawn the researcher. Sets `VIEW_ONLY=true`. Cheapest mode for the correction-without-replanning loop. If `RESEARCH.md` does not exist, error with a hint to drop `--view`.
 
 ```bash
-IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_ecf322f229ac84d767fe3d3e505aeb60' || true
+IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_9c683c7f5d86dba592a67f57d6c31a3f' || true
 $ARGUMENTS
-GSD_ARGS_END_ecf322f229ac84d767fe3d3e505aeb60
+GSD_ARGS_END_9c683c7f5d86dba592a67f57d6c31a3f
 GSD_ARGS=${GSD_ARGS%$'\n'}
 RESEARCH_ONLY=false
 VIEW_ONLY=false
@@ -153,9 +153,9 @@ Set `TEXT_MODE=true` if `--text` is present in $ARGUMENTS OR `text_mode` from in
 **MVP_MODE resolution.** Resolve `MVP_MODE` once via the centralized `phase.mvp-mode` query verb. Precedence (first hit wins): CLI flag → ROADMAP.md `**Mode:** mvp` → `workflow.mvp_mode` config → false. The verb is the single source of truth — do not re-implement the chain.
 
 ```bash
-IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_ecf322f229ac84d767fe3d3e505aeb60' || true
+IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_9c683c7f5d86dba592a67f57d6c31a3f' || true
 $ARGUMENTS
-GSD_ARGS_END_ecf322f229ac84d767fe3d3e505aeb60
+GSD_ARGS_END_9c683c7f5d86dba592a67f57d6c31a3f
 GSD_ARGS=${GSD_ARGS%$'\n'}
 MVP_FLAG_ARG=""
 if [[ "$GSD_ARGS" =~ (^|[[:space:]])--mvp([[:space:]]|$) ]]; then MVP_FLAG_ARG="--cli-flag"; fi
@@ -207,9 +207,9 @@ Set `phase_dir="${expected_phase_dir}"` after creation.
 
 Set `CHUNKED_MODE` from flag or config:
 ```bash
-IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_ecf322f229ac84d767fe3d3e505aeb60' || true
+IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_9c683c7f5d86dba592a67f57d6c31a3f' || true
 $ARGUMENTS
-GSD_ARGS_END_ecf322f229ac84d767fe3d3e505aeb60
+GSD_ARGS_END_9c683c7f5d86dba592a67f57d6c31a3f
 GSD_ARGS=${GSD_ARGS%$'\n'}
 CHUNKED_CFG=$(gsd_run query config-get workflow.plan_chunked --raw 2>/dev/null || echo "false")
 CHUNKED_MODE=false
@@ -588,8 +588,7 @@ DRIFT=$(gsd_run verify codebase-drift 2>/dev/null) || { echo "Warning: codebase-
 
 This gate is **non-blocking** and **never blocks, never spawns** the mapper at plan time. If `skipped` or
 `action_required` is false, continue silently to step 6. If `action_required` is true, print `message`
-verbatim (it ends with a `/gsd-map-codebase` pointer) and continue — planning proceeds whether or not the
-map is refreshed first. (`drift_action: auto-remap` stays at `execute:wave:post`.)
+verbatim (it ends with a `/gsd-map-codebase` pointer) and continue — planning proceeds with or without a refresh. (`drift_action: auto-remap` stays at `execute:wave:post`.)
 
 ## 6. Check Existing Plans
 
@@ -784,7 +783,7 @@ ${prior_verify_commands.length > 0 ? `
 are the `<automated>` commands from the nearest prior phase that had any. They resolved from
 the executor's cwd in a real run, so a path here is grounded evidence, not a guess. When this
 phase's build/test story is the same, **copy the command verbatim**; do not re-derive a
-directory. Surfaced at every context window — not part of the 1M enrichment above.
+directory.
 
 {For each entry in \`prior_verify_commands\`: \`- Phase {phase} · {task}: \\\`{command}\\\`\`}
 </proven_verify_commands>
@@ -846,6 +845,7 @@ it has no failure mode to state. Ask yourself: if this command were silently
 doing nothing, what in its output would tell me? If you cannot answer, fix the
 command — do not invent a statement for it.
 Rules + worked examples: @gsd-core/references/planner-failing-direction.md
+Validate before shipping (#4586): @gsd-core/references/planner-verify-command-validation.md
 </failing_direction_contract>
 <!-- gsd:protected:end -->
 
@@ -984,7 +984,7 @@ If `section_manifest` is `null` or `"chunked-planning-mode"` is in its `included
 **Triggered when:** Agent() returns but the return contains no recognized marker (`## PLANNING COMPLETE`, `## PHASE SPLIT RECOMMENDED`, `## ⚠ Source Audit`, `## CHECKPOINT REACHED`, `## PLANNING INCONCLUSIVE`).
 
 ```bash
-DISK_PLANS=$(gsd_run query find-phase "${PHASE_NUMBER}" | jq -r '.plan_count_all // 0')
+DISK_PLANS=$(gsd_run query find-phase ${GSD_WS:+--ws=${GSD_WS##* }} "${PHASE_NUMBER}" | jq -r '.plan_count_all // 0')
 ```
 
 If `DISK_PLANS` is greater than 0 (a known Windows stdio hang pattern — the planner wrote plans to disk but the return never arrived), offer: 1) Accept plans (treat as `## PLANNING COMPLETE`), 2) Retry planner (return to step 8), 3) Stop. If it is 0 and no marker, treat as `## PLANNING INCONCLUSIVE`. Full banner text: `gsd-core/workflows/plan-phase/detail/elaboration.md` § 9a.
@@ -1117,7 +1117,7 @@ Agent(
 **Triggered when:** Checker Agent() returns but the return contains neither `## VERIFICATION PASSED` nor `## ISSUES FOUND`.
 
 ```bash
-DISK_PLANS=$(gsd_run query find-phase "${PHASE_NUMBER}" | jq -r '.plan_count_all // 0')
+DISK_PLANS=$(gsd_run query find-phase ${GSD_WS:+--ws=${GSD_WS##* }} "${PHASE_NUMBER}" | jq -r '.plan_count_all // 0')
 ```
 
 If `DISK_PLANS` is greater than 0 (plans exist on disk; a known Windows stdio hang pattern), offer: 1) Accept verification (treat as `## VERIFICATION PASSED`, continue to step 13), 2) Retry checker (return to step 10), 3) Stop. If it is 0, something is seriously wrong — display error and stop. Full banner text: `gsd-core/workflows/plan-phase/detail/elaboration.md` § 11a.
@@ -1401,20 +1401,21 @@ If `TEXT_MODE` is true, present as a plain-text numbered list. Otherwise use
 AskUserQuestion. Selecting "Proceed anyway" continues to step 13b but
 records the override in STATE.md so verify-phase can re-surface it.
 
-**Why this gate blocks:** failing here is cheap. The plans are the contract
-between discuss-phase and execute-phase; if a decision isn't visible in any
-plan, no executor will implement it. Catching that now beats discovering it
-after thousands of dollars of execution.
+**Why this gate blocks:** failing here is cheap; a decision absent from the plans is never implemented.
 
 ## 13b. Record Planning Completion in STATE.md
 
-After plans pass all gates, record that planning is complete so STATE.md reflects the new phase status:
+Record planning completion in STATE.md:
 
 ```bash
+PHASE_NUMBER="{phase_number}"
+PHASE_NAME=$(gsd_run query roadmap.get-phase ${GSD_WS:+--ws=${GSD_WS##* }} "${PHASE_NUMBER}" --pick phase_name 2>/dev/null)
+PLAN_COUNT=$(gsd_run query find-phase ${GSD_WS:+--ws=${GSD_WS##* }} "${PHASE_NUMBER}" --pick plan_count)
+[[ "$PLAN_COUNT" =~ ^[0-9]+$ ]] || { echo "phase ${PHASE_NUMBER} not found" >&2; exit 1; }
 gsd_run query state.planned-phase ${GSD_WS:+--ws=${GSD_WS##* }} --phase "${PHASE_NUMBER}" --name "${PHASE_NAME}" --plans "${PLAN_COUNT}"
 ```
 
-This updates STATUS to "Ready to execute", sets the correct plan count, and timestamps Last Activity.
+This sets STATUS "Ready to execute", the plan count, Last Activity.
 
 ## 13c. Annotate ROADMAP with Wave Dependencies and Cross-cutting Constraints
 
@@ -1448,12 +1449,12 @@ Proactive, non-blocking coverage report gated on `workflow.post_planning_gaps`
 `<decisions>` and cross-references each REQ-ID / D-ID against `${PHASE_DIR}/*-PLAN.md`.
 
 ```bash
-IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_ecf322f229ac84d767fe3d3e505aeb60' || true
+IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_9c683c7f5d86dba592a67f57d6c31a3f' || true
 $ARGUMENTS
-GSD_ARGS_END_ecf322f229ac84d767fe3d3e505aeb60
+GSD_ARGS_END_9c683c7f5d86dba592a67f57d6c31a3f
 GSD_ARGS=${GSD_ARGS%$'\n'}
 PLAN_POST_HOOKS_JSON=$(gsd_run loop render-hooks plan:post --raw)
-GSD_WS=$(echo " $GSD_ARGS" | sed -nE 's/.* --ws +([A-Za-z0-9][A-Za-z0-9._-]*).*/--ws \1/p' | head -n 1)
+GSD_WS=$(echo " $GSD_ARGS" | sed -nE 's/.* --ws +["'\'']?([A-Za-z0-9][A-Za-z0-9._-]*).*/--ws \1/p' | head -1)
 PHASE_REQ_IDS=$(gsd_run query init.plan-phase ${GSD_WS:+--ws=${GSD_WS##* }} "$PHASE" --pick phase_req_ids 2>/dev/null)
 PHASE_REQ_IDS="${PHASE_REQ_IDS:-TBD}"
 ```

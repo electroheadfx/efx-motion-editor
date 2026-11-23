@@ -77,11 +77,11 @@ Exact per-category bash (including the `@file:` large-payload handling, the `tod
 **Use `init.manager` for canonical readiness check:**
 
 ```bash
-IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_ecf322f229ac84d767fe3d3e505aeb60' || true
+IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_9c683c7f5d86dba592a67f57d6c31a3f' || true
 $ARGUMENTS
-GSD_ARGS_END_ecf322f229ac84d767fe3d3e505aeb60
+GSD_ARGS_END_9c683c7f5d86dba592a67f57d6c31a3f
 GSD_ARGS=${GSD_ARGS%$'\n'}
-GSD_WS=$(echo " $GSD_ARGS" | sed -nE 's/.* --ws +([A-Za-z0-9][A-Za-z0-9._-]*).*/--ws \1/p' | head -n 1)
+GSD_WS=$(echo " $GSD_ARGS" | sed -nE 's/.* --ws +["'\'']?([A-Za-z0-9][A-Za-z0-9._-]*).*/--ws \1/p' | head -1)
 INIT_MANAGER=$(gsd_run query init.manager ${GSD_WS:+--ws=${GSD_WS##* }})
 if [[ "$INIT_MANAGER" == @file:* ]]; then INIT_MANAGER=$(cat "${INIT_MANAGER#@file:}"); fi
 ```
@@ -250,11 +250,11 @@ If additional details are needed (e.g., user-provided "Delivered" summary, git r
 **Resolve the PROJECT.md review gate first.** This is the first `init.complete-milestone` call in the workflow, so the section manifest does not exist before it; reading `section_manifest` without making this call would fall into the fail-open `null` branch below and rewrite the shared PROJECT.md under `--ws` (#5195). `init.complete-milestone` is a pure read, so the later full call in `reorganize_roadmap_and_delete_originals` is unaffected.
 
 ```bash
-IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_ecf322f229ac84d767fe3d3e505aeb60' || true
+IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_9c683c7f5d86dba592a67f57d6c31a3f' || true
 $ARGUMENTS
-GSD_ARGS_END_ecf322f229ac84d767fe3d3e505aeb60
+GSD_ARGS_END_9c683c7f5d86dba592a67f57d6c31a3f
 GSD_ARGS=${GSD_ARGS%$'\n'}
-GSD_WS=$(echo " $GSD_ARGS" | sed -nE 's/.* --ws +([A-Za-z0-9][A-Za-z0-9._-]*).*/--ws \1/p' | head -n 1)
+GSD_WS=$(echo " $GSD_ARGS" | sed -nE 's/.* --ws +["'\'']?([A-Za-z0-9][A-Za-z0-9._-]*).*/--ws \1/p' | head -1)
 INIT_EARLY=$(gsd_run query init.complete-milestone ${GSD_WS:+--ws=${GSD_WS##* }})
 if [[ "$INIT_EARLY" == @file:* ]]; then INIT_EARLY=$(cat "${INIT_EARLY#@file:}"); fi
 node -e "const m=JSON.parse(process.argv[1]).section_manifest; console.log('PROJECT_MD_REVIEW=' + (m==null||m.included.includes('project-md-evolution-review') ? 'run' : 'skip'))" "$INIT_EARLY"
@@ -333,11 +333,11 @@ After `milestone complete` has archived, reorganize ROADMAP.md with milestone gr
 Extract the Backlog section from the current ROADMAP.md before making any changes:
 
 ```bash
-IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_ecf322f229ac84d767fe3d3e505aeb60' || true
+IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_9c683c7f5d86dba592a67f57d6c31a3f' || true
 $ARGUMENTS
-GSD_ARGS_END_ecf322f229ac84d767fe3d3e505aeb60
+GSD_ARGS_END_9c683c7f5d86dba592a67f57d6c31a3f
 GSD_ARGS=${GSD_ARGS%$'\n'}
-GSD_WS=$(echo " $GSD_ARGS" | sed -nE 's/.* --ws +([A-Za-z0-9][A-Za-z0-9._-]*).*/--ws \1/p' | head -n 1)
+GSD_WS=$(echo " $GSD_ARGS" | sed -nE 's/.* --ws +["'\'']?([A-Za-z0-9][A-Za-z0-9._-]*).*/--ws \1/p' | head -1)
 INIT_REORG=$(gsd_run query init.complete-milestone ${GSD_WS:+--ws=${GSD_WS##* }})
 if [[ "$INIT_REORG" == @file:* ]]; then INIT_REORG=$(cat "${INIT_REORG#@file:}"); fi
 _gsd_field() { node -e "const o=JSON.parse(process.argv[1]); const v=o[process.argv[2]]; process.stdout.write(v==null?'':String(v))" "$1" "$2"; }
@@ -355,11 +355,11 @@ This rewrite is an *intentional* catastrophic shrink: phase detail was just arch
 1. Arm the sentinel (single-use; the guard checks it is fresh — within 15 minutes — and names exactly this file, then consumes it):
 
 ```bash
-IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_ecf322f229ac84d767fe3d3e505aeb60' || true
+IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_9c683c7f5d86dba592a67f57d6c31a3f' || true
 $ARGUMENTS
-GSD_ARGS_END_ecf322f229ac84d767fe3d3e505aeb60
+GSD_ARGS_END_9c683c7f5d86dba592a67f57d6c31a3f
 GSD_ARGS=${GSD_ARGS%$'\n'}
-GSD_WS=$(echo " $GSD_ARGS" | sed -nE 's/.* --ws +([A-Za-z0-9][A-Za-z0-9._-]*).*/--ws \1/p' | head -n 1)
+GSD_WS=$(echo " $GSD_ARGS" | sed -nE 's/.* --ws +["'\'']?([A-Za-z0-9][A-Za-z0-9._-]*).*/--ws \1/p' | head -1)
 INIT_REORG=$(gsd_run query init.complete-milestone ${GSD_WS:+--ws=${GSD_WS##* }})
 if [[ "$INIT_REORG" == @file:* ]]; then INIT_REORG=$(cat "${INIT_REORG#@file:}"); fi
 _gsd_field() { node -e "const o=JSON.parse(process.argv[1]); const v=o[process.argv[2]]; process.stdout.write(v==null?'':String(v))" "$1" "$2"; }
@@ -398,11 +398,11 @@ Append the extracted Backlog content verbatim to the end of the newly written RO
 **Safety commit — commit archive files BEFORE deleting any originals:**
 
 ```bash
-IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_ecf322f229ac84d767fe3d3e505aeb60' || true
+IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_9c683c7f5d86dba592a67f57d6c31a3f' || true
 $ARGUMENTS
-GSD_ARGS_END_ecf322f229ac84d767fe3d3e505aeb60
+GSD_ARGS_END_9c683c7f5d86dba592a67f57d6c31a3f
 GSD_ARGS=${GSD_ARGS%$'\n'}
-GSD_WS=$(echo " $GSD_ARGS" | sed -nE 's/.* --ws +([A-Za-z0-9][A-Za-z0-9._-]*).*/--ws \1/p' | head -n 1)
+GSD_WS=$(echo " $GSD_ARGS" | sed -nE 's/.* --ws +["'\'']?([A-Za-z0-9][A-Za-z0-9._-]*).*/--ws \1/p' | head -1)
 INIT_REORG=$(gsd_run query init.complete-milestone ${GSD_WS:+--ws=${GSD_WS##* }})
 if [[ "$INIT_REORG" == @file:* ]]; then INIT_REORG=$(cat "${INIT_REORG#@file:}"); fi
 _gsd_field() { node -e "const o=JSON.parse(process.argv[1]); const v=o[process.argv[2]]; process.stdout.write(v==null?'':String(v))" "$1" "$2"; }
@@ -424,11 +424,11 @@ MILESTONES.md is workstream-scoped the same way STATE.md/ROADMAP.md are (`planni
 **Remove REQUIREMENTS.md via git rm** (preserves history, stages deletion atomically):
 
 ```bash
-IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_ecf322f229ac84d767fe3d3e505aeb60' || true
+IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_9c683c7f5d86dba592a67f57d6c31a3f' || true
 $ARGUMENTS
-GSD_ARGS_END_ecf322f229ac84d767fe3d3e505aeb60
+GSD_ARGS_END_9c683c7f5d86dba592a67f57d6c31a3f
 GSD_ARGS=${GSD_ARGS%$'\n'}
-GSD_WS=$(echo " $GSD_ARGS" | sed -nE 's/.* --ws +([A-Za-z0-9][A-Za-z0-9._-]*).*/--ws \1/p' | head -n 1)
+GSD_WS=$(echo " $GSD_ARGS" | sed -nE 's/.* --ws +["'\'']?([A-Za-z0-9][A-Za-z0-9._-]*).*/--ws \1/p' | head -1)
 INIT_REORG=$(gsd_run query init.complete-milestone ${GSD_WS:+--ws=${GSD_WS##* }})
 if [[ "$INIT_REORG" == @file:* ]]; then INIT_REORG=$(cat "${INIT_REORG#@file:}"); fi
 _gsd_field() { node -e "const o=JSON.parse(process.argv[1]); const v=o[process.argv[2]]; process.stdout.write(v==null?'':String(v))" "$1" "$2"; }

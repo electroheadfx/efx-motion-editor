@@ -57,9 +57,9 @@ Plans:
 Apply the `project_code` prefix (if set in `config.json`) so the backlog directory name is consistent with all other phase-creation paths:
 
 ```bash
-IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_ecf322f229ac84d767fe3d3e505aeb60' || true
+IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_9c683c7f5d86dba592a67f57d6c31a3f' || true
 $ARGUMENTS
-GSD_ARGS_END_ecf322f229ac84d767fe3d3e505aeb60
+GSD_ARGS_END_9c683c7f5d86dba592a67f57d6c31a3f
 GSD_ARGS=${GSD_ARGS%$'\n'}
 SLUG=$(gsd_run query generate-slug "$GSD_ARGS" --raw)
 PLANNING_ROOT=$(gsd_run query planning.inspect ${GSD_WS:+--ws=${GSD_WS##* }} --pick generated_from.planning_root)
@@ -74,9 +74,9 @@ touch "${PHASE_DIR}/.gitkeep"
 ## Step 5: Commit
 
 ```bash
-IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_ecf322f229ac84d767fe3d3e505aeb60' || true
+IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_9c683c7f5d86dba592a67f57d6c31a3f' || true
 $ARGUMENTS
-GSD_ARGS_END_ecf322f229ac84d767fe3d3e505aeb60
+GSD_ARGS_END_9c683c7f5d86dba592a67f57d6c31a3f
 GSD_ARGS=${GSD_ARGS%$'\n'}
 PLANNING_ROOT=$(gsd_run query planning.inspect ${GSD_WS:+--ws=${GSD_WS##* }} --pick generated_from.planning_root)
 : "${PLANNING_ROOT:?}"

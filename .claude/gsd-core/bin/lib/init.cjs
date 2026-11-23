@@ -22,6 +22,8 @@ const state_md_schema_cjs_1 = require("./state-md-schema.cjs");
 const io = require("./io.cjs");
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- config-loader.cjs is an export= CommonJS module
 const configLoader = require("./config-loader.cjs");
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- #6030 config-value-resolver.cjs is an export= CommonJS module
+const configValueResolver = require("./config-value-resolver.cjs");
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- capability-ledger.cjs is an export= CommonJS module
 const capabilityLedger = require("./capability-ledger.cjs");
 const project_root_cjs_1 = require("./project-root.cjs");
@@ -54,6 +56,7 @@ const runtime_slash_cjs_1 = require("./runtime-slash.cjs");
 const host_runtime_detection_cjs_1 = require("./host-runtime-detection.cjs");
 const security_cjs_1 = require("./security.cjs");
 const runtime_homes_cjs_1 = require("./runtime-homes.cjs");
+const runtime_name_policy_cjs_1 = require("./runtime-name-policy.cjs");
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- frontmatter.cjs is an export= CommonJS module
 const frontmatterMod = require("./frontmatter.cjs");
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- verification.cjs is an export= CommonJS module
@@ -318,6 +321,9 @@ function withProjectRoot(cwd, result) {
     result['missing_agents'] = agentStatus.missing_agents;
     result['agents_dir'] = agentStatus.agents_dir;
     result['agent_runtime'] = agentStatus.agent_runtime;
+    // #5236: `agents_installed` is null when the check could not run; the reason says why (never set when it ran).
+    if (agentStatus.agents_check_reason !== undefined)
+        result['agents_check_reason'] = agentStatus.agents_check_reason;
     const config = loadConfig(cwd);
     if (config.response_language) {
         result['response_language'] = config.response_language;
@@ -540,22 +546,9 @@ function detectHasPriorPhases(cwd, phaseInfo) {
  * default-ON key read here silently inverts its unset value (#4977).
  */
 function readConfigJsonBoolean(cwd, keyPath) {
-    try {
-        // Bounded read (#5759): a FIFO/device/oversized config throws and degrades to false below.
-        const raw = configLoader.readConfigFileBounded(node_path_1.default.join(planningDir(cwd), 'config.json'));
-        if (raw === null)
-            return false;
-        let cursor = JSON.parse(raw);
-        for (const segment of keyPath) {
-            if (cursor === null || typeof cursor !== 'object' || Array.isArray(cursor))
-                return false;
-            cursor = cursor[segment];
-        }
-        return cursor === true;
-    }
-    catch {
-        return false;
-    }
+    // #6030: the value comes from the resolver, which reports a declared default as found, so a
+    // default-ON key now reads its default here instead of inverting it (#4977).
+    return readConfigJsonValue(cwd, keyPath) === true;
 }
 /** Reads `filePath`; returns its content, or `null` when missing/unreadable/empty. */
 function readNonEmptyFileOrNull(filePath) {
@@ -580,6 +573,18 @@ function readNonEmptyFileOrNull(filePath) {
  */
 function readConfigJsonValue(cwd, keyPath) {
     try {
+        // #6030 (ADR-1411 Decision 5): the resolver owns the layers, so root inheritance, the global
+        // defaults and the declared defaults apply here as they do everywhere else. A quiet read: an
+        // unusable layer is "not set", as before.
+        const resolved = configValueResolver.resolveConfigValue(keyPath.join('.'), {
+            cwd, family: 'A', quiet: true, honorGlobal: configLoader.honorsGlobalDefaults,
+        });
+        if (resolved.found)
+            return resolved.value;
+        // A key the resolver does not declare (a legacy flat spelling or a container such as
+        // review.reviewer_instances) keeps the single-file read of the workstream-aware directory.
+        if (resolved.reason !== configLoader.CONFIG_REASON.NOT_CONFIGURED)
+            return undefined;
         // Bounded read (#5759): a FIFO/device/oversized config throws and degrades to undefined below.
         const raw = configLoader.readConfigFileBounded(node_path_1.default.join(planningDir(cwd), 'config.json'));
         if (raw === null)
@@ -908,6 +913,15 @@ function findDuplicateThreatIds(cwd, phaseDirRel) {
         .map(([id, plans]) => ({ id, plans: [...plans].sort() }))
         .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 }
+/**
+ * A resolved-config flag for an init payload. A section the config marks as a present
+ * non-object removes its projections (#5096), so an absent flag reads as `false` here
+ * rather than surfacing as a dropped JSON key.
+ */
+function flagOrFalse(config, key) {
+    const value = config[key];
+    return value === undefined ? false : value;
+}
 function cmdInitExecutePhase(cwd, phase, raw, options = {}) {
     if (!phase) {
         error('phase required for init execute-phase');
@@ -968,14 +982,14 @@ function cmdInitExecutePhase(cwd, phase, raw, options = {}) {
         executor_model: resolveModelInternal(cwd, 'gsd-executor'),
         verifier_model: resolveModelInternal(cwd, 'gsd-verifier'),
         tdd_mode: options['tdd'] || Boolean(config.tdd_mode) || false,
-        commit_docs: config.commit_docs,
+        commit_docs: flagOrFalse(config, 'commit_docs'),
         sub_repos: config.sub_repos,
         parallelization: config.parallelization,
         context_window: config.context_window,
         branching_strategy: config.branching_strategy,
         phase_branch_template: config.phase_branch_template,
         milestone_branch_template: config.milestone_branch_template,
-        verifier_enabled: config.verifier,
+        verifier_enabled: flagOrFalse(config, 'verifier'),
         phase_found: !!phaseInfo,
         // #2376: absolute (anchored on cwd/project_root), not orchestrator-cwd-relative —
         // a spawned subagent's own cwd may differ from the orchestrator's.
@@ -1149,11 +1163,11 @@ function cmdInitPlanPhase(cwd, phase, raw, options = {}) {
         checker_model: resolveModelInternal(cwd, 'gsd-plan-checker'),
         tdd_mode: options['tdd'] || Boolean(config.tdd_mode) || false,
         granularity,
-        research_enabled: config.research,
-        plan_checker_enabled: config.plan_checker,
-        nyquist_validation_enabled: config.nyquist_validation,
-        commit_docs: config.commit_docs,
-        text_mode: config.text_mode,
+        research_enabled: flagOrFalse(config, 'research'),
+        plan_checker_enabled: flagOrFalse(config, 'plan_checker'),
+        nyquist_validation_enabled: flagOrFalse(config, 'nyquist_validation'),
+        commit_docs: flagOrFalse(config, 'commit_docs'),
+        text_mode: flagOrFalse(config, 'text_mode'),
         auto_advance: !!(config.auto_advance),
         auto_chain_active: !!(config._auto_chain_active),
         mode: config.mode || 'interactive',
@@ -1388,7 +1402,7 @@ function cmdInitNewProject(cwd, raw, options = {}) {
         researcher_model: resolveModelInternal(cwd, 'gsd-project-researcher'),
         synthesizer_model: resolveModelInternal(cwd, 'gsd-research-synthesizer'),
         roadmapper_model: resolveModelInternal(cwd, 'gsd-roadmapper'),
-        commit_docs: config.commit_docs,
+        commit_docs: flagOrFalse(config, 'commit_docs'),
         // #4040: partial-init discriminator (see buildInitCompletenessFields).
         // Spread BEFORE this literal's own planning_exists so the existing
         // root-scoped (`pathExistsInternal(cwd, '.planning')`) semantics for that
@@ -1463,8 +1477,8 @@ function cmdInitNewMilestone(cwd, raw, options = {}) {
         researcher_model: resolveModelInternal(cwd, 'gsd-project-researcher'),
         synthesizer_model: resolveModelInternal(cwd, 'gsd-research-synthesizer'),
         roadmapper_model: resolveModelInternal(cwd, 'gsd-roadmapper'),
-        commit_docs: config.commit_docs,
-        research_enabled: config.research,
+        commit_docs: flagOrFalse(config, 'commit_docs'),
+        research_enabled: flagOrFalse(config, 'research'),
         // #3216 review Finding 2: `?? null` so an unresolved milestone still emits
         // the key with an explicit `null` rather than letting JSON.stringify drop
         // it — an omitted key reaches the prompt layer's `{current_milestone}`
@@ -1577,7 +1591,7 @@ function cmdInitQuick(cwd, description, raw, options = {}) {
         // #2072: the quick review step spawns gsd-code-reviewer; resolve its own model
         // so model_overrides / models.verification apply (was reusing executor_model).
         reviewer_model: resolveModelInternal(cwd, 'gsd-code-reviewer'),
-        commit_docs: config.commit_docs,
+        commit_docs: flagOrFalse(config, 'commit_docs'),
         branch_name: quickBranchName,
         quick_id: quickId,
         slug: slug,
@@ -1635,7 +1649,7 @@ function cmdInitQuickBatch(cwd, raw, options = {}) {
         verifier_model: resolveModelInternal(cwd, 'gsd-verifier'),
         researcher_model: resolveModelInternal(cwd, 'gsd-phase-researcher'),
         reviewer_model: resolveModelInternal(cwd, 'gsd-code-reviewer'),
-        commit_docs: config.commit_docs,
+        commit_docs: flagOrFalse(config, 'commit_docs'),
         // #2376: absolute — see comment on phase_dir in cmdInitExecutePhase; a
         // per-item task_dir is re-derived by the workflow itself (quick_id +
         // generate-slug over that item's description), never allocated here.
@@ -1670,7 +1684,7 @@ function cmdInitIngestDocs(cwd, raw) {
         state_path: toPosixPath(node_path_1.default.join(planningDir(cwd), 'STATE.md')),
         intel_dir: toPosixPath(node_path_1.default.join(planningDir(cwd), 'intel')),
         conflicts_path: toPosixPath(node_path_1.default.join(planningDir(cwd), 'INGEST-CONFLICTS.md')),
-        commit_docs: config.commit_docs,
+        commit_docs: flagOrFalse(config, 'commit_docs'),
     };
     output(withProjectRoot(cwd, result), raw);
 }
@@ -1712,7 +1726,7 @@ function cmdInitResume(cwd, raw) {
         project_path: toPosixPath(node_path_1.default.join(planningDir(cwd, null), 'PROJECT.md')),
         has_interrupted_agent: !!interruptedAgentId,
         interrupted_agent_id: interruptedAgentId,
-        commit_docs: config.commit_docs,
+        commit_docs: flagOrFalse(config, 'commit_docs'),
     };
     output(withProjectRoot(cwd, result), raw);
 }
@@ -1765,7 +1779,7 @@ function cmdInitVerifyWork(cwd, phase, raw) {
     const result = {
         planner_model: resolveModelInternal(cwd, 'gsd-planner'),
         checker_model: resolveModelInternal(cwd, 'gsd-plan-checker'),
-        commit_docs: config.commit_docs,
+        commit_docs: flagOrFalse(config, 'commit_docs'),
         phase_found: !!phaseInfo,
         // #2376: absolute — see comment on phase_dir in cmdInitExecutePhase. phaseDir
         // itself stays relative — evaluateUatPassed above still joins it against cwd.
@@ -1846,7 +1860,7 @@ function cmdInitCodeReview(cwd, phase, raw, options = {}) {
     const phaseName = resolvePhaseDisplayName(phaseInfo, roadmapPhase);
     const fallow = detectFallowConfig(cwd);
     const result = {
-        commit_docs: config.commit_docs,
+        commit_docs: flagOrFalse(config, 'commit_docs'),
         phase_found: !!phaseInfo,
         // #2376: absolute — see comment on phase_dir in cmdInitExecutePhase.
         phase_dir: phaseDir ? toPosixPath(node_path_1.default.join(cwd, phaseDir)) : null,
@@ -1980,7 +1994,7 @@ function cmdInitDiscussPhaseAssumptions(cwd, phase, raw, options = {}) {
         readConfigJsonBoolean(cwd, ['workflow', '_auto_chain_active']) ||
         readConfigJsonBoolean(cwd, ['workflow', 'auto_advance']);
     const result = {
-        commit_docs: config.commit_docs,
+        commit_docs: flagOrFalse(config, 'commit_docs'),
         phase_found: !!phaseInfo,
         // #2376: absolute — see comment on phase_dir in cmdInitExecutePhase.
         phase_dir: phaseDir ? toPosixPath(node_path_1.default.join(cwd, phaseDir)) : null,
@@ -2094,7 +2108,7 @@ function cmdInitPhaseOp(cwd, phase, raw) {
     const roadmapPath = node_path_1.default.join(planningDir(cwd), 'ROADMAP.md');
     const requirementsPath = node_path_1.default.join(planningDir(cwd), 'REQUIREMENTS.md');
     const result = {
-        commit_docs: config.commit_docs,
+        commit_docs: flagOrFalse(config, 'commit_docs'),
         brave_search: typeof config.brave_search === 'string'
             ? (0, secrets_cjs_1.maskIfSecret)('brave_search', config.brave_search)
             : config.brave_search,
@@ -2407,7 +2421,7 @@ function cmdInitTodos(cwd, area, raw) {
         }
     }
     const result = {
-        commit_docs: config.commit_docs,
+        commit_docs: flagOrFalse(config, 'commit_docs'),
         date: clock_cjs_1.realClock.localToday(),
         timestamp: clock_cjs_1.realClock.nowIso(),
         todo_count: count,
@@ -2539,7 +2553,7 @@ function cmdInitMilestoneOp(cwd, raw) {
         /* intentionally empty */
     }
     const result = {
-        commit_docs: config.commit_docs,
+        commit_docs: flagOrFalse(config, 'commit_docs'),
         // #3216 review Finding 2: `?? null` so an unresolved milestone still emits
         // the key with an explicit `null` rather than letting JSON.stringify drop
         // it — an omitted key reaches the prompt layer's `{milestone_version}`
@@ -2580,10 +2594,10 @@ function cmdInitMapCodebase(cwd, raw) {
     }
     const result = {
         mapper_model: resolveModelInternal(cwd, 'gsd-codebase-mapper'),
-        commit_docs: config.commit_docs,
-        search_gitignored: config.search_gitignored,
+        commit_docs: flagOrFalse(config, 'commit_docs'),
+        search_gitignored: flagOrFalse(config, 'search_gitignored'),
         parallelization: config.parallelization,
-        subagent_timeout: config.subagent_timeout,
+        subagent_timeout: config.subagent_timeout === undefined ? configLoader.CONFIG_DEFAULTS.subagent_timeout : config.subagent_timeout,
         date: clock_cjs_1.realClock.localToday(),
         timestamp: clock_cjs_1.realClock.nowIso(),
         // #2376: absolute — see comment on phase_dir in cmdInitExecutePhase.
@@ -3380,7 +3394,7 @@ function cmdInitTransition(cwd, raw, options = {}) {
 function cmdInitDebug(cwd, raw, options = {}) {
     const config = loadConfig(cwd);
     const result = {
-        commit_docs: config.commit_docs,
+        commit_docs: flagOrFalse(config, 'commit_docs'),
         // #2376: absolute — debug.md builds `debug_file_path` as
         // `{debug_dir}/{slug}.md` for its gsd-debug-session-manager spawns, whose
         // own cwd may differ from the orchestrator's.
@@ -3626,7 +3640,7 @@ function cmdInitProgress(cwd, raw, options = {}) {
     const result = {
         executor_model: resolveModelInternal(cwd, 'gsd-executor'),
         planner_model: resolveModelInternal(cwd, 'gsd-planner'),
-        commit_docs: config.commit_docs,
+        commit_docs: flagOrFalse(config, 'commit_docs'),
         // #3216 review Finding 2: `?? null` so an unresolved milestone still emits
         // the key with an explicit `null` rather than letting JSON.stringify drop
         // it — an omitted key reaches the prompt layer's `{milestone_version}`
@@ -3838,8 +3852,6 @@ function buildAgentSkillsBlock(config, agentType, projectRoot, diagnostics) {
         if (diagnostics)
             diagnostics.warnings.push(message.replace(/\n+$/, ''));
     };
-    const runtime = (config && config['runtime']) || 'claude';
-    const globalSkillsBase = (0, runtime_homes_cjs_1.getGlobalSkillsBase)(runtime);
     if (!config || !config['agent_skills'] || !agentType)
         return '';
     let skillPaths = config['agent_skills'][agentType];
@@ -3853,6 +3865,19 @@ function buildAgentSkillsBlock(config, agentType, projectRoot, diagnostics) {
     }
     if (skillPaths.length === 0)
         return '';
+    // #5236: the skills location is resolved only once there are entries to resolve, and an id GSD does not resolve
+    // has no global skills directory (the same answer as a runtime that does not use one), so a project-relative
+    // entry still works there. The id is read the way `init` reads it (normalised, aliases canonicalised), not raw.
+    const runtime = (0, runtime_name_policy_cjs_1.resolveRuntimeNameFromCandidates)(config['runtime']) || 'claude';
+    let globalSkillsBase;
+    try {
+        globalSkillsBase = (0, runtime_homes_cjs_1.getGlobalSkillsBase)(runtime);
+    }
+    catch (err) {
+        if (!(err instanceof runtime_name_policy_cjs_1.UnknownRuntimeError))
+            throw err;
+        globalSkillsBase = null;
+    }
     // Hoist trusted roots computation before the loop: loadTrustedGlobalRoots does
     // realpathSync I/O and should run at most once per call, not once per failing skill.
     // It returns [] cheaply when no roots are configured, so the realpath cost only
@@ -3999,7 +4024,7 @@ function cmdAgentSkills(cwd, agentType, raw, jsonMode, skillsOnly = false) {
     // persona back into itself as if it were a skills block.
     let agentPayloadVariant = null;
     if (!block && !skillsOnly) {
-        const runtime = (config && config['runtime']) || process.env['GSD_RUNTIME'] || 'claude';
+        const runtime = (0, runtime_name_policy_cjs_1.resolveRuntimeNameFromCandidates)(config ? config['runtime'] : undefined, process.env['GSD_RUNTIME']) || 'claude';
         if (runtime !== 'claude') {
             const agentCheck = checkAgentsInstalled(runtime, projectRoot);
             const agentsDir = agentCheck?.agents_dir;
