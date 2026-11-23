@@ -1,20 +1,20 @@
 ---
 gsd_state_version: "1.0"
 milestone: v2.2.0
-milestone_name: Brush Tips & Medium Engine (Planned)
 current_phase: 64
 status: completed
 stopped_at: Phase 64 complete — all phases complete
-last_updated: "2026-11-22T20:22:23.032Z"
+last_updated: "2026-11-23T12:14:15.290Z"
 last_activity: 2026-11-22
 last_activity_desc: Phase 64 complete
-state_head: f5657028ff61c23b68904ded7cac6f8f9736d0c3
+state_head: e82aa2b71934b22ff3cebc9f8f4be2ef8efd542e
 progress:
   total_phases: 2
   completed_phases: 2
   total_plans: 48
   completed_plans: 48
   percent: 100
+milestone_name: Brush Tips & Medium Engine (Planned)
 ---
 
 # Project State
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-22 after Phase 64)
 Phase: 64
 Plan: Not started
 Status: All phases complete
-Last activity: 2026-11-22 — Phase 64 complete
+Last activity: 2026-11-23 — Completed quick task 261123-hr5: Studio paint: signed Emboss -15..15 (negative half erodes relief, keeps paint)
 
 
 ## Performance Metrics
@@ -707,6 +707,7 @@ Items acknowledged and carried forward from previous milestone close:
 | 261121-umu | Decouple the acrylic bristle deposit from authored pressure (pressureLink 0 on bristle-flat/round; width still pressure-owned; follow-up speedLink 0e41c0d6a made hand speed inert and Dry 0 zero-depletion — UAT approved 2026-11-21) | 2026-11-21 | 106074578 | [261121-umu-task-decouple-the-acrylic-bristle-deposi](./quick/261121-umu-task-decouple-the-acrylic-bristle-deposi/) |
 | 261121-w5n | Floor acrylic bristle dab spacing at one device pixel + mirror the ink ratio (small-brush slowdown; inert sizes byte-identical; UAT approved 2026-11-21 — "amazing speed improvement") | 2026-11-21 | 94c863894 | [261121-w5n-in-v2-2-0-phase-64-fix-the-acrylic-small](./quick/261121-w5n-in-v2-2-0-phase-64-fix-the-acrylic-small/) |
 | 261122-gys | Studio paint identity: Brush lands on the family's last brush and applies its medium record; Reset restores the active medium record (wetSeconds included) in one undo batch; UAT approved 2026-11-22 | 2026-11-22 | afc3120b5 | [261122-gys-v2-2-0-studio-paint-identity-switching-a](./quick/261122-gys-v2-2-0-studio-paint-identity-switching-a/) |
+| 261123-hr5 | Studio paint: signed Emboss -15..15 — negative half erodes relief with the brush while keeping paint (calibrated RELIEF_ERODE_NEGATIVE=20, probe + byte-identity gates pass; UAT automated-ready, artist UAT pending) | 2026-11-23 | e82aa2b71 | [261123-hr5-v2-3-0-studio-paint-signed-emboss-subtra](./quick/261123-hr5-v2-3-0-studio-paint-signed-emboss-subtra/) |
 
 ## Roadmap Evolution
 
