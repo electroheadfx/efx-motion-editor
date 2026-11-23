@@ -9,9 +9,11 @@
 //
 //  Laws pinned here:
 //   1. `setHoldWet` is the ONE hold authority. While held, decay is bypassed
-//      READER-SIDE (wetDecay + the advectWet uDecay uniform) and sleep()
-//      keeps `wetPeak`; `isAwake`, `wetUntil()` and both tick awake
-//      expressions are untouched, so the sim still sleeps (no wake loop).
+//      READER-SIDE (wetDecay + the advectWet uDecay uniform), sleep() keeps
+//      `wetPeak`, and `awakeUntil()` ALSO bounds the awake window after the
+//      last wet input at the visible settle cap (261123-vkb: the sim sleeps at
+//      that cap with no fix and no decay — no wake loop) while `wetUntil()`
+//      and its natural window stay byte-identical (the unheld branch).
 //   2. The automatic fix (settle cap) never dries a held sheet; the explicit
 //      Dry clears the hold and clears last-touch AFTER the pool-0 snapshot of
 //      the 'dry' step (pinned end-to-end in lastTouch.test.ts).
@@ -95,18 +97,29 @@ describe('the hold flag is the one authority (261123-pee)', () => {
     expect(sleep.includes('this.flowSpeed = 0;'), 'velocity bookkeeping is untouched').toBe(true)
   })
 
-  it('leaves isAwake, wetUntil and both tick awake expressions byte-identical', () => {
+  it('routes every awake site through awakeUntil() and keeps wetUntil() byte-identical', () => {
     const awake = sliceBetween(ENGINE_SOURCE, 'get isAwake(): boolean {', 'get hasStandingWater(): boolean {')
     expect(
-      awake.includes('(this.stroke !== null || this.fixTimer > 0 || now < this.minAwakeUntil || now < this.wetUntil())'),
-      'isAwake is not a hold input',
+      awake.includes('(this.stroke !== null || this.fixTimer > 0 || now < this.minAwakeUntil || now < this.awakeUntil())'),
+      'isAwake reads the held awake window',
     ).toBe(true)
     const until = sliceBetween(ENGINE_SOURCE, 'private wetUntil() {', 'private beginStep(')
     expect(until.includes('return this.lastWet + this.dryTau() * Math.log(this.wetPeak / WET_THRESHOLD) * 1000;')).toBe(true)
-    const a = ENGINE_SOURCE.match(/\(this\.stroke !== null \|\| this\.fixTimer > 0 \|\| now < this\.minAwakeUntil \|\| now < this\.wetUntil\(\)\)/g) ?? []
-    const b = ENGINE_SOURCE.match(/\(this\.stroke !== null \|\| this\.fixTimer > 0 \|\| clockNow < this\.minAwakeUntil \|\| clockNow < this\.wetUntil\(\)\)/g) ?? []
-    expect(a, 'isAwake + tick() awake expressions, unchanged').toHaveLength(2)
-    expect(b, 'the rAF awake expression, unchanged').toHaveLength(1)
+    // HOLD-WET (261123-vkb): the ONE awake-window helper. Unheld returns the
+    // natural window exactly; held is the strict min of that window and the
+    // visible settle cap measured from `lastWet` (percent in, ticks out).
+    const helper = sliceBetween(ENGINE_SOURCE, 'private awakeUntil() {', '/** Time (ms) until standing water')
+    expect(helper.includes('if (!this.holdWet) return this.wetUntil();'), 'the unheld branch is today\'s window').toBe(true)
+    expect(
+      helper.includes('return Math.min(this.wetUntil(), this.lastWet + aquarelleVisibleSettleTicks(this.params.dry * 100) * SETTLE_TICK_MS);'),
+      'the held branch is the strict min at the visible settle cap',
+    ).toBe(true)
+    const a = ENGINE_SOURCE.match(/\(this\.stroke !== null \|\| this\.fixTimer > 0 \|\| now < this\.minAwakeUntil \|\| now < this\.awakeUntil\(\)\)/g) ?? []
+    const b = ENGINE_SOURCE.match(/\(this\.stroke !== null \|\| this\.fixTimer > 0 \|\| clockNow < this\.minAwakeUntil \|\| clockNow < this\.awakeUntil\(\)\)/g) ?? []
+    expect(a, 'isAwake + tick() awake expressions read awakeUntil').toHaveLength(2)
+    expect(b, 'the rAF awake expression reads awakeUntil').toHaveLength(1)
+    const retired = ENGINE_SOURCE.match(/(?:now|clockNow) < this\.wetUntil\(\)/g) ?? []
+    expect(retired, 'the retired wetUntil awake comparisons are gone').toHaveLength(0)
   })
 
   it('passes the hold into the Water gate', () => {

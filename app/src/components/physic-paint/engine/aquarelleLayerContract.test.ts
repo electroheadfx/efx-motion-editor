@@ -139,7 +139,10 @@ describe('aquarelle layer is a compositor pigment layer (56-12)', () => {
     expect(layer).not.toContain('lastWetAt');
     expect(layer).toContain('const settledSnapshot = () => { settleSheetNow(); return snapshot(); };');
     expect(layer).toContain('const awake = engine.isAwake');
-    expect(layer).toContain('if (wasAwake && !awake) stampPendingSettle();');
+    // HOLD-WET (261123-vkb): the awake-to-asleep stamp is floored at the same
+    // visible settle cap the commit path passes, so a dry re-render of a held
+    // sheet never records a cuisson below the bake's `settleCap`.
+    expect(layer).toContain('if (wasAwake && !awake) stampPendingSettle(aquarelleVisibleSettleTicks(aquarelleParams.value.dry));');
   });
 
   it('HOLD-WET (261123-pee): the live sheet holds wet; only a commit settle lifts it', () => {
@@ -215,9 +218,10 @@ describe('aquarelle layer is a compositor pigment layer (56-12)', () => {
     // and the bake would read settleCapped false. The default is the fix.
     expect(layer).toContain('const stampPendingSettle = (minTicks = 0) => {');
     expect(layer).toContain('Math.max(minTicks, Math.round((performance.now() - pending.endedAt) / HOST_TICK_MS))');
-    // Exactly the three existing no-argument call sites: endSheetSession, the
-    // frame-change stamp and the wasAwake && !awake stamp.
-    expect(countOccurrences(layer, 'stampPendingSettle();')).toBe(3);
+    // Exactly the two remaining no-argument call sites: endSheetSession and
+    // the frame-change stamp. (The awake-to-asleep stamp passes the visible
+    // settle cap — 261123-vkb — so it is no longer a no-argument call.)
+    expect(countOccurrences(layer, 'stampPendingSettle();')).toBe(2);
   });
 
   it('CACHE: a blank sheet never overwrites existing cache', () => {

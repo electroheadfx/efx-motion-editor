@@ -1284,15 +1284,22 @@ export function AquarelleCanvasLayer(props: {
         const frameEvents = getSeedEventsRef.current?.(playFrame) ?? null;
         aquarelleSheetSeeded.value = restoreCachedSheet(playFrame, frameEvents);
       }
-      // HOLD-WET (261123-pee): the live sheet never auto-dries; an explicit
-      // Dry or a commit settle lifts the hold and this re-arms it (the artist
-      // law — no settle cap, the paint stays wet until Dry).
+      // HOLD-WET (261123-pee + 261123-vkb): the live sheet never auto-dries;
+      // an explicit Dry or a commit settle lifts the hold and this re-arms
+      // it. While held, the awake window after the last wet input is bounded
+      // by the visible settle cap and the sim then sleeps — no fix, no decay,
+      // no mobile-to-fixed — so the dense wet look freezes until Dry.
       if (!engine.isFixing) engine.setHoldWet(true);
       // PLAY FIDELITY: the sheet slept — the stroke's real diffusion window
-      // is now known; record it as its cuisson for the replay. (A commit
-      // settle already stamped its cap floor; this keeps the plain sleep path.)
+      // is now known; record it as its cuisson for the replay. FLOOR AT THE
+      // CAP (261123-vkb): this stamp measures from stroke end
+      // (`pending.endedAt`), not `lastWet`, so with the shorter held window
+      // any last-dab-to-pointerup gap would record a cuisson below the bake's
+      // `settleCap`, flip `settleCapped` false and make a dry re-render fall
+      // back to the washed 237-tick cook. Same cap floor the commit path
+      // already passes at `settleSheetNow`.
       const awake = engine.isAwake;
-      if (wasAwake && !awake) stampPendingSettle();
+      if (wasAwake && !awake) stampPendingSettle(aquarelleVisibleSettleTicks(aquarelleParams.value.dry));
       wasAwake = awake;
       if (!disabledRef.current) {
         applyLiveConfig(engine, getLightRef.current, getPaperSeedRef.current);
