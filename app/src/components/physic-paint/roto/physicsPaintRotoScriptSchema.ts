@@ -533,7 +533,7 @@ function describeEngineRefusal(value: unknown): string {
   if (value.diffusionFrames !== undefined && !positiveInteger(value.diffusionFrames, DIFFUSION_CAP)) return 'engine.diffusionFrames';
   if (value.textureId !== undefined && (typeof value.textureId !== 'string' || value.textureId.length === 0)) return 'engine.textureId';
   if (value.textureRotation !== undefined) return 'engine.textureRotation';
-  if (value.reliefOnly !== undefined && value.reliefOnly !== true) return 'engine.reliefOnly';
+  if (value.relief !== undefined && value.relief !== 'erode' && value.relief !== 'deposit') return 'engine.relief';
   return 'engine';
 }
 
@@ -622,11 +622,11 @@ function isEnginePayloadAquarelleStroke(value: unknown): value is AquarelleStrok
       || value.textureRotation < -180
       || value.textureRotation > 180)
   ) return false;
-  // quick 261123-jak: the relief-only latch. Same rule as the payload codec
-  // (`isStrokeShape`): absent is valid, present must be exactly `true`.
-  // Duplicated deliberately — a saved Roto script can reach this guard
-  // without ever passing through the codec.
-  if (value.reliefOnly !== undefined && value.reliefOnly !== true) return false;
+  // quick 261123-kpy: the modifier polarity. Same rule as the payload codec
+  // (`isStrokeShape`): absent is valid, present must be `'erode'` or
+  // `'deposit'`. Duplicated deliberately — a saved Roto script can reach this
+  // guard without ever passing through the codec.
+  if (value.relief !== undefined && value.relief !== 'erode' && value.relief !== 'deposit') return false;
   return true;
 }
 

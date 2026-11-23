@@ -39,14 +39,15 @@
 //      presence + i16 hundredths of a degree (quick 261116-inu). The AQTL body
 //      is the ONE hundredths boundary in the feature: `Math.round(degrees*100)`
 //      here, `value/100` on read; every JSON carrier stays in integer DEGREES.
-//    Vector block (61-05 / 61-30 / 261111-wd6 / 62-UAT / 261123-jak), AFTER
+//    Vector block (61-05 / 61-30 / 261111-wd6 / 62-UAT / 261123-kpy), AFTER
 //      the engine block's playFrame presence and BEFORE the texture presence
 //      byte and pointCount: u8 vectorFlags
 //      (bit 0 = a non-empty anchor list follows, bit 1 = LEGACY optional
 //      byte, never written, bit 2 = a curve-mode byte follows, bit 3 = every
 //      anchor carries a colour-presence byte, bit 4 = the stroke was drawn by
-//      the vector pen, bit 5 = the stroke was a Shift relief-only pass — each
-//      is the whole marker, NO payload byte follows), then when bit 0 is set u16
+//      the vector pen, bit 5 = modifier erode, bit 6 = modifier deposit —
+//      each is the whole marker, NO payload byte follows; both polarity bits
+//      set is refused on read), then when bit 0 is set u16
 //      anchorCount + per anchor u8-order: f32 x, f32 y, u8 kindCode
 //      (auto=0, bezier=1), u8 handleFlags (bit 0 in-present, bit 1
 //      out-present), the conditional f32 handle pairs, u8 widthPresent +
@@ -60,10 +61,11 @@
 //      inside the engine slot because that slot is the opaque carrier:
 //      appending there leaves every pre-existing field's offset stable. A
 //      hand-painted stroke with no mode pays exactly one flags byte, a path
-//      with no anchor colour sets no bit 3 and writes no colour byte, and a
+//      with no anchor colour sets no bit 3 and writes no colour byte, a
 //      converted painted path sets no bit 4, and an ordinary stroke sets no
-//      bit 5. An older reader refuses bit 3, bit 4 and bit 5 (reserved-flags
-//      check): fail closed, exactly like every other unknown vector flag.
+//      polarity bit. An older reader refuses bits 3, 4, 5 and 6
+//      (reserved-flags check): fail closed, exactly like every other unknown
+//      vector flag. Bit 7 remains reserved.
 //    Point record (16 bytes): u16 x, u16 y, u16 p, i16 tx, i16 ty,
 //      i16 tw, u32 tick.
 //
@@ -213,16 +215,19 @@ const VECTOR_FLAG_CURVE_MODE = 1 << 2;
 const VECTOR_FLAG_ANCHOR_COLOR = 1 << 3;
 // 62-UAT: drawn-by-the-vector-pen provenance (the bit IS the whole marker).
 const VECTOR_FLAG_DRAWN = 1 << 4;
-// Quick 261123-jak: the Shift relief-only latch (bit IS the whole marker —
-// no payload byte follows, so a flagged stroke's encoded size is unchanged).
-const VECTOR_FLAG_RELIEF_ONLY = 1 << 5;
+// Quick 261123-kpy: the pressure-driven modifier polarity. Two bits, each the
+// whole marker — no payload byte follows, so a flagged stroke's encoded size
+// is unchanged. BOTH set is refused at decode (a stroke has one polarity).
+const VECTOR_FLAG_RELIEF_ERODE = 1 << 5;
+const VECTOR_FLAG_RELIEF_DEPOSIT = 1 << 6;
 const VECTOR_FLAGS_MASK =
   VECTOR_FLAG_ANCHORS
   | VECTOR_FLAG_LEGACY_BYTE
   | VECTOR_FLAG_CURVE_MODE
   | VECTOR_FLAG_ANCHOR_COLOR
   | VECTOR_FLAG_DRAWN
-  | VECTOR_FLAG_RELIEF_ONLY;
+  | VECTOR_FLAG_RELIEF_ERODE
+  | VECTOR_FLAG_RELIEF_DEPOSIT;
 const ANCHOR_HANDLE_IN = 1 << 0;
 const ANCHOR_HANDLE_OUT = 1 << 1;
 const ANCHOR_HANDLE_MASK = ANCHOR_HANDLE_IN | ANCHOR_HANDLE_OUT;
@@ -620,6 +625,13 @@ function encodeVectorBlock(
     fail('invalid-value', `unknown engine.curveMode "${String(curveMode)}"`);
   }
 
+  // Quick 261123-kpy: a single polarity per stroke, refused rather than
+  // defaulted — an unknown marker must never silently encode as plain.
+  const relief: unknown = engine.relief;
+  if (relief !== undefined && relief !== 'erode' && relief !== 'deposit') {
+    fail('invalid-value', `unknown engine.relief "${String(relief)}"`);
+  }
+
   // 261111-wd6: the colour block is all-or-nothing per path — one anchor
   // naming a colour turns on the bit that makes every anchor write its
   // presence byte, so a colourless path gains nothing.
@@ -642,7 +654,8 @@ function encodeVectorBlock(
   if (curveMode !== undefined) flags |= VECTOR_FLAG_CURVE_MODE;
   if (hasAnchorColor) flags |= VECTOR_FLAG_ANCHOR_COLOR;
   if (engine.vectorDrawn === true) flags |= VECTOR_FLAG_DRAWN;
-  if (engine.reliefOnly === true) flags |= VECTOR_FLAG_RELIEF_ONLY;
+  if (engine.relief === 'erode') flags |= VECTOR_FLAG_RELIEF_ERODE;
+  if (engine.relief === 'deposit') flags |= VECTOR_FLAG_RELIEF_DEPOSIT;
   writer.u8(flags);
 
   if (anchors !== undefined) {
@@ -944,17 +957,25 @@ function decodeVectorBlock(reader: BinaryReader): {
   anchors?: readonly AquarelleAnchor[];
   curveMode?: AquarelleCurveMode;
   vectorDrawn?: true;
-  reliefOnly?: true;
+  relief?: 'erode' | 'deposit';
 } {
   const flags = reader.u8();
   if ((flags & ~VECTOR_FLAGS_MASK) !== 0) {
     fail('invalid-value', 'vector block has reserved flags set', reader.offset - 1);
   }
+  // Quick 261123-kpy: a stroke has exactly ONE polarity — both bits set is a
+  // corrupt block, refused rather than resolved by precedence.
+  if (
+    (flags & VECTOR_FLAG_RELIEF_ERODE) !== 0
+    && (flags & VECTOR_FLAG_RELIEF_DEPOSIT) !== 0
+  ) {
+    fail('invalid-value', 'vector block carries both relief polarity flags', reader.offset - 1);
+  }
   const result: {
     anchors?: readonly AquarelleAnchor[];
     curveMode?: AquarelleCurveMode;
     vectorDrawn?: true;
-    reliefOnly?: true;
+    relief?: 'erode' | 'deposit';
   } = {};
   if ((flags & VECTOR_FLAG_ANCHORS) !== 0) {
     const anchorCount = reader.u16();
@@ -994,8 +1015,9 @@ function decodeVectorBlock(reader: BinaryReader): {
   }
   // 62-UAT: the drawn marker is the flag bit alone — no byte follows.
   if ((flags & VECTOR_FLAG_DRAWN) !== 0) result.vectorDrawn = true;
-  // Quick 261123-jak: the relief-only marker is likewise the bit alone.
-  if ((flags & VECTOR_FLAG_RELIEF_ONLY) !== 0) result.reliefOnly = true;
+  // Quick 261123-kpy: the polarity markers are likewise the bits alone.
+  if ((flags & VECTOR_FLAG_RELIEF_ERODE) !== 0) result.relief = 'erode';
+  if ((flags & VECTOR_FLAG_RELIEF_DEPOSIT) !== 0) result.relief = 'deposit';
   return result;
 }
 
@@ -1138,7 +1160,7 @@ function decodeStroke(reader: BinaryReader, version: number): {
     ...(vector.anchors !== undefined ? { anchors: vector.anchors } : {}),
     ...(vector.curveMode !== undefined ? { curveMode: vector.curveMode } : {}),
     ...(vector.vectorDrawn === true ? { vectorDrawn: true as const } : {}),
-    ...(vector.reliefOnly === true ? { reliefOnly: true as const } : {}),
+    ...(vector.relief !== undefined ? { relief: vector.relief } : {}),
   };
 
   return {
