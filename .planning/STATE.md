@@ -4,10 +4,10 @@ milestone: v2.2.0
 current_phase: 64
 status: completed
 stopped_at: Phase 64 complete — all phases complete
-last_updated: "2026-11-23T22:59:10.935Z"
-last_activity: 2026-11-23
+last_updated: "2026-11-23T23:45:53.843Z"
+last_activity: 2026-11-24
 last_activity_desc: Phase 64 complete
-state_head: cecd100219a59ff9409b4f779786eb58275d02ac
+state_head: b5c6c387ce281f4a9f7fda37f8b5f8985560657f
 progress:
   total_phases: 2
   completed_phases: 2
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-22 after Phase 64)
 Phase: 64
 Plan: Not started
 Status: All phases complete
-Last activity: 2026-11-24 — Quick task 261123-vkb: Freeze the held wet look at the visible settle cap — UAT-APPROVED (7/7 must-haves verified; all 7 live UAT rows passed). While the Studio sheet is held, the sim's awake window after the last wet input is min(wetUntil, lastWet + round(30 + 270 × (1 − dry)) ticks at 60 Hz) and then the sim SLEEPS — no fix(), no decay, no mobile→fixed. The Water gate stays open, wetPeak survives the sleep, the dense wash freezes (Dry 50 ≈ 2.75 s) and the next stroke/water re-arms the window. ONE zero-import settleCap module is consumed by the engine (awakeUntil), the bake (re-export) and the layer; the layer's awake→asleep cuisson stamp is floored at the cap so a dry re-render keeps the dense cook. Probe: held window exactly 30 ticks at Dry 100 (cap) vs the pre-change 237; frozen raw + paint-layer digests identical over +30 s; hold-off control 211 ticks with the gate closed; bake wet/dry A/B unchanged. Open residuals: WR-01 (probe exact tick equality is float-phase sensitive) and WR-02 (the stamp floor reads live Dry Speed — a mid-window Dry change can reopen the washed fallback) — see the task REVIEW.md
+Last activity: 2026-11-24 — Quick task 261124-0l5: Living Script Apply pastes the copied script onto the key — AUTOMATED-READY (5 live UAT rows pending). Apply now records the clipboard's non-Dry strokes on the destination frame under fresh mutation ids anchored to the destination keyId (soft-delete replacement of any existing script, one `aquarelle-script` undo edit recorded only on bake success, failed bake rolls back to the pre-paste script), then bakes THAT recorded timeline grid-projected like applyAquarelleTimeline — the paste is the source of truth, the render its consequence. `applyScript('wet', { paste: true })` is opt-in so Load + Apply, Run Script and applyAquarelleTimeline never paste; HOLD-WET rides the replay. Duplicate/+Key and the paste share ONE Studio record seam (`recordAquarelleEventsOnFrame`); the Studio still holds one `copyAquarelleScriptToFrame(` call. Gates: 3 targeted suites 649 passed, full app suite 9828 passed exit 0, tsc clean; single-seam pins hold (copy call = 1, seam = 3, 'wet' = 2)
 
 
 ## Performance Metrics
@@ -712,6 +712,7 @@ Items acknowledged and carried forward from previous milestone close:
 | 261123-kpy | Studio paint: pressure-driven modifier relief — Shift at stroke start erodes relief / Cmd deposits it (Shift wins, latched once, no Emboss gate), magnitude from pen pressure only via reliefModifier.ts (gains 15/15 calibrated; Emboss 0 works; p<0 sentinel = full 1.0); the polarity rides the bag, JSON codec, AQTL bits 5-6 (both-set refused), Roto schema/duplicate and adapter replay; probe emboss-relief-modifier proves erode halving + deposit raise, byte-identical no-paint controls on both polarities, a/b replay parity, pressure ordering (p03 0.7917, none 0.9167) and neutral/+15 identity vs pre-change HEAD; the polarity also survives the restore, duplicate and Play Script fallback rebuild seams (UAT automated-ready, artist UAT pending) | 2026-11-23 | 44ba44cc1 | [261123-kpy-validate-v2-3-0-studio-paint-modifier-re](./quick/261123-kpy-validate-v2-3-0-studio-paint-modifier-re/) |
 | 261123-pee | Hold paint wet until Dry — no auto-dry, wet one-frame Re-render/Apply | 2026-11-23 | 36f16d74c | [261123-pee-hold-paint-wet-until-dry-no-auto-dry-wet](./quick/261123-pee-hold-paint-wet-until-dry-no-auto-dry-wet/) |
 | 261123-vkb | Freeze the held wet look at the visible settle cap — while held, the sim sleeps at round(30+270x(1-dry)) ticks after the last wet input (Dry 50 = 165 ticks); no fix, no decay; Water gate stays open and wetPeak survives; ONE shared settleCap module consumed by engine, bake and layer; probe proves the frozen sheet, cap window and hold-off control | 2026-11-23 | cecd10021 | [261123-vkb-freeze-the-held-wet-look-at-the-visible-](./quick/261123-vkb-freeze-the-held-wet-look-at-the-visible-/) |
+| 261124-0l5 | Living Script Apply pastes the copied script onto the key (recorded timeline under fresh ids bound to the destination keyId, then baked; one undo; replaces an existing script) | 2026-11-24 | b5c6c387c | [261124-0l5-paste-script-doesn-t-paste-strokes-scrip](./quick/261124-0l5-paste-script-doesn-t-paste-strokes-scrip/) |
 
 ## Roadmap Evolution
 
