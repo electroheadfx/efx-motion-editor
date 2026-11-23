@@ -790,7 +790,9 @@ describe('post-UAT — the bristle Body mask is gone, Body is film opacity', () 
     const dabAt = brush.indexOf('this.eachDab(s, x, y, r, (dx, dy, dr, angle) => {')
     expect(protectAt, 'the protect block survives').toBeGreaterThan(-1)
     expect(protectAt, 'the protect precedes every dab').toBeLessThan(dabAt)
-    expectContains(brush, 'if (coverAmount > 0 || bristle) {')
+    // quick 261123-jak: the relief-only stroke skips the cover pass and its
+    // undo protection together — one per-stroke guard wraps the block.
+    expectContains(brush, 'if (!s.reliefOnly && (coverAmount > 0 || bristle)) {')
     expectContains(brush, 'const coverRect = this.stampRect(')
     // Order inside eachDab: carrier -> (cover, non-bristle only) -> deposit.
     const dab = sliceBetween(brush, 'this.eachDab(s, x, y, r, (dx, dy, dr, angle) => {', '});')

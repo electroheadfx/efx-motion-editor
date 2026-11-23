@@ -210,7 +210,7 @@ import {
   visibleAlphaCheck,
   visibleAlphaSkipped,
 } from './alphaLaw'
-import { WatercolorEngine } from '../../src/playground/Engine'
+import { DEFAULT_LIGHT, WatercolorEngine } from '../../src/playground/Engine'
 import { BRUSH_PRESETS } from '../../src/playground/brushes'
 import { PAPERS, type PaperPreset } from '../../src/playground/papers'
 import { MEDIUMS } from '../../src/playground/mediums'
@@ -758,6 +758,11 @@ interface ScriptEntry {
    *  after this entry's own fix (the impasto); 'after' records it again after
    *  the smoothing entry's fix. Undefined entries capture nothing. */
   readonly captureRelief?: 'before' | 'after'
+  /** quick 261123-jak: drives the entry as a Shift relief-only stroke. The
+   *  flag rides the recorded bag (`toStudioStroke`), so replay passes it into
+   *  the engine exactly like a live stroke. Omitted adds no key, so every
+   *  pre-existing script records byte-identically. */
+  readonly reliefOnly?: true
 }
 
 /** The canonical bag as the app records it (0..100). A knob adds its key;
@@ -793,6 +798,9 @@ function makeStroke(entry: ScriptEntry): StudioStroke<AquarelleStrokePayload> {
     // Written only when the entry carries one, so every pre-existing stroke
     // keeps its exact key set (and a lift still drops it, per that projection).
     ...(entry.textureId !== undefined ? { textureId: entry.textureId } : {}),
+    // quick 261123-jak: the relief-only latch rides the SAME recorded bag the
+    // live Studio writes, so the probe replays exactly what a re-render does.
+    ...(entry.reliefOnly === true ? { reliefOnly: true as const } : {}),
   })
 }
 
@@ -806,6 +814,8 @@ function neutralScript(emboss?: number, body?: number): readonly ScriptEntry[] {
 // path at the signed value, so the only difference between the two readings is
 // the erode pass. The box encloses the whole band with bare paper around it,
 // so its mean is a band statistic, never a single-pixel probe.
+// quick 261123-jak: the SAME box serves `emboss-relief-only` — same geometry,
+// same band, so the two relations read the identical texels.
 const EMBOSS_SMOOTH_BOX: BandBox = { x0: 0.24, y0: 0.24, x1: 0.76, y1: 0.68 }
 
 /** quick 261123-hr5: the signed-emboss scenario — a +15 impasto, then the same
@@ -817,6 +827,27 @@ function embossSmoothScript(smoothEmboss: number, brushId?: string): readonly Sc
   return [
     { color: STROKE_COLOR, points: STROKE_POINTS, mutationId: MUTATION_ID, emboss: 15, captureRelief: 'before', ...brush },
     { color: STROKE_COLOR, points: STROKE_POINTS, mutationId: MUTATION_ID + 1, emboss: smoothEmboss, captureRelief: 'after', ...brush },
+  ]
+}
+
+/** quick 261123-jak: the Shift relief-only scenario — entry 1 lays the band
+ *  impasto at `bandEmboss`, entry 2 paints the SAME band as a relief-only
+ *  stroke at the SAME Emboss (the engine inverts the sign internally), so a
+ *  slider +15 smooths. The readings prove the smoothing.
+ *
+ *  `control` is the NO-PAINT control run (the `--relief-control` operand):
+ *  entry 2 stays a relief-only stroke but carries emboss 0, so it draws no
+ *  thickness and touches nothing — the same drive length, the same entry 1,
+ *  and the ONLY difference from the real run is the relief erode itself. The
+ *  no-paint proof is the two runs' FINAL unshaded film digests being identical:
+ *  an in-drive before/after pair cannot prove it, because the dry sim keeps
+ *  evolving the film over the extra entry's settle ticks (measured: an emboss-0
+ *  entry alone changes the digest). */
+function embossReliefOnlyScript(bandEmboss: number, brushId?: string, control = false): readonly ScriptEntry[] {
+  const brush = brushId === undefined ? {} : { brushId }
+  return [
+    { color: STROKE_COLOR, points: STROKE_POINTS, mutationId: MUTATION_ID, emboss: bandEmboss, captureRelief: 'before', ...brush },
+    { color: STROKE_COLOR, points: STROKE_POINTS, mutationId: MUTATION_ID + 1, emboss: control ? 0 : bandEmboss, reliefOnly: true, captureRelief: 'after', ...brush },
   ]
 }
 
@@ -3328,6 +3359,7 @@ function run(
   light?: number,
   wetMode: 0 | 1 = 1,
   strokeSize: number = STROKE_PARAMS['size']!,
+  reliefControl = false,
 ): void {
   if (!COLD) throw new Error("paper preset 'cold' is not in PAPERS")
   // 64-16: the resolved brush — the operand when given, `chalk` as the
@@ -3369,7 +3401,17 @@ function run(
                               ? bristleEndScript(endDrive ?? 'stop', body ?? 100, strokeSize)
                               : scenario === 'emboss-smooth'
                                 ? embossSmoothScript(emboss ?? -15, resolvedBrush)
-                                : neutralScript(emboss, body)
+                                : scenario === 'emboss-relief-only'
+                                  // quick 261123-jak: for this scenario the
+                                  // `--emboss` operand is the BAND value
+                                  // (default 15) — the first entry carries it,
+                                  // the second as a relief-only stroke, so
+                                  // slider +15 erodes through the engine's
+                                  // inversion. `--relief-control` makes the
+                                  // second entry a do-nothing relief-only pass
+                                  // (emboss 0) — the no-paint A/B control.
+                                  ? embossReliefOnlyScript(emboss ?? 15, resolvedBrush, reliefControl)
+                                  : neutralScript(emboss, body)
 
   // 261119-pod (D-F): the scene-parameter echo — `dry` appears in the report
   // only when a script pins it, so every capture records the calibration and a
@@ -3435,6 +3477,23 @@ function run(
       reliefSmooth[`reliefPeak${cap}`] = round4(stats.peak)
       reliefSmooth[`pigmentMean${cap}`] = round4(pigmentMean)
     }
+    // quick 261123-jak: the relief-only band readings — the impasto's relief
+    // and the relief-only pass's relief, each after its own fix. These carry
+    // the smoothing relation. The no-paint proof is NOT an in-drive digest
+    // pair: the dry sim keeps evolving the film over the extra entry's settle
+    // ticks (measured — an emboss-0 entry alone changes it), so the film
+    // comparison lives at the capture level, between this run and its
+    // `--relief-control` twin. Probe-only readbacks: capture cost, not medium.
+    const reliefOnlyReadings: Record<string, number> = {}
+    const reliefOnlyCapture = (surface: 'before' | 'after') => {
+      if (scenario !== 'emboss-relief-only') return
+      const start = performance.now()
+      const stats = reliefBandStats(engine, sheet, EMBOSS_SMOOTH_BOX)
+      captureMs += performance.now() - start
+      const cap = surface === 'before' ? 'Before' : 'After'
+      reliefOnlyReadings[`reliefOnlyMean${cap}`] = round4(stats.mean)
+      reliefOnlyReadings[`reliefOnlyPeak${cap}`] = round4(stats.peak)
+    }
     // bristle-end: the LIVE end paths drive the captured engine directly (the
     // adapter has no live pointer seam); the re-bake drive rides the normal
     // script loop below. Written after the bakeStart mark so the drive's wall
@@ -3489,7 +3548,12 @@ function run(
       if (entry.captureLine) lineCapture('postFix')
       // quick 261123-hr5: read the signed-emboss band after this entry settled
       // and fixed, so the two readings differ by the erode pass alone.
-      if (entry.captureRelief !== undefined) reliefCapture(entry.captureRelief)
+      // quick 261123-jak: the relief-only readback rides the same moments; each
+      // helper no-ops for the other scenario.
+      if (entry.captureRelief !== undefined) {
+        reliefCapture(entry.captureRelief)
+        reliefOnlyCapture(entry.captureRelief)
+      }
       // 64-14: the lift gate reads the crossing after the entry's own fix, so
       // the field it measures is the one the display reads.
       if (entry.captureCover === 'beforeLift' || entry.captureCover === 'afterLift') {
@@ -3662,6 +3726,35 @@ function run(
           }
         : {}
 
+    // quick 261123-jak: the relief-only relation's readings — the band value,
+    // the control echo, the four band numbers and the two UNSHADED film
+    // digests — only for its scenario, so every other report shape is
+    // unchanged.
+    //
+    // The no-paint instrument is the UNSHADED film, read with the light OFF
+    // (intensity 0 makes displayFS's shade exactly 1): the shipped display
+    // shades pigment/transparent with the relief gradient — the feature's
+    // intended visible change — so only the unshaded exports can prove a
+    // relief-only pass deposits nothing. Paired across this run and its
+    // `--relief-control` twin (identical drive, second entry inert), the two
+    // digests must be byte-identical. Measured after renderMs so the cost
+    // number keeps its meaning; the requested light is restored immediately.
+    let embossReliefOnlyReport: Record<string, unknown> = {}
+    if (scenario === 'emboss-relief-only') {
+      engine.setLight({ intensity: 0 })
+      const unshadedPigmentDigest = digestCanvas(engine.exportCanvas('pigment')).digest
+      const unshadedTransparentDigest = digestCanvas(engine.exportCanvas('transparent')).digest
+      engine.setLight({ intensity: light ?? DEFAULT_LIGHT.intensity })
+      embossReliefOnlyReport = {
+        reliefOnlyEmboss: emboss ?? 15,
+        reliefOnlyControl: reliefControl,
+        ...reliefOnlyReadings,
+        unshadedPigmentDigest,
+        unshadedTransparentDigest,
+        pngTransparent: transparentCanvas.toDataURL('image/png'),
+      }
+    }
+
     writeResult({
       gate,
       scenario,
@@ -3693,6 +3786,7 @@ function run(
       ...bristleEndReport,
       ...tipReport,
       ...embossSmoothReport,
+      ...embossReliefOnlyReport,
       ...coverLifecycle,
       renderer,
       verdict: 'MEDIUM-ENGINE CAPTURED',
@@ -3704,7 +3798,10 @@ function run(
 
 /** 64-03: the emboss knob — absent keeps the neutral (pre-milestone) script.
  *  Quick 261123-hr5: the band is SIGNED (-100..100); for `emboss-smooth` this
- *  operand is the SMOOTH value the second entry carries. */
+ *  operand is the SMOOTH value the second entry carries. Quick 261123-jak:
+ *  for `emboss-relief-only` it is the BAND value the FIRST entry carries
+ *  (default 15) — the second entry is relief-only, so the engine inverts it
+ *  (or is inert under `--relief-control`). */
 function readEmboss(): number | undefined {
   const raw = new URLSearchParams(location.search).get('emboss')
   if (raw === null || raw === '') return undefined
@@ -3761,19 +3858,32 @@ function readBrush(): string | undefined {
  *  `bristle-wet`, the wetness acceptance; 2026-11-22 adds `bristle-line`,
  *  the acrylic pale-line defect's three-field across profile; 64-29 adds
  *  `bristle-tip`, the texture-tip A/B; quick 261123-hr5 adds `emboss-smooth`,
- *  the signed-emboss smoothing relation.
+ *  the signed-emboss smoothing relation; quick 261123-jak adds
+ *  `emboss-relief-only`, the Shift relief-only smoothing relation.
  *  The closed list here and the one in run.mjs must stay literal-identical:
  *  a name accepted by the parser but unknown to the probe fails at capture,
  *  and a name the probe knows but the parser rejects can never be requested. */
 function readScenario(): string {
   const raw = new URLSearchParams(location.search).get('scenario')
   if (raw === null || raw === '') return 'neutral'
-  if (raw !== 'cover' && raw !== 'cover-over-wet' && raw !== 'watercolor-50' && raw !== 'white-over-blue' && raw !== 'cover-advect' && raw !== 'cover-lift' && raw !== 'cover-textured' && raw !== 'red-over-blue-50' && raw !== 'bristle-edge' && raw !== 'bristle-wet' && raw !== 'bristle-line' && raw !== 'bristle-tip' && raw !== 'bristle-end' && raw !== 'emboss-smooth') {
+  if (raw !== 'cover' && raw !== 'cover-over-wet' && raw !== 'watercolor-50' && raw !== 'white-over-blue' && raw !== 'cover-advect' && raw !== 'cover-lift' && raw !== 'cover-textured' && raw !== 'red-over-blue-50' && raw !== 'bristle-edge' && raw !== 'bristle-wet' && raw !== 'bristle-line' && raw !== 'bristle-tip' && raw !== 'bristle-end' && raw !== 'emboss-smooth' && raw !== 'emboss-relief-only') {
     throw new Error(
-      `invalid scenario "${raw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue", "cover-advect", "cover-lift", "cover-textured", "red-over-blue-50", "bristle-edge", "bristle-wet", "bristle-line", "bristle-end", "emboss-smooth" or "bristle-tip")`,
+      `invalid scenario "${raw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue", "cover-advect", "cover-lift", "cover-textured", "red-over-blue-50", "bristle-edge", "bristle-wet", "bristle-line", "bristle-end", "emboss-smooth", "emboss-relief-only" or "bristle-tip")`,
     )
   }
   return raw
+}
+
+/** quick 261123-jak: the no-paint control operand — present (`1`) makes the
+ *  relief-only scenario's second entry a do-nothing relief-only pass (emboss
+ *  0). Absent keeps the real relief-only stroke. Anything else throws. */
+function readReliefControl(): boolean {
+  const raw = new URLSearchParams(location.search).get('reliefControl')
+  if (raw === null || raw === '') return false
+  if (raw !== '1') {
+    throw new Error(`invalid reliefControl "${raw}" (expected 1)`)
+  }
+  return true
 }
 
 /** 64-24: the §3.4 A/B mode — absent keeps 1 (the shipped timestamp law); 0
@@ -3810,6 +3920,7 @@ function main(): void {
   let body: number | undefined
   let light: number | undefined
   let wetMode: 0 | 1 = 1
+  let reliefControl = false
   let strokeSize = STROKE_PARAMS['size']!
   try {
     scenario = readScenario()
@@ -3822,8 +3933,12 @@ function main(): void {
     strokeSize = readStrokeSize()
     LINE_BAND_PX = readBand()
     TIP_TEXTURE = readTipTexture()
+    reliefControl = readReliefControl()
+    if (reliefControl && scenario !== 'emboss-relief-only') {
+      throw new Error('reliefControl is only valid with scenario emboss-relief-only')
+    }
     renderer = probeRenderer()
-    run(gate, renderer, scenario, sheet, brush, emboss, body, light, wetMode, strokeSize)
+    run(gate, renderer, scenario, sheet, brush, emboss, body, light, wetMode, strokeSize, reliefControl)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     writeResult({

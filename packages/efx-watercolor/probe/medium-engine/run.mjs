@@ -178,6 +178,19 @@
 //                                     the same band at --emboss (default
 //                                     -15); relief/pigment readings before
 //                                     and after the smoothing pass
+//             [--scenario emboss-relief-only]
+//                                     quick 261123-jak: a band impasto at
+//                                     --emboss (the BAND value, default 15),
+//                                     then the SAME band as a relief-only
+//                                     stroke at the same Emboss; band relief
+//                                     readings before/after plus the final
+//                                     UNSHADED film digests
+//             [--relief-control]      emboss-relief-only only: the no-paint
+//                                     A/B twin — the second entry is a
+//                                     do-nothing relief-only pass (emboss 0),
+//                                     same drive length, same first entry; the
+//                                     pair's UNSHADED digests must be
+//                                     byte-identical
 //             [--emboss <-100..100>]  SIGNED (261123-hr5): negative subtracts
 //                                     thickness; omitted writes no emboss key
 //             [--body <0..100>]       omitted writes no body key
@@ -198,6 +211,13 @@
 //                                     quick 261123-hr5: the signed-emboss
 //                                     smoothing relation, self-contained on
 //                                     the capture's own six readings
+//    compare.mjs <gate> --relief-only [<controlGate>]
+//                                     quick 261123-jak: the relief-only
+//                                     smoothing relation on <gate> (band at
+//                                     least halves, peak never rises); with a
+//                                     control gate, ALSO asserts the pair's
+//                                     UNSHADED film digests are byte-identical
+//                                     (the no-paint proof)
 //
 //  2026-11-22 adds `--scenario bristle-line` — the acrylic pale-line defect's
 //  reproduction at the ARTIST'S parameters. ONE straight bristle-flat stroke
@@ -237,7 +257,7 @@ const gateFlag = args.indexOf('--gate')
 const gate = gateFlag >= 0 ? args[gateFlag + 1] : undefined
 if (!gate) {
   console.error(
-    'usage: node run.mjs --gate <name> [--scenario cover|cover-over-wet|cover-advect|cover-lift|watercolor-50|white-over-blue|cover-textured|red-over-blue-50|bristle-edge|bristle-wet|bristle-line|bristle-end|bristle-tip|emboss-smooth] [--emboss <-100..100>] [--body <0..100>] [--light <0..4>] [--size <32..4096>] [--brush <id>] [--wet-mode <0|1>] [--texture <mask id>] [--drive <stop|lift|decay|mouse|mouse-lift|bake>]   (e.g. neutral-identity)',
+    'usage: node run.mjs --gate <name> [--scenario cover|cover-over-wet|cover-advect|cover-lift|watercolor-50|white-over-blue|cover-textured|red-over-blue-50|bristle-edge|bristle-wet|bristle-line|bristle-end|bristle-tip|emboss-smooth|emboss-relief-only] [--emboss <-100..100>] [--body <0..100>] [--light <0..4>] [--size <32..4096>] [--brush <id>] [--wet-mode <0|1>] [--texture <mask id>] [--relief-control] [--drive <stop|lift|decay|mouse|mouse-lift|bake>]   (e.g. neutral-identity)',
   )
   console.error(
     '       every operand except --gate is optional and additive; an omitted operand writes no key/value, so the neutral gate keeps reproducing the committed baseline',
@@ -295,15 +315,18 @@ if (bodyRaw !== undefined) {
 // (cover geometry, covering stroke left wet) and `cover-lift` (fixed cover
 // geometry, then a Lift stroke); 64-24 adds `bristle-wet` (two ages on one
 // sheet); 64-29 adds `bristle-tip` (the texture-tip A/B); quick 261123-hr5
-// adds `emboss-smooth` (the signed-emboss smoothing relation). This closed
-// list and probe.ts readScenario's must stay literal-identical.
+// adds `emboss-smooth` (the signed-emboss smoothing relation); quick
+// 261123-jak adds `emboss-relief-only` (the Shift relief-only relation; for
+// this scenario `--emboss` is the BAND value the FIRST entry carries, default
+// 15, and `--relief-control` makes the second entry inert).
+// This closed list and probe.ts readScenario's must stay literal-identical.
 const scenarioFlag = args.indexOf('--scenario')
 const scenarioRaw = scenarioFlag >= 0 ? args[scenarioFlag + 1] : undefined
 let scenario
 if (scenarioRaw !== undefined) {
-  if (scenarioRaw !== 'cover' && scenarioRaw !== 'cover-over-wet' && scenarioRaw !== 'watercolor-50' && scenarioRaw !== 'white-over-blue' && scenarioRaw !== 'cover-advect' && scenarioRaw !== 'cover-lift' && scenarioRaw !== 'cover-textured' && scenarioRaw !== 'red-over-blue-50' && scenarioRaw !== 'bristle-edge' && scenarioRaw !== 'bristle-wet' && scenarioRaw !== 'bristle-line' && scenarioRaw !== 'bristle-tip' && scenarioRaw !== 'bristle-end' && scenarioRaw !== 'emboss-smooth') {
+  if (scenarioRaw !== 'cover' && scenarioRaw !== 'cover-over-wet' && scenarioRaw !== 'watercolor-50' && scenarioRaw !== 'white-over-blue' && scenarioRaw !== 'cover-advect' && scenarioRaw !== 'cover-lift' && scenarioRaw !== 'cover-textured' && scenarioRaw !== 'red-over-blue-50' && scenarioRaw !== 'bristle-edge' && scenarioRaw !== 'bristle-wet' && scenarioRaw !== 'bristle-line' && scenarioRaw !== 'bristle-tip' && scenarioRaw !== 'bristle-end' && scenarioRaw !== 'emboss-smooth' && scenarioRaw !== 'emboss-relief-only') {
     console.error(
-      `invalid --scenario "${scenarioRaw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue", "cover-advect", "cover-lift", "cover-textured", "red-over-blue-50", "bristle-edge", "bristle-wet", "bristle-line", "bristle-end", "emboss-smooth" or "bristle-tip")`,
+      `invalid --scenario "${scenarioRaw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue", "cover-advect", "cover-lift", "cover-textured", "red-over-blue-50", "bristle-edge", "bristle-wet", "bristle-line", "bristle-end", "emboss-smooth", "emboss-relief-only" or "bristle-tip")`,
     )
     process.exit(1)
   }
@@ -403,6 +426,20 @@ if (overFlag >= 0) {
   over = 1
 }
 
+// quick 261123-jak: the no-paint control twin of the relief-only scenario —
+// the second entry is a do-nothing relief-only pass (emboss 0), same drive
+// length. Only the pair's UNSHADED film digests are compared; the shaded final
+// digests differ by design (the display emboss is the feature).
+const reliefControlFlag = args.indexOf('--relief-control')
+let reliefControl
+if (reliefControlFlag >= 0) {
+  if (scenario !== 'emboss-relief-only') {
+    console.error('--relief-control is only valid with --scenario emboss-relief-only')
+    process.exit(1)
+  }
+  reliefControl = 1
+}
+
 // 64-24: the §3.4 A/B mode. Omitted keeps the probe's default (1, the
 // shipped timestamp law); 0 selects 64-21's `wet × coverage` proxy, the
 // recorded control. A value the page would refuse is refused here first.
@@ -471,6 +508,7 @@ const pageQuery =
   (band === undefined ? '' : `&band=${band}`) +
   (mut === undefined ? '' : `&mut=${mut}`) +
   (over === undefined ? '' : '&over=1') +
+  (reliefControl === undefined ? '' : '&reliefControl=1') +
   (wetMode === undefined ? '' : `&wetMode=${wetMode}`) +
   (texture === undefined ? '' : `&texture=${encodeURIComponent(texture)}`) +
   (drive === undefined ? '' : `&drive=${encodeURIComponent(drive)}`)
