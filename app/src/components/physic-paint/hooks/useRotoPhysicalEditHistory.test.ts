@@ -3820,6 +3820,145 @@ describe('useRotoPhysicalEditHistory aquarelle script commands (261022-pim Task 
   });
 });
 
+// 261123-pee (HOLD-WET): an explicit Dry is exactly one engine 'dry' step and
+// exactly one ledger entry — aligned by `fix()`'s OWN return value. The entry
+// is stack-only: undo/redo move the engine pixels and never replay a script,
+// never touch the document, and a refused engine move leaves both stacks and
+// the entry untouched (fail closed — the same discipline as the unrecorded
+// paint branch).
+describe('useRotoPhysicalEditHistory aquarelle Dry entries (261123-pee)', () => {
+  function createDryHarness(options: { undoPaint?: boolean; redoPaint?: boolean } = {}) {
+    const acceptedOutput = signal<RotoPhysicalEditAcceptedOutput<null> | null>(null);
+    const pendingOperationId = signal<string | null>(null);
+    const availability = signal({ undo: 0, redo: 0 });
+    const replay = vi.fn<(editId: number, direction: 'undo' | 'redo') => Promise<boolean>>(async () => true);
+    const hasRecordedStroke = vi.fn<(mutationId: number) => boolean>(() => false);
+    const replayStroke = vi.fn<(mutationId: number, direction: 'undo' | 'redo') => Promise<boolean>>(async () => true);
+    const undoPaint = vi.fn(() => options.undoPaint ?? true);
+    const redoPaint = vi.fn(() => options.redoPaint ?? true);
+    const state = { current: snapshot([record('A', 0)], 'A', 0) };
+    const executePhysicalEdit = vi.fn(async () => false);
+    const history = useRotoPhysicalEditHistory({
+      identity: {
+        trackId: 'track-a',
+        launchOperationId: 'launch-1',
+        layerId: 'layer-1',
+        projectContextId: 'project-1',
+        capacity: 10,
+      },
+      availability,
+      coordinator: {
+        executePhysicalEdit: executePhysicalEdit as never,
+        pendingOperationId,
+        acceptedOutput,
+      },
+      recordsPort: {
+        getRecords: () => state.current.records,
+        getInterpolation: () => state.current.interpolation,
+        getCapacity: () => state.current.capacity,
+        raiseCapacity: () => {},
+        getLoopClips: () => state.current.loopClips,
+        getRailMotions: () => [],
+        getIncomingInterpolationBreakKeyIds: () => state.current.incomingInterpolationBreakKeyIds,
+        replaceIncomingInterpolationBreakKeyIds: () => ({ ok: true }),
+        replaceLoopClips: () => ({ ok: true }),
+        replaceRecords: () => ({ ok: true }),
+      },
+      getLiveSourceSnapshot: () => state.current,
+      aquarelleScriptHistory: { replay, hasRecordedStroke, replayStroke },
+      undoPaint,
+      redoPaint,
+    });
+    return {
+      availability,
+      replay,
+      replayStroke,
+      undoPaint,
+      redoPaint,
+      executePhysicalEdit,
+      history,
+    };
+  }
+
+  it('recordAquarelleDry pushes exactly one entry and clears redo', () => {
+    const harness = createDryHarness();
+    harness.history.recordAquarelleDry();
+    expect(harness.availability.value).toEqual({ undo: 1, redo: 0 });
+
+    harness.history.recordAquarelleDry();
+    expect(harness.availability.value).toEqual({ undo: 2, redo: 0 });
+  });
+
+  it('undo pops to redo only when the engine reports a paint change', async () => {
+    const harness = createDryHarness();
+    harness.history.recordAquarelleDry();
+
+    expect(await harness.history.undo()).toBe(true);
+    expect(harness.undoPaint).toHaveBeenCalledTimes(1);
+    expect(harness.availability.value).toEqual({ undo: 0, redo: 1 });
+  });
+
+  it('a refused undo leaves both stacks and the entry untouched (fail closed)', async () => {
+    const harness = createDryHarness({ undoPaint: false });
+    harness.history.recordAquarelleDry();
+
+    expect(await harness.history.undo()).toBe(false);
+    expect(harness.undoPaint).toHaveBeenCalledTimes(1);
+    // The entry is back on undo, nothing on redo — never a script fallback.
+    expect(harness.availability.value).toEqual({ undo: 1, redo: 0 });
+    expect(harness.replay).not.toHaveBeenCalled();
+    expect(harness.replayStroke).not.toHaveBeenCalled();
+  });
+
+  it('redo is symmetric: redoPaint only, refused redo restores the stacks', async () => {
+    const harness = createDryHarness({ redoPaint: false });
+    harness.history.recordAquarelleDry();
+    expect(await harness.history.undo()).toBe(true);
+
+    expect(await harness.history.redo()).toBe(false);
+    expect(harness.redoPaint).toHaveBeenCalledTimes(1);
+    expect(harness.availability.value).toEqual({ undo: 0, redo: 1 });
+
+    const ok = createDryHarness();
+    ok.history.recordAquarelleDry();
+    expect(await ok.history.undo()).toBe(true);
+    expect(await ok.history.redo()).toBe(true);
+    expect(ok.redoPaint).toHaveBeenCalledTimes(1);
+    expect(ok.availability.value).toEqual({ undo: 1, redo: 0 });
+  });
+
+  it('never touches document state nor the script replay', async () => {
+    const harness = createDryHarness();
+    harness.history.recordAquarelleDry();
+    expect(await harness.history.undo()).toBe(true);
+    expect(await harness.history.redo()).toBe(true);
+    expect(harness.executePhysicalEdit).not.toHaveBeenCalled();
+    expect(harness.replay).not.toHaveBeenCalled();
+    expect(harness.replayStroke).not.toHaveBeenCalled();
+  });
+
+  it('every recorded dry entry is exactly one engine dry step (source alignment)', () => {
+    // The Studio records ONLY when the engine opened a 'dry' step (`opened`),
+    // and the engine's fix() opens the step and returns true on a
+    // painted-but-dry sheet too, while a blank sheet (or an in-flight fix)
+    // returns false and records nothing. One step ⇒ one entry, one entry ⇒
+    // one step.
+    const studioSource = readFileSync(fileURLToPath(new URL('../PhysicsPaintStudio.tsx', import.meta.url)), 'utf8');
+    const layerSource = readFileSync(fileURLToPath(new URL('../engine/AquarelleCanvasLayer.tsx', import.meta.url)), 'utf8');
+    const engineSource = readFileSync(
+      fileURLToPath(new URL('../../../../../packages/efx-watercolor/src/playground/Engine.ts', import.meta.url)),
+      'utf8',
+    );
+    expect(layerSource).toContain('const started = engine.fix();');
+    expect(layerSource).toContain('onDryAppliedRef.current?.(started)');
+    expect(studioSource).toContain('if (opened) aquarelleDryRecorderRef.current?.();');
+    const fixBody = engineSource.slice(engineSource.indexOf('fix(auto = false): boolean {'));
+    expect(fixBody).toContain('if (!this.painted || this.fixTimer > 0) return false;');
+    expect(fixBody).toContain("this.beginStep('dry', 'Dry');");
+    expect(fixBody.indexOf('return true')).toBeGreaterThan(fixBody.indexOf("this.beginStep('dry', 'Dry');"));
+  });
+});
+
 // 261029-lsr: a RECORDED stroke's undo/redo is script-authoritative — the
 // ledger routes it through `replayStroke` (script edit + re-bake) and never
 // `undoPaint()` / `redoPaint()`. Unrecorded strokes keep the engine-only

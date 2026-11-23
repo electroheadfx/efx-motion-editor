@@ -82,6 +82,8 @@ const HOST_TICK_MS = 1000 / HOST_TICK_HZ;
 
 /** Engine.ts FIX_DURATION (1.2s) — Dry bakes the wet pigment over this window. */
 const FIX_SETTLE_MS = 1200;
+/** The same window on the engine's 60 Hz tick grid — the settle tick-loop bound. */
+const FIX_SETTLE_TICKS = Math.round(FIX_SETTLE_MS / HOST_TICK_MS);
 
 // ============================================================
 //  Footprint cursor (261028-k03c D6). Same dual-ring family as
@@ -450,10 +452,10 @@ export function AquarelleCanvasLayer(props: {
   /**
    * 261028-k03 D3/D2: every Lift refusal (Script OFF with a script, group
    * frame, unknown pre-script base, no displayable paint) is decided by the
-   * Studio's preflight and applied HERE, in the capture phase — before
-   * `cancelAutoFix` and before the engine's own canvas pointerdown. The
-   * stroke-end check would already have erased the live sheet and recorded
-   * the event. `getLiftBlocked` returns the refusal copy, or null to proceed.
+   * Studio's preflight and applied HERE, in the capture phase — before the
+   * engine's own canvas pointerdown. The stroke-end check would already have
+   * erased the live sheet and recorded the event. `getLiftBlocked` returns
+   * the refusal copy, or null to proceed.
    */
   getLiftBlocked?: () => string | null;
   onLiftBlocked?: (message: string) => void;
@@ -524,6 +526,13 @@ export function AquarelleCanvasLayer(props: {
    * stroke replay and no per-paint rebake.
    */
   onAdoptSheetReady?: (adopt: ((frame: number, sheet: SheetSnapshot) => boolean) | null) => void;
+  /**
+   * HOLD-WET (261123-pee): the explicit Dry's OWN outcome — `true` when the
+   * engine OPENED a 'dry' step, not "the sheet was wet". The ledger mints one
+   * entry per `true` (and one engine step), so a Dry on a painted-but-dry
+   * sheet still records exactly one entry and a blank sheet records none.
+   */
+  onDryApplied?: (opened: boolean) => void;
   /**
    * 261022-pim / 261024-mz5: Alt+click on an outlined stroke (or the whole
    * selected set). The Studio deletes them from the recorded script and
@@ -598,6 +607,7 @@ export function AquarelleCanvasLayer(props: {
   const onSheetSessionEndRef = useRef(props.onSheetSessionEnd);
   const onResetSheetReadyRef = useRef(props.onResetSheetReady);
   const onAdoptSheetReadyRef = useRef(props.onAdoptSheetReady);
+  const onDryAppliedRef = useRef(props.onDryApplied);
   const onDeleteStrokesRef = useRef(props.onDeleteStrokes);
   const onMoveStrokesRef = useRef(props.onMoveStrokes);
   const onTransformStrokesRef = useRef(props.onTransformStrokes);
@@ -626,6 +636,7 @@ export function AquarelleCanvasLayer(props: {
   onSheetSessionEndRef.current = props.onSheetSessionEnd;
   onResetSheetReadyRef.current = props.onResetSheetReady;
   onAdoptSheetReadyRef.current = props.onAdoptSheetReady;
+  onDryAppliedRef.current = props.onDryApplied;
   onDeleteStrokesRef.current = props.onDeleteStrokes;
   onMoveStrokesRef.current = props.onMoveStrokes;
   onTransformStrokesRef.current = props.onTransformStrokes;
@@ -684,21 +695,21 @@ export function AquarelleCanvasLayer(props: {
     // PLAY FIDELITY: the last recorded stroke awaiting its measured settle
     // window (stamped when the sheet sleeps or the frame changes).
     let pendingSettle: { stroke: AquarelleStroke; endedAt: number } | null = null;
-    const stampPendingSettle = () => {
+    // HOLD-WET (261123-pee): `minTicks` floors the stamp at the commit
+    // settle's cap, so the recorded cuisson is at or above the bake's own
+    // `settleCap` and the re-bake reproduces the committed dry look. The
+    // default is load-bearing: the app tsconfig is strict (`number |
+    // undefined`), and a cast would ship Math.max(undefined, n) → NaN, which
+    // `settleCapped` reads as false (the washed-out full settle).
+    const stampPendingSettle = (minTicks = 0) => {
       const pending = pendingSettle;
       if (!pending) return;
       pendingSettle = null;
-      const ticks = Math.round((performance.now() - pending.endedAt) / HOST_TICK_MS);
+      const ticks = Math.max(minTicks, Math.round((performance.now() - pending.endedAt) / HOST_TICK_MS));
       onStrokeSettledRef.current?.(pending.stroke, ticks);
     };
 
-    // 261019c VISIBLE SETTLE CAP (user decision): the wash force-dries at the
-    // same short window the bake uses, so the live sheet, its cache capture,
-    // and the Play end key keep the denser look instead of cooking to the
-    // engine's washed-out full awake state.
     let painting = false;
-    let lastWetAt = 0;
-    let settleCapArmed = false;
 
     let engine: WatercolorEngine;
     try {
@@ -708,8 +719,6 @@ export function AquarelleCanvasLayer(props: {
         {
           onStrokeSample(sample) {
             painting = true;
-            lastWetAt = performance.now();
-            settleCapArmed = false;
             const sink = (engine as unknown as { __samples?: RawSample[] }).__samples;
             if (sink) sink.push(sample);
           },
@@ -721,8 +730,6 @@ export function AquarelleCanvasLayer(props: {
           },
           onStrokeEnd(tool) {
             painting = false;
-            lastWetAt = performance.now();
-            settleCapArmed = false;
             const carrier = engine as unknown as { __samples?: RawSample[] };
             const raw = carrier.__samples ?? [];
             carrier.__samples = [];
@@ -777,9 +784,10 @@ export function AquarelleCanvasLayer(props: {
             // PLAY FIDELITY: remember the stroke until the sheet sleeps; the
             // measured awake window becomes its recorded cuisson (below).
             pendingSettle = { stroke, endedAt: performance.now() };
-            // CACHE WRITE (settle) owns the commit — a stroke-end capture would
-            // land the WET (washed) sheet. The rAF poll watches engine.isAwake
-            // and captures the concentrated dry look.
+            // CACHE WRITE: every capture that commits this sheet settles it
+            // first (`settledSnapshot` → `settleSheetNow`) or waits for the
+            // explicit Dry's own settled capture — never the WET stroke-end.
+            // The live sheet holds wet until then (no automatic settle cap).
           },
         },
         [widthRef.current, heightRef.current],
@@ -790,6 +798,10 @@ export function AquarelleCanvasLayer(props: {
     }
     (engine as unknown as { __samples?: RawSample[] }).__samples = [];
     engineRef.current = engine;
+    // HOLD-WET (261123-pee): the artist law — the live sheet holds its paint
+    // wet until an explicit Dry (or a commit settle) lifts it; nothing dries
+    // automatically. The rAF tick re-arms it after any settle.
+    engine.setHoldWet(true);
     // ENGINE PORT (261027-klx): ONE port per engine instance. Roto and the
     // Studio must both hold this object — the accepted-target WeakMap is keyed
     // by port identity, so a second port reads every lookup as null.
@@ -996,6 +1008,66 @@ export function AquarelleCanvasLayer(props: {
       }
     };
 
+    // HOLD-WET (261123-pee): the commit-path settle. Every capture that
+    // COMMITS this sheet (frame leave, flush, the Dry timer) settles it first
+    // — the committed image is the dry look the re-bake reproduces, never the
+    // wet sheet. This is the CONTEXT's "force the normal fix first, then
+    // capture" law; it may mutate the sheet because the sheet is being
+    // committed and dropped. The settle is NOT a Dry: `settleForCapture`
+    // opens no engine history step and writes no hold flag, so the Dry sink's
+    // `fix()` stays the only producer of an engine 'dry' step (one ledger
+    // entry per step).
+    const settleSheetNow = () => {
+      if (!engine.hasPaint) return false;
+      // An explicit Dry already in flight: drive its own tick law to
+      // completion first — a capture during a settle must land the settled
+      // canvas, never a mid-settle one.
+      for (let i = 0; i < FIX_SETTLE_TICKS && engine.isFixing; i += 1) {
+        engine.tick(HOST_TICK_MS / 1000);
+      }
+      if (!engine.hasStandingWater) return false;
+      const capTicks = aquarelleVisibleSettleTicks(aquarelleParams.value.dry);
+      if (!engine.settleForCapture()) return false;
+      for (let i = 0; i < FIX_SETTLE_TICKS && engine.isFixing; i += 1) {
+        engine.tick(HOST_TICK_MS / 1000);
+      }
+      // Floor the pending stroke's cuisson at the visible cap, so `settleCapped`
+      // stays true and the re-bake reproduces this committed dry look.
+      stampPendingSettle(capTicks);
+      // DRY-ON-LEAVE: the sheet is being committed, so the hold lifts; the rAF
+      // tick re-arms it on its next pass, exactly like an explicit Dry.
+      engine.setHoldWet(false);
+      return true;
+    };
+    const settledSnapshot = () => { settleSheetNow(); return snapshot(); };
+
+    // SAVE PATH (261123-pee): every durable READ of the live sheet (the Save
+    // Script thumbnail and the raster-lift eager sheet) commits the dry look.
+    // `exportSettledCanvas` captures the sheet, settles it through the
+    // no-step tail, exports, and ALWAYS restores — the artist's live sheet is
+    // exactly as wet afterwards and no engine step is opened.
+    const settledExport = () => {
+      try {
+        return engine.exportSettledCanvas();
+      } catch {
+        return null;
+      }
+    };
+
+    // HOLD-WET (261123-pee): the Dry settle-capture window invalidation. A
+    // subsequent Dry, a stroke start or unmount cancels every pending window
+    // (the same Set the cleanup drains).
+    const pendingSettleTimers = new Set<number>();
+    const cancelPendingDrySettleCaptures = () => {
+      for (const timer of pendingSettleTimers) window.clearTimeout(timer);
+      pendingSettleTimers.clear();
+    };
+    // Set by the LIVE Dry sink, read by the capture sink: both `onAquarelleDry`
+    // listeners fire on the same event in registration order, so the live sink
+    // publishes the pre-Dry wet truth before the capture sink schedules. A dry
+    // sheet has nothing to re-capture.
+    let drySheetWasWet = false;
+
     // NAV FLUSH: synchronous pre-leave capture the Studio navigation calls
     // before flushLivePixels. The rAF poll's frame-change capture runs one rAF
     // after scheduleRotoStartFramePropagation — i.e. AFTER the navigation flush
@@ -1012,30 +1084,36 @@ export function AquarelleCanvasLayer(props: {
         invoked: hasPaint,
       });
       if (!hasPaint) return;
-      onCaptureFrameRef.current?.(lastPlayFrameRef.current, snapshot, captureTrackId);
+      onCaptureFrameRef.current?.(lastPlayFrameRef.current, settledSnapshot, captureTrackId);
     };
     onFlushCaptureReadyRef.current?.(flushCapture);
 
-    // SAVE PATH (261026-nvq): register the SAME composited-sheet factory the
-    // cache capture resolves. A separate `exportCanvas` read would be a second
-    // readback and could diverge; the engine is configured above, so this is
-    // the first moment the export reflects the live mode + paper.
-    onSnapshotReadyRef.current?.(snapshot);
+    // SAVE PATH (261026-nvq, 261123-pee): register the SETTLED export — the
+    // same composited-sheet factory the cache capture resolves, settled for
+    // the commit without drying the artist's sheet. A separate `exportCanvas`
+    // read would be a second readback and could diverge; the engine is
+    // configured above, so this is the first moment the export reflects the
+    // live mode + paper.
+    onSnapshotReadyRef.current?.(settledExport);
 
     // D-15: user-initiated Dry is one event with two ends. The record end
     // (aquarelleRecordState) already appended it to the payload timeline;
     // this is the LIVE end — force-dry the wet sheet so the paint stops
     // moving right where the user pressed Dry. No second channel.
+    // HOLD-WET (261123-pee): the ledger follows `fix()`'s own return — a step
+    // opened or not — never the wet read, so every engine 'dry' step is
+    // exactly one entry. A subsequent Dry invalidates the previous Dry's
+    // capture window first.
     const offDry = onAquarelleDry(() => {
-      settleCapArmed = true;
-      engine.fix();
+      cancelPendingDrySettleCaptures();
+      drySheetWasWet = engine.hasStandingWater;
+      const started = engine.fix();
+      onDryAppliedRef.current?.(started);
     });
 
-    // BLEND REOPEN: the settle cap's fix bakes the mobile pigment into the paper,
-    // and fixed pigment cannot be moved by a later water stroke — wet-on-wet
-    // blending died after a pause. A new stroke reopens the cap fix (the engine
-    // restores the pre-fix wet state) so the sheet is blendable again. Capture
-    // on window so this runs BEFORE the engine's own canvas pointerdown.
+    // STROKE-START CAPTURE GATE: registered on window so it runs BEFORE the
+    // engine's own canvas pointerdown. It carries the Lift refusal gate, the
+    // per-stroke seed keying and the stale Dry-settle-capture invalidation.
     const reopenSettleOnPaint = (event: PointerEvent) => {
       if (event.target !== canvas || event.button === 1) return;
       // 261028-k03 D3/D2: every Lift refusal (Script OFF with a script, group
@@ -1053,7 +1131,10 @@ export function AquarelleCanvasLayer(props: {
         onLiftBlockedRef.current?.(refusal);
         return;
       }
-      engine.cancelAutoFix();
+      // HOLD-WET (261123-pee): a stroke start renews the wet sheet, so a
+      // pending Dry settle capture is stale (it would commit the new stroke's
+      // half-settled sheet under the old Dry's window).
+      cancelPendingDrySettleCaptures();
       // LIVE-SEED PARITY (post-UAT 2026-11-21): this capture listener runs
       // BEFORE the engine's own canvas pointerdown, so the stream is keyed
       // before the first dab. The Studio draws the id here because stroke end
@@ -1071,23 +1152,41 @@ export function AquarelleCanvasLayer(props: {
     // A second sink keeps the Dry wiring above untouched — this one only
     // schedules the cache commit of the settled sheet. Stamped with the Dry-time
     // frame so a navigation during settle never commits the next frame's sheet.
-    const pendingSettleTimers = new Set<number>();
+    // STALE-PROOF (261123-pee): the callback commits only when the frame is
+    // unchanged, the engine history revision still matches the schedule-time
+    // value (an undo/redo of the Dry — or any stack move — invalidates it) and
+    // the sheet is still the post-Dry settled state; a wet state renewed after
+    // the Dry is never settled by this timer.
     const offDryCapture = onAquarelleDry(() => {
       const dryPlayFrame = getPlayFrameRef.current();
+      if (!drySheetWasWet) {
+        recordAquarelleRenderSplitEvent('layer-capture', {
+          trigger: 'dry',
+          playFrame: dryPlayFrame,
+          dryWasWet: false,
+          invoked: false,
+        });
+        return;
+      }
+      const dryRevision = engine.historyRevision;
       const timer = window.setTimeout(() => {
         pendingSettleTimers.delete(timer);
         const frameChanged = getPlayFrameRef.current() !== dryPlayFrame;
         const hasPaint = engine.hasPaint;
+        const revisionChanged = engine.historyRevision !== dryRevision;
+        const settled = !engine.isFixing && !engine.hasStandingWater;
         recordAquarelleRenderSplitEvent('layer-capture', {
           trigger: 'dry',
           playFrame: dryPlayFrame,
           hasPaint,
           frameChanged,
-          invoked: !frameChanged && hasPaint,
+          revisionChanged,
+          settled,
+          invoked: !frameChanged && !revisionChanged && settled && hasPaint,
         });
-        if (frameChanged) return;
+        if (frameChanged || revisionChanged || !settled) return;
         if (!hasPaint) return;
-        onCaptureFrameRef.current?.(dryPlayFrame, snapshot);
+        onCaptureFrameRef.current?.(dryPlayFrame, settledSnapshot);
       }, FIX_SETTLE_MS);
       pendingSettleTimers.add(timer);
     });
@@ -1110,8 +1209,6 @@ export function AquarelleCanvasLayer(props: {
     const clearSheetPaint = () => {
       engine.clear();
       painting = false;
-      lastWetAt = 0;
-      settleCapArmed = false;
       wasAwake = false;
     };
     const resetSheet = () => {
@@ -1133,8 +1230,6 @@ export function AquarelleCanvasLayer(props: {
       if (!engine.restoreSheet(sheet)) return false;
       aquarelleSheetSeeded.value = true;
       painting = false;
-      lastWetAt = 0;
-      settleCapArmed = false;
       wasAwake = false;
       const events = getSeedEventsRef.current?.(frame) ?? null;
       if (hasCacheableScript(events)) rememberSheet(frame, aquarelleSheetSignature(events), sheet);
@@ -1155,7 +1250,7 @@ export function AquarelleCanvasLayer(props: {
           invoked: leavingHasPaint,
         });
         if (leavingHasPaint) {
-          onCaptureFrameRef.current?.(lastPlayFrameRef.current, snapshot);
+          onCaptureFrameRef.current?.(lastPlayFrameRef.current, settledSnapshot);
           // SHEET CACHE (no replay): the sheet the artist is leaving is
           // exactly the state they will expect on return — keep it with the
           // script signature it was built from so the return can upload it.
@@ -1178,8 +1273,6 @@ export function AquarelleCanvasLayer(props: {
         // The new frame starts clean — a settle capture here would write the
         // empty sheet over that frame's cache.
         painting = false;
-        lastWetAt = 0;
-        settleCapArmed = false;
         wasAwake = false;
         // KEY = CACHE: a key this session already visited uploads its own
         // captured sheet (an upload, never a replay). Every other key opens
@@ -1187,38 +1280,14 @@ export function AquarelleCanvasLayer(props: {
         const frameEvents = getSeedEventsRef.current?.(playFrame) ?? null;
         aquarelleSheetSeeded.value = restoreCachedSheet(playFrame, frameEvents);
       }
-      // VISIBLE SETTLE CAP: no wet input for the cap window → force-dry. The
-      // fix bakes over 1.2 s and sleeps, so the settle capture lands the
-      // denser wash the bake's capped end frame holds. The cap fix is marked
-      // AUTO: the next stroke reopens it (see reopenSettleOnPaint) so it can
-      // still blend; an explicit Dry stays permanent.
-      if (!painting && !settleCapArmed && lastWetAt > 0 && engine.isAwake) {
-        const capMs = aquarelleVisibleSettleTicks(aquarelleParams.value.dry) * HOST_TICK_MS;
-        if (performance.now() - lastWetAt >= capMs) {
-          settleCapArmed = true;
-          engine.fix(true);
-        }
-      }
-      // CACHE WRITE (settle): the dry (concentrated) look, not the wet stroke.
-      const awake = engine.isAwake;
-      if (wasAwake && !awake && engine.hasPaint) {
-        recordAquarelleRenderSplitEvent('layer-capture', {
-          trigger: 'settle',
-          playFrame,
-          hasPaint: true,
-          invoked: true,
-        });
-        onCaptureFrameRef.current?.(playFrame, snapshot);
-      } else if (wasAwake && !awake) {
-        recordAquarelleRenderSplitEvent('layer-capture', {
-          trigger: 'settle',
-          playFrame,
-          hasPaint: false,
-          invoked: false,
-        });
-      }
+      // HOLD-WET (261123-pee): the live sheet never auto-dries; an explicit
+      // Dry or a commit settle lifts the hold and this re-arms it (the artist
+      // law — no settle cap, the paint stays wet until Dry).
+      if (!engine.isFixing) engine.setHoldWet(true);
       // PLAY FIDELITY: the sheet slept — the stroke's real diffusion window
-      // is now known; record it as its cuisson for the replay.
+      // is now known; record it as its cuisson for the replay. (A commit
+      // settle already stamped its cap floor; this keeps the plain sleep path.)
+      const awake = engine.isAwake;
       if (wasAwake && !awake) stampPendingSettle();
       wasAwake = awake;
       if (!disabledRef.current) {
@@ -1268,8 +1337,7 @@ export function AquarelleCanvasLayer(props: {
       dprQuery?.removeEventListener('change', onDprChange);
       offDry();
       offDryCapture();
-      for (const timer of pendingSettleTimers) window.clearTimeout(timer);
-      pendingSettleTimers.clear();
+      cancelPendingDrySettleCaptures();
       cancelAnimationFrame(raf);
       // ENGINE PORT: drop the typed surface BEFORE the engine dies so no
       // consumer can call into a destroyed instance.

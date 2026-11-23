@@ -243,13 +243,24 @@ interface AquarelleScriptEditCommand {
   readonly editId: number;
 }
 
+/**
+ * 261123-pee (HOLD-WET): one explicit Dry on the live sheet. Stack-only — the
+ * engine's paint undo/redo moves the recorded `'dry'` step; the entry never
+ * replays a script and never touches the document. Exactly one entry per
+ * engine `'dry'` step (aligned by `fix()`'s own return value).
+ */
+interface AquarelleDryCommand {
+  readonly kind: 'aquarelle-dry';
+}
+
 type RotoPhysicalEditHistoryEntry<EngineState> =
   | RotoPhysicalEditCommand<EngineState>
   | AutoKeyPaintHistoryEntry<EngineState>
   | ReferencedActionHistoryCommand
   | PaintBarrier
   | BackgroundEditCommand
-  | AquarelleScriptEditCommand;
+  | AquarelleScriptEditCommand
+  | AquarelleDryCommand;
 
 interface RotoPhysicalEditCoordinatorRoute<EngineState> {
   executePhysicalEdit: (
@@ -990,6 +1001,17 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
     publishAvailability();
   }, [discardRedoHistory, publishAvailability, trimAppliedHistory]);
 
+  /** 261123-pee (HOLD-WET): record one explicit Dry as one command, mirroring
+   *  `recordAquarelleScriptEdit` exactly (push, trim, clear redo). The caller
+   *  mints one entry per engine 'dry' step — a Dry on a painted-but-dry sheet
+   *  still opens a step and records one; a blank sheet records none. */
+  const recordAquarelleDry = useCallback(() => {
+    appliedRef.current.push({ kind: 'aquarelle-dry' });
+    trimAppliedHistory();
+    discardRedoHistory();
+    publishAvailability();
+  }, [discardRedoHistory, publishAvailability, trimAppliedHistory]);
+
   // Signal effects subscribe only to external acceptance streams. Ordinary
   // coordinator acceptance and committed referenced-Action acceptance remain
   // distinct so referenced commands can never fall through snapshot replay.
@@ -1046,6 +1068,24 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
     flushPendingAutoKeyGroup();
     const entry = appliedRef.current[appliedRef.current.length - 1];
     if (!entry) return false;
+    if (entry.kind === 'aquarelle-dry') {
+      // 261123-pee (HOLD-WET): one Dry is one engine 'dry' step and one entry.
+      // The engine's paint undo restores the wet sheet; a refused move leaves
+      // both stacks and the entry untouched (fail closed — the same discipline
+      // as the unrecorded paint branch, never a script replay). The recorded
+      // Dry SCRIPT event is not removed by this undo (accepted).
+      appliedRef.current.pop();
+      redoRef.current.push(entry);
+      const changed = inputRef.current.undoPaint();
+      if (!changed) {
+        redoRef.current.pop();
+        appliedRef.current.push(entry);
+        publishAvailability();
+        return false;
+      }
+      publishAvailability();
+      return true;
+    }
     if (entry.kind === 'aquarelle-script') {
       // 261022-pim: the replay port swaps the script snapshot, resets the live
       // sheet and awaits the shared Apply. Stacks move ONLY on true — a stale
@@ -1269,6 +1309,22 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
     flushPendingAutoKeyGroup();
     const entry = redoRef.current[redoRef.current.length - 1];
     if (!entry) return false;
+    if (entry.kind === 'aquarelle-dry') {
+      // 261123-pee: symmetric with undo — the engine's paint redo re-applies
+      // the settled sheet. No fix, no Dry step, no replay; a refused move
+      // leaves both stacks and the entry untouched.
+      redoRef.current.pop();
+      appliedRef.current.push(entry);
+      const changed = inputRef.current.redoPaint();
+      if (!changed) {
+        appliedRef.current.pop();
+        redoRef.current.push(entry);
+        publishAvailability();
+        return false;
+      }
+      publishAvailability();
+      return true;
+    }
     if (entry.kind === 'aquarelle-script') {
       // 261022-pim: symmetric with undo — replay 'redo' and move the stacks
       // only when the script swap + re-bake report success.
@@ -1428,6 +1484,7 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
     recordAcceptedEdit,
     recordBackgroundEdit,
     recordAquarelleScriptEdit,
+    recordAquarelleDry,
     reconcilePaintBarriers,
     undo,
     redo,

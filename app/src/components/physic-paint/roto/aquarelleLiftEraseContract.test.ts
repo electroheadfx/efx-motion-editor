@@ -94,10 +94,8 @@ describe('Lift pointerdown gate (261028-k03 D3)', () => {
   it('blocks a Lift gesture in the capture phase before the engine can erase', () => {
     const gate = layerGate.indexOf("toolForSelection() === 'lift'");
     const blocked = layerGate.indexOf('getLiftBlockedRef.current?.()');
-    const cancel = layerGate.indexOf('engine.cancelAutoFix()');
     expect(gate).toBeGreaterThanOrEqual(0);
     expect(blocked).toBeGreaterThan(gate);
-    expect(cancel).toBeGreaterThan(blocked);
     expect(layerGate).toContain('event.preventDefault()');
     expect(layerGate).toContain('event.stopPropagation()');
     expect(layerGate).toContain('onLiftBlockedRef.current?.(refusal)');

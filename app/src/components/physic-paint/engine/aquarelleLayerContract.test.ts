@@ -29,6 +29,10 @@ const shaders = readFileSync(
 const css = readFileSync(resolve(__dirname, '../physicsPaintStudio.css'), 'utf8');
 const studio = readFileSync(resolve(__dirname, '../PhysicsPaintStudio.tsx'), 'utf8');
 
+function countOccurrences(source: string, literal: string): number {
+  return source.split(literal).length - 1;
+}
+
 describe('aquarelle layer is a compositor pigment layer (56-12)', () => {
   it('TRANSPARENT: display composites pigment on transparent, never the vendor paper', () => {
     expect(layer).toContain('engine.setCompositorLayer(true)');
@@ -118,14 +122,98 @@ describe('aquarelle layer is a compositor pigment layer (56-12)', () => {
     // Resolved eagerly in the Studio handler — a deferred factory would read
     // the cleared sheet and commit empty (the navigation cache-loss bug).
     expect(studio).toContain('const liveAlphaCanvas = snapshot()');
-    expect(layer.indexOf('onCaptureFrameRef.current?.(lastPlayFrameRef.current, snapshot, captureTrackId)'))
+    expect(layer.indexOf('onCaptureFrameRef.current?.(lastPlayFrameRef.current, settledSnapshot, captureTrackId)'))
       .toBeLessThan(layer.indexOf('engine.clear()'));
   });
 
-  it('CACHE: the settled (dry) look is captured, never the wet stroke-end', () => {
+  it('CACHE: the settled (dry) look is captured, never the wet stroke-end (261123-pee)', () => {
+    // HOLD-WET (261123-pee): the live sheet never auto-dries — the settle cap
+    // (the automatic `engine.fix(true)` armed on the last wet timestamp, plus
+    // its `wasAwake && !awake` export block) is GONE. The committed look comes
+    // from the dry-first capture (every commit capture runs `settleSheetNow`
+    // through `settledSnapshot`) and from the explicit Dry's own settled
+    // capture; no capture ships the wet sheet.
     expect(engine).toContain('get isAwake(): boolean');
+    expect(layer).not.toContain('engine.fix(true)');
+    expect(layer).not.toContain('settleCapArmed');
+    expect(layer).not.toContain('lastWetAt');
+    expect(layer).toContain('const settledSnapshot = () => { settleSheetNow(); return snapshot(); };');
     expect(layer).toContain('const awake = engine.isAwake');
-    expect(layer).toContain('if (wasAwake && !awake && engine.hasPaint)');
+    expect(layer).toContain('if (wasAwake && !awake) stampPendingSettle();');
+  });
+
+  it('HOLD-WET (261123-pee): the live sheet holds wet; only a commit settle lifts it', () => {
+    // The artist law: paint stays wet until Dry — no automatic drying, wet
+    // one-frame Re-render/Apply. The layer arms the hold at construction, the
+    // rAF tick re-arms it while the engine is not mid-fix, and ONLY the
+    // commit-path settle wrapper (`settleSheetNow`) lifts it (dry-on-leave).
+    expect(layer).toContain('engine.setHoldWet(true)');
+    expect(countOccurrences(layer, 'engine.setHoldWet(true)')).toBe(2);
+    expect(layer).toContain('if (!engine.isFixing) engine.setHoldWet(true)');
+    expect(countOccurrences(layer, 'engine.setHoldWet(false)')).toBe(1);
+    // The commit settle drives an in-flight explicit Dry to completion, then
+    // the NO-STEP capture settle (no engine history step — `fix(` stays the
+    // Dry sink's only call), then stamps the cap floor and lifts the hold.
+    expect(layer).toContain('const FIX_SETTLE_TICKS = Math.round(FIX_SETTLE_MS / HOST_TICK_MS);');
+    expect(layer).toContain('const settleSheetNow = () => {');
+    expect(layer).toContain('engine.tick(HOST_TICK_MS / 1000);');
+    expect(layer).toContain('aquarelleVisibleSettleTicks(aquarelleParams.value.dry)');
+    expect(layer).toContain('if (!engine.settleForCapture()) return false;');
+    expect(layer).toContain('stampPendingSettle(capTicks);');
+    expect(layer).toContain('engine.setHoldWet(false);');
+    expect(countOccurrences(layer, 'engine.fix(')).toBe(1);
+    // The Dry sink reports the ENGINE's own outcome — `fix()` opened a step or
+    // not — so the ledger aligns one entry with one engine 'dry' step.
+    expect(layer).toContain('onDryApplied?: (opened: boolean) => void;');
+    expect(layer).toContain('const onDryAppliedRef = useRef(props.onDryApplied);');
+    expect(layer).toContain('onDryAppliedRef.current?.(started)');
+    expect(layer).toContain('const started = engine.fix();');
+  });
+
+  it('HOLD-WET (261123-pee): the Dry settle capture is stale-proof', () => {
+    // A pending Dry settle capture dies when the wet state it was scheduled
+    // for is renewed: a subsequent Dry cancels the previous window, a stroke
+    // start cancels it (replacing the retired auto-fix reopen), and the
+    // callback re-checks the frame, the engine history revision and the
+    // post-Dry settled state before it commits anything.
+    expect(layer).toContain('const cancelPendingDrySettleCaptures = () => {');
+    const liveSink = layer.slice(
+      layer.indexOf('const offDry = onAquarelleDry('),
+      layer.indexOf('const offDryCapture = onAquarelleDry('),
+    );
+    const cancelIdx = liveSink.indexOf('cancelPendingDrySettleCaptures();');
+    const fixIdx = liveSink.indexOf('const started = engine.fix();');
+    expect(cancelIdx).toBeGreaterThan(-1);
+    expect(fixIdx).toBeGreaterThan(cancelIdx);
+    // The pointerdown handler inherits the cancel after the lift-refusal gate.
+    const gate = layer.slice(
+      layer.indexOf('const reopenSettleOnPaint = '),
+      layer.indexOf("window.addEventListener('pointerdown', reopenSettleOnPaint, true);"),
+    );
+    expect(gate.indexOf('cancelPendingDrySettleCaptures();'))
+      .toBeGreaterThan(gate.indexOf('onLiftBlockedRef.current?.(refusal)'));
+    expect(layer).not.toContain('engine.cancelAutoFix()');
+    // Schedule-time truth: the sheet must have been wet, and the engine's
+    // revision at schedule must survive to the callback.
+    expect(layer).toContain('drySheetWasWet = engine.hasStandingWater;');
+    expect(layer).toContain('if (!drySheetWasWet) {');
+    expect(layer).toContain('const dryRevision = engine.historyRevision;');
+    expect(layer).toContain('const revisionChanged = engine.historyRevision !== dryRevision;');
+    expect(layer).toContain('const settled = !engine.isFixing && !engine.hasStandingWater;');
+    expect(layer).toContain('if (frameChanged || revisionChanged || !settled) return;');
+    // The capture itself reads through the dry-first factory.
+    expect(layer).toContain('onCaptureFrameRef.current?.(dryPlayFrame, settledSnapshot);');
+  });
+
+  it('HOLD-WET (261123-pee): the settle stamp floor is defaulted at the parameter', () => {
+    // The app tsconfig is strict, so an optional parameter types as
+    // `number | undefined` — a cast would ship Math.max(undefined, n) → NaN
+    // and the bake would read settleCapped false. The default is the fix.
+    expect(layer).toContain('const stampPendingSettle = (minTicks = 0) => {');
+    expect(layer).toContain('Math.max(minTicks, Math.round((performance.now() - pending.endedAt) / HOST_TICK_MS))');
+    // Exactly the three existing no-argument call sites: endSheetSession, the
+    // frame-change stamp and the wasAwake && !awake stamp.
+    expect(countOccurrences(layer, 'stampPendingSettle();')).toBe(3);
   });
 
   it('CACHE: a blank sheet never overwrites existing cache', () => {
@@ -320,7 +408,7 @@ describe('aquarelle layer is a compositor pigment layer (56-12)', () => {
     // outgoing sheet committed onto the incoming key. The flush now carries
     // the outgoing track id end-to-end, and the merge-base pin is per
     // (track, frame): two tracks share frame numbers.
-    expect(layer).toContain('onCaptureFrameRef.current?.(lastPlayFrameRef.current, snapshot, captureTrackId)');
+    expect(layer).toContain('onCaptureFrameRef.current?.(lastPlayFrameRef.current, settledSnapshot, captureTrackId)');
     const studioSwitch = studio.slice(
       studio.indexOf('if (sessionNeedsCommit) {'),
       studio.indexOf('void studioScriptSnapshot.saveNow();'),
@@ -360,19 +448,22 @@ describe('aquarelle layer is a compositor pigment layer (56-12)', () => {
     expect(coordinator).toContain('const ownsLiveBuffers = trackId === inputRef.current.getActiveTrackId(layerId)');
   });
 
-  it('SAVE: the live sheet snapshot is registered after engine setup and unregistered on cleanup', () => {
+  it('SAVE: the settled sheet export is registered after engine setup and unregistered on cleanup', () => {
     // 261026-nvq: the Save Script thumbnail must read the SAME composited sheet
-    // the cache capture resolves — not a second readback. The seam registers
-    // the existing `snapshot` closure through the mount lifecycle and clears it
-    // before engine.destroy() so a stale closure can never be invoked.
+    // the cache capture resolves — not a second readback. 261123-pee: the seam
+    // registers the SETTLED export (`exportSettledCanvas` — captures, settles,
+    // exports, restores), so Save Script and the raster-lift eager sheet
+    // commit the dry look while the artist's live sheet stays untouched. It
+    // clears before engine.destroy() so a stale closure can never be invoked.
     expect(layer).toContain('onSnapshotReady');
-    expect(layer).toContain('onSnapshotReadyRef.current?.(snapshot)');
+    expect(layer).toContain('onSnapshotReadyRef.current?.(settledExport)');
     expect(layer).toContain('onSnapshotReadyRef.current?.(null)');
+    expect(layer).toContain('engine.exportSettledCanvas()');
     // Registration must land AFTER the engine is configured (compositor layer,
     // live config, paper) — a pre-configuration snapshot would export the wrong
     // mode.
     expect(layer.indexOf('engine.setCompositorLayer(true)'))
-      .toBeLessThan(layer.indexOf('onSnapshotReadyRef.current?.(snapshot)'));
+      .toBeLessThan(layer.indexOf('onSnapshotReadyRef.current?.(settledExport)'));
     // The unregister rides the same cleanup as the flush-capture seam.
     expect(layer.indexOf('onSnapshotReadyRef.current?.(null)'))
       .toBeLessThan(layer.indexOf('engine.destroy()'));

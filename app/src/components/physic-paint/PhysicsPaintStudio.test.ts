@@ -4937,7 +4937,37 @@ describe('261026 watercolor-loop-render-split final regression pins', () => {
     const handler = between(studio, 'const handleRebakeScript = useCallback', 'const rotoMoveHistory');
     expect(handler).toContain('await ensureAquarelleDurableBaseRef.current(playFrame);');
     expect(handler).toContain('aquarelleResetSheetRef.current?.();');
-    expect(handler).toContain('rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame))');
+    // 261123-pee: the re-render is the WET one-frame commit — the settle flag
+    // rides the shared apply path so the re-baked key stays wet (no end
+    // settle, recorded Drys filtered) until an explicit Dry settles it.
+    expect(handler).toContain('rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame), \'wet\')');
+  });
+
+  it('261123-pee: the two wet call sites and the Dry ledger wiring', () => {
+    // Exactly the two tool call sites carry the quoted wet settle literal —
+    // Apply (Shift+A) and the Shift+R re-render. No comment repeats it.
+    expect(countOccurrences(studio, "'wet'")).toBe(2);
+    const applyScript = between(studio, 'const handleApplyScript = useCallback', 'const handleDiscardScript');
+    expect(applyScript).toContain('rotoScript.applyScript(\'wet\')');
+    const handler = between(studio, 'const handleRebakeScript = useCallback', 'const rotoMoveHistory');
+    expect(handler).toContain('rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame), \'wet\')');
+    // The Dry ledger entry is minted ONLY from the engine's own outcome —
+    // `opened` means fix() opened a 'dry' step, never "the sheet was wet" —
+    // so every engine 'dry' step gets exactly one entry and vice versa.
+    const dryHandler = between(
+      studio,
+      'const handleAquarelleDryApplied = useCallback(',
+      '// FRAME SCOPE: identity-stable getter',
+    );
+    expect(dryHandler).toContain('if (opened) aquarelleDryRecorderRef.current?.();');
+    expect(dryHandler).toContain('}, []);');
+    // The recorder rides a render-body ref (the script-edit recorder
+    // precedent), so the handler stays identity-stable for the mount memo.
+    expect(studio).toContain('aquarelleDryRecorderRef.current = rotoMoveHistory.recordAquarelleDry;');
+    // The handler rides the canvas-mount memo (deps + props object), or a
+    // closure capturing a stale ledger would mint the wrong entry.
+    expect(studio).toContain('handleAquarelleDryApplied,');
+    expect(studio).toContain('onAquarelleDryApplied: handleAquarelleDryApplied,');
   });
 
   it('re-binds the watercolor Select gate to the LIVE timeline graph after every rebuild', () => {
@@ -5331,9 +5361,12 @@ describe('261026 watercolor-loop-render-split final regression pins', () => {
     // render-split event from the publish closure.
     const applyPort = between(
       studio,
-      'applyAquarelleEvents: async ({ events, target, onProgress }) => {',
+      // 261123-pee: the port gained the `settle` flag (the wet end-settle law);
+      // the diagnostics threading this pin owns is unchanged.
+      'applyAquarelleEvents: async ({ events, target, onProgress, settle }) => {',
       'publish: async (frame) => {',
     );
+    expect(applyPort).toContain('settle,');
     expect(applyPort).toContain('let bakeDiagnostics: AquarelleApplyDiagnostics | null = null;');
     expect(applyPort).toContain('onDiagnostics:');
     const scriptBake = between(

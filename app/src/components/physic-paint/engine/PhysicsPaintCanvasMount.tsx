@@ -85,6 +85,10 @@ export function PhysicsPaintCanvasMount(props: {
   onAquarelleAdoptSheetReady?: (
     adopt: ((frame: number, sheet: SheetSnapshot) => boolean) | null,
   ) => void;
+  /** HOLD-WET (261123-pee): the explicit Dry's own outcome — true when the
+   *  engine opened a 'dry' step. The Studio mints exactly one ledger entry per
+   *  true (one engine step), never per wet read. */
+  onAquarelleDryApplied?: (opened: boolean) => void;
   onAquarelleDeleteStrokes?: (mutationIds: readonly number[]) => void;
   onAquarelleMoveStrokes?: (mutationIds: readonly number[], dxPx: number, dyPx: number) => void;
   onAquarelleTransformStrokes?: (mutationIds: readonly number[], transform: ScriptStrokeTransform) => void;
@@ -115,6 +119,7 @@ export function PhysicsPaintCanvasMount(props: {
   const onAquarelleSheetSessionEndRef = useRef(props.onAquarelleSheetSessionEnd);
   const onAquarelleResetSheetReadyRef = useRef(props.onAquarelleResetSheetReady);
   const onAquarelleAdoptSheetReadyRef = useRef(props.onAquarelleAdoptSheetReady);
+  const onAquarelleDryAppliedRef = useRef(props.onAquarelleDryApplied);
   const onAquarelleDeleteStrokesRef = useRef(props.onAquarelleDeleteStrokes);
   const onAquarelleMoveStrokesRef = useRef(props.onAquarelleMoveStrokes);
   const onAquarelleTransformStrokesRef = useRef(props.onAquarelleTransformStrokes);
@@ -140,6 +145,7 @@ export function PhysicsPaintCanvasMount(props: {
   onAquarelleSheetSessionEndRef.current = props.onAquarelleSheetSessionEnd;
   onAquarelleResetSheetReadyRef.current = props.onAquarelleResetSheetReady;
   onAquarelleAdoptSheetReadyRef.current = props.onAquarelleAdoptSheetReady;
+  onAquarelleDryAppliedRef.current = props.onAquarelleDryApplied;
   onAquarelleDeleteStrokesRef.current = props.onAquarelleDeleteStrokes;
   onAquarelleMoveStrokesRef.current = props.onAquarelleMoveStrokes;
   onAquarelleTransformStrokesRef.current = props.onAquarelleTransformStrokes;
@@ -276,6 +282,7 @@ export function PhysicsPaintCanvasMount(props: {
         onSheetSessionEnd={() => onAquarelleSheetSessionEndRef.current?.()}
         onResetSheetReady={(resetSheet) => onAquarelleResetSheetReadyRef.current?.(resetSheet)}
         onAdoptSheetReady={(adopt) => onAquarelleAdoptSheetReadyRef.current?.(adopt)}
+        onDryApplied={(opened) => onAquarelleDryAppliedRef.current?.(opened)}
         onDeleteStrokes={(mutationIds) => onAquarelleDeleteStrokesRef.current?.(mutationIds)}
         onMoveStrokes={(mutationIds, dxPx, dyPx) => onAquarelleMoveStrokesRef.current?.(mutationIds, dxPx, dyPx)}
         onTransformStrokes={(mutationIds, transform) => onAquarelleTransformStrokesRef.current?.(mutationIds, transform)}

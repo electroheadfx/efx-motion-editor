@@ -2219,7 +2219,7 @@ export function PhysicsPaintStudio() {
     },
     // 261018: aquarelle Apply — replay through the fluid engine and publish
     // the wash onto the target key (engine-1 draws only the guide line).
-    applyAquarelleEvents: async ({ events, target, onProgress }) => {
+    applyAquarelleEvents: async ({ events, target, onProgress, settle }) => {
       const bgMeta = buildRotoBackgroundMetadata(settings);
       // 261029-bks: the helper fires its callback before returning, so the
       // publish closure below always reads the populated record.
@@ -2227,6 +2227,9 @@ export function PhysicsPaintStudio() {
       return applyAquarelleEventsToKey({
         events,
         target,
+        // 261123-pee (HOLD-WET): the end-settle law rides the shared Apply
+        // path unchanged — the wet settle for Apply and the re-render.
+        settle,
         onStrokeFed: onProgress,
         onDiagnostics: (diagnostics) => {
           bakeDiagnostics = diagnostics;
@@ -2650,7 +2653,10 @@ export function PhysicsPaintStudio() {
   // section). Bodies moved verbatim from the rightPanel scripts props.
   const handleApplyScript = useCallback(() => {
     void (async () => {
-      const success = await rotoScript.applyScript();
+      // 261123-pee (HOLD-WET): Apply commits the WET one-frame look — the bake
+      // skips its end settle and filters recorded Drys; an explicit Dry later
+      // settles the key like it settles the live sheet.
+      const success = await rotoScript.applyScript('wet');
       if (success) {
         setLastError(null);
         clearOwnedScriptApplyRefusal();
@@ -6275,7 +6281,9 @@ export function PhysicsPaintStudio() {
       // undoable command; OFF frames mint nothing.
       const rerollEditId = beginAquarellePaintSeedRerollEdit(playFrame, true);
       aquarelleResetSheetRef.current?.();
-      const ok = await rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame));
+      // 261123-pee (HOLD-WET): the re-render keeps the key WET — the bake
+      // commits the live wet look (no end settle, recorded Drys filtered).
+      const ok = await rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame), 'wet');
       if (!ok) {
         // Roll the re-roll back with the failed re-bake (authority-checked).
         if (rerollEditId !== null) restoreAquarelleEditSnapshot(rerollEditId, 'undo');
@@ -10656,6 +10664,16 @@ export function PhysicsPaintStudio() {
     },
     [],
   );
+  // 261123-pee (HOLD-WET): the Dry ledger seam. The layer reports the engine's
+  // own `fix()` outcome — `opened` means a 'dry' step opened, NOT "the sheet
+  // was wet" — so one engine step is exactly one entry (a blank sheet records
+  // none). The recorder rides a render-body ref (the script-edit recorder
+  // precedent) so the handler stays identity-stable for the mount memo.
+  const aquarelleDryRecorderRef = useRef<(() => void) | null>(null);
+  aquarelleDryRecorderRef.current = rotoMoveHistory.recordAquarelleDry;
+  const handleAquarelleDryApplied = useCallback((opened: boolean) => {
+    if (opened) aquarelleDryRecorderRef.current?.();
+  }, []);
 
   // FRAME SCOPE: identity-stable getter so the canvas-mount memo never
   // invalidates on frame navigation (the persistent Efx child contract).
@@ -10941,7 +10959,7 @@ export function PhysicsPaintStudio() {
   // completion/performance/input telemetry, beforeEngineDestroy, stroke
   // metadata, the brush script overlay) are gone; `onEnginePortReady` is the
   // Wave 3 D8 narrow port the frame-editing controller consumes.
-  const canvasMount = canvasMountPropsMemo.resolve([canvasWidth, canvasHeight, paperTextureScale, setCanvasMounted, handleAquarelleEnginePortReady, launchContext?.layerId, efxPaintVersion.value, settings.color, handleAquarelleStrokeEnd, handleAquarelleStrokeWillStart, handleAquarelleStrokeSettled, handleAquarelleCaptureFrame, handleAquarelleSheetSessionEnd, handleAquarelleResetSheetReady, handleAquarelleAdoptSheetReady, handleAquarelleSnapshotReady, handleAquarelleMoveStrokes, getAquarellePlayFrame, getAquarelleSeedEvents, getAquarellePaperId, getAquarellePaperGrainStrength, getAquarelleLiftBlocked, handleAquarelleLiftBlocked, handleAquarelleLiftDab, handleAquarelleDeleteStrokes, handleAquarelleTransformStrokes, handleAquarelleVectorPathEdit], () => {
+  const canvasMount = canvasMountPropsMemo.resolve([canvasWidth, canvasHeight, paperTextureScale, setCanvasMounted, handleAquarelleEnginePortReady, launchContext?.layerId, efxPaintVersion.value, settings.color, handleAquarelleStrokeEnd, handleAquarelleStrokeWillStart, handleAquarelleStrokeSettled, handleAquarelleCaptureFrame, handleAquarelleSheetSessionEnd, handleAquarelleResetSheetReady, handleAquarelleAdoptSheetReady, handleAquarelleDryApplied, handleAquarelleSnapshotReady, handleAquarelleMoveStrokes, getAquarellePlayFrame, getAquarelleSeedEvents, getAquarellePaperId, getAquarellePaperGrainStrength, getAquarelleLiftBlocked, handleAquarelleLiftBlocked, handleAquarelleLiftDab, handleAquarelleDeleteStrokes, handleAquarelleTransformStrokes, handleAquarelleVectorPathEdit], () => {
     // 48-06 (N2/N3): the active track's opacity/blend (D-01) ride the engine
     // shell as CSS group opacity/mix-blend — the D-05 exclusion keeps the
     // active track out of the monitor's composite, so without this the Studio
@@ -10984,6 +11002,7 @@ export function PhysicsPaintStudio() {
       onAquarelleSheetSessionEnd: handleAquarelleSheetSessionEnd,
       onAquarelleResetSheetReady: handleAquarelleResetSheetReady,
       onAquarelleAdoptSheetReady: handleAquarelleAdoptSheetReady,
+      onAquarelleDryApplied: handleAquarelleDryApplied,
       onAquarelleDeleteStrokes: handleAquarelleDeleteStrokes,
       onAquarelleMoveStrokes: handleAquarelleMoveStrokes,
       onAquarelleTransformStrokes: handleAquarelleTransformStrokes,
