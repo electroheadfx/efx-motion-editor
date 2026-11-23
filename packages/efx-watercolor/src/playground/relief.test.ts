@@ -508,7 +508,10 @@ describe('signed emboss (quick 261123-hr5)', () => {
     expect(erodeAt, 'signed erode branch missing').toBeGreaterThan(positiveAt)
     expect(wetAt, 'wet pass missing after the signed slot').toBeGreaterThan(erodeAt)
     const erodeBranch = brush.slice(erodeAt, wetAt)
-    expect(erodeBranch).toContain('const erodeAmount = Math.min(1, -reliefSigned * RELIEF_ERODE_NEGATIVE);')
+    // The slider path keeps the hr5 clamp verbatim; the modifier path grades
+    // through the pure law so a light touch is not a one-dab wipe.
+    expect(erodeBranch).toContain('? Math.min(1, -reliefSigned * RELIEF_ERODE_NEGATIVE)')
+    expect(erodeBranch).toContain(' : reliefModifierErodeAmount(reliefModifierBand);')
     expect(erodeBranch).toContain(
       'if (bristle) this.bristleReliefErode(dx, dy, dr, angle, erodeAmount, contactPr, alongPx, this.bristleEndCap);',
     )
@@ -624,11 +627,16 @@ describe('modifier relief (quick 261123-kpy)', () => {
     // The hr5 positive-path law: the amount literal is byte-identical.
     expect(brush).toContain('const reliefAmount = P.emboss * amount * RELIEF_GAIN * embossPress;')
     expect(brush).toContain('const reliefSigned = s.relief === null')
-    // Pressure-only magnitude: the embossPress floor curve for a real pen,
-    // the recorded pressureless sentinel as exactly full strength. The gains
-    // are probe-calibrated; the Emboss slider is never read on this path.
+    // Pressure-only band: the embossPress floor curve for a real pen, the
+    // recorded pressureless sentinel as exactly full strength. The band is in
+    // Emboss-slider units (1..3) and rides the SAME `amount * RELIEF_GAIN`
+    // delivery the slider path uses, so a modifier stroke acts exactly like
+    // Emboss set to that number — never like the slider pegged at 15.
     expect(brush).toContain(
-      'reliefModifierSigned(s.relief, amount * RELIEF_GAIN, reliefModifierPress(embossPress, s.pressureless))',
+      'reliefModifierMagnitude(reliefModifierPress(embossPress, s.pressureless))',
+    )
+    expect(brush).toContain(
+      'reliefModifierSigned(s.relief, reliefModifierBand * amount * RELIEF_GAIN)',
     )
     expect(ENGINE_SOURCE).toContain("from './reliefModifier'")
   })
@@ -669,9 +677,7 @@ describe('modifier relief (quick 261123-kpy)', () => {
     expect(erodeAt).toBeGreaterThan(-1)
     expect(wetAt).toBeGreaterThan(erodeAt)
     const erodeBranch = brush.slice(erodeAt, wetAt)
-    expect(erodeBranch).toContain(
-      'const erodeAmount = Math.min(1, -reliefSigned * RELIEF_ERODE_NEGATIVE);',
-    )
+    expect(erodeBranch).toContain('? Math.min(1, -reliefSigned * RELIEF_ERODE_NEGATIVE)')
     expect(erodeBranch).not.toContain('this.cover')
     expect(erodeBranch).not.toContain('this.ink')
     expect(erodeBranch).not.toContain('this.fixed')

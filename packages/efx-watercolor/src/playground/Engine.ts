@@ -48,7 +48,7 @@ import { WET_THRESHOLD, isSheetWet } from './wetState';
 import { bodyCurve, scatteringDeposit } from './scattering';
 // Quick 261123-kpy: the modifier magnitude is the ONE pure pressure law — the
 // Emboss slider is never read, and the pressureless sentinel is exactly full.
-import { reliefModifierPress, reliefModifierSigned, type ReliefMode } from './reliefModifier';
+import { reliefModifierErodeAmount, reliefModifierMagnitude, reliefModifierPress, reliefModifierSigned, type ReliefMode } from './reliefModifier';
 
 export type Tool = 'brush' | 'water' | 'pen' | 'lift';
 
@@ -2807,12 +2807,20 @@ export class WatercolorEngine {
         const embossPress = EMBOSS_PRESS_FLOOR + (1 - EMBOSS_PRESS_FLOOR) * clamp(pr, 0, 1);
         const reliefAmount = P.emboss * amount * RELIEF_GAIN * embossPress;
         // Quick 261123-kpy (modifier relief): a latched polarity replaces the
-        // slider-driven amount with the pure pressure-only law — the Emboss
-        // slider is never read (the modifier works at Emboss 0), a real pen
-        // follows the embossPress floor curve, and the recorded pressureless
-        // sentinel is EXACTLY full strength. The normal path keeps
-        // `reliefAmount` untouched, so its arithmetic is never re-associated.
-        const reliefSigned = s.relief === null ? reliefAmount : reliefModifierSigned(s.relief, amount * RELIEF_GAIN, reliefModifierPress(embossPress, s.pressureless));
+        // SLIDER OPERAND with the pure pressure-only band — the Emboss slider
+        // is never read (the modifier works at Emboss 0), a real pen follows
+        // the embossPress floor curve, and the recorded pressureless sentinel
+        // is EXACTLY full strength. The band is in Emboss-slider units (1..3)
+        // and rides the SAME `amount * RELIEF_GAIN` delivery the slider path
+        // uses, so the modifier behaves exactly as if Emboss were set to that
+        // number. The normal path keeps `reliefAmount` untouched, so its
+        // arithmetic is never re-associated.
+        const reliefModifierBand = s.relief === null
+          ? 0
+          : reliefModifierMagnitude(reliefModifierPress(embossPress, s.pressureless));
+        const reliefSigned = s.relief === null
+          ? reliefAmount
+          : reliefModifierSigned(s.relief, reliefModifierBand * amount * RELIEF_GAIN);
         // Phase 64 (MED-19..MED-22, spec 06): Body is ORDER. Before a dab
         // deposits, it erodes the settled pigment and the thickness under its
         // own tip. The amount is D-14's one perceptual curve declared in
@@ -2946,7 +2954,13 @@ export class WatercolorEngine {
           } else if (reliefSigned < 0) {
             // GAP-1: gated by the recorded emboss SIGN only — the paint's own
             // coverage must never erode the relief under it.
-            const erodeAmount = Math.min(1, -reliefSigned * RELIEF_ERODE_NEGATIVE);
+            // Quick 261123-kpy: a modifier erode is GRADED — RELIEF_ERODE_NEGATIVE
+            // saturates at |reliefSigned| 0.05, which is right for the slider
+            // (any negative Emboss smooths hard) but would make the modifier a
+            // one-dab wipe at every pressure. MAX magnitude stays one full pass.
+            const erodeAmount = s.relief === null
+              ? Math.min(1, -reliefSigned * RELIEF_ERODE_NEGATIVE)
+              : reliefModifierErodeAmount(reliefModifierBand);
             if (bristle) this.bristleReliefErode(dx, dy, dr, angle, erodeAmount, contactPr, alongPx, this.bristleEndCap);
             else this.reliefErode(dx, dy, dr, angle, erodeAmount, dryness, grainThr);
           }

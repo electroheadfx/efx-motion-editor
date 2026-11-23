@@ -11,8 +11,10 @@
 
 import { describe, expect, it } from 'vitest'
 import {
-  RELIEF_MODIFIER_DEPOSIT_GAIN,
-  RELIEF_MODIFIER_ERODE_GAIN,
+  RELIEF_MODIFIER_MAX,
+  RELIEF_MODIFIER_MIN,
+  reliefModifierErodeAmount,
+  reliefModifierMagnitude,
   reliefModifierPress,
   reliefModifierSigned,
 } from './reliefModifier'
@@ -33,44 +35,64 @@ describe('modifier relief magnitude law (quick 261123-kpy)', () => {
     expect(reliefModifierPress(1, false)).toBe(1)
   })
 
+  it('declares the artist band as MIN 1 and MAX 3 slider units', () => {
+    expect(RELIEF_MODIFIER_MIN).toBe(1)
+    expect(RELIEF_MODIFIER_MAX).toBe(3)
+  })
+
+  it('maps press onto MIN..MAX, reaching MAX only at full press', () => {
+    expect(reliefModifierMagnitude(0)).toBe(RELIEF_MODIFIER_MIN)
+    expect(reliefModifierMagnitude(1)).toBe(RELIEF_MODIFIER_MAX)
+    expect(reliefModifierMagnitude(0.5)).toBe(2)
+    // Monotone across the curve, and never past MAX.
+    expect(reliefModifierMagnitude(0.405)).toBeGreaterThan(RELIEF_MODIFIER_MIN)
+    expect(reliefModifierMagnitude(0.405)).toBeLessThan(RELIEF_MODIFIER_MAX)
+    // Out-of-range inputs clamp rather than extrapolate.
+    expect(reliefModifierMagnitude(-0.5)).toBe(RELIEF_MODIFIER_MIN)
+    expect(reliefModifierMagnitude(4)).toBe(RELIEF_MODIFIER_MAX)
+  })
+
+  it('pins the lightest pen touch at 1 and a pressureless pointer at 3, in slider units', () => {
+    // The ship-time calibration bug: gain 15 made a full-press modifier equal
+    // the Emboss slider PEGGED at its ceiling. The band is now 1..3.
+    const lightest = reliefModifierMagnitude(reliefModifierPress(0, false))
+    const fullPen = reliefModifierMagnitude(reliefModifierPress(1, false))
+    const mouse = reliefModifierMagnitude(reliefModifierPress(0.405, true))
+    expect(lightest).toBe(RELIEF_MODIFIER_MIN)
+    expect(fullPen).toBe(RELIEF_MODIFIER_MAX)
+    expect(mouse).toBe(RELIEF_MODIFIER_MAX)
+    // A light touch is a third of a full press, not a rounding error.
+    expect(lightest / fullPen).toBeCloseTo(1 / 3, 5)
+  })
+
   it('signs the polarity: erode is negative, deposit is positive', () => {
-    // The engine's erode branch requires reliefSigned < 0 and its clamped law
-    // reads -reliefSigned; the deposit branch requires reliefSigned > 0.
-    expect(reliefModifierSigned('erode', 0.15, 1)).toBeLessThan(0)
-    expect(reliefModifierSigned('deposit', 0.15, 1)).toBeGreaterThan(0)
+    // The engine's erode branch requires reliefSigned < 0; the deposit branch
+    // requires reliefSigned > 0.
+    expect(reliefModifierSigned('erode', 2)).toBe(-2)
+    expect(reliefModifierSigned('deposit', 2)).toBe(2)
   })
 
   it('makes a light pen measurably weaker than full press in both polarities', () => {
     // 0.405 is the embossPress curve value at p = 0.3
     // (EMBOSS_PRESS_FLOOR + (1 - FLOOR) * 0.3).
-    expect(Math.abs(reliefModifierSigned('erode', 0.15, 0.405))).toBeLessThan(
-      Math.abs(reliefModifierSigned('erode', 0.15, 1)),
+    const light = reliefModifierMagnitude(0.405)
+    const full = reliefModifierMagnitude(1)
+    expect(Math.abs(reliefModifierSigned('erode', light))).toBeLessThan(
+      Math.abs(reliefModifierSigned('erode', full)),
     )
-    expect(Math.abs(reliefModifierSigned('deposit', 0.15, 0.405))).toBeLessThan(
-      Math.abs(reliefModifierSigned('deposit', 0.15, 1)),
-    )
-  })
-
-  it('scales each polarity by its own exported gain', () => {
-    const base = 0.15
-    expect(Math.abs(reliefModifierSigned('erode', base, 1))).toBe(
-      RELIEF_MODIFIER_ERODE_GAIN * base,
-    )
-    expect(Math.abs(reliefModifierSigned('deposit', base, 1))).toBe(
-      RELIEF_MODIFIER_DEPOSIT_GAIN * base,
-    )
-    expect(Math.abs(reliefModifierSigned('erode', base, 0.405))).toBe(
-      RELIEF_MODIFIER_ERODE_GAIN * base * 0.405,
-    )
-    expect(Math.abs(reliefModifierSigned('deposit', base, 0.405))).toBe(
-      RELIEF_MODIFIER_DEPOSIT_GAIN * base * 0.405,
+    expect(Math.abs(reliefModifierSigned('deposit', light))).toBeLessThan(
+      Math.abs(reliefModifierSigned('deposit', full)),
     )
   })
 
-  it('declares both gains as finite positive constants', () => {
-    for (const gain of [RELIEF_MODIFIER_ERODE_GAIN, RELIEF_MODIFIER_DEPOSIT_GAIN]) {
-      expect(Number.isFinite(gain)).toBe(true)
-      expect(gain).toBeGreaterThan(0)
-    }
+  it('grades the erode: MAX is one full pass, lighter touches are weaker', () => {
+    expect(reliefModifierErodeAmount(RELIEF_MODIFIER_MAX)).toBe(1)
+    expect(reliefModifierErodeAmount(RELIEF_MODIFIER_MIN)).toBeCloseTo(1 / 3, 10)
+    // A light touch never wipes the band in one dab, but is never inert.
+    const light = reliefModifierErodeAmount(reliefModifierMagnitude(0.405))
+    expect(light).toBeGreaterThan(0)
+    expect(light).toBeLessThan(1)
+    // Never exceeds a full pass, whatever it is handed.
+    expect(reliefModifierErodeAmount(99)).toBe(1)
   })
 })
