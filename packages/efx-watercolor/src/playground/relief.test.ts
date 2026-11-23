@@ -678,9 +678,34 @@ describe('modifier relief (quick 261123-kpy)', () => {
     expect(wetAt).toBeGreaterThan(erodeAt)
     const erodeBranch = brush.slice(erodeAt, wetAt)
     expect(erodeBranch).toContain('? Math.min(1, -reliefSigned * RELIEF_ERODE_NEGATIVE)')
+    expect(erodeBranch).toContain('if (s.relief !== null) this.modifierReliefErode(')
     expect(erodeBranch).not.toContain('this.cover')
     expect(erodeBranch).not.toContain('this.ink')
     expect(erodeBranch).not.toContain('this.fixed')
+  })
+
+  it('draws a modifier dab on a SMOOTH footprint that saturates, never the paint one', () => {
+    // UAT 2026-11-23: the paint footprint gates its output by paper tooth,
+    // re-thresholds the tip and jitters it per dab. Ink normally lands through
+    // the same gates, so the relief hides inside the paint; with no ink at all
+    // those gates put isolated dark specks on the film. The modifier draw must
+    // therefore drop every one of them and cap the height with MAX blending.
+    const relief = sliceBetween(ENGINE_SOURCE, 'private modifierRelief(', 'private modifierReliefErode(')
+    // round 1, grain 0, grainThr 0, brush, rough 0, jitter 0
+    expect(relief).toContain('this.bindFootprint(p, x, y, r, angle, 1, 0, 0, this.brush, 0, 0)')
+    expect(relief).toContain('gl.blendEquation(gl.MAX)')
+    expect(relief).not.toContain('gl.blendEquation(gl.FUNC_ADD)')
+
+    const erode = sliceBetween(ENGINE_SOURCE, 'private modifierReliefErode(', 'private bristleReliefPass(')
+    expect(erode).toContain('this.bindFootprint(p, x, y, r, angle, 1, 0, 0, this.brush, 0, 0)')
+    expect(erode).toContain('gl.blendFunc(gl.ZERO, gl.ONE_MINUS_SRC_COLOR)')
+
+    // Both modifier draws are routed from the dab, for BOTH brush kinds — a
+    // relief-only pass has no gather to look like, so bristle takes the same
+    // smooth footprint instead of the gather's painted coverage.
+    const brush = sliceBetween(ENGINE_SOURCE, "case 'brush': {", "case 'water': {")
+    expect(brush).toContain('if (s.relief !== null) this.modifierRelief(dx, dy, dr, angle, reliefSigned);')
+    expect(brush).toContain('if (s.relief !== null) this.modifierReliefErode(dx, dy, dr, angle, erodeAmount);')
   })
 
   it('reports the latched polarity beside the tool at stroke end', () => {

@@ -2949,7 +2949,14 @@ export class WatercolorEngine {
           // one step, so the per-dab call adds no undo step of its own.
           if (s.relief !== null && reliefSigned !== 0) this.touch(this.stampRect(dx, dy, dr, this.dw, this.dh, bristle ? 1.6 : 1.5));
           if (reliefSigned > 0) {
-            if (bristle) this.bristleReliefPass(dx, dy, dr, angle, reliefSigned, contactPr, alongPx, this.bristleEndCap);
+            // UAT 2026-11-23: a relief-only dab has no ink to hide the paint
+            // footprint's paper-tooth gate, tip crumble and per-dab jitter, so
+            // reusing it laid isolated dark specks on the film. The modifier
+            // takes its OWN smooth footprint and saturates (MAX blend) instead
+            // of stacking one dab on the next — for bristle too, because a
+            // relief-only pass has no gather to look like anyway.
+            if (s.relief !== null) this.modifierRelief(dx, dy, dr, angle, reliefSigned);
+            else if (bristle) this.bristleReliefPass(dx, dy, dr, angle, reliefSigned, contactPr, alongPx, this.bristleEndCap);
             else this.brushRelief(dx, dy, dr, angle, reliefSigned, dryness, grainThr);
           } else if (reliefSigned < 0) {
             // GAP-1: gated by the recorded emboss SIGN only — the paint's own
@@ -2961,7 +2968,11 @@ export class WatercolorEngine {
             const erodeAmount = s.relief === null
               ? Math.min(1, -reliefSigned * RELIEF_ERODE_NEGATIVE)
               : reliefModifierErodeAmount(reliefModifierBand);
-            if (bristle) this.bristleReliefErode(dx, dy, dr, angle, erodeAmount, contactPr, alongPx, this.bristleEndCap);
+            // UAT 2026-11-23: `dst *= (1 - amount * f)` at amount 1 is a
+            // one-dab wipe. The modifier takes the capped, smooth-footprint
+            // path so a Shift pass smooths gradually and evenly.
+            if (s.relief !== null) this.modifierReliefErode(dx, dy, dr, angle, erodeAmount);
+            else if (bristle) this.bristleReliefErode(dx, dy, dr, angle, erodeAmount, contactPr, alongPx, this.bristleEndCap);
             else this.reliefErode(dx, dy, dr, angle, erodeAmount, dryness, grainThr);
           }
           // soft brushes wet a little beyond the tip; textured ones keep their
@@ -3096,6 +3107,55 @@ export class WatercolorEngine {
     gl.blendEquation(gl.FUNC_ADD);
     gl.blendFunc(gl.ONE, gl.ONE);
     this.drawRelief(amount, x, y, r, angle, grain, grainThr);
+    gl.disable(gl.BLEND);
+  }
+
+  /**
+   * Quick 261123-kpy (modifier relief): the relief-only deposit.
+   *
+   * The paint dab's footprint is WRONG here. `reliefFS` gates its output by
+   * paper tooth (`smoothstep(uGrainThr ± 0.08, h)`), re-thresholds the tip
+   * (`uRough`) and offsets it per dab (`uJitter`) — all of which the ink
+   * normally lands through, so the relief hides inside the paint. With no ink
+   * to hide it those gates put isolated dark specks on the film (UAT
+   * 2026-11-23). So: grain 0 (no tooth gate), rough 0 (smooth tip), jitter 0
+   * (no per-dab offset), round 1 (a soft radial blob), a 1.5 stamp rect.
+   *
+   * MAX blending rather than additive: overlapping dabs now SATURATE at the
+   * stamp value instead of stacking without bound. Thickness is a heightfield
+   * — "this region is this thick" — so max is the honest composition, and it
+   * is what stops a long stroke from reading as a black, noisy slab.
+   */
+  private modifierRelief(x: number, y: number, r: number, angle: number, amount: number) {
+    const { gl, g } = this;
+    const p = this.programs.relief;
+    p.bind();
+    this.bindFootprint(p, x, y, r, angle, 1, 0, 0, this.brush, 0, 0);
+    gl.uniform1f(p.u.uAmount, Math.min(1, amount));
+    gl.enable(gl.BLEND);
+    gl.blendEquation(gl.MAX);
+    gl.blendFunc(gl.ONE, gl.ONE);
+    g.draw(this.relief, this.stampRect(x, y, r, this.dw, this.dh, 1.5));
+    gl.disable(gl.BLEND);
+  }
+
+  /**
+   * Quick 261123-kpy (modifier relief): the relief-only erode, the mirror of
+   * `modifierRelief`. Same smooth footprint (no tooth dots left behind), and
+   * a saturating subtract `dst = dst * (1 - amount * f)` whose `amount` is
+   * capped by `reliefModifierErodeAmount`, so a pass smooths gradually
+   * instead of setting the thickness to zero in a single dab.
+   */
+  private modifierReliefErode(x: number, y: number, r: number, angle: number, amount: number) {
+    const { gl, g } = this;
+    const p = this.programs.relief;
+    p.bind();
+    this.bindFootprint(p, x, y, r, angle, 1, 0, 0, this.brush, 0, 0);
+    gl.uniform1f(p.u.uAmount, Math.min(1, Math.max(0, amount)));
+    gl.enable(gl.BLEND);
+    gl.blendEquation(gl.FUNC_ADD);
+    gl.blendFunc(gl.ZERO, gl.ONE_MINUS_SRC_COLOR);
+    g.draw(this.relief, this.stampRect(x, y, r, this.dw, this.dh, 1.5));
     gl.disable(gl.BLEND);
   }
 

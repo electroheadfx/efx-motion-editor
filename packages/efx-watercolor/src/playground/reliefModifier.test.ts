@@ -11,6 +11,7 @@
 
 import { describe, expect, it } from 'vitest'
 import {
+  RELIEF_MODIFIER_ERODE_MAX,
   RELIEF_MODIFIER_MAX,
   RELIEF_MODIFIER_MIN,
   reliefModifierErodeAmount,
@@ -85,14 +86,17 @@ describe('modifier relief magnitude law (quick 261123-kpy)', () => {
     )
   })
 
-  it('grades the erode: MAX is one full pass, lighter touches are weaker', () => {
-    expect(reliefModifierErodeAmount(RELIEF_MODIFIER_MAX)).toBe(1)
-    expect(reliefModifierErodeAmount(RELIEF_MODIFIER_MIN)).toBeCloseTo(1 / 3, 10)
-    // A light touch never wipes the band in one dab, but is never inert.
+  it('caps the erode so no single dab is a wipe', () => {
+    // `dst *= (1 - amount)`, so amount 1 clears the footprint in ONE dab.
+    expect(RELIEF_MODIFIER_ERODE_MAX).toBeLessThan(0.5)
+    expect(reliefModifierErodeAmount(RELIEF_MODIFIER_MAX)).toBe(RELIEF_MODIFIER_ERODE_MAX)
+    expect(reliefModifierErodeAmount(RELIEF_MODIFIER_MIN)).toBeCloseTo(RELIEF_MODIFIER_ERODE_MAX / 3, 10)
+    // A light touch smooths more gently than a full press, and is never inert.
     const light = reliefModifierErodeAmount(reliefModifierMagnitude(0.405))
     expect(light).toBeGreaterThan(0)
-    expect(light).toBeLessThan(1)
-    // Never exceeds a full pass, whatever it is handed.
-    expect(reliefModifierErodeAmount(99)).toBe(1)
+    expect(light).toBeLessThan(RELIEF_MODIFIER_ERODE_MAX)
+    // Never exceeds the cap, whatever it is handed.
+    expect(reliefModifierErodeAmount(99)).toBe(RELIEF_MODIFIER_ERODE_MAX)
+    expect(reliefModifierErodeAmount(-1)).toBe(0)
   })
 })

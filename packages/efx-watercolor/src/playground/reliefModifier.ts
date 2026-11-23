@@ -40,6 +40,14 @@ export const RELIEF_MODIFIER_MIN = 1
 export const RELIEF_MODIFIER_MAX = 3
 
 /**
+ * The largest per-dab erode factor a modifier dab may use. The erode blends
+ * `dst = dst * (1 - amount)`, so an amount of 1 clears the footprint in ONE
+ * dab — a wipe, not a smoothing. Capping well below 1 makes a Shift pass
+ * accumulate across its overlapping dabs.
+ */
+export const RELIEF_MODIFIER_ERODE_MAX = 0.35
+
+/**
  * The pressure factor for a modifier dab. The recorded pressureless sentinel
  * (`p < 0` on the sample) is EXACTLY full strength; a real pen passes the
  * engine's `embossPress` floor-curve value verbatim.
@@ -67,11 +75,12 @@ export function reliefModifierSigned(mode: ReliefMode, magnitude: number): numbe
 }
 
 /**
- * The erode strength in [0, 1] for a modifier dab, read from the BAND value
- * (not the amount-scaled relief): MAX band is one full-strength pass, lighter
- * touches are graded, so a soft touch smooths gently instead of wiping the
- * band in a single dab.
+ * The per-dab erode factor for a modifier dab, read from the BAND value (not
+ * the amount-scaled relief): MAX band reaches RELIEF_MODIFIER_ERODE_MAX,
+ * lighter touches are graded below it. Never reaches 1, so no single dab is
+ * a wipe.
  */
 export function reliefModifierErodeAmount(band: number): number {
-  return Math.min(1, band / RELIEF_MODIFIER_MAX)
+  const t = band < 0 ? 0 : band > RELIEF_MODIFIER_MAX ? 1 : band / RELIEF_MODIFIER_MAX
+  return RELIEF_MODIFIER_ERODE_MAX * t
 }
