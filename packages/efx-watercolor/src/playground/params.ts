@@ -10,6 +10,11 @@
 //  this file — EXCEPT `wetSeconds`, the one canonical member in
 //  SECONDS (1..30, §3.4/§6), which is forwarded as-is with a
 //  one-second floor and must never be divided by 100.
+//
+//  Quick 261123-hr5: `emboss` is SIGNED — canonical -100..100 onto
+//  engine -1..1. The sign IS the law (above 0 deposits thickness,
+//  below 0 erodes it), so its clamp keeps the negative half; the
+//  clamp lives here and nowhere else.
 // ============================================================
 
 import type { Params } from './Engine'
@@ -48,9 +53,11 @@ export interface AquarelleCanonicalParams {
    */
   body: number
   /**
-   * Phase 64 (v2.2.0): how strongly the paint thickness is lit as relief,
-   * 0..100. 0 is neutral (flat paint) — declared here, consumed by its own
-   * plan.
+   * Phase 64 (v2.2.0), revised by quick 261123-hr5: how strongly a stroke
+   * changes the paint thickness, -100..100. 0 is neutral (flat paint);
+   * positive deposits relief, negative SUBTRACTS it (smoothing a dry impasto
+   * while keeping the paint). The sign is a per-stroke recorded-bag property;
+   * a medium record never carries a negative emboss.
    */
   emboss: number
   /**
@@ -111,6 +118,15 @@ function num(v: number | undefined, fallback: number): number {
  */
 function clamp01(v: number): number {
   return v < 0 ? 0 : v > 1 ? 1 : v
+}
+
+/**
+ * Quick 261123-hr5 (signed Emboss): the one signed clamp in the ONE mapping.
+ * Emboss is -100..100 canonical onto -1..1 engine; a typed value can overshoot
+ * either end of its track, but the engine branch must only ever see -1..1.
+ */
+function clampSignedUnit(v: number): number {
+  return v < -1 ? -1 : v > 1 ? 1 : v
 }
 
 /**
@@ -183,7 +199,8 @@ export function toEngineParams(
     lift: num(p.lift, d.lift) / 100,
     viscosity: clamp01(num(p.viscosity, d.viscosity) / 100),
     body: clamp01(num(p.body, d.body) / 100),
-    emboss: clamp01(num(p.emboss, d.emboss) / 100),
+    // Quick 261123-hr5: SIGNED band — the negative half erodes thickness.
+    emboss: clampSignedUnit(num(p.emboss, d.emboss) / 100),
     feather: clamp01(num(p.feather, d.feather) / 100),
     pickup: clamp01(num(p.pickup, d.pickup) / 100),
     refill: clamp01(num(p.refill, d.refill) / 100),

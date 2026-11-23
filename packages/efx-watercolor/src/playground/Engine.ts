@@ -99,9 +99,17 @@ export type Tool = 'brush' | 'water' | 'pen' | 'lift';
  * (seconds before the capture), never raw stamps — a record captured on one
  * engine clock must restore correctly on another, and uploadWhole re-stamps
  * the ages on the receiving clock.
+ *
+ * Quick 261123-hr5 (signed Emboss): the canonical -100..100 band maps onto an
+ * engine -1..1. The positive half is the deposit law above; the negative half
+ * SUBTRACTS with the Lift blend law (destination minus the relief mask) under
+ * the same footprint, so the artist smooths a dry impasto and keeps the paint.
+ * The erode is gated ONLY by the recorded emboss sign — paint never auto-erodes
+ * the relief under its own coverage (GAP-1). Undo needs no new site: the erode
+ * draws after the dab's own ink pass protected the identical rect.
  */
 
-/** All sliders are normalised 0..1 — except `wetSeconds`, which is SECONDS. */
+/** All sliders are normalised 0..1 — except `wetSeconds` (SECONDS) and the signed `emboss`. */
 export interface Params {
   size: number;
   water: number;       // how much water the brush carries
@@ -114,7 +122,7 @@ export interface Params {
   lift: number;        // Lift per-dab erase amount (0..0.9)
   viscosity: number;   // Phase 64: medium thickness — raises dissipation, lowers spread (0..1)
   body: number;        // Phase 64: cover strength — declared here, consumed by its own plan (0..1)
-  emboss: number;      // Phase 64: relief lighting — declared here, consumed by its own plan (0..1)
+  emboss: number;      // Phase 64: relief — SIGNED (-1..1): above 0 deposits thickness, below 0 erodes it
   feather: number;     // 64-22: gather coverage-band width — widens §4.4 softness on a bristle response (0..1)
   pickup: number;      // 64-22: §3.1 carrier pickup rate — how much sheet paint a bristle lifts (0..1)
   refill: number;      // 64-22: §3.1 carrier refill rate — how fast a bristle refills from the load (0..1)
@@ -253,6 +261,13 @@ const COVER_GAIN = 2;
 const COVER_MEDIUM_DENSITY = 8;
 const RELIEF_GAIN = 1.5;
 const RELIEF_ERODE = 0.5;
+/**
+ * Quick 261123-hr5 (signed Emboss): the negative half of the Emboss row
+ * subtracts thickness through the Lift blend law. This gain scales the erode
+ * mask; Task 3 calibrates it on the probe (smoothing must halve the relief
+ * while keeping the pigment under it).
+ */
+const RELIEF_ERODE_NEGATIVE = 1;
 /** The emboss thickness a feather touch still lays, as a share of full press. */
 const EMBOSS_PRESS_FLOOR = 0.15;
 /**
@@ -2864,9 +2879,19 @@ export class WatercolorEngine {
           // footprint's boundary lit as a dark/white seam inside the
           // feathered mark at big sizes. Every other response keeps reliefFS,
           // which already IS its pigment stamp's footprint.
+          // Quick 261123-hr5 (signed Emboss): above 0 deposits thickness
+          // exactly as before; below 0 SUBTRACTS it under the same footprint,
+          // so the artist smooths a dry impasto and keeps the paint. Undo
+          // rides the dab's own touch above — no new protection site.
           if (reliefAmount > 0) {
             if (bristle) this.bristleReliefPass(dx, dy, dr, angle, reliefAmount, contactPr, alongPx, this.bristleEndCap);
             else this.brushRelief(dx, dy, dr, angle, reliefAmount, dryness, grainThr);
+          } else if (reliefAmount < 0) {
+            // GAP-1: gated by the recorded emboss SIGN only — the paint's own
+            // coverage must never erode the relief under it.
+            const erodeAmount = Math.min(1, -reliefAmount * RELIEF_ERODE_NEGATIVE);
+            if (bristle) this.bristleReliefErode(dx, dy, dr, angle, erodeAmount, contactPr, alongPx, this.bristleEndCap);
+            else this.reliefErode(dx, dy, dr, angle, erodeAmount, dryness, grainThr);
           }
           // soft brushes wet a little beyond the tip; textured ones keep their
           // edges. A waterless brush never wakes the fluid sim at all.
@@ -3019,6 +3044,41 @@ export class WatercolorEngine {
     gl.enable(gl.BLEND);
     gl.blendEquation(gl.FUNC_ADD);
     gl.blendFunc(gl.ONE, gl.ONE);
+    g.draw(this.relief, this.stampRect(x, y, r, this.dw, this.dh, 1.6));
+    gl.disable(gl.BLEND);
+  }
+
+  /**
+   * Quick 261123-hr5 (signed Emboss): the negative half SUBTRACTS paint
+   * thickness under the dab's footprint — the Lift erode law (destination
+   * minus the relief mask) with the deposit's own footprint, so the artist
+   * smooths a dry impasto and keeps the pigment under it. The caller owns the
+   * sign gate (GAP-1: the recorded emboss sign only) and the undo protection:
+   * the dab's own ink pass already protected this rect.
+   */
+  private reliefErode(x: number, y: number, r: number, angle: number, amount: number, grain: number, grainThr: number) {
+    const { gl } = this;
+    gl.enable(gl.BLEND);
+    gl.blendEquation(gl.FUNC_ADD);
+    gl.blendFunc(gl.ZERO, gl.ONE_MINUS_SRC_COLOR);
+    this.drawRelief(amount, x, y, r, angle, grain, grainThr);
+    gl.disable(gl.BLEND);
+  }
+
+  /**
+   * Quick 261123-hr5: the signed erode through the gather's REAL coverage, the
+   * mirror of bristleReliefPass — a bristle response smooths exactly what it
+   * deposited, never the solid base footprint's silhouette.
+   */
+  private bristleReliefErode(x: number, y: number, r: number, angle: number, amount: number, pr: number, alongPx: number, endCap = false): void {
+    const { gl, g } = this;
+    const p = this.programs.bristleRelief;
+    p.bind();
+    this.bindGather(p, x, y, r, angle, pr, alongPx, endCap);
+    gl.uniform1f(p.u.uAmount!, amount);
+    gl.enable(gl.BLEND);
+    gl.blendEquation(gl.FUNC_ADD);
+    gl.blendFunc(gl.ZERO, gl.ONE_MINUS_SRC_COLOR);
     g.draw(this.relief, this.stampRect(x, y, r, this.dw, this.dh, 1.6));
     gl.disable(gl.BLEND);
   }
