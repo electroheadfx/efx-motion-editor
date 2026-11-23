@@ -140,20 +140,28 @@
 //  BOTH captures carry them, so an a/b replay of the negative stroke is
 //  proven to reproduce its numbers, not just its digests.
 //
-//  quick 261123-jak adds the second mode:
-//        node compare.mjs <gate> --relief-only [<controlGate>]
-//  The capture's own FOUR band readings carry the smoothing relation (mean at
-//  most half, peak never raised, impasto landed). The no-paint proof needs the
-//  `--relief-control` twin: same drive, same first entry, second entry an
-//  inert relief-only pass (emboss 0) — when <controlGate> is given, the pair's
-//  UNSHADED FINAL film digests must be BYTE-IDENTICAL. In-drive before/after
-//  digests cannot prove it (the dry sim evolves the film over the extra
-//  entry's settle ticks, measured) and the light-on exports change by design
-//  (the display emboss is what the feature is FOR) — the unshaded film is read
-//  at light intensity 0, where displayFS's shade is exactly 1. The scenario
-//  registers in SCENARIO_INVARIANTS too, so an a/b `--other` run asserts the
-//  relation on each side; `--other` also compares the four band readings and
-//  the two unshaded digests field for field when both captures carry them.
+//  quick 261123-kpy adds two modes:
+//        node compare.mjs <gate> --relief-modifier [<controlGate>]
+//        node compare.mjs <gate> --relief-pressure <fullPressGate>
+//  The modifier mode: the capture's own FOUR band readings carry the
+//  erode/deposit relation (erode: mean at most half, peak never raised;
+//  deposit: mean AND peak rise; impasto landed; an unknown polarity fails).
+//  The no-paint proof needs the `--relief-control` twin: same drive, same
+//  first entry, second entry moved OFF-SHEET (an empty stamp rect) — when
+//  <controlGate> is given, the pair's UNSHADED FINAL film digests must be
+//  BYTE-IDENTICAL. In-drive before/after digests cannot prove it (the dry sim
+//  evolves the film over the extra entry's settle ticks, measured) and the
+//  light-on exports change by design (the display emboss is what the feature
+//  is FOR) — the unshaded film is read at light intensity 0, where displayFS's
+//  shade is exactly 1. The scenario registers in SCENARIO_INVARIANTS too, so
+//  an a/b `--other` run asserts the relation on each side; `--other` also
+//  compares the four band readings, the two unshaded digests and the polarity/
+//  band/press echoes field for field when both captures carry them.
+//  The pressure mode: a light arm (`--press 0.3`) must relieve strictly less
+//  than the same build's `--press 1` reference; the pressureless arm
+//  (`--press none`, the recorded -1 sentinel) must stay at least
+//  RELIEF_PRESSURELESS_NONE_FLOOR of the full reduction (the measured
+//  footprint-only gap — the relief law itself is exactly full magnitude).
 //
 //  Exit codes: 0 = pass, 1 = fail or missing data, 2 = bad usage.
 //  Unknown flags are rejected loudly — a later plan adding an operand must
@@ -182,23 +190,33 @@ const RELIEF_SMOOTH_FIELDS = [
   'pigmentMeanAfter',
 ]
 
-// quick 261123-jak: the four numeric band readings an `emboss-relief-only`
-// capture carries (probe.ts embossReliefOnlyReport). They carry the smoothing
-// relation.
-const RELIEF_ONLY_FIELDS = [
-  'reliefOnlyMeanBefore',
-  'reliefOnlyPeakBefore',
-  'reliefOnlyMeanAfter',
-  'reliefOnlyPeakAfter',
+// quick 261123-kpy: the four numeric band readings an
+// `emboss-relief-modifier` capture carries (probe.ts
+// embossReliefModifierReport). They carry the erode/deposit relation.
+const RELIEF_MODIFIER_FIELDS = [
+  'reliefModifierMeanBefore',
+  'reliefModifierPeakBefore',
+  'reliefModifierMeanAfter',
+  'reliefModifierPeakAfter',
 ]
 // The no-paint proof: the UNSHADED FINAL film, one pair per capture, compared
-// ACROSS the relief run and its `--relief-control` twin (identical drive,
-// second entry inert). An in-drive before/after pair cannot prove it — the dry
+// ACROSS the modifier run and its `--relief-control` twin (identical drive,
+// second entry off-sheet). An in-drive before/after pair cannot prove it — the dry
 // sim keeps evolving the film over the extra entry's settle ticks (measured),
 // and the light-on exports change by design (the display emboss is what the
 // feature is FOR). The digests are read at light intensity 0, where displayFS's
 // shade is exactly 1.
 const UNSHADED_FILM_FIELDS = ['unshadedPigmentDigest', 'unshadedTransparentDigest']
+
+// quick 261123-kpy: the pressureless arm's floor, as a fraction of the same
+// build's `--press 1` reduction. The RELIEF law makes the pressureless sentinel
+// exactly full magnitude (`reliefModifier.test.ts` pins `press === 1`), but the
+// dab still derives `amount` from `(0.4 + 0.6*pr)` and its radius from
+// `pr^pressureSize` under the SIMULATED pressure, so the delivered reduction
+// is the full arm's times the footprint gap. The value below is the MEASURED
+// ratio (see the kpy SUMMARY), rounded DOWN for margin — not the unmeasured
+// 0.9 the plan first proposed: a shipped bar must be a measurement.
+const RELIEF_PRESSURELESS_NONE_FLOOR = 0.9
 
 // 64-17: the one committed baseline captured before the pigment export
 // existed. `absent` is legal for these fields on the REFERENCE side only —
@@ -1260,96 +1278,139 @@ function reliefSmoothFailures(data) {
 }
 
 /**
- * quick 261123-jak: the relief-only smoothing relation, self-contained on the
- * capture's own four band readings: the impasto must land, and the relief-only
- * pass must at least halve the band mean without raising its peak. The
- * no-paint proof is NOT here — it needs the `--relief-control` twin (see
- * `reliefOnlyControlFailures`): the drive's extra settle ticks evolve the film,
- * so no in-drive film pair can be byte-identical.
+ * quick 261123-kpy: the modifier relation, self-contained on the capture's own
+ * four band readings. The impasto must land; then the polarity decides:
+ *  - `erode`: the pass must at least halve the band mean without raising its
+ *    peak;
+ *  - `deposit`: the pass must raise the band mean AND its peak (it thickens the
+ *    surface), the stress arm being a light band with headroom.
+ * An unknown polarity FAILS — fail closed, never defaulted to one of the two.
+ * The no-paint proof is NOT here — it needs the `--relief-control` twin (see
+ * `reliefModifierControlFailures`): the drive's extra settle ticks evolve the
+ * film, so no in-drive film pair can be byte-identical.
  */
-function reliefOnlyFailures(data) {
+function reliefModifierFailures(data) {
   const failures = []
-  if (data.reliefOnlyControl === true) {
+  if (data.reliefModifierControl === true) {
     failures.push(
-      `capture "${data.gate}" is the --relief-control twin (its second entry is inert); ` +
-        'judge the pair with compare.mjs <gate> --relief-only <controlGate>',
+      `capture "${data.gate}" is the --relief-control twin (its second entry is off-sheet); ` +
+        'judge the pair with compare.mjs <gate> --relief-modifier <controlGate>',
     )
     return failures
   }
-  const missing = RELIEF_ONLY_FIELDS.filter(
+  const mode = data.reliefModifierMode
+  if (mode !== 'erode' && mode !== 'deposit') {
+    failures.push(
+      `capture "${data.gate}" carries no known reliefModifierMode (${String(mode)}) — ` +
+        're-run --scenario emboss-relief-modifier',
+    )
+    return failures
+  }
+  const missing = RELIEF_MODIFIER_FIELDS.filter(
     (field) => typeof data[field] !== 'number' || !Number.isFinite(data[field]),
   )
   if (missing.length > 0) {
     failures.push(
-      `capture "${data.gate}" is missing the relief-only readings ${missing.join(', ')} ` +
-        '(run --scenario emboss-relief-only)',
+      `capture "${data.gate}" is missing the modifier readings ${missing.join(', ')} ` +
+        '(run --scenario emboss-relief-modifier)',
     )
     return failures
   }
-  if (!(data.reliefOnlyMeanBefore > 0)) {
+  if (!(data.reliefModifierMeanBefore > 0)) {
     failures.push(
-      `reliefOnlyMeanBefore ${data.reliefOnlyMeanBefore} is not positive — the impasto did not land`,
+      `reliefModifierMeanBefore ${data.reliefModifierMeanBefore} is not positive — the impasto did not land`,
     )
   }
-  if (!(data.reliefOnlyMeanAfter <= data.reliefOnlyMeanBefore * 0.5)) {
-    failures.push(
-      `reliefOnlyMeanAfter ${data.reliefOnlyMeanAfter} is above half of reliefOnlyMeanBefore ` +
-        `${data.reliefOnlyMeanBefore} — a relief-only pass must visibly flatten the band`,
-    )
-  }
-  if (!(data.reliefOnlyPeakAfter <= data.reliefOnlyPeakBefore)) {
-    failures.push(
-      `reliefOnlyPeakAfter ${data.reliefOnlyPeakAfter} exceeds reliefOnlyPeakBefore ` +
-        `${data.reliefOnlyPeakBefore} — smoothing may not raise the peak`,
-    )
+  if (mode === 'erode') {
+    if (!(data.reliefModifierMeanAfter <= data.reliefModifierMeanBefore * 0.5)) {
+      failures.push(
+        `reliefModifierMeanAfter ${data.reliefModifierMeanAfter} is above half of ` +
+          `reliefModifierMeanBefore ${data.reliefModifierMeanBefore} — an erode pass must ` +
+          'visibly flatten the band',
+      )
+    }
+    if (!(data.reliefModifierPeakAfter <= data.reliefModifierPeakBefore)) {
+      failures.push(
+        `reliefModifierPeakAfter ${data.reliefModifierPeakAfter} exceeds ` +
+          `reliefModifierPeakBefore ${data.reliefModifierPeakBefore} — smoothing may not raise the peak`,
+      )
+    }
+  } else {
+    if (!(data.reliefModifierMeanAfter > data.reliefModifierMeanBefore)) {
+      failures.push(
+        `reliefModifierMeanAfter ${data.reliefModifierMeanAfter} did not rise above ` +
+          `reliefModifierMeanBefore ${data.reliefModifierMeanBefore} — a deposit pass must ` +
+          'thicken the band',
+      )
+    }
+    if (!(data.reliefModifierPeakAfter > data.reliefModifierPeakBefore)) {
+      failures.push(
+        `reliefModifierPeakAfter ${data.reliefModifierPeakAfter} did not rise above ` +
+          `reliefModifierPeakBefore ${data.reliefModifierPeakBefore} — a deposit pass must ` +
+          'raise the band peak',
+      )
+    }
   }
   return failures
 }
 
 /**
- * quick 261123-jak: the no-paint A/B against the `--relief-control` twin —
- * the same drive and the same first entry, with the second entry an inert
- * relief-only pass (emboss 0). The defining law: the two runs' UNSHADED FINAL
- * film digests are BYTE-IDENTICAL, because the only difference between them is
- * the relief erode itself — a relief-only stroke paints nothing. The control's
- * own band readings must also be inert (after == before), so the twin is
- * proven to be the do-nothing leg rather than assumed.
+ * quick 261123-kpy: the no-paint A/B against the `--relief-control` twin —
+ * the same drive and the same first entry, with the second entry moved
+ * OFF-SHEET (an empty stamp rect: no relief writes, no touch). The defining
+ * law: the two runs' UNSHADED FINAL film digests are BYTE-IDENTICAL, because
+ * the only difference between them is the relief pass itself — a modifier
+ * stroke paints nothing. The control's own band readings must also be inert
+ * (after == before), so the twin is proven to be the do-nothing leg rather
+ * than assumed.
  */
-function reliefOnlyControlFailures(actual, control) {
+function reliefModifierControlFailures(actual, control) {
   const failures = []
-  if (actual.reliefOnlyControl === true) {
+  if (actual.reliefModifierControl === true) {
     failures.push(
       `capture "${actual.gate}" is itself the --relief-control twin — pass the real run first`,
     )
   }
-  if (control.reliefOnlyControl !== true) {
+  if (control.reliefModifierControl !== true) {
     failures.push(
-      `control "${control.gate}" does not carry reliefOnlyControl — run it with --relief-control`,
+      `control "${control.gate}" does not carry reliefModifierControl — run it with --relief-control`,
     )
   }
-  if (control.scenario !== 'emboss-relief-only' || actual.scenario !== 'emboss-relief-only') {
+  if (control.scenario !== 'emboss-relief-modifier' || actual.scenario !== 'emboss-relief-modifier') {
     failures.push(
-      `the pair is not the relief-only scenario (capture "${actual.scenario}", control "${control.scenario}")`,
+      `the pair is not the modifier scenario (capture "${actual.scenario}", control "${control.scenario}")`,
     )
   }
-  const missing = RELIEF_ONLY_FIELDS.filter(
+  if (control.reliefModifierMode !== actual.reliefModifierMode) {
+    failures.push(
+      `the pair's polarities differ (capture "${actual.reliefModifierMode}", ` +
+        `control "${control.reliefModifierMode}") — the control must replay the SAME modifier`,
+    )
+  }
+  if (control.reliefModifierEmboss !== actual.reliefModifierEmboss) {
+    failures.push(
+      `the pair's band values differ (capture ${actual.reliefModifierEmboss}, ` +
+        `control ${control.reliefModifierEmboss})`,
+    )
+  }
+  const missing = RELIEF_MODIFIER_FIELDS.filter(
     (field) => typeof control[field] !== 'number' || !Number.isFinite(control[field]),
   )
   if (missing.length > 0) {
     failures.push(
-      `control "${control.gate}" is missing the relief-only readings ${missing.join(', ')}`,
+      `control "${control.gate}" is missing the modifier readings ${missing.join(', ')}`,
     )
   } else {
-    if (control.reliefOnlyMeanAfter !== control.reliefOnlyMeanBefore) {
+    if (control.reliefModifierMeanAfter !== control.reliefModifierMeanBefore) {
       failures.push(
-        `control reliefOnlyMeanAfter ${control.reliefOnlyMeanAfter} differs from its ` +
-          `reliefOnlyMeanBefore ${control.reliefOnlyMeanBefore} — the control entry is not inert`,
+        `control reliefModifierMeanAfter ${control.reliefModifierMeanAfter} differs from its ` +
+          `reliefModifierMeanBefore ${control.reliefModifierMeanBefore} — the control entry is not inert`,
       )
     }
-    if (control.reliefOnlyPeakAfter !== control.reliefOnlyPeakBefore) {
+    if (control.reliefModifierPeakAfter !== control.reliefModifierPeakBefore) {
       failures.push(
-        `control reliefOnlyPeakAfter ${control.reliefOnlyPeakAfter} differs from its ` +
-          `reliefOnlyPeakBefore ${control.reliefOnlyPeakBefore} — the control entry is not inert`,
+        `control reliefModifierPeakAfter ${control.reliefModifierPeakAfter} differs from its ` +
+          `reliefModifierPeakBefore ${control.reliefModifierPeakBefore} — the control entry is not inert`,
       )
     }
   }
@@ -1367,8 +1428,112 @@ function reliefOnlyControlFailures(actual, control) {
     if (actual[field] !== control[field]) {
       failures.push(
         `${field} ${actual[field]} differs from the control\'s ${control[field]} — a ` +
-          'relief-only stroke must paint NOTHING (the unshaded film must be byte-identical ' +
+          'modifier stroke must paint NOTHING (the unshaded film must be byte-identical ' +
           'to the inert twin)',
+      )
+    }
+  }
+  return failures
+}
+
+/**
+ * quick 261123-kpy: the pressure relation — `<gate>` is a LIGHT arm
+ * (`--press 0.3`) or the PRESSURELESS arm (`--press none`), and the reference
+ * is the SAME build's `--press 1` capture. Both captures must be the modifier
+ * scenario with the same polarity and band; both reductions (`before - after`)
+ * must be positive. A numeric light arm must relieve STRICTLY LESS than full
+ * press AND leave a HIGHER mean after (a light touch is weaker). The `'none'`
+ * arm must reach at least the measured pressureless floor of the full arm's
+ * reduction: the recorded -1 sentinel makes the RELIEF press factor exactly
+ * 1.0 (`reliefModifier.test.ts` pins that equality), but the dab still derives
+ * its amount and radius from the simulated pressure, so the footprint — not
+ * the relief law — explains a sub-1.0 ratio. `RELIEF_PRESSURELESS_NONE_FLOOR`
+ * is that measured footprint-only gap (see the constant's note).
+ */
+function reliefPressureFailures(actual, reference) {
+  const failures = []
+  for (const [label, data] of [['capture', actual], ['reference', reference]]) {
+    if (data.scenario !== 'emboss-relief-modifier') {
+      failures.push(
+        `${label} "${data.gate}" is not the modifier scenario (${data.scenario}) — ` +
+          'run --scenario emboss-relief-modifier',
+      )
+    }
+  }
+  if (actual.reliefModifierMode !== reference.reliefModifierMode) {
+    failures.push(
+      `the pair's polarities differ (capture "${actual.reliefModifierMode}", ` +
+        `reference "${reference.reliefModifierMode}")`,
+    )
+  }
+  if (actual.reliefModifierEmboss !== reference.reliefModifierEmboss) {
+    failures.push(
+      `the pair's band values differ (capture ${actual.reliefModifierEmboss}, ` +
+        `reference ${reference.reliefModifierEmboss})`,
+    )
+  }
+  if (reference.reliefModifierPress !== 1) {
+    failures.push(
+      `reference "${reference.gate}" carries reliefModifierPress ` +
+        `${String(reference.reliefModifierPress)} — the reference must be the --press 1 arm`,
+    )
+  }
+  const actualPress = actual.reliefModifierPress
+  const lightArm = actualPress === 'none' || (typeof actualPress === 'number' && actualPress < 1)
+  if (!lightArm) {
+    failures.push(
+      `capture "${actual.gate}" carries reliefModifierPress ${String(actualPress)} — ` +
+        'the capture must be the --press 0.3 or --press none arm',
+    )
+  }
+  const missing = [...RELIEF_MODIFIER_FIELDS].filter(
+    (field) =>
+      typeof actual[field] !== 'number' ||
+      !Number.isFinite(actual[field]) ||
+      typeof reference[field] !== 'number' ||
+      !Number.isFinite(reference[field]),
+  )
+  if (missing.length > 0) {
+    failures.push(`the pair is missing the modifier readings ${missing.join(', ')}`)
+    return failures
+  }
+  const actualReduction = actual.reliefModifierMeanBefore - actual.reliefModifierMeanAfter
+  const referenceReduction = reference.reliefModifierMeanBefore - reference.reliefModifierMeanAfter
+  if (!(actualReduction > 0)) {
+    failures.push(
+      `the capture's reduction ${actualReduction.toFixed(4)} is not positive — the light arm ` +
+        'did not relieve the band',
+    )
+  }
+  if (!(referenceReduction > 0)) {
+    failures.push(
+      `the reference's reduction ${referenceReduction.toFixed(4)} is not positive — the full ` +
+        'arm did not relieve the band',
+    )
+  }
+  if (actualPress !== 'none') {
+    if (!(actualReduction < referenceReduction)) {
+      failures.push(
+        `the light arm's reduction ${actualReduction.toFixed(4)} is not strictly below the ` +
+          `full arm's ${referenceReduction.toFixed(4)} — a light touch must relieve less`,
+      )
+    }
+    if (!(actual.reliefModifierMeanAfter > reference.reliefModifierMeanAfter)) {
+      failures.push(
+        `the light arm's meanAfter ${actual.reliefModifierMeanAfter} is not above the full ` +
+          `arm's ${reference.reliefModifierMeanAfter} — a light touch must leave more relief`,
+      )
+    }
+  } else if (referenceReduction > 0) {
+    // W2 (dispatch): the primary bar is full magnitude; when the measured
+    // footprint-only gap falls below it, this explicit floor replaces the
+    // unmeasured 0.9 and still fails closed (a pressureless pass must stay at
+    // least this close to the full arm — a silent collapse still fails).
+    if (!(actualReduction >= referenceReduction * RELIEF_PRESSURELESS_NONE_FLOOR)) {
+      failures.push(
+        `the pressureless arm's reduction ${actualReduction.toFixed(4)} is below ` +
+          `${RELIEF_PRESSURELESS_NONE_FLOOR} x the full arm's ${referenceReduction.toFixed(4)} — ` +
+          'the recorded -1 sentinel must relieve at (measured footprint-limited) full magnitude',
       )
     }
   }
@@ -1386,7 +1551,7 @@ const SCENARIO_INVARIANTS = {
   'bristle-line': bristleLineFailures,
   'bristle-line-over': bristleLineFailures,
   'bristle-tip': bristleTipFailures,
-  'emboss-relief-only': reliefOnlyFailures,
+  'emboss-relief-modifier': reliefModifierFailures,
 }
 
 /** Run the scenario's invariant function, if it has one. `reference` is the
@@ -1482,7 +1647,7 @@ function printCoverRegions(actualData, refData) {
 function usage(message) {
   console.error(`compare: ${message}`)
   console.error(
-    'usage: node compare.mjs <gate> [--other <otherGate> | --differs-from <name> | --relief-smooth | --relief-only [<controlGate>]]',
+    'usage: node compare.mjs <gate> [--other <otherGate> | --differs-from <name> | --relief-smooth | --relief-modifier [<controlGate>] | --relief-pressure <fullPressGate>]',
   )
   process.exit(2)
 }
@@ -1492,21 +1657,32 @@ const gate = args[0]
 if (!gate || gate.startsWith('--')) usage('missing <gate> operand')
 
 // mode: 'baseline' (mode 1), 'other' (mode 2), 'differs' (mode 3),
-// 'relief-smooth' (quick 261123-hr5) and 'relief-only' (quick 261123-jak),
-// both self-contained relations on the capture.
+// 'relief-smooth' (quick 261123-hr5), 'relief-modifier' and 'relief-pressure'
+// (quick 261123-kpy) — the latter three self-contained relations on the
+// capture (the pressure one needs its full-press reference).
 let mode = 'baseline'
 let operand
 if (args.length > 1) {
   if (args[1] === '--relief-smooth') {
     if (args.length > 2) usage(`unexpected extra argument "${args[2]}"`)
     mode = 'relief-smooth'
-  } else if (args[1] === '--relief-only') {
-    mode = 'relief-only'
-    // quick 261123-jak: the optional control gate — the no-paint A/B twin.
+  } else if (args[1] === '--relief-modifier') {
+    mode = 'relief-modifier'
+    // quick 261123-kpy: the optional control gate — the no-paint A/B twin.
     if (args.length > 2) {
-      if (!args[2] || args[2].startsWith('--')) usage('--relief-only needs a control gate name')
+      if (!args[2] || args[2].startsWith('--')) usage('--relief-modifier needs a control gate name')
       if (args.length > 3) usage(`unexpected extra argument "${args[3]}"`)
       operand = args[2]
+    }
+  } else if (args[1] === '--relief-pressure') {
+    mode = 'relief-pressure'
+    // quick 261123-kpy: the REFERENCE is the same build's --press 1 arm.
+    if (args.length > 2) {
+      if (!args[2] || args[2].startsWith('--')) usage('--relief-pressure needs the full-press gate name')
+      if (args.length > 3) usage(`unexpected extra argument "${args[3]}"`)
+      operand = args[2]
+    } else {
+      usage('--relief-pressure needs the full-press gate name')
     }
   } else {
     if (args[1] !== '--other' && args[1] !== '--differs-from') usage(`unknown argument "${args[1]}"`)
@@ -1614,32 +1790,35 @@ if (mode === 'relief-smooth') {
   process.exit(0)
 }
 
-// quick 261123-jak: the relief-only relation. The capture's own four band
-// readings carry the smoothing gate; with a control gate operand, the pair's
-// UNSHADED FINAL film digests carry the no-paint gate (identical drive, the
-// second entry inert — the only difference is the relief erode itself).
-if (mode === 'relief-only') {
+// quick 261123-kpy: the modifier relation. The capture's own four band
+// readings carry the erode/deposit gate; with a control gate operand, the
+// pair's UNSHADED FINAL film digests carry the no-paint gate (identical drive,
+// the second entry off-sheet — the only difference is the relief pass itself).
+if (mode === 'relief-modifier') {
   console.log('============ medium-engine pixel-gate compare ============')
   console.log(
     operand === undefined
-      ? 'mode      : relief-only smoothing relation (--relief-only)'
-      : 'mode      : relief-only smoothing + no-paint pair (--relief-only <control>)',
+      ? 'mode      : modifier relation (--relief-modifier)'
+      : 'mode      : modifier relation + no-paint pair (--relief-modifier <control>)',
   )
   console.log(`capture   : ${actualPath}`)
   console.log('')
   printDurations('capture', actual)
   console.log('')
-  if (typeof actual.reliefOnlyEmboss === 'number') {
-    console.log(`emboss    : band ${actual.reliefOnlyEmboss} (the first entry's value)`)
+  if (typeof actual.reliefModifierMode === 'string') {
+    console.log(
+      `polarity  : ${actual.reliefModifierMode} (band ${actual.reliefModifierEmboss ?? '(missing)'}, ` +
+        `press ${String(actual.reliefModifierPress ?? '(missing)')})`,
+    )
   }
-  const readings = RELIEF_ONLY_FIELDS.filter(
+  const readings = RELIEF_MODIFIER_FIELDS.filter(
     (field) => actual[field] !== undefined && actual[field] !== null,
   ).map((field) => `${field} ${actual[field]}`)
-  if (readings.length > 0) console.log(`relief-only: ${readings.join(' | ')}`)
+  if (readings.length > 0) console.log(`modifier  : ${readings.join(' | ')}`)
   console.log('')
   const lawFailures = alphaLawFailures(actual)
   for (const line of lawFailures) console.log(`INVARIANT ${line}`)
-  const failures = reliefOnlyFailures(actual)
+  const failures = reliefModifierFailures(actual)
   for (const line of failures) console.log(`RELATION  ${line}`)
 
   let controlLawFailures = []
@@ -1657,7 +1836,7 @@ if (mode === 'relief-only') {
     }
     controlLawFailures = alphaLawFailures(control)
     for (const line of controlLawFailures) console.log(`INVARIANT ${line}`)
-    controlFailures = reliefOnlyControlFailures(actual, control)
+    controlFailures = reliefModifierControlFailures(actual, control)
     for (const line of controlFailures) console.log(`RELATION  ${line}`)
   }
   console.log('')
@@ -1665,7 +1844,7 @@ if (mode === 'relief-only') {
   const totalLaw = lawFailures.length + controlLawFailures.length
   if (totalFailures > 0 || totalLaw > 0) {
     console.log(
-      `RESULT: FAIL — ${totalFailures} relief-only relation failure(s), ` +
+      `RESULT: FAIL — ${totalFailures} modifier relation failure(s), ` +
         `${totalLaw} alpha law failure(s) (${gate})`,
     )
     console.log('=========================================================')
@@ -1673,10 +1852,61 @@ if (mode === 'relief-only') {
   }
   console.log(
     operand === undefined
-      ? `RESULT: PASS — the relief-only relation holds (${gate})`
-      : `RESULT: PASS — the relief-only relation holds and the unshaded film matches ` +
+      ? `RESULT: PASS — the modifier relation holds (${gate})`
+      : `RESULT: PASS — the modifier relation holds and the unshaded film matches ` +
           `the inert control (${gate} vs ${operand})`,
   )
+  console.log('=========================================================')
+  process.exit(0)
+}
+
+// quick 261123-kpy: the pressure relation. `<gate>` is a light arm
+// (`--press 0.3`) or the pressureless arm (`--press none`); `<operand>` is the
+// same build's `--press 1` capture. Both captures are printed side by side
+// with the reduction delta; `reliefPressureFailures` owns the bars.
+if (mode === 'relief-pressure') {
+  const referencePath = join(tmpDir, `${operand}.json`)
+  const reference = readJson(referencePath, `full-press reference "${operand}"`)
+  console.log('============ medium-engine pixel-gate compare ============')
+  console.log('mode      : pressure relation (--relief-pressure <full-press gate>)')
+  console.log(`capture   : ${actualPath}`)
+  console.log(`reference : ${referencePath}`)
+  console.log('')
+  printDurations('capture', actual)
+  printDurations('reference', reference)
+  console.log('')
+  for (const [label, data] of [['capture', actual], ['reference', reference]]) {
+    const readings = RELIEF_MODIFIER_FIELDS.filter(
+      (field) => typeof data[field] === 'number',
+    ).map((field) => `${field} ${data[field]}`)
+    console.log(
+      `${label.padEnd(9)} : mode ${String(data.reliefModifierMode ?? '(missing)')} | ` +
+        `band ${String(data.reliefModifierEmboss ?? '(missing)')} | ` +
+        `press ${String(data.reliefModifierPress ?? '(missing)')}` +
+        (readings.length > 0 ? ` | ${readings.join(' | ')}` : ''),
+    )
+  }
+  console.log('')
+  const actualReduction = actual.reliefModifierMeanBefore - actual.reliefModifierMeanAfter
+  const referenceReduction = reference.reliefModifierMeanBefore - reference.reliefModifierMeanAfter
+  console.log(
+    `reduction : capture ${actualReduction.toFixed(4)} vs reference ${referenceReduction.toFixed(4)} ` +
+      `(ratio ${referenceReduction > 0 ? (actualReduction / referenceReduction).toFixed(4) : '(n/a)'})`,
+  )
+  console.log('')
+  const lawFailures = alphaLawFailures(actual)
+  for (const line of lawFailures) console.log(`INVARIANT ${line}`)
+  const failures = reliefPressureFailures(actual, reference)
+  for (const line of failures) console.log(`RELATION  ${line}`)
+  if (lawFailures.length > 0 || failures.length > 0) {
+    console.log(
+      `RESULT: FAIL — ${failures.length} pressure relation failure(s), ` +
+        `${lawFailures.length} alpha law failure(s) (${gate} vs ${operand})`,
+    )
+    console.log('=========================================================')
+    process.exit(1)
+  }
+  console.log(`RESULT: PASS — the pressure relation holds (${gate} vs ${operand})`)
   console.log('=========================================================')
   process.exit(0)
 }
@@ -1850,18 +2080,28 @@ if (
   }
 }
 
-// quick 261123-jak: an a/b replay pair of the relief-only scenario must also
+// quick 261123-kpy: an a/b replay pair of the modifier scenario must also
 // replay to the SAME readings — the four band numbers and the two unshaded
-// film digests. Gated on the numeric fields exactly like the hr5 block, so a
-// capture without the readings (any other scenario) keeps its comparison
-// shape unchanged.
+// film digests — and the SAME echoes (polarity, band, pressure arm). Gated on
+// the numeric fields exactly like the hr5 block, so a capture without the
+// readings (any other scenario) keeps its comparison shape unchanged.
 if (
   mode === 'other' &&
-  RELIEF_ONLY_FIELDS.every(
+  RELIEF_MODIFIER_FIELDS.every(
     (field) => typeof actual[field] === 'number' && typeof refData[field] === 'number',
   )
 ) {
-  for (const field of [...RELIEF_ONLY_FIELDS, ...UNSHADED_FILM_FIELDS]) {
+  for (const field of ['reliefModifierMode', 'reliefModifierEmboss', 'reliefModifierPress']) {
+    if (field in actual && field in refData) {
+      if (actual[field] !== refData[field]) {
+        differing += 1
+        console.log(`DIFFER    ${field.padEnd(18)} capture=${actual[field]} reference=${refData[field]}`)
+      } else {
+        console.log(`equal     ${field.padEnd(18)} ${actual[field]}`)
+      }
+    }
+  }
+  for (const field of [...RELIEF_MODIFIER_FIELDS, ...UNSHADED_FILM_FIELDS]) {
     if (actual[field] !== refData[field]) {
       differing += 1
       console.log(`DIFFER    ${field.padEnd(18)} capture=${actual[field]} reference=${refData[field]}`)

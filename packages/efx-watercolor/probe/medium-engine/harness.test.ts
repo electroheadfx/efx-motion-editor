@@ -2066,36 +2066,42 @@ describe('the alpha-law blocks discriminate (64-31 task 2, executed)', () => {
 })
 
 // ============================================================
-//  Laws pinned here (quick 261123-jak task 3): the relief-only probe.
+//  Laws pinned here (quick 261123-kpy task 3): the pressure-driven modifier
+//  probe.
 //
-//  38. `emboss-relief-only` is a scenario in BOTH closed lists (run.mjs and
-//      probe.ts), and the long-standing `or "bristle-tip")` message tails are
-//      unchanged — the new scenario enters BEFORE the tail, never after it.
-//  39. compare.mjs carries the relation mode (`--relief-only`) and dispatches
-//      the scenario to its own failure function, so the a/b `--other` run also
-//      asserts the band relation. The no-paint proof is the `--relief-control`
-//      twin: the operand rides ONLY the relief-only scenario, and the pair's
-//      UNshaded film digests are compared by a dedicated failure function
-//      (an in-drive before/after digest pair cannot prove it — the dry sim
-//      evolves the film between the two capture moments, measured).
+//  38. `emboss-relief-modifier` is a scenario in BOTH closed lists (run.mjs
+//      and probe.ts), and the long-standing `or "bristle-tip")` message tails
+//      are unchanged — the scenario enters BEFORE the tail, never after it.
+//  39. compare.mjs carries the relation modes (`--relief-modifier` and
+//      `--relief-pressure`) and dispatches the scenario to its own failure
+//      function, so the a/b `--other` run also asserts the relation. The
+//      no-paint proof is the `--relief-control` twin: the control operand
+//      rides ONLY the modifier scenario, and the pair's UNSHADED film digests
+//      are compared by a dedicated failure function (an in-drive
+//      before/after digest pair cannot prove it — the dry sim evolves the
+//      film between the two capture moments, measured). The pressure mode
+//      compares a light arm against the same build's full-press reference.
 // ============================================================
 
-describe('the relief-only scenario (quick 261123-jak task 3)', () => {
-  it('declares emboss-relief-only in both closed lists with unchanged tails', () => {
-    expectContains(RUN, "scenarioRaw !== 'emboss-relief-only'")
-    expectContains(PROBE, "raw !== 'emboss-relief-only'")
+describe('the emboss-relief-modifier scenario (quick 261123-kpy task 3)', () => {
+  it('declares emboss-relief-modifier in both closed lists with unchanged tails', () => {
+    expectContains(RUN, "scenarioRaw !== 'emboss-relief-modifier'")
+    expectContains(PROBE, "raw !== 'emboss-relief-modifier'")
     expectContains(RUN, 'or "bristle-tip")')
     expectContains(PROBE, 'or "bristle-tip")')
   })
 
-  it('registers the relation mode, the control operand and the failure dispatch', () => {
+  it('registers the relation modes, the operands and the failure dispatch', () => {
     expectContains(RUN, "'--relief-control'")
-    expectContains(RUN, '--relief-control is only valid with --scenario emboss-relief-only')
+    expectContains(RUN, "'--relief-mode'")
+    expectContains(RUN, "'--press'")
     expectContains(PROBE, "get('reliefControl')")
-    expectContains(COMPARE, "'--relief-only'")
-    expectContains(COMPARE, "'emboss-relief-only': reliefOnlyFailures,")
-    expectContains(COMPARE, 'function reliefOnlyFailures(')
-    expectContains(COMPARE, 'function reliefOnlyControlFailures(')
+    expectContains(COMPARE, "'--relief-modifier'")
+    expectContains(COMPARE, "'--relief-pressure'")
+    expectContains(COMPARE, "'emboss-relief-modifier': reliefModifierFailures,")
+    expectContains(COMPARE, 'function reliefModifierFailures(')
+    expectContains(COMPARE, 'function reliefModifierControlFailures(')
+    expectContains(COMPARE, 'function reliefPressureFailures(')
     expectContains(COMPARE, "UNSHADED_FILM_FIELDS = ['unshadedPigmentDigest', 'unshadedTransparentDigest']")
   })
 })
