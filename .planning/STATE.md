@@ -6,7 +6,7 @@ status: completed
 stopped_at: Phase 64 complete — all phases complete
 last_updated: "2026-11-24T13:22:40.459Z"
 last_activity: 2026-11-24
-last_activity_desc: Quick 261124-iq9 automated-ready (two-media brush convention)
+last_activity_desc: Quick 261124-iq9 UAT approved (two-media brush convention)
 state_head: f5da7c094bb8cc3ed59f7bdef633ed98961fc6c2
 progress:
   total_phases: 2
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-22 after Phase 64)
 Phase: 64
 Plan: Not started
 Status: All phases complete
-Last activity: 2026-11-24 — Quick task 261124-iq9: the Studio brush convention is now two media and twelve responses. `MediumId` is exactly `watercolor | acrylic`; the acrylic record keeps its id and every parameter and is displayed as **Gouache** (the old gouache/pastel/graphite media are deleted). `BRUSH_PRESETS` is exactly the eleven watercolor responses plus `bristle-round`, renamed **Gouache**; Gouache Round/Flat, Bristle Flat and every Chalk/Graphite response are deleted. Viscosity and Water are hidden for the Gouache (acrylic) paint context on BOTH the Paint panel and the Studio top bar through one shared `isAquarelleParamRowVisible` selector; the Water tool keeps Viscosity and the Eraser keeps Lift. Removed recorded response ids resolve through `presetFor`'s shipped unknown-id fallback to `round` — no migration, no back-compat, no hidden registration. Gates: package targeted + full suite, package check + build, full app suite (466 files / 9861 passed, 2 pre-existing skips), app tsc, structural counts 12 presets / 2 medium records. AUTOMATED-READY — six live UAT rows pending. Previous: 261124-gfy (UAT-APPROVED) — Roto clipboard actions grouped behind a Raster|Script toggle; key identity block pinned.
+Last activity: 2026-11-24 — Quick task 261124-iq9: the Studio brush convention is now two media and twelve responses. `MediumId` is exactly `watercolor | acrylic`; the acrylic record keeps its id and every parameter and is displayed as **Gouache** (the old gouache/pastel/graphite media are deleted). `BRUSH_PRESETS` is exactly the eleven watercolor responses plus `bristle-round`, renamed **Gouache**; Gouache Round/Flat, Bristle Flat and every Chalk/Graphite response are deleted. Viscosity and Water are hidden for the Gouache (acrylic) paint context on BOTH the Paint panel and the Studio top bar through one shared `isAquarelleParamRowVisible` selector; the Water tool keeps Viscosity and the Eraser keeps Lift. Removed recorded response ids resolve through `presetFor`'s shipped unknown-id fallback to `round` — no migration, no back-compat, no hidden registration. Gates: package targeted + full suite, package check + build, full app suite (466 files / 9861 passed, 2 pre-existing skips), app tsc, structural counts 12 presets / 2 medium records. UAT-APPROVED (artist-confirmed 2026-11-24) — six UAT rows passed: the Medium dropdown lists exactly Watercolor and Gouache with the Gouache deposit, Brush + Gouache hides Viscosity and Water on both the Paint panel and the top bar, Brush + Watercolor restores both, the Water tool keeps Viscosity, the brush library shows only Watercolor (11) and Gouache (1), and an older project renders through the round fallback. Previous: 261124-gfy (UAT-APPROVED) — Roto clipboard actions grouped behind a Raster|Script toggle; key identity block pinned.
 
 
 ## Performance Metrics
@@ -716,7 +716,7 @@ Items acknowledged and carried forward from previous milestone close:
 | 261124-1d7 | Fix AQTL v4 snapshots written during the reverted 261123-jak/kpy window | 2026-11-24 | 576ade2dd | [261124-1d7-fix-aqtl-v4-snapshots-written-during-the](./quick/261124-1d7-fix-aqtl-v4-snapshots-written-during-the/) |
 | 261124-gfy | Roto key actions: group Duplicate/Copy/Paste/Cut in a tonal sub-section with a Raster\|Script toggle after Cut, and pin the "Layer N Key N" identity block width (UAT approved) | 2026-11-24 | b11368da7 | [261124-gfy-roto-key-actions-group-duplicate-copy-pa](./quick/261124-gfy-roto-key-actions-group-duplicate-copy-pa/) |
 | 56 | Studio Roto: white glow on multi-selected keys (Cmd / All); the marker survives the startFrame reseed and paints without a CSS filter (WebKit clipped the glow) (UAT approved 2026-11-24) | 2026-11-24 | e7c78249f | — |
-| 261124-iq9 | New brushes convention: Watercolor + Gouache only; remove Gouache Round/Flat, all Chalk and Graphite brushes, and Bristle Flat; rename Bristle Round and the Acrylic medium to Gouache; hide Viscosity/Water for Gouache | 2026-11-24 | f5da7c094 | [261124-iq9-new-brushes-convention-and-parameters-in](./quick/261124-iq9-new-brushes-convention-and-parameters-in/) |
+| 261124-iq9 | New brushes convention: Watercolor + Gouache only; remove Gouache Round/Flat, all Chalk and Graphite brushes, and Bristle Flat; rename Bristle Round and the Acrylic medium to Gouache; hide Viscosity/Water for Gouache (UAT approved) | 2026-11-24 | f5da7c094 | [261124-iq9-new-brushes-convention-and-parameters-in](./quick/261124-iq9-new-brushes-convention-and-parameters-in/) |
 
 ## Roadmap Evolution
 
@@ -735,6 +735,7 @@ Resume file: None
 
 ## Operator Next Steps
 
+- 261124-iq9 UAT approved 2026-11-24 (6/6 rows): the Studio offers two media (Watercolor, Gouache) and two brush groups; Viscosity and Water are hidden for Gouache on both the Paint panel and the top bar; the Water tool keeps Viscosity; old recorded responses render through the round fallback.
 - 261124-gfy UAT approved 2026-11-24 (7/7 rows): the Roto clipboard actions sit in one recessed well that the Raster|Script toggle visibly frames — Raster is the default every Studio open (byte-identical Duplicate/Copy/Paste/Cut), Script routes the same four buttons AND Cmd+C/X/V at the shipped Living Script seams with a fail-closed Cut that restores the previous script clipboard when the delete fails. The "Layer N Key N" identity block no longer resizes across 1→2→3 digits or layer changes.
 - 261124-1d7 UAT approved 2026-11-24 (1/1 row): AQTL v4 accepts the legacy relief marker bits 5/6 — snapshots written during the reverted 261123-jak/kpy window (2026-11-23 15:36-17:08) restore again, the CR-02 withheld-save latch clears, and the next save rewrites the file without the bits.
 - 261124-0l5 UAT approved 2026-11-24 (5/5 rows): Living Script Apply pastes — the destination key records the copied strokes (fresh ids, destination keyId anchor, one undo, replaces an existing script) and bakes that recorded timeline; Load + Apply and the Scripts-section Apply still never paste.
