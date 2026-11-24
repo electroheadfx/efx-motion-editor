@@ -4,10 +4,10 @@ milestone: v2.2.0
 current_phase: 64
 status: completed
 stopped_at: Phase 64 complete — all phases complete
-last_updated: "2026-11-24T13:22:40.459Z"
+last_updated: "2026-11-24T20:39:35.986Z"
 last_activity: 2026-11-24
 last_activity_desc: Quick 261124-iq9 UAT approved (two-media brush convention)
-state_head: f5da7c094bb8cc3ed59f7bdef633ed98961fc6c2
+state_head: eb40c638d5dfbfb78c70efa18b08c8ef5d5bfca0
 progress:
   total_phases: 2
   completed_phases: 2
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-22 after Phase 64)
 Phase: 64
 Plan: Not started
 Status: All phases complete
-Last activity: 2026-11-24 — Quick task 261124-iq9: the Studio brush convention is now two media and twelve responses. `MediumId` is exactly `watercolor | acrylic`; the acrylic record keeps its id and every parameter and is displayed as **Gouache** (the old gouache/pastel/graphite media are deleted). `BRUSH_PRESETS` is exactly the eleven watercolor responses plus `bristle-round`, renamed **Gouache**; Gouache Round/Flat, Bristle Flat and every Chalk/Graphite response are deleted. Viscosity and Water are hidden for the Gouache (acrylic) paint context on BOTH the Paint panel and the Studio top bar through one shared `isAquarelleParamRowVisible` selector; the Water tool keeps Viscosity and the Eraser keeps Lift. Removed recorded response ids resolve through `presetFor`'s shipped unknown-id fallback to `round` — no migration, no back-compat, no hidden registration. Gates: package targeted + full suite, package check + build, full app suite (466 files / 9861 passed, 2 pre-existing skips), app tsc, structural counts 12 presets / 2 medium records. UAT-APPROVED (artist-confirmed 2026-11-24) — six UAT rows passed: the Medium dropdown lists exactly Watercolor and Gouache with the Gouache deposit, Brush + Gouache hides Viscosity and Water on both the Paint panel and the top bar, Brush + Watercolor restores both, the Water tool keeps Viscosity, the brush library shows only Watercolor (11) and Gouache (1), and an older project renders through the round fallback. Previous: 261124-gfy (UAT-APPROVED) — Roto clipboard actions grouped behind a Raster|Script toggle; key identity block pinned.
+Last activity: 2026-11-24 — Quick task 261124-tje (AUTOMATED-READY, live UAT pending): every brush response now carries a per-brush landing bag that is re-applied on EVERY pick. Gouache (`bristle-round`) lands 40 px / Pigment 100 / Pickup 100 / Dry 0 / Feather 100; a new `pen` response joins the acrylic (Brush-family) group and lands 10 px / #373633 / Pigment 100 / Pickup 0 / Dry 0 / Feather 85. The bag is compile-time only — no serializer, no `.mce` field, no Rust mirror, no migration — and lands LAST at every pick seam (`pickAquarelleBrush`, the Brush-tool crossing/repair branch, `pickAquarelleMedium`, and a one-shot fresh-session landing) so a medium apply can never undo it. Reset stays medium-record-driven. Gates: package build + full package suite (1028 passed / 8 skipped), app tsc, full app suite (467 files / 9874 passed / 4 skipped). Previous: 261124-iq9 (UAT-APPROVED) — two media and twelve responses; Viscosity and Water hidden for the Gouache paint context.
 
 
 ## Performance Metrics
@@ -717,6 +717,7 @@ Items acknowledged and carried forward from previous milestone close:
 | 261124-gfy | Roto key actions: group Duplicate/Copy/Paste/Cut in a tonal sub-section with a Raster\|Script toggle after Cut, and pin the "Layer N Key N" identity block width (UAT approved) | 2026-11-24 | b11368da7 | [261124-gfy-roto-key-actions-group-duplicate-copy-pa](./quick/261124-gfy-roto-key-actions-group-duplicate-copy-pa/) |
 | 56 | Studio Roto: white glow on multi-selected keys (Cmd / All); the marker survives the startFrame reseed and paints without a CSS filter (WebKit clipped the glow) (UAT approved 2026-11-24) | 2026-11-24 | e7c78249f | — |
 | 261124-iq9 | New brushes convention: Watercolor + Gouache only; remove Gouache Round/Flat, all Chalk and Graphite brushes, and Bristle Flat; rename Bristle Round and the Acrylic medium to Gouache; hide Viscosity/Water for Gouache (UAT approved) | 2026-11-24 | f5da7c094 | [261124-iq9-new-brushes-convention-and-parameters-in](./quick/261124-iq9-new-brushes-convention-and-parameters-in/) |
+| 261124-tje | Gouache lands 40 px / Pigment 100 / Pickup 100 / Dry 0 / Feather 100; new Pen brush (10 px, #373633, Pigment 100, Pickup 0, Dry 0, Feather 85) in the Brush family | 2026-11-24 | eb40c638d | [261124-tje-new-default-brush-and-new-brush-pen-brus](./quick/261124-tje-new-default-brush-and-new-brush-pen-brus/) |
 
 ## Roadmap Evolution
 
