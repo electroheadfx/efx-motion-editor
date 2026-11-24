@@ -11,6 +11,25 @@ export type Rotation =
   | 'fixed'    // held at a fixed angle, or at the pen's tilt azimuth when available
   | 'random';  // every dab lands at a random angle
 
+/**
+ * quick 261124-tje: the per-response LANDING BAG — the live paint-control
+ * values a pick writes. COMPILE-TIME ONLY like `group` / `pressureLink` /
+ * `speedLink`: these are UI landing values applied by the app store on a
+ * pick; there is no serializer, no `.mce` field and no Rust mirror, and a
+ * stroke persists the response id alone.
+ */
+export interface BrushDefaults {
+  /** Visible Brush size diameter in px (1..512), converted at application time. */
+  sizePx?: number;
+  /** Medium-scale 0..100 landing values (the params bag's own scale). */
+  load?: number;
+  pickup?: number;
+  dry?: number;
+  feather?: number;
+  /** `'#rrggbb'` pigment, landed through the Studio's one colour setter. */
+  color?: string;
+}
+
 export interface BrushPreset {
   id: string;
   name: string;
@@ -88,6 +107,12 @@ export interface BrushPreset {
    * `pressureLink`: no serializer, no `.mce` field.
    */
   speedLink?: number;
+  /**
+   * quick 261124-tje: the per-response landing bag (see `BrushDefaults`).
+   * COMPILE-TIME ONLY — the app store applies it on a pick; nothing
+   * serializes it and no document field mirrors it.
+   */
+  defaults?: BrushDefaults;
   custom?: boolean;
 }
 
@@ -266,19 +291,25 @@ function bristleTip(n: number, N: Noise): Float32Array {
  * predicate — the ONE place a bristle id is read as "this stroke runs the
  * per-bristle engine".
  *
- * A bristle response is `bristle-round`, whatever tip it carries (quick
- * 261124-iq9 retires the flat sibling; its answer is now false and the
- * retired id replays through the shipped round fallback). D-27 originally
- * made a picked texture the escape hatch OUT of the engine; the UAT found
- * the textured stroke was the one that looked best and was bypassing the
- * engine entirely. The texture tip now COMPOSES with the gather (`tipMask`
- * in BRISTLE_GATHER, gated by `uTipMix`), so a textured bristle stroke runs
- * the same carrier and the same one lerp as an untextured one — the tip only
- * bounds where the dab lands. (Declared after `bristleTip` on purpose: the
- * tip-source pin in brushes.test.ts matches the FIRST `*bristle*` function.)
+ * A bristle response is `bristle-round` or `pen`, whatever tip it carries
+ * (quick 261124-iq9 retires the flat sibling; its answer is now false and
+ * the retired id replays through the shipped round fallback). D-27
+ * originally made a picked texture the escape hatch OUT of the engine; the
+ * UAT found the textured stroke was the one that looked best and was
+ * bypassing the engine entirely. The texture tip now COMPOSES with the
+ * gather (`tipMask` in BRISTLE_GATHER, gated by `uTipMix`), so a textured
+ * bristle stroke runs the same carrier and the same one lerp as an
+ * untextured one — the tip only bounds where the dab lands.
+ *
+ * quick 261124-tje: Pen runs the per-bristle engine because Pickup and
+ * Feather are bristle-only bindings; its procedural crisp tip composes with
+ * the gather through `tipMask`, exactly like an untextured Gouache stroke.
+ * The Engine already asks this predicate, so accepting `pen` needs no
+ * Engine edit. (Declared after `bristleTip` on purpose: the tip-source pin
+ * in brushes.test.ts matches the FIRST `*bristle*` function.)
  */
 export function isBristleResponse(b: { id: string; textureId?: string | null }): boolean {
-  return b.id === 'bristle-round';
+  return b.id === 'bristle-round' || b.id === 'pen';
 }
 
 /* --------------------------------------------------------------- presets */
@@ -451,7 +482,21 @@ export const BRUSH_PRESETS: BrushPreset[] = [
     aspect: 0.7, rotation: 'follow',
     water: 0.06, load: 1.4, capacity: 1.6, grain: 0.15,
     roughness: 0.4, spacing: 0.14,
+    defaults: { sizePx: 40, load: 100, pickup: 100, dry: 0, feather: 100 },
     tip: bristleTip,
+  }),
+  /* ---------------------------------------------------------------------
+   * quick 261124-tje: the Pen response. It APPENDS after Gouache on purpose
+   * — the acrylic group's FIRST preset must stay `bristle-round`, so the
+   * Brush family's landing brush never moves. A procedural crisp round tip;
+   * no `custom` (not an imported texture).
+   * ------------------------------------------------------------------- */
+  define({
+    id: 'pen', name: 'Pen', hint: 'Fine springy round: crisp edge, no pickup',
+    group: 'acrylic', pressureLink: 0, speedLink: 0,
+    water: 0.06, spacing: 0.12,
+    defaults: { sizePx: 10, color: '#373633', load: 100, pickup: 0, dry: 0, feather: 85 },
+    tip: n => tip((_u, _v, r) => soft(r, 0.85))(n),
   }),
 ];
 
