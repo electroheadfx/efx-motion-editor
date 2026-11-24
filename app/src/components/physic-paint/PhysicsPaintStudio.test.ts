@@ -8847,3 +8847,123 @@ describe('261124-0l5 Apply pastes the copied script', () => {
     expect(countOccurrences(studio, 'rollbackAquarelleScriptPasteEdit(')).toBe(1);
   });
 });
+
+// quick 261124-gfy: the Roto key-actions Raster|Script toggle dispatches the
+// SAME four routing wrappers as Cmd+C / Cmd+X / Cmd+V, so the mode governs
+// both surfaces identically. Script delegates to the shipped Living Script
+// seams; the ONE new flow is Cut with clipboard restore.
+describe('261124-gfy Roto clipboard mode dispatch', () => {
+  function regionOf(source: string, startMarker: string, endMarker: string): string {
+    const start = source.indexOf(startMarker);
+    expect(start, `missing start marker: ${startMarker}`).toBeGreaterThan(-1);
+    const end = source.indexOf(endMarker, start + startMarker.length);
+    expect(end, `missing end marker: ${endMarker}`).toBeGreaterThan(start);
+    return source.slice(start, end);
+  }
+
+  it('declares the session mode signal beside the key selection and an idempotent setter', () => {
+    expect(studio).toContain("const rotoClipboardMode = useSignal<'raster' | 'script'>('raster');");
+    const setter = regionOf(studio, 'const handleRotoClipboardModeChange = useCallback(', 'const handleCopyScript = useCallback(');
+    expect(setter).toContain('if (rotoClipboardMode.peek() === mode) return;');
+    expect(setter).toContain('rotoClipboardMode.value = mode;');
+    expect(setter).toContain('}, [rotoClipboardMode]);');
+  });
+
+  it('gates Duplicate on the session mode after the rail-set branch', () => {
+    const wrapper = regionOf(studio, 'const duplicateRotoKey = useCallback(', 'const copyRotoFrame = useCallback(');
+    const railSetBranch = wrapper.indexOf('if (hasEffectiveRailSetScope) {');
+    const scriptAwareCall = wrapper.indexOf("rotoKeyUtilities.duplicateKey({ scriptAware: rotoClipboardMode.peek() === 'script' });");
+    expect(railSetBranch).toBeGreaterThan(-1);
+    expect(scriptAwareCall).toBeGreaterThan(railSetBranch);
+    expect(wrapper).not.toContain('rotoKeyUtilities.duplicateKey();');
+  });
+
+  it('routes Script-mode Copy to the shipped copy seam with explicit refusals', () => {
+    const wrapper = regionOf(studio, 'const copyRotoFrame = useCallback(', '// Cut (quick 260731-9l0)');
+    const railSetBranch = wrapper.indexOf('if (hasEffectiveRailSetScope) {');
+    const multiKey = wrapper.indexOf('ROTO_SCRIPT_COPY_MULTI_KEY_REFUSAL');
+    const unavailable = wrapper.indexOf('if (!availability.canCopy) {');
+    const copy = wrapper.indexOf('handleCopyScript();');
+    const raster = wrapper.indexOf('rotoKeyUtilities.copyKey();');
+    expect(railSetBranch).toBeGreaterThan(-1);
+    expect(multiKey).toBeGreaterThan(-1);
+    expect(unavailable).toBeGreaterThan(multiKey);
+    expect(copy).toBeGreaterThan(unavailable);
+    expect(raster).toBeGreaterThan(copy);
+    expect(wrapper).toContain('if (selectedKeyIds.peek().length >= 2) {');
+    expect(wrapper).toContain("setApplyMessage(availability.copyDisabledReason ?? 'Copying the key script is unavailable.');");
+  });
+
+  it('routes Script-mode Paste to handleApplyScript and keeps the raster paste last', () => {
+    const wrapper = regionOf(studio, 'const pasteRotoFrame = useCallback(', 'const rotoCachedPlayback = rotoNavigation.playback;');
+    const railClipboardBranch = wrapper.indexOf('if (isRotoSessionCopiedRailSet(copied)) {');
+    const guard = wrapper.indexOf('if (!availability.canApply || !rotoScript.hasCopiedScript.peek()) {');
+    const apply = wrapper.indexOf('handleApplyScript();');
+    const raster = wrapper.indexOf('rotoKeyUtilities.pasteKey();');
+    expect(railClipboardBranch).toBeGreaterThan(-1);
+    expect(guard).toBeGreaterThan(-1);
+    expect(apply).toBeGreaterThan(guard);
+    expect(raster).toBeGreaterThan(apply);
+    expect(wrapper).toContain("setApplyMessage(availability.applyDisabledReason ?? 'Applying the copied script is unavailable.');");
+  });
+
+  it('cuts in Script mode through the one restore-aware module call', () => {
+    const wrapper = regionOf(studio, 'const cutRotoFrame = useCallback(', 'const pasteRotoFrame = useCallback(');
+    expect(countOccurrences(wrapper, 'runRotoCutWithScript({')).toBe(1);
+    expect(countOccurrences(studio, 'runRotoCutWithScript(')).toBe(1);
+    expect(wrapper).toContain('getSelectedKeyCount: () => selectedKeyIds.peek().length,');
+    expect(wrapper).toContain('canCopy: () => rotoScript.availability.peek().canCopy,');
+    expect(wrapper).toContain('copyDisabledReason: () => rotoScript.availability.peek().copyDisabledReason,');
+    expect(wrapper).toContain('snapshotScriptClipboard: () => rotoScript.clipboard.peek(),');
+    expect(wrapper).toContain('copyScript: () => rotoScript.copyScript(),');
+    expect(wrapper).toContain('canDelete: () => rotoPhysicalActions.canDeleteFrame.peek(),');
+    expect(wrapper).toContain('deleteDisabledReason: () => rotoPhysicalActions.deleteDisabledReason.peek(),');
+    expect(wrapper).toContain('deleteKey: () => rotoPhysicalActions.deleteRotoFrame(),');
+    expect(wrapper).toContain('restoreScriptClipboard: (snapshot) => {');
+    expect(wrapper).toContain('rotoScript.clipboard.value = snapshot;');
+    // Publication: refusals/restores ride the capsule, aborts take the error
+    // channel with the detail, handled stays silent.
+    expect(wrapper).toContain("if (result.outcome === 'refused' || result.outcome === 'restored') {");
+    expect(wrapper).toContain("setApplyStatus('error');");
+    expect(wrapper).toContain('setLastError(result.detail ?? result.message);');
+    expect(wrapper).toContain("setApplyMessage('Could not cut the Roto key.');");
+    // The raster branch stays byte-identical underneath, and the script
+    // branch returns before the raster delete pre-check.
+    expect(wrapper).toContain('if (!rotoPhysicalActions.canDeleteFrame.value) {');
+    expect(wrapper).toContain('rotoKeyUtilities.cutKey(rotoPhysicalActions.deleteRotoFrame);');
+    expect(wrapper.indexOf("if (rotoClipboardMode.peek() === 'script') {"))
+      .toBeLessThan(wrapper.indexOf('if (!rotoPhysicalActions.canDeleteFrame.value) {'));
+  });
+
+  it('hoists handleCopyScript above its first reader and keeps exactly two copy seams', () => {
+    const handler = regionOf(studio, 'const handleCopyScript = useCallback(', 'const duplicateRotoKey = useCallback(');
+    expect(countOccurrences(handler, 'rotoScript.copyScript()')).toBe(1);
+    expect(handler).toContain('}, [rotoScript, setLastError]);');
+    // Exactly two copyScript call sites: the handler and the Script-mode Cut
+    // port — no third seam.
+    expect(countOccurrences(studio, 'rotoScript.copyScript()')).toBe(2);
+    expect(studio.indexOf('const handleCopyScript = useCallback('))
+      .toBeLessThan(studio.indexOf('const copyRotoFrame = useCallback('));
+    expect(studio.indexOf('const handleCopyScript = useCallback('))
+      .toBeLessThan(studio.indexOf('const cutRotoFrame = useCallback('));
+  });
+
+  it('mirrors the mode once into the strip and keeps the keyboard on the same wrappers', () => {
+    expect(studio).toContain('rotoClipboardMode: rotoClipboardMode.value, onRotoClipboardModeChange: handleRotoClipboardModeChange,');
+    expect(studio).toContain('onDuplicateRotoKey: duplicateRotoKey,');
+    expect(studio).toContain('onCopyRotoFrame: copyRotoFrame,');
+    expect(studio).toContain('onCutRotoFrame: cutRotoFrame,');
+    expect(studio).toContain('onPasteRotoFrame: pasteRotoFrame,');
+    expect(studio).toContain('copyRotoKey: copyRotoFrame,');
+    expect(studio).toContain('cutRotoKey: cutRotoFrame,');
+    expect(studio).toContain('pasteRotoKey: pasteRotoFrame,');
+  });
+
+  it('keeps the four script seams at their shipped counts', () => {
+    expect(countOccurrences(studio, 'copyAquarelleScriptToFrame(')).toBe(1);
+    expect(countOccurrences(studio, 'recordAquarelleEventsOnFrame(')).toBe(3);
+    expect(countOccurrences(studio, "applyScript('wet', { paste: true })")).toBe(1);
+    expect(countOccurrences(studio, "'wet'")).toBe(2);
+    expect(countOccurrences(studio, 'runRotoCutWithScript(')).toBe(1);
+  });
+});

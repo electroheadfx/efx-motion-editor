@@ -197,6 +197,7 @@ import { useRotoPlaybackSettingsController } from './hooks/useRotoPlaybackSettin
 import { useRotoScriptClipboardController } from './hooks/useRotoScriptClipboardController';
 import { type RotoScriptPasteAquarelleScriptPort, type RotoScriptPhysicalTarget, type RotoScriptSourceSnapshot } from './roto/physicsPaintRotoScriptClipboard';
 import { copyAquarelleScriptToFrame, runRotoDuplicateWithScript, waitForRotoDuplicateSourceFrame } from './roto/physicsPaintRotoDuplicateScript';
+import { ROTO_SCRIPT_COPY_MULTI_KEY_REFUSAL, runRotoCutWithScript } from './roto/physicsPaintRotoScriptClipboardActions';
 import { buildRotoScriptApplyRefusalMessage } from './roto/physicsPaintRotoScriptApplyRefusal';
 import { buildReplayProposal, snapshotRevision, useRotoPhysicalEditHistory } from './hooks/useRotoPhysicalEditHistory';
 import { useRotoScriptLibraryController } from './hooks/useRotoScriptLibraryController';
@@ -966,6 +967,11 @@ export function PhysicsPaintStudio() {
   // Session-local multi-selection (Pattern 5; D-02/D-05): keyId-only, never
   // persisted, never sent across the bridge — only selectedKeyId persists.
   const selectedKeyIds = useSignal<readonly string[]>([]);
+  // Quick 261124-gfy: the Roto clipboard kind for the key-actions row — a
+  // session-local signal (default raster; a fresh Studio mount is the reset),
+  // never persisted and never bridged. The strip mirrors it, and the four
+  // routing wrappers below dispatch on it so the buttons and Cmd+C/X/V agree.
+  const rotoClipboardMode = useSignal<'raster' | 'script'>('raster');
   const selectionAnchorKeyId = useSignal<string | null>(null);
   const rotoSpacingSelection = useSignal<PhysicsPaintRotoSpacingSelection | null>(null);
   // Session-local multi-rail selection SET (Pattern 5; D-01/D-05): cross-type
@@ -4311,13 +4317,33 @@ export function PhysicsPaintStudio() {
   // Paste routes on the clipboard variant (a copied rail set pastes as a set
   // even after the set collapses). Without a rail scope / rail clipboard the
   // single-key and key-group paths stay byte-identical.
+  // Quick 261124-gfy: the Raster|Script session mode gates all four wrappers —
+  // the strip buttons and Cmd+C/X/V share them. Raster is today's behavior
+  // byte-for-byte; Script delegates to the shipped Living Script seams with no
+  // silent raster fallback. handleCopyScript was declared after these wrappers
+  // and is hoisted here unchanged (one declaration, no wrapper).
+  const handleRotoClipboardModeChange = useCallback((mode: 'raster' | 'script') => {
+    if (rotoClipboardMode.peek() === mode) return;
+    rotoClipboardMode.value = mode;
+  }, [rotoClipboardMode]);
+  const handleCopyScript = useCallback(() => {
+    void rotoScript.copyScript().then((success) => {
+      if (success) setLastError(null);
+      else {
+        const message = rotoScript.error.peek()?.message;
+        if (message) setLastError(message);
+      }
+    });
+  }, [rotoScript, setLastError]);
   const duplicateRotoKey = useCallback(() => {
     if (hasEffectiveRailSetScope) {
       void rotoPhysicalActions.duplicateRailSet();
       return;
     }
-    rotoKeyUtilities.duplicateKey();
-  }, [hasEffectiveRailSetScope, rotoPhysicalActions, rotoKeyUtilities]);
+    // Raster skips the script-aware port entirely; Script keeps the shipped
+    // 261023-cxc port and its raster fallback.
+    rotoKeyUtilities.duplicateKey({ scriptAware: rotoClipboardMode.peek() === 'script' });
+  }, [hasEffectiveRailSetScope, rotoPhysicalActions, rotoKeyUtilities, rotoClipboardMode]);
   const copyRotoFrame = useCallback(() => {
     if (hasEffectiveRailSetScope) {
       const copiedMembers = effectiveRailSetMembers;
@@ -4333,26 +4359,91 @@ export function PhysicsPaintStudio() {
       });
       return;
     }
+    if (rotoClipboardMode.peek() === 'script') {
+      // Script mode never falls back to the raster clipboard: a 2+ key
+      // selection and an unavailable frame each publish an explicit refusal
+      // (the shipped Copy Script messages, verbatim).
+      if (selectedKeyIds.peek().length >= 2) {
+        setApplyMessage(ROTO_SCRIPT_COPY_MULTI_KEY_REFUSAL);
+        return;
+      }
+      const availability = rotoScript.availability.peek();
+      if (!availability.canCopy) {
+        setApplyMessage(availability.copyDisabledReason ?? 'Copying the key script is unavailable.');
+        return;
+      }
+      handleCopyScript();
+      return;
+    }
     rotoKeyUtilities.copyKey();
-  }, [hasEffectiveRailSetScope, rotoPhysicalActions, rotoKeyUtilities, effectiveRailSetMembers, keyRailSegments, loopResolutionContext, publishOperationResult]);
+  }, [hasEffectiveRailSetScope, rotoPhysicalActions, rotoKeyUtilities, effectiveRailSetMembers, keyRailSegments, loopResolutionContext, publishOperationResult, rotoClipboardMode, selectedKeyIds, rotoScript, handleCopyScript, setApplyMessage]);
   // Cut (quick 260731-9l0): enabled only when BOTH copy and delete
   // availability hold; the delete half is re-checked here so the keyboard
   // entry point enforces the same rule as the strip button.
   const cutRotoFrame = useCallback(() => {
+    // Quick 261124-gfy: Script-mode Cut copies the current key's script,
+    // deletes the key, and restores the previous script clipboard when the
+    // delete fails — the ONE new flow behind the toggle.
+    if (rotoClipboardMode.peek() === 'script') {
+      void (async () => {
+        try {
+          const result = await runRotoCutWithScript({
+            getSelectedKeyCount: () => selectedKeyIds.peek().length,
+            canCopy: () => rotoScript.availability.peek().canCopy,
+            copyDisabledReason: () => rotoScript.availability.peek().copyDisabledReason,
+            copyErrorMessage: () => rotoScript.error.peek()?.message ?? null,
+            snapshotScriptClipboard: () => rotoScript.clipboard.peek(),
+            copyScript: () => rotoScript.copyScript(),
+            canDelete: () => rotoPhysicalActions.canDeleteFrame.peek(),
+            deleteDisabledReason: () => rotoPhysicalActions.deleteDisabledReason.peek(),
+            deleteKey: () => rotoPhysicalActions.deleteRotoFrame(),
+            restoreScriptClipboard: (snapshot) => {
+              rotoScript.clipboard.value = snapshot;
+            },
+          });
+          if (result.outcome === 'refused' || result.outcome === 'restored') {
+            setApplyMessage(result.message);
+          } else if (result.outcome === 'aborted') {
+            setApplyStatus('error');
+            setApplyMessage(result.message);
+            setLastError(result.detail ?? result.message);
+          }
+        } catch (error) {
+          const detail = error instanceof Error ? error.message : String(error);
+          setApplyStatus('error');
+          setApplyMessage('Could not cut the Roto key.');
+          setLastError(detail);
+        }
+      })();
+      return;
+    }
     if (!rotoPhysicalActions.canDeleteFrame.value) {
       setApplyMessage(rotoPhysicalActions.deleteDisabledReason.value ?? 'Deleting the selected Roto keys is unavailable.');
       return;
     }
     rotoKeyUtilities.cutKey(rotoPhysicalActions.deleteRotoFrame);
-  }, [rotoPhysicalActions, rotoKeyUtilities]);
+  }, [rotoClipboardMode, selectedKeyIds, rotoScript, rotoPhysicalActions, rotoKeyUtilities, setApplyMessage, setApplyStatus, setLastError]);
   const pasteRotoFrame = useCallback(() => {
     const copied = rotoSession.copiedKey.value;
     if (isRotoSessionCopiedRailSet(copied)) {
       void rotoPhysicalActions.pasteRailSet();
       return;
     }
+    if (rotoClipboardMode.peek() === 'script') {
+      // Paste applies the copied script at the current key (0l5
+      // record-first/bake-second via handleApplyScript); unavailable states
+      // surface the shipped Apply Script message verbatim — never a raster
+      // fallback.
+      const availability = rotoScript.availability.peek();
+      if (!availability.canApply || !rotoScript.hasCopiedScript.peek()) {
+        setApplyMessage(availability.applyDisabledReason ?? 'Applying the copied script is unavailable.');
+        return;
+      }
+      handleApplyScript();
+      return;
+    }
     rotoKeyUtilities.pasteKey();
-  }, [rotoSession, rotoPhysicalActions, rotoKeyUtilities]);
+  }, [rotoSession, rotoPhysicalActions, rotoKeyUtilities, rotoClipboardMode, rotoScript, handleApplyScript, setApplyMessage]);
   const rotoCachedPlayback = rotoNavigation.playback;
   const rotoPlaybackSettingsController = useRotoPlaybackSettingsController({
     initialContext: launchContext ? { context: launchContext, settings: initialRotoPlaybackSettings } : null,
@@ -5051,15 +5142,6 @@ export function PhysicsPaintStudio() {
     }
     if (intent === 'load-apply') void handleSelectedScriptLoadAndApply();
   }, [rotoScriptLibrary, rotoPlayScript, handleSelectedScriptLoadAndApply, setLastError]);
-  const handleCopyScript = useCallback(() => {
-    void rotoScript.copyScript().then((success) => {
-      if (success) setLastError(null);
-      else {
-        const message = rotoScript.error.peek()?.message;
-        if (message) setLastError(message);
-      }
-    });
-  }, [rotoScript, setLastError]);
   const clearRotoLoopSelection = useCallback(() => {
     // 261022-mne: rail-selection clears never end the session Solo — it follows
     // the active track instead. This clear is also reached by every frame-cell
@@ -12578,7 +12660,7 @@ export function PhysicsPaintStudio() {
         onDuplicateRotoKey: duplicateRotoKey, onAddRotoKey: addRotoKey, onCreateRotoKeyRail: handleCreateRotoKeyRail, onInsertRotoFrame: rotoPhysicalActions.insertRotoFrame, onDeleteRotoFrame: rotoPhysicalActions.deleteRotoFrame, rotoPhysicalActions, publishDocumentSync: async () => {
           documentSyncDirty.value = true;
           await flushDocumentSyncRef.current();
-        }, onCopyRotoFrame: copyRotoFrame, onCutRotoFrame: cutRotoFrame, onScissorKeyRail: rotoPhysicalActions.scissorKeyRail, onPasteRotoFrame: pasteRotoFrame, rotoKeyRecords, rotoLoopClips, rotoIncomingInterpolationBreakKeyIds, rotoPhysicalCells: rotoTimelineModel.physicalCells.value, rotoLoopResolutionContext: loopResolutionContext, rotoLoopPresentations: loopPresentations, selectedRotoLoopClipIds: effectiveSelectedLoopClipIds, railSetMemberLoopIds: effectiveRailSetMembers
+        }, onCopyRotoFrame: copyRotoFrame, onCutRotoFrame: cutRotoFrame, onScissorKeyRail: rotoPhysicalActions.scissorKeyRail, onPasteRotoFrame: pasteRotoFrame, rotoClipboardMode: rotoClipboardMode.value, onRotoClipboardModeChange: handleRotoClipboardModeChange, rotoKeyRecords, rotoLoopClips, rotoIncomingInterpolationBreakKeyIds, rotoPhysicalCells: rotoTimelineModel.physicalCells.value, rotoLoopResolutionContext: loopResolutionContext, rotoLoopPresentations: loopPresentations, selectedRotoLoopClipIds: effectiveSelectedLoopClipIds, railSetMemberLoopIds: effectiveRailSetMembers
           .filter((member): member is { kind: 'loop'; loopId: string } => member.kind === 'loop')
           .map((member) => member.loopId), railSetAnchorLoopId: effectiveRailSetMembers[0]?.kind === 'loop' ? effectiveRailSetMembers[0].loopId : null, railSetMemberKeyRailIds: effectiveRailSetMembers
           .filter((member): member is { kind: 'key-rail'; firstKeyId: string } => member.kind === 'key-rail')
