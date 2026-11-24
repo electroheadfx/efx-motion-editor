@@ -31,7 +31,13 @@
 import { BRUSH_PRESETS, buildBrush, type Brush, type BrushPreset } from './brushes'
 import { resolveMask } from '../brushes/maskRegistry'
 
-/** Response id → vendor preset id. Unknown ids fall back to 'round'. */
+/**
+ * Response id → vendor preset id. Unknown ids fall back to 'round'.
+ * quick 261124-iq9: the four entries whose targets (`dry`, `stipple`) were
+ * retired are deleted; `presetFor`'s unknown-id fallback is the ONE
+ * retirement path, so those ids now resolve to 'round' exactly like any
+ * other unknown response.
+ */
 const TIP_TO_PRESET: Record<string, string> = {
   'wc/round-small': 'round',
   'wc/round-medium': 'round',
@@ -39,14 +45,10 @@ const TIP_TO_PRESET: Record<string, string> = {
   'wc/round-detail': 'detail',
   'wc/flat-wash': 'flat',
   'wc/flat-angle': 'dagger',
-  'wc/flat-dry': 'dry',
-  'wc/texture-grain': 'dry',
   'wc/texture-sponge': 'sponge',
   'wc/texture-salt': 'spatter',
-  'wc/texture-stipple': 'stipple',
   'wc/experimental-bloom': 'mop',
   'wc/experimental-bleed': 'mop',
-  'wc/experimental-granulate': 'dry',
 }
 
 /** D-08 multiplier bag (neutral = all 1). */

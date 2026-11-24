@@ -1,7 +1,7 @@
 // ============================================================
 //  Medium records (Phase 64, MED-07 / MED-08 / MED-09).
 //
-//  The five built-ins are plain frozen data over exactly the fourteen
+//  The two built-ins are plain frozen data over exactly the fourteen
 //  medium keys. Everything here is restated as literals — the
 //  amendment table, the key list, the display names — so a dropped
 //  key or a drifted number fails the pin instead of moving it.
@@ -39,27 +39,27 @@ function recordOf(id: string) {
 }
 
 describe('medium records', () => {
-  it('ships the five ids in the recorded order', () => {
-    expect(MEDIUM_IDS).toHaveLength(5)
-    expect([...MEDIUM_IDS]).toEqual(['watercolor', 'gouache', 'pastel', 'graphite', 'acrylic'])
+  it('ships the two ids in the recorded order', () => {
+    expect(MEDIUM_IDS).toHaveLength(2)
+    expect([...MEDIUM_IDS]).toEqual(['watercolor', 'acrylic'])
     expect(MEDIUMS.map((medium) => medium.id)).toEqual([...MEDIUM_IDS])
     expect(DEFAULT_MEDIUM_ID).toBe('watercolor')
   })
 
   it('names each medium with the D-18 short label', () => {
-    // D-18 note: the `pastel` id deliberately displays as "Chalk", so the
-    // brush-library section header and the dropdown name are the same word.
-    expect(MEDIUMS.map((medium) => medium.name)).toEqual([
-      'Watercolor',
-      'Gouache',
-      'Chalk',
-      'Graphite',
-      'Acrylic',
-    ])
+    expect(MEDIUMS.map((medium) => medium.name)).toEqual(['Watercolor', 'Gouache'])
+  })
+
+  // quick 261124-iq9: the gouache, pastel (Chalk) and graphite media are
+  // retired outright — no record, no id, no lookup.
+  it('retires the gouache, pastel and graphite media', () => {
+    expect(mediumById('gouache')).toBeNull()
+    expect(mediumById('pastel')).toBeNull()
+    expect(mediumById('graphite')).toBeNull()
   })
 
   it('carries exactly the fourteen medium keys and never size or lift', () => {
-    expect(MEDIUMS).toHaveLength(5)
+    expect(MEDIUMS).toHaveLength(2)
     for (const medium of MEDIUMS) {
       expect(Object.keys(medium.params).sort(), `${medium.id} keys`).toEqual(
         [...MEDIUM_KEYS].sort(),
@@ -89,58 +89,6 @@ describe('medium records', () => {
       // 261119-pod (D-A): the watercolor record derives the canonical
       // default, which now opens Pickup at 100.
       pickup: 100,
-      refill: 60,
-      wetSeconds: 7,
-    })
-    expect(recordOf('gouache').params).toEqual({
-      water: 35,
-      load: 70,
-      flow: 55,
-      bleed: 25,
-      dry: 60,
-      edge: 60,
-      granulation: 40,
-      viscosity: 55,
-      body: 55,
-      emboss: 15,
-      feather: 0,
-      pickup: 60,
-      refill: 60,
-      wetSeconds: 7,
-    })
-    expect(recordOf('pastel').params).toEqual({
-      water: 0,
-      load: 65,
-      flow: 30,
-      bleed: 0,
-      dry: 80,
-      edge: 70,
-      granulation: 60,
-      viscosity: 85,
-      // 2026-11-21 (artist UAT): the spec table's 25 blanked every chalk
-      // brush — Body > 0 takes the coverage composite, whose film alpha is
-      // `bodyCurve(Body) * 2` on the `body ^ 6` curve (0.05 % at 25). A dry
-      // stick deposits additively, so the record states Body 0.
-      body: 0,
-      emboss: 0,
-      feather: 0,
-      pickup: 60,
-      refill: 60,
-      wetSeconds: 7,
-    })
-    expect(recordOf('graphite').params).toEqual({
-      water: 0,
-      load: 45,
-      flow: 25,
-      bleed: 0,
-      dry: 85,
-      edge: 75,
-      granulation: 100,
-      viscosity: 90,
-      body: 0,
-      emboss: 0,
-      feather: 0,
-      pickup: 60,
       refill: 60,
       wetSeconds: 7,
     })
@@ -202,9 +150,9 @@ describe('medium records', () => {
   // and any non-zero Body routes the whole deposit through the coverage
   // composite — the film alpha is `bodyCurve(Body) * COVER_GAIN` on the D-14
   // `body ^ 6` curve, so a LOW Body deposits almost nothing (Body 25 = 0.05 %,
-  // measured blank on every chalk response). A record is therefore either 0
-  // (additive deposit) or high enough to be a visible cover; the dry media
-  // (chalk, graphite) and the neutral medium stay 0.
+  // measured blank on every dry response). A record is therefore either 0
+  // (additive deposit) or high enough to be a visible cover; the neutral
+  // medium stays 0.
   it('never ships a Body between the additive path and a visible cover', () => {
     expect(bodyCurve(0.25) * 2, 'Body 25 is a blank film').toBeLessThan(0.001)
     expect(bodyCurve(0.55) * 2, 'Body 55 is visible').toBeGreaterThan(0.05)
@@ -215,7 +163,6 @@ describe('medium records', () => {
         `${medium.id} body ${body} sits on the invisible cliff (0 or >= 50)`,
       ).toBe(true)
     }
-    expect(recordOf('pastel').params.body).toBe(0)
   })
 
   it('derives the watercolor record from the canonical defaults', () => {
@@ -235,22 +182,16 @@ describe('medium records', () => {
     expect(recordOf('watercolor').params.wetSeconds).toBe(DEFAULT_CANONICAL_PARAMS.wetSeconds)
   })
 
-  // 261119-pod (D-A): Pickup opens at 100 on the NEUTRAL medium only. The
-  // watercolor record derives it from the canonical default, so it moves with
-  // the default; the four explicit records keep their recorded 60 — the
-  // Pickup-100 default is the watercolor medium's, not a blanket rewrite.
-  it('opens Pickup at 100 on the neutral medium and the acrylic record (D-A)', () => {
+  // Both surviving records open Pickup at 100: the watercolor record derives
+  // it from the canonical default (261119-pod, D-A) and the acrylic record
+  // states it literally (2026-11-20, the artist's acrylic brush default).
+  it('opens Pickup at 100 on both surviving records (D-A)', () => {
     expect(recordOf('watercolor').params.pickup).toBe(100)
-    // 2026-11-20 (artist's acrylic brush default): the acrylic record opens
-    // Pickup at 100 too — a bristle acrylic pick must start from the mixing bag.
     expect(recordOf('acrylic').params.pickup).toBe(100)
-    for (const id of ['gouache', 'pastel', 'graphite'] as const) {
-      expect(recordOf(id).params.pickup, `${id} keeps its recorded pickup`).toBe(60)
-    }
   })
 
   it('keeps every record frozen plain serializable data', () => {
-    expect(MEDIUMS).toHaveLength(5)
+    expect(MEDIUMS).toHaveLength(2)
     expect(Object.isFrozen(MEDIUMS)).toBe(true)
     expect(Object.isFrozen(MEDIUM_IDS)).toBe(true)
     for (const medium of MEDIUMS) {
@@ -267,7 +208,7 @@ describe('medium records', () => {
   })
 
   it('resolves a known id and returns null for anything else', () => {
-    expect(MEDIUM_IDS).toHaveLength(5)
+    expect(MEDIUM_IDS).toHaveLength(2)
     for (const id of MEDIUM_IDS) {
       expect(mediumById(id)?.id, `mediumById('${id}')`).toBe(id)
     }

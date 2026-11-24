@@ -451,9 +451,9 @@ export class WatercolorEngine {
   params: Params = { ...DEFAULT_PARAMS };
   tool: Tool = 'brush';
   pigment: Pigment = pigmentFromHex('#2338a8');
-  // 261027-gh9f: the Studio opens on the dry chalk stick (first Brush-tab
-  // card); the everyday round remains the fallback.
-  brush: Brush = buildBrush(BRUSH_PRESETS.find((p) => p.id === 'chalk') ?? BRUSH_PRESETS.find((p) => p.id === 'round') ?? BRUSH_PRESETS[0]!);
+  // quick 261124-iq9: the Studio passes an explicit brush; the everyday round
+  // is the fallback (the retired dry-stick lookup resolved here too).
+  brush: Brush = buildBrush(BRUSH_PRESETS.find((p) => p.id === 'round') ?? BRUSH_PRESETS[0]!);
   /** quick-261115-oh9: the untextured silhouette a lift stroke erases with (see setLiftBrush). */
   private liftBrush: Brush | null = null;
   /** Once an Apple Pencil / stylus is seen, fingers paint with clear water. */
@@ -3041,8 +3041,8 @@ export class WatercolorEngine {
           if (wet > 0) this.brushWet(dx, dy, dr * (1 + 0.12 * b.wetRound), angle, wet, b.wetRound, dryness, grainThr);
         });
         // A waterless brush (dry media) imparts no flow: the velocity splat
-        // was stirring the sheet under chalk, making separate strokes blend
-        // like a wet medium.
+        // was stirring the sheet under the dry bristle response, making
+        // separate strokes blend like a wet medium.
         if (moving && b.water > 0) this.splatVelocity(x, y, r * 1.2, vx, vy, (15 + P.flow * 95) * 0.25 * b.flow);
         break;
       }

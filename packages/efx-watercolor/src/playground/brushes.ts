@@ -49,8 +49,9 @@ export interface BrushPreset {
   wetRound: number;
   /**
    * 0..1: dry-media deposit. 0 keeps the tip's smooth alpha (every wet brush);
-   * above 0 the tip is re-thresholded per dab into a hard, crumbly mask so dry
-   * media get a net, ragged edge instead of a feathered one (chalk).
+   * above 0 the tip is re-thresholded per dab into a hard, crumbly mask so a
+   * dry medium gets a net, ragged edge instead of a feathered one (the dry
+   * bristle response).
    */
   roughness: number;
   /**
@@ -243,9 +244,8 @@ function hairs(segments: [number, number, number, number][], width: number, u: n
  * Shared acrylic bristle tip (Phase 64, MED-29): a fan of parallel hairs
  * across the tip square, deterministic from the build's noise source. It is
  * the procedural choice the spec settles — the striation travels with the
- * build instead of depending on a machine-scoped texture. Kept in the
- * existing `fan` tip's cost class: fourteen segments through `hairs`, no
- * cellular pass.
+ * build instead of depending on a machine-scoped texture. Cost class:
+ * fourteen segments through `hairs`, no cellular pass.
  */
 function bristleTip(n: number, N: Noise): Float32Array {
   const segs: [number, number, number, number][] = [];
@@ -263,21 +263,22 @@ function bristleTip(n: number, N: Noise): Float32Array {
 
 /**
  * 64-21 (D-27), revised post-UAT 2026-11-19 (GAP-4): the bristle response
- * predicate — the ONE place the two bristle ids are read as "this stroke runs
- * the per-bristle engine".
+ * predicate — the ONE place a bristle id is read as "this stroke runs the
+ * per-bristle engine".
  *
- * A bristle response is `bristle-flat` or `bristle-round`, whatever tip it
- * carries. D-27 originally made a picked texture the escape hatch OUT of the
- * engine; the UAT found the textured stroke was the one that looked best and
- * was bypassing the engine entirely. The texture tip now COMPOSES with the
- * gather (`tipMask` in BRISTLE_GATHER, gated by `uTipMix`), so a textured
- * bristle stroke runs the same carrier and the same one lerp as an
- * untextured one — the tip only bounds where the dab lands. (Declared after
- * `bristleTip` on purpose: the tip-source pin in brushes.test.ts matches the
- * FIRST `*bristle*` function.)
+ * A bristle response is `bristle-round`, whatever tip it carries (quick
+ * 261124-iq9 retires the flat sibling; its answer is now false and the
+ * retired id replays through the shipped round fallback). D-27 originally
+ * made a picked texture the escape hatch OUT of the engine; the UAT found
+ * the textured stroke was the one that looked best and was bypassing the
+ * engine entirely. The texture tip now COMPOSES with the gather (`tipMask`
+ * in BRISTLE_GATHER, gated by `uTipMix`), so a textured bristle stroke runs
+ * the same carrier and the same one lerp as an untextured one — the tip only
+ * bounds where the dab lands. (Declared after `bristleTip` on purpose: the
+ * tip-source pin in brushes.test.ts matches the FIRST `*bristle*` function.)
  */
 export function isBristleResponse(b: { id: string; textureId?: string | null }): boolean {
-  return b.id === 'bristle-flat' || b.id === 'bristle-round';
+  return b.id === 'bristle-round';
 }
 
 /* --------------------------------------------------------------- presets */
@@ -301,27 +302,22 @@ export interface BrushGroupSection {
 }
 
 /**
- * Fixed display order of the five sections (Phase 64, MED-27). A group with
- * no member is skipped by `brushSections`, never rendered empty.
+ * Fixed display order of the two sections (Phase 64, MED-27; narrowed by quick
+ * 261124-iq9). A group with no member is skipped by `brushSections`, never
+ * rendered empty.
  */
 export const brushGroupOrder: readonly MediumId[] = Object.freeze([
   'watercolor',
-  'gouache',
-  'pastel',
-  'graphite',
   'acrylic',
 ] as const);
 
 /**
- * Short section header names, D-18: the `pastel` id deliberately displays as
- * "Chalk" so the brush-library section and the medium dropdown share one word.
+ * Short section header names, D-18: each label is the same word as its medium
+ * name in the dropdown.
  */
 export const brushGroupLabels: Readonly<Record<MediumId, string>> = Object.freeze({
   watercolor: 'Watercolor',
-  gouache: 'Gouache',
-  pastel: 'Chalk',
-  graphite: 'Graphite',
-  acrylic: 'Acrylic',
+  acrylic: 'Gouache',
 });
 
 /** The preset's medium tag; an absent tag reads as the default medium. */
@@ -344,46 +340,6 @@ export function brushSections(presets: readonly BrushPreset[]): BrushGroupSectio
 }
 
 export const BRUSH_PRESETS: BrushPreset[] = [
-  // 261027-gh9f: dry media and the FIRST card in the Brush tab grid. The
-  // footprint range is deliberately small so the top-bar size slider reaches a
-  // true hairline at 1; `roughness` re-thresholds the tip per dab in the stamp
-  // shader (net, crumbly edges instead of a feathered alpha ramp) and
-  // `stampJitter` shifts each dab's slice of the tip so the silhouette breaks
-  // up randomly along the stroke. water 0 deposits no wetness by construction
-  // (the engine multiplies `b.water` into the wet amount) and the engine now
-  // also skips the velocity splat for a waterless brush, so strokes never mix
-  // like a wet medium.
-  define({
-    id: 'chalk', name: 'Chalk', hint: 'Dry chalk stick: grainy core, crumbling edges, no wet bloom',
-    group: 'pastel',
-    aspect: 0.8, rotation: 'follow', angle: 0, angleJitter: 12,
-    size: [0.003, 0.012], pressureSize: 1.15, speedThin: 0.02,
-    spacing: 0.2, scatter: 0.14, dabs: 1, sizeJitter: 0.28,
-    water: 0, load: 1.1, flow: 0.35, capacity: 0.9, grain: 0.5, wetRound: 0,
-    roughness: 0.7, stampJitter: 0.1,
-    tip: (n, N) => tip((u, v, r, ang) => {
-      // NET edge. Three frequencies of angular wander give the fibrous,
-      // irregular contour engine-1 gets from its hair stamps; the hard ramp
-      // keeps that contour crisp (the old wide alpha ramp feathered it).
-      const lobes = N.fbm(ang * 2.1 + 1.6, r * 3.2, 3) * 2 - 1;
-      const fibres = N.fbm(ang * 9.5 + 4.2, r * 5.5, 2) * 2 - 1;
-      const splits = N.fbm(ang * 23 + 8.7, r * 7, 2) * 2 - 1;
-      // Contour radius in tip space, not a multiply on r: a negative wander
-      // must not push the edge into the square's corners.
-      const contour = 0.87 + 0.11 * lobes + 0.06 * fibres + 0.035 * splits;
-      const body = 1 - smoothstep(contour - 0.008, contour + 0.008, r);
-      // Chips bite the rim so the contour breaks instead of closing as a disc.
-      const rim = smoothstep(0.5, 0.95, r);
-      const bite = smoothstep(0.3, 0.5, N.fbm(u * 14 + 11, v * 14 + 3, 4));
-      const chip = 1 - rim * 0.85 * (1 - bite);
-      // Porosity runs through the whole stick, deepest at the rim.
-      const pores = smoothstep(0.18, 0.42, N.fbm(u * 30 + 5, v * 30 + 11, 3));
-      const poreDepth = 0.24 + 0.45 * smoothstep(0.25, 0.95, r);
-      const crumble = 1 - poreDepth * (1 - pores);
-      const grit = 0.7 + 0.3 * N.fbm(u * 64 + 3, v * 64 + 7, 2);
-      return body * chip * crumble * grit;
-    })(n),
-  }),
   define({
     id: 'round', name: 'Round', hint: 'A pointed round #8: the everyday brush',
     group: 'watercolor',
@@ -447,31 +403,6 @@ export const BRUSH_PRESETS: BrushPreset[] = [
     })(n),
   }),
   define({
-    id: 'dry', name: 'Dry Brush', hint: 'Scruffy bristles with little water: skips over the paper tooth',
-    group: 'pastel',
-    aspect: 0.75, rotation: 'follow', angle: 0, angleJitter: 8,
-    size: [0.012, 0.036], spacing: 0.12, water: 0.2, load: 1.1, capacity: 0.6, grain: 0.9, wetRound: 0,
-    tip: (n, N) => tip((u, v, r) => {
-      const holes = smoothstep(0.42, 0.62, N.fbm(u * 5.5, v * 5.5, 5));
-      const streaks = 1 - 0.3 * N.fbm(u * 14, v * 1.2, 3);
-      return soft(r, 0.2) * holes * streaks;
-    })(n),
-  }),
-  define({
-    id: 'fan', name: 'Fan', hint: 'Splayed hairs: grass, fur and fine parallel texture',
-    group: 'pastel',
-    aspect: 0.5, rotation: 'follow', angle: 90, angleJitter: 3,
-    size: [0.02, 0.045], pressureSize: 1.2, spacing: 0.1, water: 0.3, load: 1.0, capacity: 0.8, grain: 0.5, wetRound: 0,
-    tip: (n, N) => {
-      const segs: [number, number, number, number][] = [];
-      for (let i = 0; i < 13; i++) {
-        const x = -0.95 + (1.9 * i) / 12 + (N.rnd() - 0.5) * 0.08;
-        segs.push([x * 0.25, -1.3, x, 0.75 + N.rnd() * 0.25]);
-      }
-      return tip((u, v) => Math.min(1, hairs(segs, 0.045, u, v)) * (1 - smoothstep(0.85, 1, Math.abs(v))))(n);
-    },
-  }),
-  define({
     id: 'sponge', name: 'Sponge', hint: 'Natural sponge: dabbed cellular texture for foliage and stone',
     group: 'watercolor',
     rotation: 'random', size: [0.025, 0.05], pressureSize: 0.7, spacing: 0.55, scatter: 0.3, sizeJitter: 0.3,
@@ -508,88 +439,14 @@ export const BRUSH_PRESETS: BrushPreset[] = [
       return 1 - smoothstep(w * 0.8, w, Math.abs(v));
     })(n),
   }),
-  define({
-    id: 'stipple', name: 'Stipple', hint: 'A cluster of hard dots: pointillist texture',
-    group: 'pastel',
-    rotation: 'random', size: [0.015, 0.035], pressureSize: 0.8, spacing: 0.7, scatter: 0.2, sizeJitter: 0.2,
-    water: 0.35, load: 1.1, grain: 0.3, wetRound: 0,
-    tip: (n, N) => {
-      const dots: [number, number, number][] = [];
-      while (dots.length < 46) {
-        const x = N.rnd() * 2 - 1, y = N.rnd() * 2 - 1;
-        if (Math.hypot(x, y) < 0.86) dots.push([x, y, 0.06 + N.rnd() * 0.08]);
-      }
-      return tip((u, v) => {
-        let m = 0;
-        for (const [x, y, rd] of dots) m = Math.max(m, soft(Math.hypot(u - x, v - y) / rd, 0.6));
-        return m;
-      })(n);
-    },
-  }),
   /* ---------------------------------------------------------------------
-   * Phase 64 (MED-29): the eight responses the medium taxonomy needs. They
-   * APPEND after the legacy fifteen — never rename or reorder an existing id,
-   * because a stroke persists the response id and an unknown id replays as
-   * the round. Every field the spec table does not name inherits `BASE`.
+   * Phase 64 (MED-29), narrowed by quick 261124-iq9: the one acrylic response
+   * the medium taxonomy keeps — displayed as "Gouache". It APPENDS after the
+   * watercolor table — never rename or reorder an existing id, because a
+   * stroke persists the response id and an unknown id replays as the round.
    * ------------------------------------------------------------------- */
   define({
-    id: 'gouache-round', name: 'Gouache Round', hint: 'Opaque body colour: soft edge, dense flat deposit',
-    group: 'gouache',
-    size: [0.004, 0.02], spacing: 0.2, water: 0.35, load: 1.4, flow: 0.6,
-    capacity: 1.4, grain: 0.2, wetRound: 0.2, roughness: 0.25,
-    tip: n => tip((_u, _v, r) => soft(r, 0.42))(n),
-  }),
-  define({
-    id: 'gouache-flat', name: 'Gouache Flat', hint: 'Flat body stroke: crisp chisel edge with opaque load',
-    group: 'gouache',
-    aspect: 0.45, rotation: 'follow',
-    size: [0.01, 0.03], spacing: 0.16, water: 0.3, load: 1.5, flow: 0.55,
-    capacity: 1.6, grain: 0.25, wetRound: 0.15, roughness: 0.3,
-    tip: (n, N) => tip((u, v) => {
-      const ex = 1 - smoothstep(0.82, 0.98, Math.abs(u));
-      const ey = 1 - smoothstep(0.7, 1, Math.abs(v));
-      return ex * ey * (0.85 + 0.15 * N.fbm(u * 12, v * 3, 2));
-    })(n),
-  }),
-  define({
-    id: 'pastel-soft', name: 'Soft Pastel', hint: 'Soft pastel stick: powdery core, broad crumbly edge',
-    group: 'pastel',
-    aspect: 0.75, water: 0, load: 1.3, capacity: 1.3, grain: 0.55,
-    roughness: 0.5, stampJitter: 0.15, spacing: 0.18,
-    tip: (n, N) => tip((u, v, r) => soft(r, 0.5) * (0.75 + 0.25 * N.fbm(u * 9, v * 9, 2)))(n),
-  }),
-  define({
-    id: 'conte-hard', name: 'Conté Hard', hint: 'Hard crayon: narrow dark core, crumbling edges',
-    group: 'pastel',
-    aspect: 0.6, water: 0, load: 1.5, capacity: 0.9, grain: 0.35,
-    roughness: 0.8, stampJitter: 0.08,
-    tip: (n, N) => tip((u, v, r) =>
-      (1 - smoothstep(0.55, 0.72, r)) * (0.7 + 0.3 * N.fbm(u * 16 + 3, v * 16 + 7, 3)))(n),
-  }),
-  define({
-    id: 'graphite-pencil', name: 'Graphite Pencil', hint: 'Fine graphite: tooth-gated, thin and dark',
-    group: 'graphite',
-    size: [0.0008, 0.0045], pressureSize: 1.35, spacing: 0.15, scatter: 0.05,
-    water: 0, load: 0.75, flow: 0.3, capacity: 0.5, grain: 1, roughness: 0.3,
-    tip: n => tip((_u, _v, r) => soft(r, 0.6))(n),
-  }),
-  define({
-    id: 'graphite-6b', name: 'Graphite 6B', hint: 'Broad soft graphite: dark shoulder, dusty edge',
-    group: 'graphite',
-    size: [0.002, 0.012], aspect: 0.85, load: 1.4, grain: 0.85,
-    scatter: 0.18, spacing: 0.2,
-    tip: (n, N) => tip((u, v, r) => soft(r, 0.5) * (0.8 + 0.2 * N.fbm(u * 11, v * 11, 2)))(n),
-  }),
-  define({
-    id: 'bristle-flat', name: 'Bristle Flat', hint: 'Thick acrylic flat: directional hair marks, hard body',
-    group: 'acrylic', pressureLink: 0, speedLink: 0,
-    aspect: 0.28, rotation: 'follow',
-    water: 0.05, load: 1.5, flow: 0.5, capacity: 1.8, grain: 0.15,
-    spacing: 0.1, roughness: 0.55, stampJitter: 0.06,
-    tip: bristleTip,
-  }),
-  define({
-    id: 'bristle-round', name: 'Bristle Round', hint: 'Round acrylic brush with body: springy, loaded hairs',
+    id: 'bristle-round', name: 'Gouache', hint: 'Round acrylic brush with body: springy, loaded hairs',
     group: 'acrylic', pressureLink: 0, speedLink: 0,
     aspect: 0.7, rotation: 'follow',
     water: 0.06, load: 1.4, capacity: 1.6, grain: 0.15,

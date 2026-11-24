@@ -1,5 +1,5 @@
 // ============================================================
-//  mediums.ts — the five built-in paint mediums, as plain data.
+//  mediums.ts — the two built-in paint mediums, as plain data.
 //
 //  A medium is `{ id, name, params }`: a frozen, serializable
 //  record over exactly the fourteen medium keys (the canonical bag
@@ -11,12 +11,16 @@
 //  order: Water, Pigment, Flow, Bleed, Dry, Edges, Grain,
 //  Viscosity, Body, Emboss — then 64-22's four (§3.1/§3.4/§6
 //  defaults: Feather, Pickup, Refill, WetSeconds).
+//
+//  quick 261124-iq9: the gouache, pastel (Chalk) and graphite
+//  media are retired outright. The acrylic record keeps its id
+//  and every parameter and takes the display name "Gouache".
 // ============================================================
 
 import { DEFAULT_CANONICAL_PARAMS } from './params'
 
-/** The five built-in medium ids, in display order. */
-export type MediumId = 'watercolor' | 'gouache' | 'pastel' | 'graphite' | 'acrylic'
+/** The two built-in medium ids, in display order. */
+export type MediumId = 'watercolor' | 'acrylic'
 
 /**
  * The fourteen keys a medium may set. `size` (a shared pixel footprint) and
@@ -51,13 +55,7 @@ export interface MediumRecord {
   readonly params: Readonly<Record<MediumParamKey, number>>
 }
 
-export const MEDIUM_IDS = Object.freeze([
-  'watercolor',
-  'gouache',
-  'pastel',
-  'graphite',
-  'acrylic',
-] as const) satisfies ReadonlyArray<MediumId>
+export const MEDIUM_IDS = Object.freeze(['watercolor', 'acrylic'] as const) satisfies ReadonlyArray<MediumId>
 
 export const DEFAULT_MEDIUM_ID: MediumId = 'watercolor'
 
@@ -83,88 +81,19 @@ const WATERCOLOR_PARAMS: Readonly<Record<MediumParamKey, number>> = Object.freez
   wetSeconds: DEFAULT_CANONICAL_PARAMS.wetSeconds,
 })
 
-// 64-22: every non-watercolor record states the §6 defaults for the four new
-// keys literally (feather 0, pickup 60, refill 60, wetSeconds 7). A
+// 64-22: the acrylic record states the §6 defaults for the four new keys
+// literally (feather 0, pickup 60, refill 60, wetSeconds 7). A
 // medium-specific value needs its own measured decision — acrylic's
 // water/bleed/flow retune is D-25's, in 64-24. The committed ten numbers of
-// every record are unchanged by 64-22.
+// the record are unchanged by 64-22.
 // 261119-pod (D-A): the watercolor record DERIVES its pickup from the
-// canonical default, so it opens at 100; the four explicit records keep
-// their recorded 60 (the new default is the neutral medium's, not a
-// blanket rewrite).
+// canonical default, so it opens at 100 (the new default is the neutral
+// medium's, not a blanket rewrite).
+// quick 261124-iq9: the gouache, pastel (Chalk) and graphite records are
+// deleted; the acrylic record keeps its id and every parameter and becomes
+// the Gouache medium on screen.
 export const MEDIUMS: ReadonlyArray<MediumRecord> = Object.freeze([
   Object.freeze({ id: 'watercolor', name: 'Watercolor', params: WATERCOLOR_PARAMS }),
-  Object.freeze({
-    id: 'gouache',
-    name: 'Gouache',
-    params: Object.freeze({
-      water: 35,
-      load: 70,
-      flow: 55,
-      bleed: 25,
-      dry: 60,
-      edge: 60,
-      granulation: 40,
-      viscosity: 55,
-      body: 55,
-      // Post-UAT (2026-11-21): the Emboss row is capped at 15, so the record
-      // states the cap's ceiling instead of the unreachable 20.
-      emboss: 15,
-      feather: 0,
-      pickup: 60,
-      refill: 60,
-      wetSeconds: 7,
-    }),
-  }),
-  Object.freeze({
-    id: 'pastel',
-    // Displays as "Chalk" so the dropdown name and the brush-library section
-    // header (D-18) are the same word over the pastel group.
-    name: 'Chalk',
-    params: Object.freeze({
-      water: 0,
-      load: 65,
-      flow: 30,
-      bleed: 0,
-      dry: 80,
-      edge: 70,
-      granulation: 60,
-      viscosity: 85,
-      // 2026-11-21 (artist UAT: "all chalk brushes paint nothing"): Body 0,
-      // NOT the spec table's 25. Body is ORDER, and any Body above 0 routes
-      // the whole deposit through the coverage composite, whose film alpha is
-      // `bodyCurve(Body) * COVER_GAIN` — the D-14 curve is `body ^ 6`, so
-      // Body 25 deposits a 0.05 % film (measured: 0 painted texels on every
-      // chalk-group response). A dry stick has no covering role; Body 0 keeps
-      // the additive deposit, which is the visible chalk this medium is for.
-      body: 0,
-      emboss: 0,
-      feather: 0,
-      pickup: 60,
-      refill: 60,
-      wetSeconds: 7,
-    }),
-  }),
-  Object.freeze({
-    id: 'graphite',
-    name: 'Graphite',
-    params: Object.freeze({
-      water: 0,
-      load: 45,
-      flow: 25,
-      bleed: 0,
-      dry: 85,
-      edge: 75,
-      granulation: 100,
-      viscosity: 90,
-      body: 0,
-      emboss: 0,
-      feather: 0,
-      pickup: 60,
-      refill: 60,
-      wetSeconds: 7,
-    }),
-  }),
   // 64-24 (D-25 — the acrylic retune, numbers in one record, no new term):
   // more Water widens the fluid transport so the acrylic edge flows and turns
   // slightly irregular instead of closing on a hard contour; Bleed and Flow
@@ -183,7 +112,10 @@ export const MEDIUMS: ReadonlyArray<MediumRecord> = Object.freeze([
   // so this plan adds no `feather` expression and none should appear.
   Object.freeze({
     id: 'acrylic',
-    name: 'Acrylic',
+    // quick 261124-iq9: displayed as "Gouache" — emboss is not a usable 2.5D
+    // relief, so the acrylic/oil story was wrong; the id and every parameter
+    // stay byte-identical.
+    name: 'Gouache',
     params: Object.freeze({
       water: 26,
       load: 100,

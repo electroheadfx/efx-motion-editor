@@ -219,12 +219,12 @@ describe('registry builds — the response base is not forked by the texture', (
   it('the textured build equals buildBrush over the RESPONSE preset with the mask tip', () => {
     const mask = solidMask(99)
     registerMask('wc/custom-equal', mask)
-    const viaBridge = buildBrushForStroke('chalk', { textureId: 'wc/custom-equal' })
-    const preset = BRUSH_PRESETS.find((b) => b.id === 'chalk')
+    const viaBridge = buildBrushForStroke('bristle-round', { textureId: 'wc/custom-equal' })
+    const preset = BRUSH_PRESETS.find((b) => b.id === 'bristle-round')
     expect(preset === undefined).toBe(false)
     if (preset === undefined) return
     const direct = buildBrush({ ...preset, tip: mask })
-    expect(viaBridge.id).toBe('chalk')
+    expect(viaBridge.id).toBe('bristle-round')
     expect(viaBridge.tipMean).toBe(direct.tipMean)
     expect(viaBridge.spacing).toBe(direct.spacing)
     expect(viaBridge.tipSize).toBe(direct.tipSize)

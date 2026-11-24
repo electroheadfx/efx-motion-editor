@@ -114,7 +114,7 @@ describe('quick 261116-rp start-dwell law', () => {
   })
 
   it('a BRISTLE brush never dwell-stamps — the artist’s release cap', () => {
-    const engine = harness(stroke(true), [], 'bristle-flat')
+    const engine = harness(stroke(true), [], 'bristle-round')
     for (let tick = 0; tick < 4; tick += 1) engine.processInput(1 / 60)
     expect(engine.stampCalls).toEqual([])
   })

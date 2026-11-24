@@ -104,17 +104,17 @@ describe('deriveMask (declared extent)', () => {
 // ---------------------------------------------------------------------------
 
 describe('buildBrushForStroke (texture-axis law)', () => {
-  it('LAW 1: chalk keeps the chalk response when a texture is applied', () => {
-    const chalk = presetOf('chalk')
-    const brush = buildBrushForStroke('chalk', { textureId: 'wc/custom-chalk' })
-    expect(brush.id).toBe('chalk')
-    expect(brush.water).toBe(chalk.water)
-    expect(brush.load).toBe(chalk.load)
-    expect(brush.flow).toBe(chalk.flow)
-    expect(brush.roughness).toBe(chalk.roughness)
-    expect(brush.spacing).toBe(chalk.spacing)
-    expect(brush.scatter).toBe(chalk.scatter)
-    expect(brush.rotation).toBe(chalk.rotation)
+  it('LAW 1: a bristle response keeps its physics when a texture is applied', () => {
+    const bristle = presetOf('bristle-round')
+    const brush = buildBrushForStroke('bristle-round', { textureId: 'wc/custom-chalk' })
+    expect(brush.id).toBe('bristle-round')
+    expect(brush.water).toBe(bristle.water)
+    expect(brush.load).toBe(bristle.load)
+    expect(brush.flow).toBe(bristle.flow)
+    expect(brush.roughness).toBe(bristle.roughness)
+    expect(brush.spacing).toBe(bristle.spacing)
+    expect(brush.scatter).toBe(bristle.scatter)
+    expect(brush.rotation).toBe(bristle.rotation)
   })
 
   it('LAW 2: round with a library texture stamps the registered bytes', () => {
@@ -129,8 +129,8 @@ describe('buildBrushForStroke (texture-axis law)', () => {
 
   it('LAW 2: the texture changes tipData only — response scalars stay the preset', () => {
     expect(registerMask('wc/custom-chalk', solidMask(19))).toBe(true)
-    const plain = buildBrushForStroke('chalk')
-    const textured = buildBrushForStroke('chalk', { textureId: 'wc/custom-chalk' })
+    const plain = buildBrushForStroke('bristle-round')
+    const textured = buildBrushForStroke('bristle-round', { textureId: 'wc/custom-chalk' })
     expect(sameBytes(plain.tipData, textured.tipData)).toBe(false)
     expect(textured.aspect).toBe(plain.aspect)
     expect(textured.size[0]).toBe(plain.size[0])
@@ -155,13 +155,13 @@ describe('buildBrushForStroke (texture-axis law)', () => {
     // the texture, it always the same").
     expect(registerMask('wc/custom-chalk', solidMask(19))).toBe(true)
     expect(registerMask('wc/custom-sponge', solidMask(23))).toBe(true)
-    const plain = buildBrushForStroke('chalk')
-    const textured = buildBrushForStroke('chalk', { textureId: 'wc/custom-chalk' })
+    const plain = buildBrushForStroke('bristle-round')
+    const textured = buildBrushForStroke('bristle-round', { textureId: 'wc/custom-chalk' })
     expect(plain.textureId).toBe(null)
     expect(textured.textureId).toBe('wc/custom-chalk')
     expect(brushTipCacheKey(plain) === brushTipCacheKey(textured)).toBe(false)
     // Two different textures on one response are two different GPU tips.
-    const sponge = buildBrushForStroke('chalk', { textureId: 'wc/custom-sponge' })
+    const sponge = buildBrushForStroke('bristle-round', { textureId: 'wc/custom-sponge' })
     expect(brushTipCacheKey(textured) === brushTipCacheKey(sponge)).toBe(false)
   })
 
@@ -179,8 +179,8 @@ describe('buildBrushForStroke (texture-axis law)', () => {
     // id, a stroke naming it must still paint the response tip.
     replaceMaskRegistry([{ id: 'wc/custom-other', mask: solidMask(90) }])
     expect(resolveMask('wc/custom-chalk') === null).toBe(true)
-    const fallback = buildBrushForStroke('chalk')
-    const missing = buildBrushForStroke('chalk', { textureId: 'wc/custom-chalk' })
+    const fallback = buildBrushForStroke('bristle-round')
+    const missing = buildBrushForStroke('bristle-round', { textureId: 'wc/custom-chalk' })
     expect(sameBytes(missing.tipData, fallback.tipData)).toBe(true)
   })
 
@@ -232,8 +232,8 @@ describe('strokeTipData (one resolution)', () => {
   it('resolves a registered custom texture through the same law', () => {
     const mask = solidMask(180)
     expect(registerMask('wc/custom-chip', mask)).toBe(true)
-    const brush = buildBrushForStroke('chalk', { textureId: 'wc/custom-chip' })
-    const tip = strokeTipData('chalk', 'wc/custom-chip')
+    const brush = buildBrushForStroke('bristle-round', { textureId: 'wc/custom-chip' })
+    const tip = strokeTipData('bristle-round', 'wc/custom-chip')
     expect(tip === mask).toBe(true)
     expect(brush.tipData === tip).toBe(true)
   })
@@ -251,13 +251,13 @@ describe('strokeTipData (one resolution)', () => {
 
 describe('multipliers (D-21 / D-22)', () => {
   it('applies the eight multipliers on the preset base with a texture present', () => {
-    const chalk = presetOf('chalk')
-    const brush = buildBrushForStroke('chalk', {
+    const bristle = presetOf('bristle-round')
+    const brush = buildBrushForStroke('bristle-round', {
       textureId: 'wc/custom-chalk',
       overrides: { tip: 2, aspect: 3 },
     })
-    expect(brush.spacing).toBe(chalk.spacing / 2)
-    expect(brush.aspect).toBe(chalk.aspect * 3)
+    expect(brush.spacing).toBe(bristle.spacing / 2)
+    expect(brush.aspect).toBe(bristle.aspect * 3)
   })
 
   it('applies every multiplier to a textured brush exactly as to an untextured one', () => {
@@ -284,14 +284,14 @@ describe('multipliers (D-21 / D-22)', () => {
   })
 
   it('a non-positive or non-finite multiplier keeps its base value', () => {
-    const chalk = presetOf('chalk')
-    const brush = buildBrushForStroke('chalk', {
+    const bristle = presetOf('bristle-round')
+    const brush = buildBrushForStroke('bristle-round', {
       textureId: 'wc/custom-chalk',
       overrides: { tip: 0, aspect: Number.NaN, grain: -1 },
     })
-    expect(brush.spacing).toBe(chalk.spacing)
-    expect(brush.aspect).toBe(chalk.aspect)
-    expect(brush.grain).toBe(chalk.grain)
+    expect(brush.spacing).toBe(bristle.spacing)
+    expect(brush.aspect).toBe(bristle.aspect)
+    expect(brush.grain).toBe(bristle.grain)
   })
 })
 
@@ -302,7 +302,7 @@ describe('multipliers (D-21 / D-22)', () => {
 describe('textureRotation (degrees, texture-gated)', () => {
   it('carries the requested integer degrees when a registered mask resolves', () => {
     expect(registerMask('wc/custom-rotated', solidMask(19))).toBe(true)
-    const brush = buildBrushForStroke('chalk', {
+    const brush = buildBrushForStroke('bristle-round', {
       textureId: 'wc/custom-rotated',
       textureRotation: 37,
     })
@@ -312,7 +312,7 @@ describe('textureRotation (degrees, texture-gated)', () => {
 
   it('defaults a textured, rotationless stroke to 0 degrees (absent is not undefined)', () => {
     expect(registerMask('wc/custom-flat', solidMask(19))).toBe(true)
-    const brush = buildBrushForStroke('chalk', { textureId: 'wc/custom-flat' })
+    const brush = buildBrushForStroke('bristle-round', { textureId: 'wc/custom-flat' })
     expect(brush.textureRotation).toBe(0)
   })
 
@@ -330,8 +330,8 @@ describe('textureRotation (degrees, texture-gated)', () => {
 
   it('does not fork the GPU tip cache: rotation is a uniform, not a second upload', () => {
     expect(registerMask('wc/custom-uniform', solidMask(19))).toBe(true)
-    const flat = buildBrushForStroke('chalk', { textureId: 'wc/custom-uniform' })
-    const rotated = buildBrushForStroke('chalk', {
+    const flat = buildBrushForStroke('bristle-round', { textureId: 'wc/custom-uniform' })
+    const rotated = buildBrushForStroke('bristle-round', {
       textureId: 'wc/custom-uniform',
       textureRotation: 90,
     })
@@ -340,12 +340,12 @@ describe('textureRotation (degrees, texture-gated)', () => {
 
   it('leaves strokeTipData byte-identical for any rotation', () => {
     expect(registerMask('wc/custom-tip-rot', solidMask(19))).toBe(true)
-    const upright = buildBrushForStroke('chalk', { textureId: 'wc/custom-tip-rot' })
-    const turned = buildBrushForStroke('chalk', {
+    const upright = buildBrushForStroke('bristle-round', { textureId: 'wc/custom-tip-rot' })
+    const turned = buildBrushForStroke('bristle-round', {
       textureId: 'wc/custom-tip-rot',
       textureRotation: 120,
     })
     expect(sameBytes(turned.tipData, upright.tipData)).toBe(true)
-    expect(sameBytes(strokeTipData('chalk', 'wc/custom-tip-rot'), upright.tipData)).toBe(true)
+    expect(sameBytes(strokeTipData('bristle-round', 'wc/custom-tip-rot'), upright.tipData)).toBe(true)
   })
 })
