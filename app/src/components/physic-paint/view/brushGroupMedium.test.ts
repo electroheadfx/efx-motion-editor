@@ -180,7 +180,10 @@ afterEach(() => {
 });
 
 describe('a cross-group pick applies the group medium (64-12 MED-28)', () => {
-  it('applies the pastel record once and still commits one selection patch', async () => {
+  // quick 261124-iq9: two medium groups only — Watercolor and Gouache (the
+  // acrylic record). The cross-group pick goes watercolor → acrylic on
+  // `bristle-round`, the acrylic group's only member.
+  it('applies the acrylic record once and still commits one selection patch', async () => {
     recordAquarelleStroke(10901, stroke({ points: [point(0.2, 0.5)] }));
     setAquarelleSelectMode(true);
     setScriptStrokeSelection([10901]);
@@ -188,30 +191,32 @@ describe('a cross-group pick applies the group medium (64-12 MED-28)', () => {
     const bag = countBagWrites();
     const ids = countIdWrites();
 
-    await pickAquarelleBrush('chalk');
+    await pickAquarelleBrush('bristle-round');
 
     expect(bag.count(), 'one spread assignment, not a per-key cascade').toBe(1);
     bag.stop();
     expect(ids.count(), 'the medium id moves once').toBe(1);
     ids.stop();
-    expect(aquarelleSelectedMediumId.value).toBe('pastel');
-    const pastel = mediumById('pastel')!;
+    expect(aquarelleSelectedMediumId.value).toBe('acrylic');
+    const acrylic = mediumById('acrylic')!;
     for (const key of MEDIUM_KEYS) {
-      expect(aquarelleParams.value[key], key).toBe(pastel.params[key]);
+      expect(aquarelleParams.value[key], key).toBe(acrylic.params[key]);
     }
     expect(calls, 'exactly one selection patch').toHaveLength(1);
-    expect(calls[0]!.patch.brushId).toBe('chalk');
+    expect(calls[0]!.patch.brushId).toBe('bristle-round');
   });
 
   it('writes nothing inside the group and keeps a manual tweak', async () => {
-    await pickAquarelleBrush('chalk');
-    expect(aquarelleSelectedMediumId.value, 'chalk landed on pastel').toBe('pastel');
+    // The acrylic group has exactly one member, so the same-group case rides
+    // two watercolor responses (round, then flat).
+    await pickAquarelleBrush('round');
+    expect(aquarelleSelectedMediumId.value, 'round is watercolor').toBe('watercolor');
     setAquarelleParam('water', 71);
     const tweaked = aquarelleParams.value;
     const bag = countBagWrites();
     const ids = countIdWrites();
 
-    await pickAquarelleBrush('conte-hard');
+    await pickAquarelleBrush('flat');
 
     expect(bag.count(), 'same group, no medium write').toBe(0);
     expect(ids.count(), 'the medium id is untouched').toBe(0);
@@ -219,15 +224,15 @@ describe('a cross-group pick applies the group medium (64-12 MED-28)', () => {
     ids.stop();
     expect(aquarelleParams.value, 'the bag reference is untouched').toBe(tweaked);
     expect(aquarelleParams.value.water, 'the manual tweak survives').toBe(71);
-    expect(aquarelleSelectedMediumId.value).toBe('pastel');
-    expect(aquarelleSelectedTipId.value).toBe('conte-hard');
+    expect(aquarelleSelectedMediumId.value).toBe('watercolor');
+    expect(aquarelleSelectedTipId.value).toBe('flat');
   });
 
   it('restores the watercolor record when the pick returns to its group', async () => {
     setAquarelleParam('size', 77);
     setAquarelleParam('lift', 33);
-    await pickAquarelleBrush('chalk');
-    expect(aquarelleParams.value.dry, 'pastel landed').toBe(80);
+    await pickAquarelleBrush('bristle-round');
+    expect(aquarelleParams.value.dry, 'acrylic landed').toBe(70);
 
     await pickAquarelleBrush('round');
 
@@ -242,19 +247,19 @@ describe('a cross-group pick applies the group medium (64-12 MED-28)', () => {
 
   it('writes nothing when the dropdown already selected the pick group', async () => {
     // The Paint-tab dropdown's own handler, before a single response pick.
-    applyAquarelleMedium('pastel');
+    applyAquarelleMedium('acrylic');
     const applied = aquarelleParams.value;
     const bag = countBagWrites();
     const ids = countIdWrites();
 
-    await pickAquarelleBrush('chalk');
+    await pickAquarelleBrush('bristle-round');
 
     expect(bag.count(), 'the record is already the bag').toBe(0);
     expect(ids.count(), 'the id compare-then-write stays closed').toBe(0);
     bag.stop();
     ids.stop();
     expect(aquarelleParams.value, 'the bag reference is untouched').toBe(applied);
-    expect(aquarelleSelectedMediumId.value, 'the dropdown and the params agree').toBe('pastel');
+    expect(aquarelleSelectedMediumId.value, 'the dropdown and the params agree').toBe('acrylic');
   });
 
   it('forwards the post-pick bag and no params key in the committed patch', async () => {
@@ -264,7 +269,7 @@ describe('a cross-group pick applies the group medium (64-12 MED-28)', () => {
     const { calls } = installPort();
     const before = JSON.stringify(getRecordedAquarelleStroke(10902));
 
-    await pickAquarelleBrush('chalk');
+    await pickAquarelleBrush('bristle-round');
 
     expect(calls).toHaveLength(1);
     const patch = calls[0]!.patch;
@@ -284,11 +289,11 @@ describe('a cross-group pick applies the group medium (64-12 MED-28)', () => {
     setAquarelleParam('size', 64);
     setAquarelleParam('lift', 31);
 
-    await pickAquarelleBrush('bristle-flat');
-    await pickAquarelleBrush('graphite-6b');
-    await pickAquarelleBrush('chalk');
+    await pickAquarelleBrush('bristle-round');
+    await pickAquarelleBrush('flat');
+    await pickAquarelleBrush('bristle-round');
 
-    expect(aquarelleSelectedMediumId.value).toBe('pastel');
+    expect(aquarelleSelectedMediumId.value).toBe('acrylic');
     expect(aquarelleParams.value.size, 'size is not a medium key').toBe(64);
     expect(aquarelleParams.value.lift, 'lift is not a medium key').toBe(31);
   });
@@ -299,7 +304,7 @@ describe('a cross-group pick applies the group medium (64-12 MED-28)', () => {
     setScriptStrokeSelection([10903]);
     const refusal = Promise.resolve(false);
     const { calls } = installPort(refusal);
-    applyAquarelleMedium('pastel');
+    applyAquarelleMedium('acrylic');
     const bagBefore = aquarelleParams.value;
     const bag = countBagWrites();
     const ids = countIdWrites();
@@ -313,7 +318,7 @@ describe('a cross-group pick applies the group medium (64-12 MED-28)', () => {
     bag.stop();
     ids.stop();
     expect(aquarelleParams.value, 'the bag reference is untouched').toBe(bagBefore);
-    expect(aquarelleSelectedMediumId.value).toBe('pastel');
+    expect(aquarelleSelectedMediumId.value).toBe('acrylic');
     expect(aquarelleSelectedTipId.value, 'the live surface still follows the pick').toBeNull();
     expect(calls, 'the patch still reaches the door, which refuses it').toHaveLength(1);
     expect(calls[0]!.patch.brushId).toBe('wc/unknown-catalog-tip');
@@ -326,10 +331,10 @@ describe('the Paint tab agrees after a cross-group pick (64-12 MED-28)', () => {
     setAquarelleParam('lift', 27);
     const sizeBefore = aquarelleParams.value.size;
     const liftBefore = aquarelleParams.value.lift;
-    const group = presetGroup('graphite-pencil');
-    expect(group, 'graphite-pencil is tagged').not.toBeNull();
+    const group = presetGroup('bristle-round');
+    expect(group, 'bristle-round is tagged').not.toBeNull();
 
-    await pickAquarelleBrush('graphite-pencil');
+    await pickAquarelleBrush('bristle-round');
 
     expect(aquarelleSelectedMediumId.value, 'the dropdown renders this id').toBe(group);
     const record = mediumById(group!)!;
@@ -350,7 +355,7 @@ describe('the Paint tab agrees after a cross-group pick (64-12 MED-28)', () => {
   });
 
   it('changes neither the medium id nor the bag when a texture is selected', async () => {
-    await pickAquarelleBrush('bristle-flat');
+    await pickAquarelleBrush('bristle-round');
     const bag = aquarelleParams.value;
     const mediumId = aquarelleSelectedMediumId.value;
     const bagWrites = countBagWrites();

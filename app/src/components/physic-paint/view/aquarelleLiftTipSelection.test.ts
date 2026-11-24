@@ -142,7 +142,7 @@ describe('261028-k03c D1 setAquarelleLiftTipId', () => {
     expect(aquarelleActiveTool.value, 'a watercolor-family pick selects the Watercolor tool').toBe(
       'watercolor',
     );
-    selectAquarelleTip('bristle-flat');
+    selectAquarelleTip('bristle-round');
     expect(aquarelleActiveTool.value, 'an acrylic pick selects the Brush tool').toBe('brush');
     expect(aquarelleLiftTipId.value, 'the Lift selection is untouched by a Brush pick').toBe(
       'filbert',

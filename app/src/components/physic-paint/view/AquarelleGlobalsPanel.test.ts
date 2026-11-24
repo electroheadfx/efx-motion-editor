@@ -3,8 +3,8 @@
  *
  * Laws pinned here (one file per visual unit):
  *   Phase 64 (D-01/D-07): the medium dropdown is the FIRST child row and names
- *   the selected medium; five items render in the fixed D-18 order
- *   (Watercolor, Gouache, Chalk, Graphite, Acrylic)
+ *   the selected medium; quick 261124-iq9: two items render in the fixed order
+ *   (Watercolor, Gouache) — the acrylic record is DISPLAYED as Gouache
  *   quick 261122-gys: a dropdown pick binds a preset of the picked group —
  *   the in-group tip is kept, else the family's last pick, else the group's
  *   first (acrylic falls back to Bristle Round)
@@ -203,9 +203,10 @@ const GLOBAL_LABELS = [
   'Grain',
 ] as const;
 
-/** D-18 display names in the fixed MEDIUM_IDS order. `pastel` displays
- *  "Chalk" deliberately — the id is not the label. */
-const MEDIUM_NAMES = ['Watercolor', 'Gouache', 'Chalk', 'Graphite', 'Acrylic'] as const;
+/** Display names in the fixed MEDIUM_IDS order (quick 261124-iq9: the acrylic
+ *  record is displayed as "Gouache"; the old gouache/pastel/graphite media are
+ *  retired). */
+const MEDIUM_NAMES = ['Watercolor', 'Gouache'] as const;
 
 /** quick 261122-gys — Reset restores the ACTIVE MEDIUM RECORD (supersedes
  *  quick 261121-mtu's ×100 playground DEFAULT_PARAMS). This literal is the
@@ -503,7 +504,7 @@ describe('Phase 64 medium dropdown', () => {
       const id = node.props?.['data-testid'];
       return typeof id === 'string' && id.startsWith('aquarelle-medium-item-');
     });
-    expect(items, 'one item per medium').toHaveLength(5);
+    expect(items, 'one item per medium').toHaveLength(2);
     expect(items.map((item) => textContent(item).trim())).toEqual([...MEDIUM_NAMES]);
     expect(items[0]!.props?.['aria-checked'], 'Watercolor is selected').toBe(true);
     expect(items[1]!.props?.['aria-checked'], 'Gouache is not').toBe(false);
@@ -555,9 +556,11 @@ describe('Phase 64 medium dropdown', () => {
 
   // quick 261122-gys — the dropdown binds a preset of the picked group, so
   // the label, the panel rows and the brush can never disagree.
-  it('a dropdown pick of Acrylic selects Bristle Round and the acrylic record', () => {
-    selectAquarelleTip('gouache-round');
-    applyAquarelleMedium('gouache');
+  // quick 261124-iq9: the Gouache medium is the acrylic record; its group has
+  // exactly one member, so an acrylic pick always lands on bristle-round.
+  it('a dropdown pick of Gouache selects Bristle Round and the acrylic record', () => {
+    selectAquarelleTip('round');
+    applyAquarelleMedium('watercolor');
     setAquarelleMediumMenuOpen(true, { left: 20, top: 200 });
     const item = findTestId(renderPanel(), 'aquarelle-medium-item-acrylic');
     (item!.props?.['onClick'] as () => void)();
@@ -572,7 +575,7 @@ describe('Phase 64 medium dropdown', () => {
 
   it('a dropdown pick of Watercolor keeps an in-group tip (detail)', () => {
     selectAquarelleTip('detail');
-    aquarelleSelectedMediumId.value = 'gouache';
+    aquarelleSelectedMediumId.value = 'acrylic';
     setAquarelleMediumMenuOpen(true, { left: 20, top: 200 });
     const item = findTestId(renderPanel(), 'aquarelle-medium-item-watercolor');
     (item!.props?.['onClick'] as () => void)();
@@ -730,7 +733,10 @@ describe('quick 261111-ucf globals release commits + Reset batch', () => {
   });
 
   it("Reset under every medium restores that medium record's own Refill (active-record law)", () => {
-    for (const medium of ['watercolor', 'gouache', 'pastel', 'graphite'] as const) {
+    // quick 261124-iq9: exactly two records now — the old gouache/pastel/
+    // graphite media are retired. Watercolor states Refill 60; the acrylic
+    // (displayed Gouache) record states 0.
+    for (const medium of ['watercolor', 'acrylic'] as const) {
       applyAquarelleMedium(medium);
       setAquarelleParam('refill', 55);
       const tree = renderPanel();
@@ -739,13 +745,13 @@ describe('quick 261111-ucf globals release commits + Reset batch', () => {
       );
       expect(reset, `Reset control must render (${medium})`).toBeTruthy();
       (reset!.props as { onClick?: () => void }).onClick!();
-      // quick 261122-gys: Reset spreads the ACTIVE medium record — each of
-      // these four records states Refill 60, so none of them is zeroed.
+      // quick 261122-gys: Reset spreads the ACTIVE medium record.
       expect(aquarelleParams.value.refill, `${medium} restores its record's refill`).toBe(
         mediumById(medium)!.params.refill,
       );
-      expect(aquarelleParams.value.refill, `${medium} record states 60`).toBe(60);
     }
+    expect(mediumById('watercolor')!.params.refill, 'watercolor states 60').toBe(60);
+    expect(mediumById('acrylic')!.params.refill, 'Gouache states 0').toBe(0);
   });
 
   // The artist's UAT row (quick 261122-gys): wetSeconds is restored from the
@@ -857,19 +863,19 @@ describe('tool x medium context rows (quick 261121-mtu)', () => {
     );
   }
 
-  it('Acrylic shows its six rows and no Refill / fluid-only row', () => {
+  it('Gouache (the acrylic record) shows Pigment, Pickup, Dry speed and Feather only', () => {
     applyAquarelleMedium('acrylic');
     const labels = renderedSliders();
     expect(labels).toEqual([
-      'Viscosity',
       'Pigment',
       'Pickup',
-      'Water',
       'Dry speed',
       'Feather',
     ]);
-    for (const absent of ['Refill', 'Flow', 'Bleed', 'Edges', 'Grain']) {
-      expect(labels.includes(absent), `${absent} is absent for acrylic`).toBe(false);
+    // quick 261124-iq9: Viscosity and Water are hidden for the Gouache paint
+    // context; Refill and every fluid-only row stay off the bristle path too.
+    for (const absent of ['Viscosity', 'Refill', 'Water', 'Flow', 'Bleed', 'Edges', 'Grain']) {
+      expect(labels.includes(absent), `${absent} is absent for Gouache`).toBe(false);
     }
   });
 
@@ -891,23 +897,6 @@ describe('tool x medium context rows (quick 261121-mtu)', () => {
     // fluid path, same evidence class as Refill.
     expect(labels.includes('Pickup'), 'Pickup is absent for watercolor').toBe(false);
     expect(labels.includes('Feather'), 'Feather is absent for watercolor').toBe(false);
-  });
-
-  it('Gouache keeps Refill and Feather and shows no fluid-only row', () => {
-    applyAquarelleMedium('gouache');
-    const labels = renderedSliders();
-    expect(labels).toEqual([
-      'Viscosity',
-      'Pigment',
-      'Pickup',
-      'Refill',
-      'Water',
-      'Dry speed',
-      'Feather',
-    ]);
-    for (const absent of ['Flow', 'Bleed', 'Edges', 'Grain']) {
-      expect(labels.includes(absent), `${absent} is absent for gouache`).toBe(false);
-    }
   });
 
   it('the Eraser shows the Lift row alone and the Water tool its fluid set', () => {

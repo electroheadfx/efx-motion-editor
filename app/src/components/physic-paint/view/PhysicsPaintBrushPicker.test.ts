@@ -93,7 +93,7 @@ const MODAL_SOURCE = readFileSync(resolve(__dirname, 'PhysicsPaintBrushModal.tsx
 const CSS_SOURCE = readFileSync(resolve(__dirname, '..', 'physicsPaintStudio.css'), 'utf8');
 
 beforeEach(() => {
-  aquarelleSelectedTipId.value = 'chalk';
+  aquarelleSelectedTipId.value = 'bristle-round';
   aquarelleSelectedTextureId.value = null;
   aquarelleActiveTool.value = 'brush';
   aquarelleBrushMenuTarget.value = 'brush';
@@ -108,7 +108,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  aquarelleSelectedTipId.value = 'chalk';
+  aquarelleSelectedTipId.value = 'bristle-round';
   aquarelleSelectedTextureId.value = null;
   aquarelleActiveTool.value = 'brush';
   aquarelleBrushMenuTarget.value = 'brush';
@@ -159,7 +159,7 @@ describe('261027-gh9g top-bar brush dropdown', () => {
 
   it('a lift pick writes only the lift tip — tool, brush selection and multipliers untouched', () => {
     aquarelleActiveTool.value = 'lift';
-    aquarelleSelectedTipId.value = 'chalk';
+    aquarelleSelectedTipId.value = 'bristle-round';
     aquarelleLiftTipId.value = 'filbert';
     const overridesBefore = aquarelleToolOverrides.value;
     setAquarelleBrushMenuOpen(true, undefined, 'lift');
@@ -167,7 +167,7 @@ describe('261027-gh9g top-bar brush dropdown', () => {
     const flat = nodes.find((node) => node.props?.['data-testid'] === 'watercolor-brush-menu-item-flat')!;
     click(flat);
     expect(aquarelleLiftTipId.value).toBe('flat');
-    expect(aquarelleSelectedTipId.value, 'the brush selection is untouched').toBe('chalk');
+    expect(aquarelleSelectedTipId.value, 'the brush selection is untouched').toBe('bristle-round');
     expect(aquarelleActiveTool.value, 'an eraser pick never flips the tool').toBe('lift');
     expect(aquarelleToolOverrides.value, 'the brush multiplier bag is untouched').toBe(overridesBefore);
     expect(aquarelleBrushMenuOpen.value).toBe(false);
@@ -202,9 +202,9 @@ describe('261027-gh9g top-bar brush dropdown', () => {
     const nodes = collect(PhysicsPaintBrushMenu());
     // The Brush tool's list: an acrylic preset (a watercolor pick would flip
     // the tool — that law is pinned in aquarelleToolFamily.test.ts).
-    const flat = nodes.find((node) => node.props?.['data-testid'] === 'watercolor-brush-menu-item-bristle-flat')!;
-    click(flat);
-    expect(aquarelleSelectedTipId.value).toBe('bristle-flat');
+    const bristle = nodes.find((node) => node.props?.['data-testid'] === 'watercolor-brush-menu-item-bristle-round')!;
+    click(bristle);
+    expect(aquarelleSelectedTipId.value).toBe('bristle-round');
     expect(aquarelleBrushMenuOpen.value).toBe(false);
     expect(aquarelleBrushModalOpen.value).toBe(false);
   });

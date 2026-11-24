@@ -244,37 +244,37 @@ describe('applyAquarelleMedium', () => {
     setAquarelleParam('size', 77);
     setAquarelleParam('lift', 33);
     const bag = countBagWrites();
-    applyAquarelleMedium('pastel');
+    applyAquarelleMedium('acrylic');
     expect(bag.count(), 'one spread assignment, not a per-key cascade').toBe(1);
     bag.stop();
-    expect(aquarelleParams.value.water).toBe(0);
-    expect(aquarelleParams.value.load).toBe(65);
-    expect(aquarelleParams.value.flow).toBe(30);
-    expect(aquarelleParams.value.bleed).toBe(0);
-    expect(aquarelleParams.value.dry).toBe(80);
-    expect(aquarelleParams.value.edge).toBe(70);
-    expect(aquarelleParams.value.granulation).toBe(60);
-    expect(aquarelleParams.value.viscosity).toBe(85);
-    // 2026-11-21: Body 0, not the spec table's 25 — a non-zero Body takes the
-    // coverage composite and blanked every chalk brush (see mediums.ts).
-    expect(aquarelleParams.value.body).toBe(0);
-    expect(aquarelleParams.value.emboss).toBe(0);
+    expect(aquarelleParams.value.water).toBe(26);
+    expect(aquarelleParams.value.load).toBe(100);
+    expect(aquarelleParams.value.flow).toBe(60);
+    expect(aquarelleParams.value.bleed).toBe(22);
+    expect(aquarelleParams.value.dry).toBe(70);
+    expect(aquarelleParams.value.edge).toBe(65);
+    expect(aquarelleParams.value.granulation).toBe(25);
+    expect(aquarelleParams.value.viscosity).toBe(90);
+    // quick 261124-iq9: the acrylic record is DISPLAYED as Gouache; Body 100
+    // keeps the visible cover (any Body above 0 takes the coverage composite).
+    expect(aquarelleParams.value.body).toBe(100);
+    expect(aquarelleParams.value.emboss).toBe(3);
     // 64-22: all fourteen medium keys land in the one write.
-    expect(aquarelleParams.value.feather).toBe(0);
-    expect(aquarelleParams.value.pickup).toBe(60);
-    expect(aquarelleParams.value.refill).toBe(60);
-    expect(aquarelleParams.value.wetSeconds).toBe(7);
+    expect(aquarelleParams.value.feather).toBe(85);
+    expect(aquarelleParams.value.pickup).toBe(100);
+    expect(aquarelleParams.value.refill).toBe(0);
+    expect(aquarelleParams.value.wetSeconds).toBe(12);
     expect(aquarelleParams.value.size, 'a medium never resizes the brush').toBe(77);
     expect(aquarelleParams.value.lift, 'a medium never changes the eraser').toBe(33);
-    expect(aquarelleSelectedMediumId.value).toBe('pastel');
+    expect(aquarelleSelectedMediumId.value).toBe('acrylic');
   });
 
   it('writes the selected id once per switch', () => {
     const ids = countIdWrites();
-    applyAquarelleMedium('gouache');
+    applyAquarelleMedium('acrylic');
     expect(ids.count()).toBe(1);
     ids.stop();
-    expect(aquarelleSelectedMediumId.value).toBe('gouache');
+    expect(aquarelleSelectedMediumId.value).toBe('acrylic');
   });
 
   // quick 261121-mtu (decision B): the acrylic record fixes Refill 0 — its
@@ -288,15 +288,15 @@ describe('applyAquarelleMedium', () => {
   });
 
   it('restores a drifted bag when the same medium is re-picked', () => {
-    applyAquarelleMedium('gouache');
+    applyAquarelleMedium('acrylic');
     setAquarelleParam('water', 90);
     expect(aquarelleParams.value.water).toBe(90);
     const bag = countBagWrites();
-    applyAquarelleMedium('gouache');
+    applyAquarelleMedium('acrylic');
     expect(bag.count()).toBe(1);
     bag.stop();
-    expect(aquarelleParams.value.water).toBe(35);
-    expect(aquarelleSelectedMediumId.value).toBe('gouache');
+    expect(aquarelleParams.value.water).toBe(26);
+    expect(aquarelleSelectedMediumId.value).toBe('acrylic');
   });
 
   it('writes nothing when the record already is the whole bag', () => {
@@ -318,8 +318,8 @@ describe('applyAquarelleMedium', () => {
   });
 
   it('is a total no-op for an unknown id', () => {
-    applyAquarelleMedium('pastel');
-    expect(aquarelleParams.value.dry, 'pastel landed').toBe(80);
+    applyAquarelleMedium('acrylic');
+    expect(aquarelleParams.value.dry, 'acrylic landed').toBe(70);
     const before = aquarelleParams.value;
     const bag = countBagWrites();
     const ids = countIdWrites();
@@ -329,17 +329,17 @@ describe('applyAquarelleMedium', () => {
     bag.stop();
     ids.stop();
     expect(aquarelleParams.value).toBe(before);
-    expect(aquarelleSelectedMediumId.value).toBe('pastel');
+    expect(aquarelleSelectedMediumId.value).toBe('acrylic');
   });
 
   it('settles two rapid picks on the last id with one bag write each', () => {
     const bag = countBagWrites();
-    applyAquarelleMedium('pastel');
     applyAquarelleMedium('acrylic');
+    applyAquarelleMedium('watercolor');
     expect(bag.count()).toBe(2);
     bag.stop();
-    expect(aquarelleSelectedMediumId.value).toBe('acrylic');
-    expect(aquarelleParams.value.body).toBe(100);
+    expect(aquarelleSelectedMediumId.value).toBe('watercolor');
+    expect(aquarelleParams.value.body).toBe(0);
   });
 
   it('keeps the medium selected after a manual global tweak', () => {

@@ -18,6 +18,7 @@ import {
   type AquarelleToolOverrides,
 } from '@efxlab/efx-watercolor/brushes';
 import {
+  BRUSH_PRESETS,
   buildBrushForStroke,
   registerMask,
   resetMaskRegistry,
@@ -52,7 +53,11 @@ const TEXTURE_MASK = (() => {
   for (let i = 0; i < mask.length; i += 1) mask[i] = (i * 31 + 7) % 256;
   return mask;
 })();
-const RESPONSE_ID = 'chalk';
+const RESPONSE_ID = 'bristle-round';
+/** The response's own aspect — the multiplier overrides it, never replaces it
+ *  (quick 261124-iq9: derived from the table, so a catalog change cannot make
+ *  this literal stale again). */
+const RESPONSE_ASPECT = BRUSH_PRESETS.find((preset) => preset.id === RESPONSE_ID)!.aspect;
 const OVERRIDES: AquarelleToolOverrides = {
   ...NEUTRAL_TOOL_OVERRIDES,
   tip: 1.4,
@@ -147,9 +152,9 @@ describe('live / bake / replay texture parity (quick-261115-oh9)', () => {
 
     assertSameBrush(baked, live, 'replay');
     // The texture actually reached the footprint: the live brush stamps the
-    // registered 512 mask, not the procedural chalk tip.
+    // registered 512 mask, not the procedural response tip.
     expect(live.tipSize).toBe(512);
-    expect(live.aspect).toBe(0.8 * 0.8);
+    expect(live.aspect).toBe(0.8 * RESPONSE_ASPECT);
   })
 
   it('a stroke recorded without a texture gains no key and replays the response tip', () => {

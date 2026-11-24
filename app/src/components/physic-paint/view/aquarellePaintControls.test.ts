@@ -110,16 +110,16 @@ describe('pickAquarelleBrush — live pick first, selection commit second', () =
     setScriptStrokeSelection([10601]);
     const { calls, promise } = installPort();
 
-    const result = pickAquarelleBrush('chalk');
+    const result = pickAquarelleBrush('bristle-round');
     expect(result).toBe(promise);
     await result;
 
-    expect(aquarelleSelectedTipId.value, 'the live tip changed first').toBe('chalk');
+    expect(aquarelleSelectedTipId.value, 'the live tip changed first').toBe('bristle-round');
     const postPickBag = aquarelleToolOverrides.peek();
     expect(postPickBag, 'the pick loaded a different bag').not.toEqual(prePickBag);
     expect(calls, 'exactly one port call').toHaveLength(1);
     expect(calls[0]!.ids).toEqual([10601]);
-    expect(calls[0]!.patch.brushId).toBe('chalk');
+    expect(calls[0]!.patch.brushId).toBe('bristle-round');
     // The forwarded bag is the bag the live brush carries AFTER the pick.
     expect(calls[0]!.patch.toolOverrides).toEqual(postPickBag);
     expect(calls[0]!.patch.toolOverrides).not.toEqual(prePickBag);
@@ -133,7 +133,7 @@ describe('pickAquarelleBrush — live pick first, selection commit second', () =
     setScriptStrokeSelection([10606]);
     const { calls } = installPort();
 
-    await pickAquarelleBrush('chalk');
+    await pickAquarelleBrush('bristle-round');
     const committedBag = calls[0]!.patch.toolOverrides!;
     const captured = { ...committedBag };
     aquarelleToolOverrides.value = { ...NEUTRAL_TOOL_OVERRIDES, aspect: 2 };
@@ -148,7 +148,7 @@ describe('pickAquarelleBrush — live pick first, selection commit second', () =
     setScriptStrokeSelection([10607]);
     const { promise } = installPort();
 
-    const result = pickAquarelleBrush('chalk');
+    const result = pickAquarelleBrush('bristle-round');
     expect(result).toBe(promise);
     await result;
 
@@ -164,7 +164,7 @@ describe('pickAquarelleBrush — live pick first, selection commit second', () =
     setScriptStrokeSelection([10602, 10603]);
     const { calls } = installPort();
 
-    await pickAquarelleBrush('chalk');
+    await pickAquarelleBrush('bristle-round');
 
     expect(calls).toHaveLength(1);
     expect(calls[0]!.ids).toEqual([10602]);
@@ -189,8 +189,8 @@ describe('pickAquarelleBrush — live pick first, selection commit second', () =
     setScriptStrokeSelection([10609]);
     const { calls } = installPort();
 
-    expect(pickAquarelleBrush('chalk')).toBeNull();
-    expect(aquarelleSelectedTipId.value).toBe('chalk');
+    expect(pickAquarelleBrush('bristle-round')).toBeNull();
+    expect(aquarelleSelectedTipId.value).toBe('bristle-round');
 
     // Select mode on, empty selection.
     setAquarelleSelectMode(true);
@@ -240,9 +240,12 @@ describe('commitAquarelleSelectionParam(s) — event-time params patches', () =>
 
   // quick 261121-mtu (decision B): a same-group acrylic pick writes no record,
   // so the acrylic Refill 0 survives the pick instead of reverting to 60.
+  // quick 261124-iq9: the acrylic group has exactly one member, so the
+  // pre-pick tip is written directly — the seam compares the SELECTED MEDIUM
+  // with the incoming group, never the tip.
   it('a same-group acrylic brush pick leaves the acrylic Refill at 0', () => {
     applyAquarelleMedium('acrylic');
-    selectAquarelleTip('bristle-flat');
+    aquarelleSelectedTipId.value = 'round';
     expect(aquarelleParams.value.refill, 'acrylic landed with Refill 0').toBe(0);
     const bag = aquarelleParams.value;
 
@@ -304,7 +307,7 @@ describe('the direct appearance door keeps the t74 contract', () => {
     setScriptStrokeSelection([10611, 10612]);
     const { calls } = installPort();
 
-    const patch: ScriptStrokeAppearancePatch = { brushId: 'chalk' };
+    const patch: ScriptStrokeAppearancePatch = { brushId: 'bristle-round' };
     await commitAquarelleSelectionAppearance(patch);
 
     expect(calls).toHaveLength(1);

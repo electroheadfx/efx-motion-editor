@@ -8,14 +8,15 @@
  *   a preset pick loads NEUTRAL_TOOL_OVERRIDES; setAquarelleMultiplier rides on top
  *   snapshotAquarelleRecord().brushId / buildAquarelleStrokePayload().brushId carry the id
  *   buildBrushForStroke(id) matches buildBrush(preset) on the vendor Brush fields
- *   261027-gh9: 'chalk' is a dry media — no water, no wet bloom, high grain —
- *   whose deterministic tip replays through buildBrushForStroke
+ *   quick 261124-iq9: the catalog is twelve responses in two groups — the
+ *   Chalk/Graphite/Gouache-round responses and Bristle Flat are retired, so
+ *   the old chalk dry-media contract is deleted with its subject
  *   legacy wc/* tip ids and the null-clear path stay unchanged
  *
  * Assertion style: scalar predicates so TAP diagnostics stay one-line.
  */
 import { beforeEach, describe, expect, it } from 'vitest';
-import { BRUSH_PRESETS, buildBrush, buildBrushForStroke, TIP_SIZE } from '@efxlab/efx-watercolor';
+import { BRUSH_PRESETS, buildBrush, buildBrushForStroke } from '@efxlab/efx-watercolor';
 import { NEUTRAL_TOOL_OVERRIDES, findTip } from '@efxlab/efx-watercolor/brushes';
 import {
   aquarelleActiveTool,
@@ -54,8 +55,9 @@ describe('I-03 playground preset ids on the tip seam', () => {
   });
 
   it('exposes every playground preset id in catalog order', () => {
+    // quick 261124-iq9: twelve survivors in two groups — Watercolor keeps its
+    // eleven, the Gouache (acrylic) group keeps exactly `bristle-round`.
     expect(PRESET_IDS).toEqual([
-      'chalk',
       'round',
       'detail',
       'rigger',
@@ -63,23 +65,10 @@ describe('I-03 playground preset ids on the tip seam', () => {
       'hake',
       'filbert',
       'mop',
-      'dry',
-      'fan',
       'sponge',
       'spatter',
       'sumi',
       'dagger',
-      'stipple',
-      // 61-07 (D-12): the clean-sweep preset ships last.
-      // 64-11 (MED-29): the eight medium responses append after the legacy
-      // fifteen; no existing id is renamed, removed or reordered.
-      'gouache-round',
-      'gouache-flat',
-      'pastel-soft',
-      'conte-hard',
-      'graphite-pencil',
-      'graphite-6b',
-      'bristle-flat',
       'bristle-round',
     ]);
   });
@@ -119,14 +108,14 @@ describe('I-03 playground preset ids on the tip seam', () => {
   it('a preset pick issued while water / pen / lift is active flips the tool to the tip\'s brush family', () => {
     // quick 261121-mtu: the old blanket `brush` flip is gone. `round` is a
     // watercolor-group preset, so the pick lands on the Watercolor tool;
-    // `bristle-flat` is acrylic and lands on Brush.
+    // `bristle-round` is acrylic (Gouache) and lands on Brush.
     for (const tool of ['water', 'pen', 'lift'] as const) {
       resetSelection();
       setAquarelleTool(tool);
       expect(aquarelleActiveTool.value).toBe(tool);
       selectAquarelleTip('round');
       expect(aquarelleActiveTool.value, `pick during ${tool} must select the watercolor family`).toBe('watercolor');
-      selectAquarelleTip('bristle-flat');
+      selectAquarelleTip('bristle-round');
       expect(aquarelleActiveTool.value, `pick during ${tool} must select the brush family`).toBe('brush');
     }
   });
@@ -234,81 +223,5 @@ describe('I-11 per-brush response memory', () => {
   });
 });
 
-describe('chalk dry-media preset contract (261027-gh9)', () => {
-  const chalk = BRUSH_PRESETS.find((preset) => preset.id === 'chalk');
-
-  it('adds exactly one chalk entry and keeps every id unique', () => {
-    expect(BRUSH_PRESETS.filter((preset) => preset.id === 'chalk').length).toBe(1);
-    const ids = BRUSH_PRESETS.map((preset) => preset.id);
-    expect(new Set(ids).size).toBe(ids.length);
-  });
-
-  it('is a dry media: no water, no wet bloom, moderate paper tooth', () => {
-    expect(chalk, 'chalk preset must exist').toBeTruthy();
-    expect(chalk!.water).toBe(0);
-    expect(chalk!.wetRound).toBe(0);
-    // 261027-gh9c: the paper tooth must modulate the deposit, not dominate
-    // it — a high grain gate produced paper-sized blobs instead of chalk.
-    expect(chalk!.grain).toBeGreaterThan(0.2);
-    expect(chalk!.grain).toBeLessThan(0.6);
-    expect(chalk!.flow).toBeGreaterThan(0);
-    expect(chalk!.flow).toBeLessThan(1);
-    expect(chalk!.capacity).toBeGreaterThan(0);
-    expect(chalk!.capacity).toBeLessThan(1);
-    // 261027-gh9f: dry-media deposit — the stamp shader re-thresholds the tip
-    // per dab and every dab reads a different slice of it.
-    expect(chalk!.roughness).toBeGreaterThan(0);
-    expect(chalk!.roughness).toBeLessThanOrEqual(1);
-    expect(chalk!.stampJitter).toBeGreaterThan(0);
-    // The top-bar size slider must be able to reach a real hairline: the old
-    // 0.03 radius ceiling made size 1 look like a marker.
-    expect(chalk!.size[1]).toBeLessThanOrEqual(0.02);
-  });
-
-  it('builds a textured, non-empty tip with finite Brush fields', () => {
-    const brush = buildBrush(chalk!);
-    expect(brush.tipSize).toBe(TIP_SIZE);
-    expect(brush.tipData.length).toBe(TIP_SIZE * TIP_SIZE);
-    expect(brush.tipMean).toBeGreaterThan(0.01);
-    expect(brush.tipMean).toBeLessThanOrEqual(1);
-    const numericFields = [
-      'tipMean',
-      'aspect',
-      'angle',
-      'angleJitter',
-      'pressureSize',
-      'speedThin',
-      'spacing',
-      'scatter',
-      'dabs',
-      'sizeJitter',
-      'water',
-      'load',
-      'flow',
-      'capacity',
-      'grain',
-      'wetRound',
-      'roughness',
-      'stampJitter',
-    ] as const;
-    for (const field of numericFields) {
-      expect(Number.isFinite(brush[field]), `finite ${field}`).toBe(true);
-    }
-    // Texture, not an empty or solid block: both zero and painted cells.
-    expect(brush.tipData.some((value) => value === 0), 'tip has zero cells').toBe(true);
-    expect(brush.tipData.some((value) => value > 0), 'tip has painted cells').toBe(true);
-  });
-
-  it('replays through buildBrushForStroke deterministically', () => {
-    const viaStroke = buildBrushForStroke('chalk', { seed: 7 });
-    const viaPreset = buildBrush(chalk!, 7);
-    expect(viaStroke.tipSize).toBe(viaPreset.tipSize);
-    expect(viaStroke.tipMean).toBe(viaPreset.tipMean);
-    expect(viaStroke.aspect).toBe(viaPreset.aspect);
-    expect(viaStroke.spacing).toBe(viaPreset.spacing);
-    expect(viaStroke.capacity).toBe(viaPreset.capacity);
-    expect(viaStroke.grain).toBe(viaPreset.grain);
-    expect(viaStroke.wetRound).toBe(viaPreset.wetRound);
-    expect(buildBrushForStroke('chalk', { seed: 7 }).tipMean).toBe(viaStroke.tipMean);
-  });
-});
+// quick 261124-iq9: the chalk dry-media contract describe block is deleted
+// with its subject — the Chalk (and every other dry-media) response is retired.

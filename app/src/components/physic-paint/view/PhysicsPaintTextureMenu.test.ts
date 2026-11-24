@@ -132,7 +132,7 @@ const MENU_TEXTURE: AquarelleTip = {
 };
 
 beforeEach(() => {
-  aquarelleSelectedTipId.value = 'chalk';
+  aquarelleSelectedTipId.value = 'bristle-round';
   aquarelleSelectedTextureId.value = null;
   aquarelleTextureMenuOpen.value = false;
   aquarelleTextureMenuAnchor.value = null;
@@ -143,7 +143,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  aquarelleSelectedTipId.value = 'chalk';
+  aquarelleSelectedTipId.value = 'bristle-round';
   aquarelleSelectedTextureId.value = null;
   aquarelleTextureMenuOpen.value = false;
   aquarelleTextureMenuAnchor.value = null;
@@ -187,7 +187,7 @@ describe('quick 261116-gcn Textures popover', () => {
     expect(chip, 'a library texture chip renders').toBeTruthy();
     click(chip);
     expect(aquarelleSelectedTextureId.value, 'texture selected').toBe(MENU_TEXTURE.id);
-    expect(aquarelleSelectedTipId.value, 'the response is untouched').toBe('chalk');
+    expect(aquarelleSelectedTipId.value, 'the response is untouched').toBe('bristle-round');
     expect(aquarelleTextureMenuOpen.value, 'a texture pick keeps the popover open').toBe(true);
   });
 

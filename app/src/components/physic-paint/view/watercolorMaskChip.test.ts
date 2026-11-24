@@ -8,7 +8,7 @@
  *     footprint on black ground
  *   the bytes come from strokeTipData(), the SAME resolution the
  *     engine stamps (never a second tip generator, never a decode)
- *   the cache key carries the response id: ('chalk', null) and
+ *   the cache key carries the response id: ('bristle-round', null) and
  *     ('flat', null) never share a canvas
  *   a texture replaces the footprint identically for any response
  *   the cache key carries the mask-registry generation: a registry
@@ -149,7 +149,7 @@ describe('watercolorMaskChip — the engine tip as a grayscale chip (quick-26111
     expect(textured.width).toBe(TIP_MASK_EDGE);
     expect(textured.height).toBe(TIP_MASK_EDGE);
 
-    const procedural = getMaskChipCanvas('chalk', null);
+    const procedural = getMaskChipCanvas('bristle-round', null);
     expect(procedural.width, 'a procedural tip stays 192').toBe(192);
     expect(procedural.height).toBe(192);
   });
@@ -182,18 +182,18 @@ describe('watercolorMaskChip — the engine tip as a grayscale chip (quick-26111
     ]).toEqual([0, 0, 0, 255]);
   });
 
-  it('keys the cache on the response: chalk and flat never share bytes', () => {
-    const chalk = getMaskChipCanvas('chalk', null);
+  it('keys the cache on the response: bristle and flat never share bytes', () => {
+    const bristle = getMaskChipCanvas('bristle-round', null);
     const flat = getMaskChipCanvas('flat', null);
-    expect(flat).not.toBe(chalk);
-    expect(differingPixels(imageOf(chalk).data, imageOf(flat).data)).toBeGreaterThan(0);
+    expect(flat).not.toBe(bristle);
+    expect(differingPixels(imageOf(bristle).data, imageOf(flat).data)).toBeGreaterThan(0);
   });
 
   it('a texture replaces the footprint identically for any response', () => {
     const mask = mask512();
     registerMask(TEXTURE_ID, mask);
     const round = getMaskChipCanvas('round', TEXTURE_ID);
-    const chalk = getMaskChipCanvas('chalk', TEXTURE_ID);
+    const bristle = getMaskChipCanvas('bristle-round', TEXTURE_ID);
     // The chip is the engine's tip: one byte → one grayscale pixel.
     const pixels = imageOf(round).data;
     let mismatched = 0;
@@ -203,7 +203,7 @@ describe('watercolorMaskChip — the engine tip as a grayscale chip (quick-26111
       }
     }
     expect(mismatched, 'every chip pixel equals the engine tip byte').toBe(0);
-    expect(differingPixels(pixels, imageOf(chalk).data), 'the texture wins over the response').toBe(0);
+    expect(differingPixels(pixels, imageOf(bristle).data), 'the texture wins over the response').toBe(0);
   });
 
   it('a registry write under the same ids repaints instead of serving stale bytes', () => {
@@ -236,10 +236,10 @@ describe('watercolorMaskChip — the engine tip as a grayscale chip (quick-26111
   });
 
   it('clearMaskChipCache() empties the map', () => {
-    const first = getMaskChipCanvas('chalk', null);
-    expect(getMaskChipCanvas('chalk', null)).toBe(first);
+    const first = getMaskChipCanvas('bristle-round', null);
+    expect(getMaskChipCanvas('bristle-round', null)).toBe(first);
     clearMaskChipCache();
-    expect(getMaskChipCanvas('chalk', null)).not.toBe(first);
+    expect(getMaskChipCanvas('bristle-round', null)).not.toBe(first);
   });
 
   it('never serializes the chip bitmap', () => {

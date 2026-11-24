@@ -1,9 +1,10 @@
 /**
- * 64-11 (MED-27 / MED-30 / MED-31) — the brush library's five sections.
+ * 64-11 (MED-27 / MED-30 / MED-31) — the brush library's sections.
  *
- * Laws pinned here:
- *   five always-expanded sections in the fixed order Watercolor, Gouache,
- *   Chalk, Graphite, Acrylic — each keeping its own two-column card grid
+ * Laws pinned here (quick 261124-iq9: two sections, Watercolor and Gouache —
+ * the acrylic record is DISPLAYED as Gouache; Chalk/Graphite are retired):
+ *   two always-expanded sections in the fixed order Watercolor, Gouache —
+ *   each keeping its own two-column card grid
  *   every preset card appears under exactly one section, membership matching
  *   the classification table
  *   a group with no member renders no element (proved through the SAME pure
@@ -163,16 +164,13 @@ function indexOfTestId(tree: TestVNode, testId: string): number {
 
 const EXPECTED_SECTION_IDS = [
   'watercolor-brush-section-watercolor',
-  'watercolor-brush-section-gouache',
-  'watercolor-brush-section-pastel',
-  'watercolor-brush-section-graphite',
   'watercolor-brush-section-acrylic',
 ]
 
-const EXPECTED_TITLES = ['Watercolor', 'Gouache', 'Chalk', 'Graphite', 'Acrylic']
+const EXPECTED_TITLES = ['Watercolor', 'Gouache']
 
 // The classification table, restated as counts per section.
-const EXPECTED_COUNTS = [11, 2, 6, 2, 2]
+const EXPECTED_COUNTS = [11, 1]
 
 /** A minimal canvas stub so getStrokeThumb can paint under node (no DOM). */
 function makeStubCanvas(): Record<string, unknown> {
@@ -213,7 +211,7 @@ function resetSelection(): void {
   aquarelleSelectedTextureId.value = null
   // quick 261121-mtu (rev 2): the grid filters to the active tool's brush
   // FAMILY (Brush = non-watercolor, Watercolor = its own group). This suite
-  // pins the five-section rendering law, so it runs under a UTILITY tool,
+  // pins the two-section rendering law, so it runs under a UTILITY tool,
   // which exposes the whole table; the paint-family filter has its own
   // block in WatercolorBrushLibrary.test.ts and its pure suite in
   // brushToolFamily.test.ts.
@@ -238,7 +236,7 @@ describe('brush library sections (64-11 MED-27)', () => {
     setAquarelleSelectMode(false)
   })
 
-  it('renders the five sections in the fixed order', () => {
+  it('renders the two sections in the fixed order', () => {
     const tree = renderLibrary()
     expect(sectionNodes(tree).map(testIdOf)).toEqual(EXPECTED_SECTION_IDS)
   })
@@ -283,12 +281,11 @@ describe('brush library sections (64-11 MED-27)', () => {
     // Synthetic list exercising the rule without touching the real table.
     const onlyWatercolor = [{ ...BRUSH_PRESETS.find((p) => p.id === 'round')!, group: 'watercolor' as const }]
     expect(brushSections(onlyWatercolor).map((section) => section.group)).toEqual(['watercolor'])
-    const noGraphite = BRUSH_PRESETS.filter((preset) => preset.group !== 'graphite')
-    expect(brushSections(noGraphite).map((section) => section.group)).toEqual([
+    // quick 261124-iq9: two groups only — dropping the acrylic members leaves
+    // the watercolor section alone, still in brushGroupOrder order.
+    const noAcrylic = BRUSH_PRESETS.filter((preset) => preset.group !== 'acrylic')
+    expect(brushSections(noAcrylic).map((section) => section.group)).toEqual([
       'watercolor',
-      'gouache',
-      'pastel',
-      'acrylic',
     ])
   })
 

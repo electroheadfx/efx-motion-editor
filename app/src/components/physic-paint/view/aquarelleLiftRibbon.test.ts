@@ -121,9 +121,9 @@ describe('261029-eur lift ribbon — one footprint law', () => {
       // doubled to 180°): the band is 0.2 R wide, so a constant-R cap flares
       // ~4.6x out of it at the junction (CR-01).
       stroke(points, { ...NEUTRAL_TOOL_OVERRIDES, rotation: 2 }, 'hake'),
-      // Follow rotation, aspect 2 (the chalk preset widened 2.5x): the band is
-      // 2 R wide, so the same constant-R cap cuts an inward notch instead.
-      stroke(points, { ...NEUTRAL_TOOL_OVERRIDES, aspect: 2.5 }, 'chalk'),
+      // Follow rotation, aspect 2 (a response override widened 2.5x): the band
+      // is 2 R wide, so the same constant-R cap cuts an inward notch instead.
+      stroke(points, { ...NEUTRAL_TOOL_OVERRIDES, aspect: 2.5 }, 'bristle-round'),
     ];
     for (const recorded of cases) {
       const shape = liftShapeForStroke(recorded);

@@ -32,7 +32,7 @@ describe('brushGroupsForTool', () => {
     expect(brushGroupsForTool('brush')).toEqual(
       brushGroupOrder.filter((group) => group !== 'watercolor'),
     );
-    expect(brushGroupsForTool('brush')).toEqual(['gouache', 'pastel', 'graphite', 'acrylic']);
+    expect(brushGroupsForTool('brush')).toEqual(['acrylic']);
   });
 
   it('Watercolor exposes its own group alone', () => {
@@ -72,14 +72,11 @@ describe('brushPresetsForTool', () => {
 });
 
 describe('brushSectionsForTool', () => {
-  it('Watercolor renders one section and Brush renders the other four', () => {
+  it('Watercolor renders one section and Brush renders the acrylic (Gouache) one', () => {
     expect(brushSectionsForTool('watercolor').map((section) => section.group)).toEqual([
       'watercolor',
     ]);
     expect(brushSectionsForTool('brush').map((section) => section.group)).toEqual([
-      'gouache',
-      'pastel',
-      'graphite',
       'acrylic',
     ]);
   });
@@ -104,8 +101,8 @@ describe('firstBrushPresetForTool', () => {
     expect(firstBrushPresetForTool('watercolor')?.id).toBe('round');
   });
 
-  it('Brush lands on the first non-watercolor group preset (gouache-round)', () => {
-    expect(firstBrushPresetForTool('brush')?.id).toBe('gouache-round');
+  it('Brush lands on the first non-watercolor group preset (bristle-round)', () => {
+    expect(firstBrushPresetForTool('brush')?.id).toBe('bristle-round');
   });
 });
 

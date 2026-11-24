@@ -2,8 +2,9 @@
  * 261017-xa0 I-03 — Brush tab; quick-261115-oh9 splits the two axes.
  *
  * Laws pinned here:
- *   FIVE response sections over BRUSH_PRESETS in the fixed order Watercolor,
- *   Gouache, Chalk, Graphite, Acrylic (64-11 MED-27) — a response card is
+ *   TWO response sections over BRUSH_PRESETS in the fixed order Watercolor,
+ *   Gouache (64-11 MED-27; quick 261124-iq9 retires Chalk/Graphite and
+ *   displays the acrylic group as Gouache) — a response card is
  *   never a texture and never a project import
  *   a texture row (watercolor-texture-strip) above the grid: Default first,
  *   then the machine library's rows in catalog order (no compile-time
@@ -11,7 +12,7 @@
  *   chips render the engine's real grayscale mask (watercolorMaskChip)
  *   every response card = 150x44 stroke thumb canvas + mixed-case name + tooltip
  *   testids: root watercolor-brush-library, cards watercolor-brush-card-${id},
- *            sections watercolor-brush-section-${group} (five medium ids),
+ *            sections watercolor-brush-section-${group} (two medium ids),
  *            texture row watercolor-texture-strip,
  *            chips watercolor-texture-chip-${textureId ?? 'default'}
  *   no category filter / search field / wc/ size-variant rows
@@ -387,7 +388,7 @@ function resetSelection(): void {
   aquarelleSelectedTextureId.value = null;
   // quick 261121-mtu (rev 2): the grid now filters to the active tool's brush
   // FAMILY (Brush = non-watercolor, Watercolor = watercolor only). This suite
-  // pins the five-section grid itself, so it runs under a UTILITY tool, which
+  // pins the two-section grid itself, so it runs under a UTILITY tool, which
   // exposes the whole table; the paint-family filter has its own block below
   // and its pure law in brushToolFamily.test.ts.
   aquarelleActiveTool.value = 'water';
@@ -432,15 +433,12 @@ describe('WatercolorBrushLibrary brush-card grid (I-03, 261027-gh9)', () => {
     Object.assign(globalThis, { document: originalDocument });
   });
 
-  it('renders five grouped sections over BRUSH_PRESETS — no texture or custom card', () => {
+  it('renders the two grouped sections over BRUSH_PRESETS — no texture or custom card', () => {
     addCustomBrushTip(CUSTOM_TIP);
     try {
       const tree = renderLibrary();
       expect(sectionNodes(tree).map((n) => n.props?.['data-testid'])).toEqual([
         'watercolor-brush-section-watercolor',
-        'watercolor-brush-section-gouache',
-        'watercolor-brush-section-pastel',
-        'watercolor-brush-section-graphite',
         'watercolor-brush-section-acrylic',
       ]);
       expect(cardNodes(tree).map(cardIdOf), 'one response card per preset, grouped').toEqual(
@@ -460,11 +458,11 @@ describe('WatercolorBrushLibrary brush-card grid (I-03, 261027-gh9)', () => {
     }
   });
 
-  it('names the five sections with the D-18 short names', () => {
+  it('names the two sections with the D-18 short names', () => {
     const titles = sectionNodes(renderLibrary()).map((section) =>
       textContent(childrenOf(section)[0]),
     );
-    expect(titles).toEqual(['Watercolor', 'Gouache', 'Chalk', 'Graphite', 'Acrylic']);
+    expect(titles).toEqual(['Watercolor', 'Gouache']);
   });
 
   it('exposes the library root testid on a 2-column grid', () => {
@@ -565,11 +563,11 @@ describe('WatercolorBrushLibrary brush-card grid (I-03, 261027-gh9)', () => {
     setAquarelleTool('water');
     const acrylicTree = renderLibrary();
     const acrylicCard = cardNodes(acrylicTree).find(
-      (c) => c.props?.['data-testid'] === 'watercolor-brush-card-bristle-flat',
+      (c) => c.props?.['data-testid'] === 'watercolor-brush-card-bristle-round',
     );
     expect(acrylicCard, 'the acrylic card must render').toBeTruthy();
     (acrylicCard!.props as { onClick?: () => void }).onClick!();
-    expect(aquarelleSelectedTipId.value).toBe('bristle-flat');
+    expect(aquarelleSelectedTipId.value).toBe('bristle-round');
     expect(aquarelleActiveTool.value, 'an acrylic pick selects the Brush tool').toBe('brush');
   });
 
@@ -717,11 +715,11 @@ describe('WatercolorBrushLibrary texture strip (quick-261115-oh9)', () => {
       expect(target.ops.drawImage.length, `one blit for ${responseId}`).toBe(1);
       return target.ops.drawImage[0]![0];
     };
-    const chalk = defaultChipSource('chalk');
+    const bristle = defaultChipSource('bristle-round');
     const flat = defaultChipSource('flat');
     // The cache key carries the response id — a response change repaints the
     // Default chip instead of serving the previous response's tip.
-    expect(chalk).not.toBe(flat);
+    expect(bristle).not.toBe(flat);
   });
 
   it('styles the texture row, the 44px chip canvas, the accent and the greyed state', () => {
@@ -775,13 +773,13 @@ describe('WatercolorBrushLibrary stroke-thumb cache (52.1 D-19)', () => {
     }
   });
 
-  it('resolves the new chalk catalog id to one painted thumb', () => {
-    // 261027-gh9: the thumb path must know every catalog id — the new preset
-    // included — or the card would throw on its first paint.
-    const first = getStrokeThumb('chalk');
-    expect(first, 'chalk thumb canvas').toBeTruthy();
-    const second = getStrokeThumb('chalk');
-    expect(second, 'chalk cache hit returns the same canvas').toBe(first);
+  it('resolves the acrylic catalog id to one painted thumb', () => {
+    // 261027-gh9: the thumb path must know every catalog id — the bristle
+    // response included — or the card would throw on its first paint.
+    const first = getStrokeThumb('bristle-round');
+    expect(first, 'bristle-round thumb canvas').toBeTruthy();
+    const second = getStrokeThumb('bristle-round');
+    expect(second, 'bristle-round cache hit returns the same canvas').toBe(first);
   });
 
   it('repeated getStrokeThumb calls return the same cached canvas (no repaint)', () => {
@@ -1154,20 +1152,17 @@ describe('brush family filter per tool (quick 261121-mtu rev 2)', () => {
     const tree = renderLibrary();
     expect(sectionIds(tree)).toEqual(['watercolor-brush-section-watercolor']);
     expect(cardIds(tree)).toContain('watercolor-brush-card-round');
-    expect(cardIds(tree)).not.toContain('watercolor-brush-card-bristle-flat');
-    expect(cardIds(tree)).not.toContain('watercolor-brush-card-chalk');
+    expect(cardIds(tree)).not.toContain('watercolor-brush-card-bristle-round');
+    expect(cardIds(tree), 'eleven watercolor cards').toHaveLength(11);
   });
 
-  it('Brush renders every non-watercolor section and no watercolor card', () => {
+  it('Brush renders the acrylic (Gouache) section and no watercolor card', () => {
     aquarelleActiveTool.value = 'brush';
     const tree = renderLibrary();
     expect(sectionIds(tree)).toEqual([
-      'watercolor-brush-section-gouache',
-      'watercolor-brush-section-pastel',
-      'watercolor-brush-section-graphite',
       'watercolor-brush-section-acrylic',
     ]);
-    expect(cardIds(tree)).toContain('watercolor-brush-card-bristle-flat');
+    expect(cardIds(tree)).toContain('watercolor-brush-card-bristle-round');
     expect(cardIds(tree)).not.toContain('watercolor-brush-card-round');
     expect(cardIds(tree)).not.toContain('watercolor-brush-card-hake');
   });
@@ -1176,9 +1171,9 @@ describe('brush family filter per tool (quick 261121-mtu rev 2)', () => {
     for (const tool of ['water', 'pen', 'lift'] as const) {
       aquarelleActiveTool.value = tool;
       const tree = renderLibrary();
-      expect(sectionIds(tree), tool).toHaveLength(5);
+      expect(sectionIds(tree), tool).toHaveLength(2);
       expect(cardIds(tree), tool).toContain('watercolor-brush-card-round');
-      expect(cardIds(tree), tool).toContain('watercolor-brush-card-bristle-flat');
+      expect(cardIds(tree), tool).toContain('watercolor-brush-card-bristle-round');
     }
   });
 });

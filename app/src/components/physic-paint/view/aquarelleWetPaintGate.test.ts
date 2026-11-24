@@ -89,7 +89,7 @@ describe('aquarelleHasWetPaint tool fallback', () => {
   });
 
   it('drops an active Water tool to Brush when the brush is non-watercolor', () => {
-    aquarelleSelectedTipId.value = 'bristle-flat';
+    aquarelleSelectedTipId.value = 'bristle-round';
     setAquarelleHasWetPaint(true);
     setAquarelleTool('water');
     setAquarelleHasWetPaint(false);

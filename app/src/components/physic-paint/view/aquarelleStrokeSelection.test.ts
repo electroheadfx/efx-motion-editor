@@ -2237,12 +2237,12 @@ describe('quick 261111-t74 — a selection brush patch is one script edit', () =
     const entryBefore = strokeEntryAt(eventsBefore, 10301);
     const revisionBefore = aquarelleStrokesRevision.value;
 
-    expect(updateAquarelleStrokesInScript([10301], { brushId: 'chalk' })).toBe(1);
+    expect(updateAquarelleStrokesInScript([10301], { brushId: 'bristle-round' })).toBe(1);
     expect(aquarelleStrokesRevision.value).toBe(revisionBefore + 1);
 
     const after = getRecordedAquarelleStroke(10301)!;
     expect(after).not.toBe(before);
-    expect(after.brushId).toBe('chalk');
+    expect(after.brushId).toBe('bristle-round');
     // Appearance data only: points, params, colour and the measured cuisson
     // survive the write untouched.
     expect(after.params).toEqual(before.params);
@@ -2257,8 +2257,8 @@ describe('quick 261111-t74 — a selection brush patch is one script edit', () =
     expect(entryIndexOf(eventsAfter, 10301)).toBe(indexBefore);
     const entryAfter = strokeEntryAt(eventsAfter, 10301);
     expect(entryAfter).not.toBe(entryBefore);
-    expect(entryAfter.brushId).toBe('chalk');
-    expect(entryAfter.engine.brushId).toBe('chalk');
+    expect(entryAfter.brushId).toBe('bristle-round');
+    expect(entryAfter.engine.brushId).toBe('bristle-round');
     expect(entryAfter.pts).toEqual(entryBefore.pts);
     expect(entryAfter.ticks).toBe(entryBefore.ticks);
     expect(entryAfter.cuisson).toBe(entryBefore.cuisson);
@@ -2319,11 +2319,11 @@ describe('quick 261111-t74 — a selection brush patch is one script edit', () =
     const firstBefore = getRecordedAquarelleStroke(10304)!;
     const secondBefore = getRecordedAquarelleStroke(10305)!;
 
-    const editId = beginAquarelleAppearanceEdit([10304, 10305], { brushId: 'chalk' });
+    const editId = beginAquarelleAppearanceEdit([10304, 10305], { brushId: 'bristle-round' });
     expect(editId).not.toBeNull();
     expect(getRecordedAquarelleStroke(10304)).not.toBe(firstBefore);
-    expect(getRecordedAquarelleStroke(10304)!.brushId).toBe('chalk');
-    expect(getRecordedAquarelleStroke(10305)!.brushId).toBe('chalk');
+    expect(getRecordedAquarelleStroke(10304)!.brushId).toBe('bristle-round');
+    expect(getRecordedAquarelleStroke(10305)!.brushId).toBe('bristle-round');
 
     expect(restoreAquarelleEditSnapshot(editId!, 'undo')).not.toBeNull();
     expect(getRecordedAquarelleStroke(10304)).toBe(firstBefore);
@@ -2370,17 +2370,17 @@ describe('quick 261111-t74 — a selection brush patch is one script edit', () =
     // Select mode off, non-empty selection.
     setAquarelleSelectMode(false);
     setScriptStrokeSelection([10303]);
-    expect(commitAquarelleSelectionAppearance({ brushId: 'chalk' })).toBeNull();
+    expect(commitAquarelleSelectionAppearance({ brushId: 'bristle-round' })).toBeNull();
 
     // Select mode on, empty selection.
     setAquarelleSelectMode(true);
     clearScriptStrokeSelection();
-    expect(commitAquarelleSelectionAppearance({ brushId: 'chalk' })).toBeNull();
+    expect(commitAquarelleSelectionAppearance({ brushId: 'bristle-round' })).toBeNull();
 
     // Live selection, no registered port.
     setScriptStrokeSelection([10303]);
     setAquarelleSelectionEditPort(null);
-    expect(commitAquarelleSelectionAppearance({ brushId: 'chalk' })).toBeNull();
+    expect(commitAquarelleSelectionAppearance({ brushId: 'bristle-round' })).toBeNull();
   });
 
   it('forwards a snapshotted id list and the same patch to the registered port', () => {
@@ -2399,7 +2399,7 @@ describe('quick 261111-t74 — a selection brush patch is one script edit', () =
     };
     setAquarelleSelectionEditPort(port);
 
-    const patch: ScriptStrokeAppearancePatch = { brushId: 'chalk' };
+    const patch: ScriptStrokeAppearancePatch = { brushId: 'bristle-round' };
     expect(commitAquarelleSelectionAppearance(patch)).toBe(result);
     // Clearing the selection AFTER the call cannot change the forwarded ids.
     clearScriptStrokeSelection();
@@ -2501,7 +2501,7 @@ describe('quick 261111-t74 — a selection brush patch is one script edit', () =
 
     expect(
       updateAquarelleStrokesInScript([10315], {
-        brushId: 'chalk',
+        brushId: 'bristle-round',
         toolOverrides: { aspect: 1.4 },
         params: { load: 70 },
       }),
@@ -2509,7 +2509,7 @@ describe('quick 261111-t74 — a selection brush patch is one script edit', () =
     expect(aquarelleStrokesRevision.value).toBe(revisionBefore + 1);
 
     const after = getRecordedAquarelleStroke(10315)!;
-    expect(after.brushId).toBe('chalk');
+    expect(after.brushId).toBe('bristle-round');
     expect(after.params.load).toBe(70);
     expect(after.toolOverrides).toEqual({ ...NEUTRAL_TOOL_OVERRIDES, aspect: 1.4 });
   });
@@ -2523,7 +2523,7 @@ describe('quick 261111-t74 — a selection brush patch is one script edit', () =
     const before = getRecordedAquarelleStroke(10317)!;
 
     const editId = beginAquarelleAppearanceEdit([10317], {
-      brushId: 'chalk',
+      brushId: 'bristle-round',
       toolOverrides: { aspect: 1.4 },
     });
     expect(editId).not.toBeNull();
@@ -2546,10 +2546,10 @@ describe('quick 261111-t74 — a selection brush patch is one script edit', () =
     const before = getRecordedAquarelleStroke(10320)!;
     expect(paintSeedSaltOf(before.params)).toBe(0);
 
-    const editId = beginAquarelleAppearanceEdit([10320], { brushId: 'chalk' });
+    const editId = beginAquarelleAppearanceEdit([10320], { brushId: 'bristle-round' });
     expect(editId).not.toBeNull();
     const after = getRecordedAquarelleStroke(10320)!;
-    expect(after.brushId).toBe('chalk');
+    expect(after.brushId).toBe('bristle-round');
     // The brush change rides the appearance door's seed re-roll (0 -> 1).
     expect(paintSeedSaltOf(after.params)).toBe(1);
 
