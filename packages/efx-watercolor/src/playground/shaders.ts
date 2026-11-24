@@ -1087,7 +1087,6 @@ struct Gathered {
   vec4 cA;                   // carried absorbance 0..3
   vec3 cB;                   // carried absorbance 4..6
   float alpha;               // carried layer alpha
-  float film;                // Spec 10: the lateral edge film (1 = neutral)
   float coverage;            // §4.4-thresholded body, 0..1
   int nearest;               // the gathered centre bristle
 };
@@ -1097,9 +1096,6 @@ Gathered gatherBristle(vec2 uv){
   g.cA = vec4(0.0);
   g.cB = vec3(0.0);
   g.alpha = 0.0;
-  // Both early returns leave the struct from this init, so a cell the gather
-  // never reaches still carries the neutral film.
-  g.film = 1.0;
   g.coverage = 0.0;
   g.nearest = 0;
   vec2 p = uv - uPoint;
@@ -1306,14 +1302,23 @@ Gathered gatherBristle(vec2 uv){
   // same fade so the surviving specks fade with it.
   float coverage = body * (0.3 + 0.7 * uPressure) * dryEdge * alongFade * trailSupport;
   // Spec 10 — Edge transparency and Edge falloff. ONE lateral film in
-  // SILHOUETTE units (uFeatherEdge is where the mark's visible rim sits)
-  // scales the WHOLE carried film below — coverage, cA, cB and alpha — so
-  // the rim thins as one film instead of a pale, long-memory partial
-  // deposit. 1 up to uEdgeStart, then 1 - amount·t^e with e = 2^(2b - 1)
-  // (0.5 broad / 1 linear / 2 rim, the tested twin's edgeFalloffExponent).
-  // Cells BEYOND the silhouette clamp to the full rim factor BY DESIGN: at
-  // amount 100 they go inert and the edge narrows — intended, not a
-  // paper-threshold change (the threshold block above is untouched).
+  // SILHOUETTE units (uFeatherEdge is where the mark's visible rim sits):
+  // 1 up to uEdgeStart, then 1 - amount·t^e with e = 2^(2b - 1) (0.5 broad /
+  // 1 linear / 2 rim, the tested twin's edgeFalloffExponent). Cells BEYOND
+  // the silhouette clamp to the full rim factor BY DESIGN: at amount 100
+  // they go inert and the edge narrows — intended, not a paper-threshold
+  // change (the threshold block above is untouched).
+  //
+  // The film is the DEPOSIT WEIGHT, never a colour dilution (UAT 2026-11-24,
+  // the artist's white border): the deposit's source is cA * a, so scaling
+  // cA as well squares the film — the underlayer is attenuated once while
+  // the replacement is squared away, leaving a pale rail, worst at falloff
+  // 100. The carried coefficients stay full strength; a fades them.
+  // g.alpha DOES carry the film: the cover channel's target is
+  // a · uCoverTarget · g.alpha, and its equilibrium (target / a) is the
+  // base-replacement share, which must fade with the deposit. The scatter S
+  // needs no extra factor — uScatter · a carries the film once already.
+  //
   // The film is the PLAIN arithmetic form, never a ternary amount guard: at
   // amount 0 the product is exactly zero, so the film is exactly 1.0 and the
   // pre-change program renders bit-identically (the mode-1 identity gates).
@@ -1322,17 +1327,15 @@ Gathered gatherBristle(vec2 uv){
   float edgeT = clamp((edgeU - uEdgeStart) / max(1.0 - uEdgeStart, 1e-4), 0.0, 1.0);
   float edgeExp = exp2(2.0 * uEdgeFalloff - 1.0);
   float edgeFilm = 1.0 - uEdgeFade * pow(edgeT, edgeExp);
-  g.film = edgeFilm;
-  featherFade *= edgeFilm;
   featherFade *= alongFade * trailSupport;
   // The band itself is the reference's constant; its width never moves.
   float inked = uSoftness > 0.0
     ? smoothstep(threshold - uSoftness, threshold + uSoftness, coverage)
     : step(threshold, coverage);
-  g.coverage = inked * featherFade;
+  g.coverage = inked * featherFade * edgeFilm;
   g.cA *= featherFade;
   g.cB *= featherFade;
-  g.alpha *= featherFade;
+  g.alpha *= featherFade * edgeFilm;
   // GAP-4: a texture tip bounds WHERE the dab lands (uTipMix = 0 keeps the
   // untextured law byte-identical: the multiply is never executed).
   if (uTipMix > 0.0) g.coverage *= tipMask(uv);
@@ -1416,10 +1419,10 @@ void main(){
     // SAME weight, so the veil lands exactly where the paint does and can
     // never accumulate past uScatter.
     oA = cA * a;
-    // Spec 10: the scatter S rides the SAME lateral film as the carried
-    // colour — scaling the colour alone would leave a full-strength diffuse
-    // rim while the pigment faded.
-    oB = vec4(cB * a, uScatter * a * g.film);
+    // Spec 10 (UAT 2026-11-24): the scatter S rides the same film through
+    // a — a second film factor would square it while the colour stays full
+    // strength, leaving a milky rim.
+    oB = vec4(cB * a, uScatter * a);
   }
 }`;
 
