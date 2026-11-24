@@ -6,7 +6,7 @@ status: completed
 stopped_at: Phase 64 complete — all phases complete
 last_updated: "2026-11-24T20:39:35.986Z"
 last_activity: 2026-11-24
-last_activity_desc: Quick 261124-iq9 UAT approved (two-media brush convention)
+last_activity_desc: Quick 261124-tje UAT approved (per-brush landing bags)
 state_head: eb40c638d5dfbfb78c70efa18b08c8ef5d5bfca0
 progress:
   total_phases: 2
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-22 after Phase 64)
 Phase: 64
 Plan: Not started
 Status: All phases complete
-Last activity: 2026-11-24 — Quick task 261124-tje (AUTOMATED-READY, live UAT pending): every brush response now carries a per-brush landing bag that is re-applied on EVERY pick. Gouache (`bristle-round`) lands 40 px / Pigment 100 / Pickup 100 / Dry 0 / Feather 100; a new `pen` response joins the acrylic (Brush-family) group and lands 10 px / #373633 / Pigment 100 / Pickup 0 / Dry 0 / Feather 85. The bag is compile-time only — no serializer, no `.mce` field, no Rust mirror, no migration — and lands LAST at every pick seam (`pickAquarelleBrush`, the Brush-tool crossing/repair branch, `pickAquarelleMedium`, and a one-shot fresh-session landing) so a medium apply can never undo it. Reset stays medium-record-driven. Gates: package build + full package suite (1028 passed / 8 skipped), app tsc, full app suite (467 files / 9874 passed / 4 skipped). Previous: 261124-iq9 (UAT-APPROVED) — two media and twelve responses; Viscosity and Water hidden for the Gouache paint context.
+Last activity: 2026-11-24 — Quick task 261124-tje: every brush response now carries a per-brush landing bag that is re-applied on EVERY pick. Gouache (`bristle-round`) lands 40 px / Pigment 100 / Pickup 100 / Dry 0 / Feather 100; a new `pen` response joins the acrylic (Brush-family) group and lands 10 px / #373633 / Pigment 100 / Pickup 0 / Dry 0 / Feather 85. The bag is compile-time only — no serializer, no `.mce` field, no Rust mirror, no migration — and lands LAST at every pick seam (`pickAquarelleBrush`, the Brush-tool crossing/repair branch, `pickAquarelleMedium`, and a one-shot fresh-session landing) so a medium apply can never undo it. Reset stays medium-record-driven. Gates: package build + full package suite (1028 passed / 8 skipped), app tsc, full app suite (467 files / 9874 passed / 4 skipped). UAT-APPROVED (artist-confirmed 2026-11-24) — eight UAT rows passed: a fresh Studio opens on Gouache at 40 px / Dry 0 / Feather 100, Pen sits next to Gouache and paints a crisp 10 px #373633 line, re-picking either brush snaps its sliders back after twiddling, Brush → Watercolor → Brush returns to Gouache's bag, a Medium-dropdown landing never undoes the brush bag, Reset still restores the acrylic record, and save/reopen keeps painted strokes identical. Previous: 261124-iq9 (UAT-APPROVED) — two media and twelve responses; Viscosity and Water hidden for the Gouache paint context.
 
 
 ## Performance Metrics
@@ -717,7 +717,7 @@ Items acknowledged and carried forward from previous milestone close:
 | 261124-gfy | Roto key actions: group Duplicate/Copy/Paste/Cut in a tonal sub-section with a Raster\|Script toggle after Cut, and pin the "Layer N Key N" identity block width (UAT approved) | 2026-11-24 | b11368da7 | [261124-gfy-roto-key-actions-group-duplicate-copy-pa](./quick/261124-gfy-roto-key-actions-group-duplicate-copy-pa/) |
 | 56 | Studio Roto: white glow on multi-selected keys (Cmd / All); the marker survives the startFrame reseed and paints without a CSS filter (WebKit clipped the glow) (UAT approved 2026-11-24) | 2026-11-24 | e7c78249f | — |
 | 261124-iq9 | New brushes convention: Watercolor + Gouache only; remove Gouache Round/Flat, all Chalk and Graphite brushes, and Bristle Flat; rename Bristle Round and the Acrylic medium to Gouache; hide Viscosity/Water for Gouache (UAT approved) | 2026-11-24 | f5da7c094 | [261124-iq9-new-brushes-convention-and-parameters-in](./quick/261124-iq9-new-brushes-convention-and-parameters-in/) |
-| 261124-tje | Gouache lands 40 px / Pigment 100 / Pickup 100 / Dry 0 / Feather 100; new Pen brush (10 px, #373633, Pigment 100, Pickup 0, Dry 0, Feather 85) in the Brush family | 2026-11-24 | eb40c638d | [261124-tje-new-default-brush-and-new-brush-pen-brus](./quick/261124-tje-new-default-brush-and-new-brush-pen-brus/) |
+| 261124-tje | Gouache lands 40 px / Pigment 100 / Pickup 100 / Dry 0 / Feather 100; new Pen brush (10 px, #373633, Pigment 100, Pickup 0, Dry 0, Feather 85) in the Brush family (UAT approved) | 2026-11-24 | eb40c638d | [261124-tje-new-default-brush-and-new-brush-pen-brus](./quick/261124-tje-new-default-brush-and-new-brush-pen-brus/) |
 
 ## Roadmap Evolution
 
@@ -736,6 +736,7 @@ Resume file: None
 
 ## Operator Next Steps
 
+- 261124-tje UAT approved 2026-11-24 (8/8 rows): every brush response carries its own landing bag, re-applied on every pick — Gouache opens at 40 px / Pigment 100 / Pickup 100 / Dry 0 / Feather 100, and the new Pen response (Brush family, acrylic group) lands 10 px / #373633 / Pigment 100 / Pickup 0 / Dry 0 / Feather 85. The bag is compile-time only and lands last at every pick seam, so a medium apply never undoes it; Reset stays medium-record-driven.
 - 261124-iq9 UAT approved 2026-11-24 (6/6 rows): the Studio offers two media (Watercolor, Gouache) and two brush groups; Viscosity and Water are hidden for Gouache on both the Paint panel and the top bar; the Water tool keeps Viscosity; old recorded responses render through the round fallback.
 - 261124-gfy UAT approved 2026-11-24 (7/7 rows): the Roto clipboard actions sit in one recessed well that the Raster|Script toggle visibly frames — Raster is the default every Studio open (byte-identical Duplicate/Copy/Paste/Cut), Script routes the same four buttons AND Cmd+C/X/V at the shipped Living Script seams with a fail-closed Cut that restores the previous script clipboard when the delete fails. The "Layer N Key N" identity block no longer resizes across 1→2→3 digits or layer changes.
 - 261124-1d7 UAT approved 2026-11-24 (1/1 row): AQTL v4 accepts the legacy relief marker bits 5/6 — snapshots written during the reverted 261123-jak/kpy window (2026-11-23 15:36-17:08) restore again, the CR-02 withheld-save latch clears, and the next save rewrites the file without the bits.
