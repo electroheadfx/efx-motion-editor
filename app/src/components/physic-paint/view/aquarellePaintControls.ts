@@ -26,6 +26,7 @@ import {
 import {
   MULTIPLIER_MAX,
   MULTIPLIER_MIN,
+  applyAquarelleBrushDefaults,
   applyAquarelleMedium,
   aquarelleSelectedMediumId,
   aquarelleToolOverrides,
@@ -71,10 +72,15 @@ function groupOfPreset(presetId: string | null): MediumId | null {
  * A pick whose group differs applies that group's record through the SAME
  * `applyAquarelleMedium` the Medium dropdown uses — one spread write plus the
  * id, never `size`/`lift`, never the selection-edit path. A pick inside the
- * same group writes nothing (id equality), so the artist's manual global
+ * same group writes no record (id equality), so the artist's manual record
  * tweaks survive (MED-13). The committed patch stays `{ brushId,
  * toolOverrides }`: a card pick never edits an already-recorded stroke's
  * params (MED-11).
+ *
+ * quick 261124-tje — the order is tip -> record -> BAG -> commit: after the
+ * conditional record, the incoming preset's landing bag is applied
+ * UNCONDITIONALLY (a same-group pick reloads it, a bagless preset is a no-op),
+ * so the bag always wins over the record and a pick is a pick.
  *
  * An unknown id still updates the live surface exactly as today — the record
  * door refuses the patch, and this returns its refusal.
@@ -85,6 +91,7 @@ export function pickAquarelleBrush(presetId: string): Promise<boolean> | null {
   if (incomingGroup !== null && aquarelleSelectedMediumId.peek() !== incomingGroup) {
     applyAquarelleMedium(incomingGroup);
   }
+  applyAquarelleBrushDefaults(presetId);
   return commitAquarelleSelectionAppearance(
     {
       brushId: presetId,

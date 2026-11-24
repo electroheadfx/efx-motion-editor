@@ -248,6 +248,60 @@ export function applyAquarelleMedium(id: string): void {
 }
 
 /**
+ * quick 261124-tje — the per-response LANDING BAG seam. A pick of a preset that
+ * carries a `defaults` bag overwrites the live paint-control values with the
+ * table's numbers; a pick of any other preset is a TOTAL no-op (no signal
+ * write, no sink call). The bag is compile-time table data — no serializer, no
+ * `.mce` field, no Rust mirror, no migration; a stroke persists its response
+ * id alone.
+ *
+ * ORDERING LAW: the medium RECORD lands first and this bag LAST, so the bag's
+ * keys win over a disagreeing record (the acrylic record's dry 70 / feather 85
+ * become the Gouache bag's 0 / 100). `size` is the visible Brush size in px on
+ * the table, converted through the ACTIVE response so the landed value matches
+ * the visible slider by construction. ONE compare-then-write spread; `lift`
+ * and every key the bag does not name are never touched. A colour, when the
+ * bag names one, lands through the Studio's registered colour sink.
+ */
+export function applyAquarelleBrushDefaults(presetId: string | null): void {
+  if (presetId === null) return;
+  const preset = BRUSH_PRESETS.find((candidate) => candidate.id === presetId);
+  const bag = preset?.defaults;
+  if (!bag) return;
+  const partial: Partial<AquarelleGlobalParams> = {};
+  if (bag.sizePx !== undefined) partial.size = aquarellePaintCanonicalFromPx(bag.sizePx);
+  if (bag.load !== undefined) partial.load = bag.load;
+  if (bag.pickup !== undefined) partial.pickup = bag.pickup;
+  if (bag.dry !== undefined) partial.dry = bag.dry;
+  if (bag.feather !== undefined) partial.feather = bag.feather;
+  const current = aquarelleParams.value;
+  const keys = Object.keys(partial) as (keyof AquarelleGlobalParams)[];
+  if (keys.some((key) => current[key] !== partial[key])) {
+    aquarelleParams.value = { ...current, ...partial };
+  }
+  if (bag.color !== undefined) brushDefaultsColorSink?.(bag.color);
+}
+
+/**
+ * quick 261124-tje — the ONE colour door for a bag that names a colour (the
+ * Pen's pigment). Mirrors `registerAquarelleLiftPreviewSink`: last registration
+ * wins, and the returned unregister clears only if it is still the registered
+ * sink — a remount can never leave a stale component receiving colours.
+ */
+export type AquarelleBrushDefaultsColorSink = (color: string) => void;
+
+let brushDefaultsColorSink: AquarelleBrushDefaultsColorSink | null = null;
+
+export function registerAquarelleBrushDefaultsColorSink(
+  sink: AquarelleBrushDefaultsColorSink,
+): () => void {
+  brushDefaultsColorSink = sink;
+  return () => {
+    if (brushDefaultsColorSink === sink) brushDefaultsColorSink = null;
+  };
+}
+
+/**
  * quick 261122-gys — the session family memory, studio-only, NEVER persisted.
  * `aquarelleLastTipByGroup` remembers the last preset picked in each medium
  * group; `aquarelleLastBrushFamilyTipId` remembers the Brush family's last
@@ -644,6 +698,9 @@ export function selectAquarellePaintTool(tool: AquarelleTool): void {
       (crossing || aquarelleSelectedMediumId.value !== group)
     ) {
       applyAquarelleMedium(group);
+      // quick 261124-tje: the bag lands LAST, gated by the SAME condition as
+      // the record repair — a staying press whose label agrees writes nothing.
+      applyAquarelleBrushDefaults(aquarelleSelectedTipId.value);
     }
     setAquarelleTool('brush');
     return;
@@ -669,6 +726,8 @@ export function pickAquarelleMedium(id: string): void {
     if (landing !== null) selectAquarelleTip(landing);
   }
   applyAquarelleMedium(record.id);
+  // quick 261124-tje: the bound brush's bag lands LAST, after its record.
+  applyAquarelleBrushDefaults(aquarelleSelectedTipId.value);
 }
 
 /**
