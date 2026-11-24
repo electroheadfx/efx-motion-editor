@@ -88,10 +88,11 @@ export interface AquarelleCanonicalParams {
   wetSeconds: number
   /**
    * Spec 10: how transparent the mark's border reads, 0..100. Scales the
-   * whole carried film (coverage, colour and alpha together) from the fade
-   * band to the silhouette; the core is untouched. 0 is neutral — every
-   * recorded stroke without the key replays byte-identically. Bristle
-   * responses only.
+   * deposit WEIGHT (coverage and the cover alpha) from the fade band to the
+   * silhouette; the carried colour stays full strength, so the band is a
+   * thinner film of the same paint, never a pale dilution. The core is
+   * untouched. 0 is neutral — every recorded stroke without the key replays
+   * byte-identically. Bristle responses only.
    */
   edgeFade: number
   /**

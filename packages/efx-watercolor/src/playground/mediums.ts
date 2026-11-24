@@ -33,8 +33,8 @@ export type MediumId = 'watercolor' | 'acrylic'
  * `wetSeconds` (the §3.4 last-touch lifetime, in seconds).
  *
  * Spec 10 adds the bristle edge pair: `edgeFade` (Edge transparency — the
- * whole carried film's lateral scale, 0 neutral) and `edgeFalloff` (the
- * fade's shape bias: 0 broad / 50 linear / 100 rim).
+ * deposit weight's lateral scale, 0 neutral) and `edgeFalloff` (the fade's
+ * shape bias: 0 broad / 50 linear / 100 rim).
  */
 export type MediumParamKey =
   | 'water'

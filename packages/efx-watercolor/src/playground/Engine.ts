@@ -131,7 +131,7 @@ export interface Params {
   pickup: number;      // 64-22: §3.1 carrier pickup rate — how much sheet paint a bristle lifts (0..1)
   refill: number;      // 64-22: §3.1 carrier refill rate — how fast a bristle refills from the load (0..1)
   wetSeconds: number;  // 64-22: last-touch wetness lifetime in SECONDS (>= 1) — declared here so the ONE mapping has one destination; consumed by 64-24
-  edgeFade: number;    // Spec 10: Edge transparency — the whole carried film's lateral scale (0..1, 0 neutral)
+  edgeFade: number;    // Spec 10: Edge transparency — the deposit weight's lateral scale (0..1, 0 neutral)
   edgeFalloff: number; // Spec 10: Edge falloff — the fade's shape bias (0..1, 0.5 linear)
 }
 

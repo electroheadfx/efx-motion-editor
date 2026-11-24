@@ -727,13 +727,13 @@ describe('64-22 — the bristle gather rides the one curve (T-64-72)', () => {
 // ============================================================
 //  Spec 10 — the lateral edge film (Edge transparency / Edge falloff).
 //
-//  ONE lateral factor in SILHOUETTE units multiplies `featherFade` before it
-//  scales the whole carried film (coverage, cA, cB, alpha), and the deposit's
-//  scatter S rides the SAME film. The three uniforms are bound once in
-//  `bindGather`, so every consumer (deposit, cover, relief) reads them.
-//  Everything the film must NOT touch is pinned negatively: the attenuation
-//  half, the paper-threshold block, the cover write, the relief and the
-//  touch stamp.
+//  ONE lateral factor in SILHOUETTE units scales the DEPOSIT WEIGHT
+//  (coverage and the cover alpha); the carried colour stays full strength
+//  and the deposit's scatter S rides the film through `a` alone. The three
+//  uniforms are bound once in `bindGather`, so every consumer (deposit,
+//  cover, relief) reads them. Everything the film must NOT touch is pinned
+//  negatively: the attenuation half, the paper-threshold block, the carried
+//  cA/cB, the cover write's weight, the relief and the touch stamp.
 // ============================================================
 
 describe('Spec 10 — the lateral edge film rides the ONE gather', () => {

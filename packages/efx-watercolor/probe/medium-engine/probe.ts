@@ -3211,10 +3211,10 @@ function readTipTexture(): string | undefined {
 //
 // Two bristle-only sliders — Edge transparency (amount A) and Edge falloff
 // (shape bias b) — drive ONE lateral film in `gatherBristle` that scales the
-// whole carried film (coverage, cA, cB and alpha through `featherFade`, plus
-// the scatter S through `g.film`). Neutral at amount 0 by construction, so the
-// two amount-0 baselines are identity gates captured from the PRE-change
-// engine (UAT row 1's automated proxy).
+// DEPOSIT WEIGHT (coverage and the cover alpha); the carried colour stays
+// full strength and the scatter S rides the film through `a`. Neutral at
+// amount 0 by construction, so the two amount-0 baselines are identity gates
+// captured from the PRE-change engine (UAT row 1's automated proxy).
 //
 // The script entry MUST stamp `brushId: 'bristle-round'` literally:
 // `toStudioStroke` defaults to `BRUSH_ID` (`round`), a NON-bristle preset whose
