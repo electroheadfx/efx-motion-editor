@@ -4,10 +4,10 @@ milestone: v2.2.0
 current_phase: 64
 status: completed
 stopped_at: Phase 64 complete — all phases complete
-last_updated: "2026-11-24T20:39:35.986Z"
+last_updated: "2026-11-24T22:25:12.313Z"
 last_activity: 2026-11-24
-last_activity_desc: Quick 261124-tje UAT approved (per-brush landing bags)
-state_head: eb40c638d5dfbfb78c70efa18b08c8ef5d5bfca0
+last_activity_desc: Quick 261124-ujb automated-ready (Edge transparency + Edge falloff)
+state_head: 6dc87a30b7929bf1b16a411a44e23d1045ee0c9c
 progress:
   total_phases: 2
   completed_phases: 2
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-22 after Phase 64)
 Phase: 64
 Plan: Not started
 Status: All phases complete
-Last activity: 2026-11-24 — Quick task 261124-tje: every brush response now carries a per-brush landing bag that is re-applied on EVERY pick. Gouache (`bristle-round`) lands 40 px / Pigment 100 / Pickup 100 / Dry 0 / Feather 100; a new `pen` response joins the acrylic (Brush-family) group and lands 10 px / #373633 / Pigment 100 / Pickup 0 / Dry 0 / Feather 85. The bag is compile-time only — no serializer, no `.mce` field, no Rust mirror, no migration — and lands LAST at every pick seam (`pickAquarelleBrush`, the Brush-tool crossing/repair branch, `pickAquarelleMedium`, and a one-shot fresh-session landing) so a medium apply can never undo it. Reset stays medium-record-driven. Gates: package build + full package suite (1028 passed / 8 skipped), app tsc, full app suite (467 files / 9874 passed / 4 skipped). UAT-APPROVED (artist-confirmed 2026-11-24) — eight UAT rows passed: a fresh Studio opens on Gouache at 40 px / Dry 0 / Feather 100, Pen sits next to Gouache and paints a crisp 10 px #373633 line, re-picking either brush snaps its sliders back after twiddling, Brush → Watercolor → Brush returns to Gouache's bag, a Medium-dropdown landing never undoes the brush bag, Reset still restores the acrylic record, and save/reopen keeps painted strokes identical. Previous: 261124-iq9 (UAT-APPROVED) — two media and twelve responses; Viscosity and Water hidden for the Gouache paint context.
+Last activity: 2026-11-24 — Quick task 261124-ujb: Edge transparency and Edge falloff for the Gouache/Pen brush family (Spec 10). Two bristle-only sliders drive ONE lateral `edgeFilm` in `gatherBristle`, in silhouette units (`u = lateral / uFeatherEdge`, `BRISTLE_EDGE_START` 0.55, exponent `2^(2b−1)` = 0.5 / 1 / 2); it scales coverage + cA/cB/alpha through `featherFade` and the carried deposit S through `g.film`, so the rim thins as one film and is inert at amount 100 — no second fade in the attenuation half, no threshold change, no Body or alpha-law change. `edgeFade`/`edgeFalloff` are canonical (0 / 50), live in both sixteen-key medium records (acrylic literal, watercolor derived), ride the bag / snapshot / selection allowlist / Reset, and render as two Gouache-only rows after Feather. Amount 0 is bit-identical to the pre-change engine (two probe identity baselines captured from `d509a886d` pass all twelve fields; three `--differs-from` sweeps pass). The shader uses the plain arithmetic film — a ternary guard drifted amount-0 codegen — and the comparator calibrates stations from the film's own rim floor at amount > 0. Gates: package suite 1057 passed / 8 skipped, package tsc, touched app tests 95 passed / 3 skipped, app tsc, probe identities + sweeps. AUTOMATED-READY — UAT rows 1-9 pending (plus a side-by-side falloff 0 / 50 / 100 visual check: the probe's broad-vs-linear margin is 0.074, under the 0.12 bar). Previous: 261124-tje (UAT-APPROVED) — per-brush landing bags; 261124-iq9 (UAT-APPROVED) — two media and twelve responses.
 
 
 ## Performance Metrics
@@ -718,6 +718,7 @@ Items acknowledged and carried forward from previous milestone close:
 | 56 | Studio Roto: white glow on multi-selected keys (Cmd / All); the marker survives the startFrame reseed and paints without a CSS filter (WebKit clipped the glow) (UAT approved 2026-11-24) | 2026-11-24 | e7c78249f | — |
 | 261124-iq9 | New brushes convention: Watercolor + Gouache only; remove Gouache Round/Flat, all Chalk and Graphite brushes, and Bristle Flat; rename Bristle Round and the Acrylic medium to Gouache; hide Viscosity/Water for Gouache (UAT approved) | 2026-11-24 | f5da7c094 | [261124-iq9-new-brushes-convention-and-parameters-in](./quick/261124-iq9-new-brushes-convention-and-parameters-in/) |
 | 261124-tje | Gouache lands 40 px / Pigment 100 / Pickup 100 / Dry 0 / Feather 100; new Pen brush (10 px, #373633, Pigment 100, Pickup 0, Dry 0, Feather 85) in the Brush family (UAT approved) | 2026-11-24 | eb40c638d | [261124-tje-new-default-brush-and-new-brush-pen-brus](./quick/261124-tje-new-default-brush-and-new-brush-pen-brus/) |
+| 261124-ujb | Edge transparency and Edge falloff for the Gouache/Pen brush family — two bristle-only sliders driving one lateral film; automated-ready, UAT rows 1-9 pending | 2026-11-24 | 6dc87a30b | [261124-ujb-read-specs-v2-2-0-medium-engine-gsd-quic](./quick/261124-ujb-read-specs-v2-2-0-medium-engine-gsd-quic/) |
 
 ## Roadmap Evolution
 
