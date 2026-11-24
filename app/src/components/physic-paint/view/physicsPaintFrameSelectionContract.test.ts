@@ -65,6 +65,22 @@ describe('I-09 frame/key selection — swallowed-statement pins', () => {
     ).toBe(true);
   });
 
+  it('startFrame propagation keeps an explicit multi-selection alive', () => {
+    // quick-261124: a startFrame propagation already in flight when a Cmd/Ctrl
+    // multi-selection or Select All landed reached the reseed branch one frame
+    // later and collapsed the set to the frame's key — the white selection
+    // glow flashed and vanished. The set + anchor survive; the single-selection
+    // reconciliation above stays for every other navigation.
+    const reseedBranch = sliceBetween(studio, 'next.startFrame !== current?.startFrame', 'return next;');
+    expect(
+      isLiveStatement(
+        reseedBranch,
+        'const keepMultiSelection = spacingSelection === null && selectedKeyIds.peek().length >= 2;',
+      ),
+    ).toBe(true);
+    expect(isLiveStatement(reseedBranch, 'if (!keepMultiSelection) {')).toBe(true);
+  });
+
   it('flush-failure path sets the error status as live code', () => {
     const navigate = sliceBetween(studio, 'const navigateToSyncedPhysicalFrame = useCallback', 'const lastReferenceDisplayStateRef');
     const catchBlock = navigate.slice(navigate.indexOf('catch {'));

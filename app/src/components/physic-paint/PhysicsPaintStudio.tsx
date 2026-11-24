@@ -1074,14 +1074,24 @@ export function PhysicsPaintStudio() {
         // motion block and unmounting the canvas gizmo on the very press that
         // started the drag.
         if (selectedRotoKeyRail.peek() === null) {
+          const spacingSelection = rotoSpacingSelection.peek();
+          // quick-261124 (multi-select glow): an EXPLICIT multi-selection
+          // (Cmd/Ctrl toggle, Shift range, Select All) is the user's current
+          // intent. A startFrame propagation already in flight when that
+          // gesture landed used to reach this branch one frame later and
+          // collapse the set to the frame's key — the selection glowed and
+          // then vanished. Keep the set and its anchor; the single-selection
+          // reconciliation (I-09) stays for every other navigation.
+          const keepMultiSelection = spacingSelection === null && selectedKeyIds.peek().length >= 2;
           selectedKeyId.value = physicPaintStore.getRotoRealKeyRecordByAppFrame(next.layerId, liveTrackId, next.startFrame)?.keyId ?? null;
           physicPaintStore.setRotoPhysicalSelection(next.layerId, liveTrackId, selectedKeyId.value, next.startFrame);
-          const spacingSelection = rotoSpacingSelection.peek();
-          selectedKeyIds.value = spacingSelection?.selectedSourceKeyIds
-            ?? (selectedKeyId.value === null ? [] : [selectedKeyId.value]);
-          selectionAnchorKeyId.value = spacingSelection
-            ? spacingSelection.sourceKeyIds[spacingSelection.anchorSourceIndex] ?? null
-            : selectedKeyId.value;
+          if (!keepMultiSelection) {
+            selectedKeyIds.value = spacingSelection?.selectedSourceKeyIds
+              ?? (selectedKeyId.value === null ? [] : [selectedKeyId.value]);
+            selectionAnchorKeyId.value = spacingSelection
+              ? spacingSelection.sourceKeyIds[spacingSelection.anchorSourceIndex] ?? null
+              : selectedKeyId.value;
+          }
         } else {
           physicPaintStore.setRotoPhysicalSelection(next.layerId, liveTrackId, null, next.startFrame);
         }
