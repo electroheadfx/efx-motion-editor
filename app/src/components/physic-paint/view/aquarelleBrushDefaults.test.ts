@@ -51,9 +51,6 @@ import {
 const HERE = dirname(fileURLToPath(import.meta.url));
 const STUDIO_PATH = resolve(HERE, '..', 'PhysicsPaintStudio.tsx');
 
-/** The five params keys a bag may own (size is the px conversion). */
-const BAG_KEYS = ['load', 'pickup', 'dry', 'feather'] as const;
-
 /** The other medium keys a bag never touches. */
 const OTHER_MEDIUM_KEYS = [
   'water',

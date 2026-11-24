@@ -246,7 +246,9 @@ import { resolveFrameScriptOwner, type FrameScriptCell } from './view/frameScrip
 import { formatRasterRailRunCopy, type RasterRailTarget } from './view/rasterKeyPresentation';
 import {
   anchorUnownedAquarelleStrokesForFrame,
+  applyAquarelleBrushDefaults,
   aquarelleScriptRecordingEnabled,
+  aquarelleSelectedTipId,
   aquarelleStrokesRevision,
   bumpAquarelleStrokesRevision,
   deleteAquarelleStrokesFromScript,
@@ -262,6 +264,7 @@ import {
   purgeAquarelleFrameScript,
   recordAquarelleStroke,
   recordAquarelleStrokeWhenEnabled,
+  registerAquarelleBrushDefaultsColorSink,
   remapAquarelleScriptsForRecords,
   resetAquarelleRecordState,
   resetAquarelleScriptRecording,
@@ -1850,6 +1853,9 @@ export function PhysicsPaintStudio() {
   const workingCanvasSize = getPhysicsPaintWorkingSize(projectCanvasWidth, projectCanvasHeight);
   const canvasWidth = workingCanvasSize.width;
   const canvasHeight = workingCanvasSize.height;
+  // quick 261124-tje: the fresh-session brush-bag landing is ONE-SHOT across
+  // canvas resizes (a ref, never state — Preact signals only).
+  const brushDefaultsLandedRef = useRef(false);
   // quick 261116-inu / Task 8: the displayed layer height is the ONE scale the
   // px size readouts map against (aquarellePaintSizePx). The setter is
   // compare-then-write and the dep is the numeric height, so this effect never
@@ -2728,6 +2734,24 @@ export function PhysicsPaintStudio() {
   const handleActiveColorChanged = useCallback((color: string) => {
     setSettings((current) => (current.color === color ? current : { ...current, color }));
   }, [setSettings]);
+  // quick 261124-tje: a brush bag that names a colour (the Pen's pigment) lands
+  // through the SAME compare-then-write colour setter every swatch uses. The
+  // effect returns the unregister, so a remount never leaves a stale handler
+  // receiving colours (the lift-preview sink contract).
+  useEffect(
+    () => registerAquarelleBrushDefaultsColorSink(handleActiveColorChanged),
+    [handleActiveColorChanged],
+  );
+  // quick 261124-tje: a fresh Studio opens on the default brush's BAG, not on
+  // the acrylic medium record. The working height is real by now, so the px
+  // conversion matches the visible Brush size control by construction. The ref
+  // makes it one-shot across canvas resizes; the bag is a landing value set,
+  // never persisted.
+  useEffect(() => {
+    if (brushDefaultsLandedRef.current || canvasHeight <= 0) return;
+    brushDefaultsLandedRef.current = true;
+    applyAquarelleBrushDefaults(aquarelleSelectedTipId.value);
+  }, [canvasHeight]);
   // 261029: the Studio tool shortcuts. B / A / W / E / P pick a painting tool
   // and leave Move/Edit mode (quick 261121-mtu: A is the Watercolor tool);
   // M toggles the Move/Edit (Select) surface — leaving resumes the previous
