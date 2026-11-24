@@ -2,9 +2,10 @@
 //  Brush groups (Phase 64, MED-26 / MED-27 / MED-29).
 //
 //  Every restated literal here is deliberate: the classification
-//  table, the eleven legacy ids in their current order, the one
-//  appended id, and the acrylic preset's overridden fields against
-//  the recorded spec table. A drifted number fails the pin.
+//  table, the eleven legacy ids in their current order, the two
+//  appended ids, the acrylic presets' overridden fields against
+//  the recorded spec table, and each response's landing bag
+//  (quick 261124-tje). A drifted number fails the pin.
 //
 //  The group helpers are read through a namespace import and a
 //  local cast, so a missing export fails as an assertion in each
@@ -81,6 +82,7 @@ const CLASSIFICATION: Record<string, MediumIdLike> = {
   sumi: 'watercolor',
   dagger: 'watercolor',
   'bristle-round': 'acrylic',
+  pen: 'acrylic',
 }
 
 // The eleven surviving watercolor ids in their current table order — the
@@ -99,8 +101,8 @@ const LEGACY_IDS = [
   'dagger',
 ]
 
-// The one appended id, in the recorded order.
-const NEW_IDS = ['bristle-round']
+// The two appended ids, in the recorded order.
+const NEW_IDS = ['bristle-round', 'pen']
 
 // The shared base every preset inherits (restated as literals).
 const BASE_FIELDS: Record<string, unknown> = {
@@ -131,8 +133,9 @@ interface NewPresetSpec {
   overrides: Record<string, unknown>
 }
 
-// The one acrylic response, restated verbatim (quick 261124-iq9: the display
-// name becomes Gouache; the id and every parameter stay shipped).
+// The two acrylic responses, restated verbatim (quick 261124-iq9: the display
+// name becomes Gouache, its id and every parameter stay shipped; quick
+// 261124-tje appends the Pen).
 const NEW_PRESETS: Record<string, NewPresetSpec> = {
   'bristle-round': {
     name: 'Gouache',
@@ -146,6 +149,14 @@ const NEW_PRESETS: Record<string, NewPresetSpec> = {
       grain: 0.15,
       roughness: 0.4,
       spacing: 0.14,
+    },
+  },
+  pen: {
+    name: 'Pen',
+    group: 'acrylic',
+    overrides: {
+      water: 0.06,
+      spacing: 0.12,
     },
   },
 }
@@ -197,7 +208,7 @@ describe('brush preset classification', () => {
       seen.add(preset.id)
       expect(GROUPS).toContain(groupOf(preset))
     }
-    expect(seen.size).toBe(12)
+    expect(seen.size).toBe(13)
   })
 })
 
@@ -206,7 +217,7 @@ describe('brush preset table identity', () => {
     expect(BRUSH_PRESETS.slice(0, LEGACY_IDS.length).map((p) => p.id)).toEqual(LEGACY_IDS)
   })
 
-  it('appends the one new id after the legacy table, each unique', () => {
+  it('appends the two new ids after the legacy table, each unique', () => {
     expect(BRUSH_PRESETS.slice(LEGACY_IDS.length).map((p) => p.id)).toEqual(NEW_IDS)
     expect(new Set(BRUSH_PRESETS.map((p) => p.id)).size).toBe(BRUSH_PRESETS.length)
   })
@@ -218,7 +229,7 @@ describe('brush sections helper', () => {
     expect(sections.map((section) => section.group)).toEqual(GROUPS)
     expect(sections.map((section) => section.presets.map((p) => p.id))).toEqual([
       ['round', 'detail', 'rigger', 'flat', 'hake', 'filbert', 'mop', 'sponge', 'spatter', 'sumi', 'dagger'],
-      ['bristle-round'],
+      ['bristle-round', 'pen'],
     ])
   })
 
@@ -239,7 +250,7 @@ describe('brush sections helper', () => {
   })
 })
 
-describe('the one acrylic response', () => {
+describe('the acrylic responses', () => {
   it('carries the recorded name and group', () => {
     for (const [id, spec] of Object.entries(NEW_PRESETS)) {
       const preset = presetById(id)
@@ -261,8 +272,8 @@ describe('the one acrylic response', () => {
     }
   })
 
-  it('builds a byte-identical tip for the one bristle preset', () => {
-    for (const id of ['bristle-round']) {
+  it('builds a byte-identical tip for the bristle-engine presets', () => {
+    for (const id of ['bristle-round', 'pen']) {
       const first = buildBrush(presetById(id))
       const second = buildBrush(presetById(id))
       expect(first.tipSize, `${id}.tipSize`).toBe(TIP_SIZE)
@@ -284,8 +295,8 @@ describe('the one acrylic response', () => {
 })
 
 describe('the bristle response predicate (64-21, D-27 revised post-UAT)', () => {
-  it('accepts exactly the one bristle id, with or without a texture id', () => {
-    for (const id of ['bristle-round']) {
+  it('accepts exactly the bristle-engine ids, with or without a texture id', () => {
+    for (const id of ['bristle-round', 'pen']) {
       expect(isBristleResponse({ id }), `${id} with an absent textureId`).toBe(true)
       expect(isBristleResponse({ id, textureId: null }), `${id} with a null textureId`).toBe(true)
       // Post-UAT 2026-11-19 (GAP-4): a texture pick no longer disables the
@@ -316,14 +327,16 @@ describe('the acrylic pressureLink (quick 261121-umu)', () => {
   const brushLinkOf = (id: string): number | undefined =>
     (buildBrush(presetById(id)) as unknown as { pressureLink?: number }).pressureLink
 
-  it('only the one acrylic response states a pressureLink', () => {
+  it('only the acrylic responses state a pressureLink', () => {
     const linked = BRUSH_PRESETS.filter((preset) => linkOf(preset) !== undefined)
-    expect(linked.map((preset) => preset.id)).toEqual(['bristle-round'])
+    expect(linked.map((preset) => preset.id)).toEqual(['bristle-round', 'pen'])
     expect(linkOf(presetById('bristle-round')), 'bristle-round pressureLink').toBe(0)
+    expect(linkOf(presetById('pen')), 'pen pressureLink').toBe(0)
   })
 
   it('buildBrush carries the pressureLink', () => {
     expect(brushLinkOf('bristle-round'), 'a bristle brush carries its link').toBe(0)
+    expect(brushLinkOf('pen'), 'the pen carries its link').toBe(0)
     expect('pressureLink' in buildBrush(presetById('round')), 'a non-acrylic brush states no link').toBe(false)
   })
 
@@ -348,16 +361,21 @@ describe('the acrylic speedLink (2026-11-21)', () => {
   const linkOf = (preset: BrushPreset): number | undefined =>
     (preset as unknown as { speedLink?: number }).speedLink
 
-  it('only the one acrylic response states a speedLink', () => {
+  it('only the acrylic responses state a speedLink', () => {
     const linked = BRUSH_PRESETS.filter((preset) => linkOf(preset) !== undefined)
-    expect(linked.map((preset) => preset.id)).toEqual(['bristle-round'])
+    expect(linked.map((preset) => preset.id)).toEqual(['bristle-round', 'pen'])
     expect(linkOf(presetById('bristle-round')), 'bristle-round speedLink').toBe(0)
+    expect(linkOf(presetById('pen')), 'pen speedLink').toBe(0)
   })
 
   it('buildBrush carries the speedLink', () => {
     expect(
       (buildBrush(presetById('bristle-round')) as unknown as { speedLink?: number }).speedLink,
       'a bristle brush carries its link',
+    ).toBe(0)
+    expect(
+      (buildBrush(presetById('pen')) as unknown as { speedLink?: number }).speedLink,
+      'the pen carries its link',
     ).toBe(0)
     expect('speedLink' in buildBrush(presetById('round')), 'a non-acrylic brush states no link').toBe(false)
   })
@@ -372,5 +390,76 @@ describe('the acrylic speedLink (2026-11-21)', () => {
     expect(source.slice(baseStart, baseEnd), 'BASE never states a speedLink').not.toContain('speedLink')
     expect('speedLink' in presetById('round'), 'a define-built preset inherits no link').toBe(false)
     expect('speedLink' in CUSTOM_BASE, 'CUSTOM_BASE states no link').toBe(false)
+  })
+})
+
+// quick 261124-tje: the per-brush LANDING BAGS. COMPILE-TIME ONLY (the
+// `group` precedent): every pick loads these values into the live paint
+// controls; nothing serializes them, there is no `.mce` field and a stroke
+// persists the response id.
+describe('the per-brush defaults bags (quick 261124-tje)', () => {
+  interface DefaultsBag {
+    sizePx?: number
+    color?: string
+    load?: number
+    pickup?: number
+    dry?: number
+    feather?: number
+  }
+  const defaultsOf = (preset: BrushPreset): DefaultsBag | undefined =>
+    (preset as unknown as { defaults?: DefaultsBag }).defaults
+
+  it('pins the Gouache bag: size 40 px, no colour', () => {
+    const bag = defaultsOf(presetById('bristle-round'))
+    expect(bag).toEqual({
+      sizePx: 40,
+      load: 100,
+      pickup: 100,
+      dry: 0,
+      feather: 100,
+    })
+    expect(Object.keys(bag!).sort(), 'Gouache names no colour').toEqual([
+      'dry',
+      'feather',
+      'load',
+      'pickup',
+      'sizePx',
+    ])
+  })
+
+  it('pins the Pen bag: size 10 px, pigment #373633', () => {
+    const bag = defaultsOf(presetById('pen'))
+    expect(bag).toEqual({
+      sizePx: 10,
+      color: '#373633',
+      load: 100,
+      pickup: 0,
+      dry: 0,
+      feather: 85,
+    })
+    expect(Object.keys(bag!).sort(), 'exactly the six landing keys').toEqual([
+      'color',
+      'dry',
+      'feather',
+      'load',
+      'pickup',
+      'sizePx',
+    ])
+  })
+
+  it('states no bag on any other preset', () => {
+    for (const preset of BRUSH_PRESETS) {
+      if (preset.id === 'bristle-round' || preset.id === 'pen') continue
+      expect(defaultsOf(preset), `${preset.id} carries no bag`).toBeUndefined()
+    }
+  })
+
+  it('buildBrush carries the same bag reference (compile-time-only, no serializer)', () => {
+    for (const id of ['bristle-round', 'pen']) {
+      expect(
+        (buildBrush(presetById(id)) as unknown as { defaults?: DefaultsBag }).defaults,
+        `${id} built brush`,
+      ).toBe(defaultsOf(presetById(id)))
+    }
   })
 })
