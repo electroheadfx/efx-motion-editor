@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 23
+open_count: 24
 waived_count: 18
 fixed_count: 92
-total_count: 133
-last_updated: 2026-11-23T22:41:34.929Z
+total_count: 134
+last_updated: 2026-11-24T13:14:43.101Z
 ---
 
 # Broken Windows Ledger
@@ -148,6 +148,7 @@ last_updated: 2026-11-23T22:41:34.929Z
 | 131 | 64 | unmet-truth | packages/efx-watercolor/probe/medium-engine/compare.mjs |  | bristle-tip A/B: the probe mask registers (tipMix 1) but adds no separated bands at HEAD (1 vs 1); recorded for 64-35, not fixed | open |  | 2026-11-22T18:42:54.249Z |  |
 | 132 | 64 | unmet-truth | packages/efx-watercolor/probe/medium-engine/compare.mjs |  | bristle-line gate fails its own bars at HEAD on all three surfaces (halo peakRel 0.4628/0.4493 vs 0.4; runs 3/4 vs 2) — recorded in 64-29 for 64-32/64-33/64-34 | open |  | 2026-11-22T18:42:57.020Z |  |
 | 133 | quick/261123-vkb | deviation | packages/efx-watercolor/probe/wet-hold/run.mjs |  | Hold-off control measured 211 ticks, not the plan's 237 (held baseline); corrected constant, assertions kept exact, no threshold loosened | open |  | 2026-11-23T22:41:34.929Z |  |
+| 134 | quick/261124-iq9 | deviation | app/src/components/physic-paint/view/aquarelleStrokeSelection.test.ts |  | Plan excluded this file, but its catalog-validated brushId patch vehicles ('chalk') had to be repointed to 'bristle-round' for the full app suite to pass | open |  | 2026-11-24T13:14:43.101Z |  |
 
 ````json
 [
@@ -1805,6 +1806,19 @@ last_updated: 2026-11-23T22:41:34.929Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-11-23T22:41:34.929Z",
+    "resolved_at": null,
+    "milestone": "v2.2.0"
+  },
+  {
+    "id": 134,
+    "kind": "deviation",
+    "phase": "quick/261124-iq9",
+    "file": "app/src/components/physic-paint/view/aquarelleStrokeSelection.test.ts",
+    "line": null,
+    "description": "Plan excluded this file, but its catalog-validated brushId patch vehicles ('chalk') had to be repointed to 'bristle-round' for the full app suite to pass",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-24T13:14:43.101Z",
     "resolved_at": null,
     "milestone": "v2.2.0"
   }
