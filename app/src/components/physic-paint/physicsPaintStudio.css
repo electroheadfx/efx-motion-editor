@@ -8737,9 +8737,12 @@ input[type="range"].physics-paint-photo-reference-slider-input {
 }
 
 /* Cursor + multi-select (v2.0.1 UAT): no orange. The marker is a bright
-   WHITE border plus a soft glow plus a brightness step, so a key, an
-   in-between and an empty current frame all read the same. The white belongs
-   to the selection marker only — the rail's start carries no white tick. */
+   WHITE border plus a soft WHITE glow plus a brightness step, so a key, an
+   in-between and an empty current frame all read the same. The glow is white,
+   never the row's rail colour: a green glow on green keys was invisible, so a
+   Cmd/Ctrl multi-selection and Select All painted no visible glow at all.
+   The white belongs to the selection marker only — the rail's start carries
+   no white tick. */
 .physics-paint-roto-cells .physics-paint-roto-cell.current,
 .physics-paint-roto-cells .physics-paint-roto-cell.selected,
 .physics-paint-roto-cells .physics-paint-roto-cell.current:hover,
@@ -8749,15 +8752,8 @@ input[type="range"].physics-paint-photo-reference-slider-input {
 .physics-paint-roto-cells .physics-paint-roto-cell.selected:focus,
 .physics-paint-roto-cells .physics-paint-roto-cell.selected:focus-visible {
   border-color: #EAF0FF !important;
-  box-shadow: 0 0 7px 1px var(--rail-line, #8A939C);
-  filter: brightness(1.18);
-}
-
-/* An empty current frame has no rail of its own; the selection glow must not
-   borrow the row's green — it stays white like every other current marker. */
-.physics-paint-roto-cells .physics-paint-roto-cell.current[data-cell-kind="empty"],
-.physics-paint-roto-cells .physics-paint-roto-cell.selected[data-cell-kind="empty"] {
   box-shadow: 0 0 7px 1px rgba(234, 240, 255, 0.55);
+  filter: brightness(1.18);
 }
 
 /* v2.0.1 UAT: the current-frame marker is a dedicated overlay (never a cell
