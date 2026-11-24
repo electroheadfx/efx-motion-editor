@@ -717,11 +717,11 @@ describe('bristleCoverage — §4.5 / §5.5', () => {
 // ============================================================
 //  Spec 10 — the lateral edge film (Edge transparency and Edge falloff).
 //
-//  `gatherBristle` scales the WHOLE carried film — coverage, cA, cB and
-//  alpha together — through ONE lateral factor. The argument is in
-//  SILHOUETTE units: 1 is the visible rim (BRISTLE_FEATHER_EDGE of the
-//  nominal footprint), not the footprint's own edge. At amount 100 the film
-//  keeps `1 - BRISTLE_EDGE_CORE` (65%) in the core and reaches 0 at the
+//  `gatherBristle` scales the DEPOSIT WEIGHT — coverage and the cover alpha —
+//  through ONE lateral factor; the carried cA/cB stay full strength. The
+//  argument is in SILHOUETTE units: 1 is the visible rim (BRISTLE_FEATHER_EDGE
+//  of the nominal footprint), not the footprint's own edge. At amount 100 the
+//  film keeps `1 - BRISTLE_EDGE_CORE` (65%) in the core and reaches 0 at the
 //  silhouette; the shape bias picks the ramp through `edgeFalloffExponent`,
 //  and amount 0 is inert. The four constants are bound as uniforms, so the
 //  fragment cannot re-type them.

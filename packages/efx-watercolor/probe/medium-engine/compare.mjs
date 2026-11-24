@@ -1072,9 +1072,10 @@ function bristleLineFailures(data) {
 //   mid  (0.775·rim)    film 1 - amount · (EDGE_CORE + (1 - EDGE_CORE)·0.5^e) ± 0.12
 //   rim  (the rim)      film 1 - amount                                ± 0.12
 // e = 2^(2b - 1) is the falloff exponent (0.5 / 1 / 2 at bias 0 / 50 / 100):
-// at amount 1 the mid reads 0.49 / 0.325 / 0.19 for falloff 0 / 50 / 100,
-// separated by more than the tolerance, so one capture distinguishes all
-// three shapes.
+// at amount 1 the mid reads 0.19 / 0.325 / 0.49 for falloff 0 / 50 / 100,
+// separated at the law level by more than the tolerance; the coverage
+// channel's convergence lag narrows the measured separation (see the gate
+// report), so the sweep is also checked visually side by side.
 //
 // THE SILHOUETTE MUST BE THE FILM'S OWN DOMAIN, not the reference's visible
 // rim. On the engine `uFeatherEdge` is BRISTLE_FEATHER_EDGE (0.66) of the
