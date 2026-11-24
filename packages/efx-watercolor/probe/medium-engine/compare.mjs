@@ -182,6 +182,22 @@ const ALPHA_LAW_NULLABLE_FIELDS = new Set(['visibleAlphaMaxDelta', 'visibleAlpha
 const ALPHA_LAW_MAX_DELTA = 1 // one 8-bit step: the law is exact up to rounding
 
 /**
+ * Spec 10: the ONE capture-type predicate — a bristle capture is a live
+ * `gatherBristle` capture. Every `bristle-*` scenario qualifies, and so does
+ * `edge-transparency` (the lateral edge film, painted by `bristle-round`): its
+ * name does not start `bristle-`, so a prefix test would run the visible-alpha
+ * check on it and fail the alpha-law contract — the display film blur makes
+ * the exported RGB and alpha intentionally disagree at the fringe.
+ *
+ * probe.ts carries the IDENTICAL predicate for its visible-alpha selection;
+ * the two sides must agree on which captures are bristle captures. The
+ * refusal of a skip on any other scenario is never weakened.
+ */
+function isBristleCapture(scenario) {
+  return scenario.startsWith('bristle-') || scenario === 'edge-transparency'
+}
+
+/**
  * 64-31: the shipped alpha law enforced on a capture, in EVERY mode.
  *
  * OPAQUE — committed and exported storage alpha is OPAQUE: the opaque-export
@@ -217,7 +233,7 @@ function alphaLawFailures(data) {
     )
     return failures
   }
-  const bristle = String(data.scenario).startsWith('bristle-')
+  const bristle = isBristleCapture(String(data.scenario))
   if (bristle) {
     if (typeof data.visibleAlphaSkip !== 'string' || data.visibleAlphaSkip.length === 0) {
       failures.push(
@@ -1039,6 +1055,236 @@ function bristleLineFailures(data) {
   return failures
 }
 
+// Spec 10: the edge-transparency station bars. `gatherBristle` scales the
+// whole carried film through ONE lateral `edgeFilm`, and the coverage channel
+// is the channel it scales — so the asserted film is the ratio of this
+// capture's coverage to the REFERENCE capture's coverage at the SAME row (the
+// neutral baseline). That ratio is exactly the factor the gather applied: 1 by
+// identity at amount 0, and `1 - amount` at the rim when the film executes.
+// Normalising by the capture's own peak cannot work — the base profile is not
+// flat (the neutral baseline peaks off-centre at +15 px, 0.8188 vs 0.7493 on
+// row 0), so core-at-0 would read 0.915 and the identity could never pass.
+// Three stations, in SILHOUETTE units relative to the REFERENCE's visible rim
+// (the neutral baseline, whose coverage still reaches the silhouette; at
+// amount 100 the capture's own rim is inert and cannot calibrate itself):
+//   core (offset 0)     film 1                            ± 0.02
+//   mid  (0.775·rim)    film 1 - amount · 0.5^e            ± 0.12
+//   rim  (the rim)      film 1 - amount                    ± 0.12
+// e = 2^(2b - 1) is the falloff exponent (0.5 / 1 / 2 at bias 0 / 50 / 100):
+// the landmark table's 0.293 / 0.5 / 0.75 at amount 1, separated by more than
+// the tolerance, so one capture distinguishes all three shapes.
+//
+// The silhouette is the widest row whose coverage is at least 2 % of the
+// reference's peak, taken as the MIN of both sides (a one-sided fringe cannot
+// inflate it), guarded to at least 8 px — a degenerate reference fails rather
+// than silently judging a 1 px station.
+//
+// `ink` (the delivered absorbance) is supporting evidence only: it is a
+// seven-channel pigment sum that mixes colour coefficients, so it carries a
+// direction check (rim below core when amount > 0), never the ratio bars.
+// The enclosed lane scan reuses the bristle-line gate's three bars.
+const EDGE_CORE_TOLERANCE = 0.02
+const EDGE_STATION_TOLERANCE = 0.12
+const EDGE_SILHOUETTE_FRACTION = 0.02
+const EDGE_SILHOUETTE_MIN_PX = 8
+/** The fade band's midpoint in silhouette units: (0.775 - 0.55) / 0.45 = 0.5. */
+const EDGE_MID_U = 0.775
+
+/** The reference's visible silhouette, in document pixels, or null when the
+ *  profile is missing/degenerate (an uncalibratable reference cannot pass). */
+function edgeSilhouettePx(reference) {
+  const profile = reference.edgeAcross
+  if (profile === null || typeof profile !== 'object') return null
+  const offsets = profile.offsets
+  const cover = profile.cover
+  if (!Array.isArray(offsets) || !Array.isArray(cover) || offsets.length !== cover.length) return null
+  let peak = 0
+  for (const value of cover) peak = Math.max(peak, value)
+  if (!(peak > 0)) return null
+  const floor = peak * EDGE_SILHOUETTE_FRACTION
+  let left = 0
+  let right = 0
+  for (let i = 0; i < cover.length; i += 1) {
+    if (!(cover[i] >= floor)) continue
+    const offset = offsets[i]
+    if (offset < 0) left = Math.max(left, -offset)
+    if (offset > 0) right = Math.max(right, offset)
+  }
+  const extent = Math.min(left, right)
+  return extent >= EDGE_SILHOUETTE_MIN_PX ? extent : null
+}
+
+function edgeTransparencyFailures(data, reference) {
+  const failures = []
+  // The stroke's OWN id, not only the report echo: `toStudioStroke` defaults
+  // to `round`, a non-bristle preset whose path never runs `gatherBristle`,
+  // so the lateral film would never execute.
+  if (data.strokeBrush !== 'bristle-round') {
+    failures.push(
+      `strokeBrush ${JSON.stringify(data.strokeBrush)} is not 'bristle-round' ` +
+        '(the stroke must stamp a live bristle response; the `round` fallback never runs gatherBristle)',
+    )
+  }
+  if (data.brush !== 'bristle-round') {
+    failures.push(
+      `brush ${JSON.stringify(data.brush)} is not 'bristle-round' (the report must echo the live response)`,
+    )
+  }
+  if (typeof data.edgeAmount !== 'number' || data.edgeAmount < 0 || data.edgeAmount > 100) {
+    failures.push(`edgeAmount ${JSON.stringify(data.edgeAmount)} is not a 0..100 knob (the capture must echo it)`)
+  }
+  if (typeof data.edgeFalloff !== 'number' || data.edgeFalloff < 0 || data.edgeFalloff > 100) {
+    failures.push(`edgeFalloff ${JSON.stringify(data.edgeFalloff)} is not a 0..100 knob (the capture must echo it)`)
+  }
+  if (reference === null || typeof reference !== 'object' || reference.width !== data.width) {
+    failures.push(
+      `width ${data.width} does not match the reference ${reference && reference.width} ` +
+        '(the silhouette is calibrated in the same document pixels)',
+    )
+  }
+  const profile = data.edgeAcross
+  if (
+    profile === null ||
+    typeof profile !== 'object' ||
+    !Array.isArray(profile.offsets) ||
+    !Array.isArray(profile.cover) ||
+    !Array.isArray(profile.ink)
+  ) {
+    return [...failures, 'capture is missing edgeAcross { offsets, cover, ink }; re-run the edge-transparency probe']
+  }
+  const offsets = profile.offsets
+  const cover = profile.cover
+  const ink = profile.ink
+  if (offsets.length !== cover.length || offsets.length !== ink.length || offsets.length === 0) {
+    return [
+      ...failures,
+      `edgeAcross arrays disagree in length (${offsets.length}/${cover.length}/${ink.length}) — no station can be read`,
+    ]
+  }
+  if (failures.some((line) => line.includes('edgeAmount') || line.includes('edgeFalloff'))) {
+    return failures
+  }
+  const amount = data.edgeAmount / 100
+  const bias = data.edgeFalloff / 100
+  const exponent = 2 ** (2 * bias - 1)
+  const silhouette = edgeSilhouettePx(reference)
+  if (silhouette === null) {
+    return [
+      ...failures,
+      'the reference profile cannot calibrate a visible silhouette (the widest row at 2% of its ' +
+        `peak is under ${EDGE_SILHOUETTE_MIN_PX} px, or edgeAcross is missing); a capture cannot be judged without it`,
+    ]
+  }
+  let peak = 0
+  for (const value of cover) peak = Math.max(peak, value)
+  if (!(peak > 0)) {
+    return [...failures, 'the coverage profile is blank (peak 0) — the stroke deposited no film']
+  }
+  // The film is the coverage ratio against the neutral reference at the same
+  // row: the exact factor the gather applied (1 by identity at amount 0).
+  const referenceProfile = reference.edgeAcross
+  if (
+    referenceProfile === null ||
+    typeof referenceProfile !== 'object' ||
+    !Array.isArray(referenceProfile.offsets) ||
+    !Array.isArray(referenceProfile.cover) ||
+    referenceProfile.offsets.length !== offsets.length ||
+    referenceProfile.offsets.some((value, index) => value !== offsets[index])
+  ) {
+    return [
+      ...failures,
+      'the reference carries no aligned edgeAcross cover profile (offsets arrays differ or are missing); ' +
+        'the station film cannot be normalised without a same-geometry neutral capture',
+    ]
+  }
+  const referenceCover = referenceProfile.cover
+  const filmAt = (station) => {
+    const index = offsets.indexOf(station)
+    if (index < 0) return null
+    const baseline = referenceCover[index]
+    return baseline > 0 ? cover[index] / baseline : undefined
+  }
+  const inkAt = (station) => {
+    const index = offsets.indexOf(station)
+    return index >= 0 ? ink[index] : null
+  }
+  const midStation = Math.round(EDGE_MID_U * silhouette)
+  const stations = [
+    ['core', 0, 1, EDGE_CORE_TOLERANCE],
+    ['mid', midStation, 1 - amount * 0.5 ** exponent, EDGE_STATION_TOLERANCE],
+    ['rim', silhouette, 1 - amount, EDGE_STATION_TOLERANCE],
+  ]
+  for (const [label, station, expected, tolerance] of stations) {
+    const measured = filmAt(station)
+    if (measured === null) {
+      failures.push(`the coverage profile carries no row at the ${label} station ${station} px`)
+      continue
+    }
+    if (measured === undefined) {
+      failures.push(
+        `the reference carries no coverage at the ${label} station ${station} px; ` +
+          'the film cannot be normalised there (the neutral baseline must reach every station)',
+      )
+      continue
+    }
+    if (Math.abs(measured - expected) > tolerance) {
+      const hint =
+        label === 'mid'
+          ? ` — the falloff exponent ${exponent} is not distributing the fade as requested`
+          : label === 'core'
+            ? ' — the core must keep its film at every amount and falloff'
+            : ' — the rim must read exactly 1 - amount'
+      failures.push(
+        `edge film ${label} at ${station} px reads ${measured.toFixed(4)} ` +
+          `(expected ${expected.toFixed(4)} ± ${tolerance} at amount ${data.edgeAmount} / falloff ${data.edgeFalloff})${hint}`,
+      )
+    }
+  }
+  if (amount > 0) {
+    const coreInk = inkAt(0)
+    const rimInk = inkAt(silhouette)
+    if (coreInk === null || rimInk === null) {
+      failures.push('the ink profile carries no core/rim row for the supporting direction check')
+    } else if (!(rimInk < coreInk)) {
+      failures.push(
+        `ink at the rim ${rimInk} is not below the core ${coreInk} ` +
+          '(the deposit weight must fade with the film; scaling colour alone would leave the rim full)',
+      )
+    }
+  }
+  const enclosed = data.edgeTiling && data.edgeTiling.enclosed
+  if (enclosed === null || typeof enclosed !== 'object') {
+    failures.push('edgeTiling.enclosed is missing (the enclosure scan never ran; a null scan cannot pass)')
+  } else {
+    const enclosedMissing = ['meanPct', 'fracPct', 'maxRunPx'].filter(
+      (field) => typeof enclosed[field] !== 'number',
+    )
+    if (enclosedMissing.length > 0) {
+      failures.push(`edgeTiling.enclosed is missing ${enclosedMissing.join(', ')}`)
+    } else {
+      if (enclosed.meanPct > ENCLOSED_MEAN_MAX_PCT) {
+        failures.push(
+          `edgeTiling.enclosed.meanPct ${enclosed.meanPct} exceeds ${ENCLOSED_MEAN_MAX_PCT}% ` +
+            `at ${enclosed.offset} (a pale line enclosed by paint)`,
+        )
+      }
+      if (enclosed.fracPct > ENCLOSED_FRAC_MAX_PCT) {
+        failures.push(
+          `edgeTiling.enclosed.fracPct ${enclosed.fracPct} exceeds ${ENCLOSED_FRAC_MAX_PCT}% ` +
+            '(the pale lane spans the stroke, not a fibre)',
+        )
+      }
+      if (enclosed.maxRunPx > ENCLOSED_MAX_RUN_PX) {
+        failures.push(
+          `edgeTiling.enclosed.maxRunPx ${enclosed.maxRunPx} exceeds ${ENCLOSED_MAX_RUN_PX} px ` +
+            '(an enclosed lane, not an enclosed dot)',
+        )
+      }
+    }
+  }
+  return failures
+}
+
 /**
  * 64-29: the mask the bristle-tip scenario registers itself (probe.ts).
  *  Any other requested id is a deliberate unknown: the capture must show the
@@ -1237,6 +1483,9 @@ const SCENARIO_INVARIANTS = {
   'bristle-line': bristleLineFailures,
   'bristle-line-over': bristleLineFailures,
   'bristle-tip': bristleTipFailures,
+  // Spec 10: the lateral edge film's three station bars (reference-aware: the
+  // visible silhouette is calibrated from the neutral baseline's profile).
+  'edge-transparency': edgeTransparencyFailures,
 }
 
 /** Run the scenario's invariant function, if it has one. `reference` is the
