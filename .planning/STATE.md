@@ -4,10 +4,10 @@ milestone: v2.2.0
 current_phase: 64
 status: completed
 stopped_at: Phase 64 complete — all phases complete
-last_updated: "2026-11-23T23:45:53.843Z"
+last_updated: "2026-11-24T00:06:00.109Z"
 last_activity: 2026-11-24
 last_activity_desc: Phase 64 complete
-state_head: b5c6c387ce281f4a9f7fda37f8b5f8985560657f
+state_head: 576ade2dd50a2f41ce4fe6ec0304cd063f58d539
 progress:
   total_phases: 2
   completed_phases: 2
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-22 after Phase 64)
 Phase: 64
 Plan: Not started
 Status: All phases complete
-Last activity: 2026-11-24 — Quick task 261124-0l5: Living Script Apply pastes the copied script onto the key — UAT-APPROVED (5/5 live UAT rows passed). Apply now records the clipboard's non-Dry strokes on the destination frame under fresh mutation ids anchored to the destination keyId (soft-delete replacement of any existing script, one `aquarelle-script` undo edit recorded only on bake success, failed bake rolls back to the pre-paste script), then bakes THAT recorded timeline grid-projected like applyAquarelleTimeline — the paste is the source of truth, the render its consequence. `applyScript('wet', { paste: true })` is opt-in so Load + Apply, Run Script and applyAquarelleTimeline never paste; HOLD-WET rides the replay. Duplicate/+Key and the paste share ONE Studio record seam (`recordAquarelleEventsOnFrame`); the Studio still holds one `copyAquarelleScriptToFrame(` call. Gates: 3 targeted suites 649 passed, full app suite 9828 passed exit 0, tsc clean; single-seam pins hold (copy call = 1, seam = 3, 'wet' = 2)
+Last activity: 2026-11-24 — Quick task 261124-1d7: the AQTL v4 reader accepts the two legacy relief markers (bits 5/6) a reverted build wrote into real snapshots — AUTOMATED-READY. `VECTOR_FLAGS_MASK` now includes `VECTOR_FLAG_LEGACY_RELIEF_ERODE` (1 << 5) and `VECTOR_FLAG_LEGACY_RELIEF_DEPOSIT` (1 << 6): bit-only markers with NO payload byte from the reverted 261123-jak/kpy window (2026-11-23 15:36-17:08), accepted and discarded so those Studio snapshots stop refusing on restore and the CR-02 withheld-save latch clears; the encoder never writes them, so the next save drops them from the file. No relief field, no consumed byte, AQTL stays v4, bit 7+ still fails closed. Gates: codec suite 65 passed, tsc exit 0, scoped diff = the 2 planned files. Legacy pin `'still refuses an unknown vector flag bit'` retargeted from 0x20 to 0x80. UAT pending (artist-run): open the Studio on v2.1.0-phase-60-2 — the scripts reappear on the frames with no withheld message; close, reopen, scripts still there. Previous: 261124-0l5 (UAT-APPROVED 5/5) — Living Script Apply pastes the copied script onto the key. Apply now records the clipboard's non-Dry strokes on the destination frame under fresh mutation ids anchored to the destination keyId (soft-delete replacement of any existing script, one `aquarelle-script` undo edit recorded only on bake success, failed bake rolls back to the pre-paste script), then bakes THAT recorded timeline grid-projected like applyAquarelleTimeline — the paste is the source of truth, the render its consequence. `applyScript('wet', { paste: true })` is opt-in so Load + Apply, Run Script and applyAquarelleTimeline never paste; HOLD-WET rides the replay. Duplicate/+Key and the paste share ONE Studio record seam (`recordAquarelleEventsOnFrame`); the Studio still holds one `copyAquarelleScriptToFrame(` call. Gates: 3 targeted suites 649 passed, full app suite 9828 passed exit 0, tsc clean; single-seam pins hold (copy call = 1, seam = 3, 'wet' = 2)
 
 
 ## Performance Metrics
@@ -713,6 +713,7 @@ Items acknowledged and carried forward from previous milestone close:
 | 261123-pee | Hold paint wet until Dry — no auto-dry, wet one-frame Re-render/Apply | 2026-11-23 | 36f16d74c | [261123-pee-hold-paint-wet-until-dry-no-auto-dry-wet](./quick/261123-pee-hold-paint-wet-until-dry-no-auto-dry-wet/) |
 | 261123-vkb | Freeze the held wet look at the visible settle cap — while held, the sim sleeps at round(30+270x(1-dry)) ticks after the last wet input (Dry 50 = 165 ticks); no fix, no decay; Water gate stays open and wetPeak survives; ONE shared settleCap module consumed by engine, bake and layer; probe proves the frozen sheet, cap window and hold-off control | 2026-11-23 | cecd10021 | [261123-vkb-freeze-the-held-wet-look-at-the-visible-](./quick/261123-vkb-freeze-the-held-wet-look-at-the-visible-/) |
 | 261124-0l5 | Living Script Apply pastes the copied script onto the key (recorded timeline under fresh ids bound to the destination keyId, then baked; one undo; replaces an existing script) | 2026-11-24 | b5c6c387c | [261124-0l5-paste-script-doesn-t-paste-strokes-scrip](./quick/261124-0l5-paste-script-doesn-t-paste-strokes-scrip/) |
+| 261124-1d7 | Fix AQTL v4 snapshots written during the reverted 261123-jak/kpy window | 2026-11-24 | 576ade2dd | [261124-1d7-fix-aqtl-v4-snapshots-written-during-the](./quick/261124-1d7-fix-aqtl-v4-snapshots-written-during-the/) |
 
 ## Roadmap Evolution
 
