@@ -737,21 +737,24 @@ describe('64-22 — the bristle gather rides the one curve (T-64-72)', () => {
 // ============================================================
 
 describe('Spec 10 — the lateral edge film rides the ONE gather', () => {
-  it('declares the three uniforms and binds them for every consumer', () => {
+  it('declares the four uniforms and binds them for every consumer', () => {
     const gather = sliceBetween(
       SHADERS_SOURCE,
       'export const BRISTLE_GATHER',
       'export const bristleDepositFS',
     )
     expectContains(gather, 'uniform float uEdgeStart;')
+    expectContains(gather, 'uniform float uEdgeCore;')
     expectContains(gather, 'uniform float uEdgeFade;')
     expectContains(gather, 'uniform float uEdgeFalloff;')
-    // The start anchor is the constant; the two knobs are Params members
-    // clamped at the bind exactly like Feather.
+    // The start and core anchors are constants; the two knobs are Params
+    // members clamped at the bind exactly like Feather.
     const imports = ENGINE_SOURCE.slice(0, ENGINE_SOURCE.indexOf("from './bristles';"))
     expectContains(imports, 'BRISTLE_EDGE_START,')
+    expectContains(imports, 'BRISTLE_EDGE_CORE,')
     const bind = sliceBetween(ENGINE_SOURCE, 'private bindGather(', 'private bristleInk(')
     expectContains(bind, 'gl.uniform1f(p.u.uEdgeStart!, BRISTLE_EDGE_START);')
+    expectContains(bind, 'gl.uniform1f(p.u.uEdgeCore!, BRISTLE_EDGE_CORE);')
     expectContains(bind, 'gl.uniform1f(p.u.uEdgeFade!, clamp(this.params.edgeFade, 0, 1));')
     expectContains(bind, 'gl.uniform1f(p.u.uEdgeFalloff!, clamp(this.params.edgeFalloff, 0, 1));')
   })
@@ -766,11 +769,15 @@ describe('Spec 10 — the lateral edge film rides the ONE gather', () => {
     // normalised, so it divides by uFeatherEdge before the start anchor.
     expectContains(gather, 'float edgeU = clamp(lateral / max(uFeatherEdge, 1e-4), 0.0, 1.0);')
     expectContains(gather, 'float edgeExp = exp2(2.0 * uEdgeFalloff - 1.0);')
+    // UAT 2026-11-25: the amount fades the WHOLE mark — the profile keeps
+    // 1 - uEdgeCore at the core (65% film at amount 100) and reaches 1 at the
+    // silhouette, where the falloff shapes the ramp.
+    expectContains(gather, 'float edgeProfile = uEdgeCore + (1.0 - uEdgeCore) * pow(edgeT, edgeExp);')
     // The plain arithmetic form, never a guarding ternary: at amount 0 the
     // product is exactly zero and the film is exactly 1.0, so the pre-change
     // program renders bit-identically (the mode-1 identity gates). A ternary
     // guard measured a ULP drift through the whole export (quick 261124-ujb).
-    expectContains(gather, 'float edgeFilm = 1.0 - uEdgeFade * pow(edgeT, edgeExp);')
+    expectContains(gather, 'float edgeFilm = 1.0 - uEdgeFade * edgeProfile;')
     // UAT 2026-11-24 (the artist's white border): the film is the DEPOSIT
     // WEIGHT. The source is `cA * a`, so scaling the carried coefficients
     // too would square it — the underlayer attenuated once against a
@@ -806,8 +813,8 @@ describe('Spec 10 — the lateral edge film rides the ONE gather', () => {
     expectContains(attenuation, 'oB = vec4(a);')
     expectNotContains(attenuation, 'g.film')
     // `uEdge` alone is the watercolor tide-line uniform (a substring of
-    // `uEdgeDarken`), so the refusals name the THREE film identifiers.
-    const edgeUniforms = ['uEdgeStart', 'uEdgeFade', 'uEdgeFalloff']
+    // `uEdgeDarken`), so the refusals name the FOUR film identifiers.
+    const edgeUniforms = ['uEdgeStart', 'uEdgeCore', 'uEdgeFade', 'uEdgeFalloff']
     const refuseEdge = (source: string, where: string): void => {
       for (const name of edgeUniforms) {
         expect(source.includes(name), `unexpected ${name} in ${where}`).toBe(false)

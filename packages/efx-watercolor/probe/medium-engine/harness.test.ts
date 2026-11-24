@@ -1057,11 +1057,13 @@ function validEdgeCapture(): Record<string, unknown> {
 /** Spec 10: the synthetic lateral profile — coverage peaks at 0.4 inside the
  *  visible silhouette (±20 px) and falls to bare paper outside it, exactly as
  *  the gather's footprint does. The film law is applied per row so the fixture
- *  encodes the spec's landmark table independently of the comparator's own
+ *  encodes the law's landmark table independently of the comparator's own
  *  constants (a fixture built from the comparator would prove nothing). */
 const EDGE_FIXTURE_PEAK = 0.4
 const EDGE_FIXTURE_SILHOUETTE = 20
 const EDGE_FIXTURE_EDGE_START = 0.55
+/** The amount's share at the core (BRISTLE_EDGE_CORE): 65% film at amount 100. */
+const EDGE_FIXTURE_CORE = 0.35
 
 function edgeFixtureProfile(
   amount: number,
@@ -1079,7 +1081,8 @@ function edgeFixtureProfile(
       0,
       Math.min(1, (u - EDGE_FIXTURE_EDGE_START) / (1 - EDGE_FIXTURE_EDGE_START)),
     )
-    const film = amount <= 0 ? 1 : 1 - (amount / 100) * t ** exponent
+    const profile = EDGE_FIXTURE_CORE + (1 - EDGE_FIXTURE_CORE) * t ** exponent
+    const film = amount <= 0 ? 1 : 1 - (amount / 100) * profile
     const inside = Math.abs(o) <= silhouette
     cover.push(inside ? EDGE_FIXTURE_PEAK * film : 0)
     ink.push(inside ? 2 * film : 0)
@@ -2204,14 +2207,15 @@ describe('the edge-transparency gate (Spec 10)', () => {
     it('maps the scenario to its reference-aware invariant', () => {
       expectContains(COMPARE, "'edge-transparency': edgeTransparencyFailures,")
       expectContains(COMPARE, 'function edgeTransparencyFailures(data, reference) {')
-      expectContains(COMPARE, 'const EDGE_CORE_TOLERANCE = 0.02')
+      expectContains(COMPARE, 'const EDGE_CORE_TOLERANCE = 0.06')
       expectContains(COMPARE, 'const EDGE_STATION_TOLERANCE = 0.12')
+      expectContains(COMPARE, 'const EDGE_CORE = 0.35')
       expectContains(COMPARE, 'const EDGE_MID_U = 0.775')
       expectContains(COMPARE, 'function edgeSilhouettePx(reference) {')
       expectContains(COMPARE, 'const EDGE_FLOOR_EPS = 1e-3')
       expectContains(COMPARE, 'function edgeFilmFloorBoundary(offsets, filmAt, side, floor) {')
       expectContains(COMPARE, 'edgeFilmFloorBoundary(offsets, filmAt, -1, 1 - amount)')
-      expectContains(COMPARE, '1 - amount * 0.5 ** exponent')
+      expectContains(COMPARE, '1 - amount * (EDGE_CORE + (1 - EDGE_CORE) * 0.5 ** exponent)')
       expectContains(COMPARE, 'data.strokeBrush !== \'bristle-round\'')
     })
   })
@@ -2262,7 +2266,7 @@ describe('the edge-transparency gate (Spec 10)', () => {
 
     it('fails a mid station that does not follow the requested falloff', () => {
       // The profile is the BROAD shape, the metadata claims the rim shape:
-      // mid reads 0.293 where the rim falloff promises 0.75.
+      // mid reads 0.190 where the rim falloff promises 0.488.
       const capture = {
         ...validEdgeTransparencyCapture(100, 100),
         edgeAcross: edgeFixtureProfile(100, 0),

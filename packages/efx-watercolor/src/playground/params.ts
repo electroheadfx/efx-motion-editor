@@ -87,12 +87,13 @@ export interface AquarelleCanonicalParams {
    */
   wetSeconds: number
   /**
-   * Spec 10: how transparent the mark's border reads, 0..100. Scales the
-   * deposit WEIGHT (coverage and the cover alpha) from the fade band to the
-   * silhouette; the carried colour stays full strength, so the band is a
-   * thinner film of the same paint, never a pale dilution. The core is
-   * untouched. 0 is neutral — every recorded stroke without the key replays
-   * byte-identically. Bristle responses only.
+   * Spec 10: how transparent the mark reads, 0..100. Scales the deposit
+   * WEIGHT (coverage and the cover alpha) across the whole mark — at 100 the
+   * core keeps 65 % of its film and the rim reaches 0 — while the carried
+   * colour stays full strength, so the mark is a thinner film of the same
+   * paint, never a pale dilution. The falloff shapes the ramp between the
+   * core and the rim. 0 is neutral — every recorded stroke without the key
+   * replays byte-identically. Bristle responses only.
    */
   edgeFade: number
   /**

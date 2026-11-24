@@ -269,17 +269,24 @@ export const BRISTLE_LANDING = 1.6;
 // ------------------------- Spec 10: the lateral edge film -------------------------
 //
 //  Edge transparency (amount, 0..1) and Edge falloff (shape bias, 0..1) drive
-//  ONE lateral factor on the carried film, computed in SILHOUETTE units: 1 is
-//  the visible rim (BRISTLE_FEATHER_EDGE of the nominal footprint), not the
+//  ONE lateral factor on the DEPOSIT WEIGHT, in SILHOUETTE units: 1 is the
+//  visible rim (BRISTLE_FEATHER_EDGE of the nominal footprint), not the
 //  footprint's own edge. The fragment's expression is mirrored by the tested
-//  twin `bristleEdgeFilm` below and the three constants are bound as uniforms
+//  twin `bristleEdgeFilm` below and the four constants are bound as uniforms
 //  in `bindGather`, so the shader cannot re-type them.
-/** Where the fade starts, in silhouette units (0.55): the core keeps film 1. */
+/** Where the fade starts, in silhouette units (0.55). */
 export const BRISTLE_EDGE_START = 0.55;
 /** Falloff 0's exponent (0.5): the broad fade — `1 - amount·√t` at the midpoint. */
 export const BRISTLE_EDGE_EXP_MIN = 0.5;
 /** Falloff 100's exponent (2): the rim fade — the band hugs the silhouette. */
 export const BRISTLE_EDGE_EXP_MAX = 2;
+/**
+ * The amount's share at the CORE (0.35): at amount 100 the core keeps
+ * `1 - 0.35 = 65%` film, the fade reaches the rim (film 0), and the falloff
+ * shapes the ramp between. UAT 2026-11-25: the artist wants amount 100 to
+ * make the whole mark read visibly translucent, not only its border.
+ */
+export const BRISTLE_EDGE_CORE = 0.35;
 
 // ------------------------- the contact pressure law (spike 004) -------------------------
 //
@@ -428,11 +435,13 @@ export function edgeFalloffExponent(bias: number): number {
 /**
  * Spec 10: the mirror of the gather's ONE lateral edge film. `lateral` is in
  * SILHOUETTE units (1 = the visible rim), `amount` (0..1) is Edge
- * transparency and `falloff` (0..1) is Edge falloff. The film is 1 up to
- * BRISTLE_EDGE_START, then `1 - amount·t^e` with `t` the normalised distance
- * into the fade band and `e = edgeFalloffExponent(falloff)` — reaching
- * exactly `1 - amount` at the silhouette. Amount 0 (or a non-finite
- * argument) returns the neutral 1 at every distance.
+ * transparency and `falloff` (0..1) is Edge falloff. The film is
+ * `1 - amount·profile` with `profile = BRISTLE_EDGE_CORE + (1 - CORE)·t^e`,
+ * `t` the normalised distance into the fade band past BRISTLE_EDGE_START and
+ * `e = edgeFalloffExponent(falloff)`: amount 100 leaves 65% film at the core,
+ * `1 - amount` at the silhouette, and the falloff chooses how quickly the
+ * ramp crosses between them. Amount 0 (or a non-finite argument) returns the
+ * neutral 1 at every distance.
  *
  * Cells BEYOND the silhouette clamp to the full rim factor by design: at
  * amount 100 they go inert and the mark's edge narrows. That is the knob's
@@ -444,7 +453,8 @@ export function bristleEdgeFilm(lateral: number, amount: number, falloff: number
   if (a <= 0) return 1;
   const u = clamp01(lateral);
   const t = clamp01((u - BRISTLE_EDGE_START) / Math.max(1 - BRISTLE_EDGE_START, 1e-4));
-  return 1 - a * t ** edgeFalloffExponent(falloff);
+  const profile = BRISTLE_EDGE_CORE + (1 - BRISTLE_EDGE_CORE) * t ** edgeFalloffExponent(falloff);
+  return 1 - a * profile;
 }
 
 // ------------------------- the trace and edge formulas (64-23) -------------------------

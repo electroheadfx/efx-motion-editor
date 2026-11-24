@@ -382,6 +382,7 @@ const TRACES = bristleModule as unknown as {
   BRISTLE_EDGE_START?: number
   BRISTLE_EDGE_EXP_MIN?: number
   BRISTLE_EDGE_EXP_MAX?: number
+  BRISTLE_EDGE_CORE?: number
   edgeFalloffExponent?: (bias: number) => number
   bristleEdgeFilm?: (lateral: number, amount: number, falloff: number) => number
 }
@@ -719,11 +720,11 @@ describe('bristleCoverage — §4.5 / §5.5', () => {
 //  `gatherBristle` scales the WHOLE carried film — coverage, cA, cB and
 //  alpha together — through ONE lateral factor. The argument is in
 //  SILHOUETTE units: 1 is the visible rim (BRISTLE_FEATHER_EDGE of the
-//  nominal footprint), not the footprint's own edge. Inside
-//  BRISTLE_EDGE_START the film is exactly 1 at every amount; it reaches
-//  `1 - amount` at the silhouette; between them the shape bias picks the
-//  fade through `edgeFalloffExponent`. The three constants are bound as
-//  uniforms, so the fragment cannot re-type them.
+//  nominal footprint), not the footprint's own edge. At amount 100 the film
+//  keeps `1 - BRISTLE_EDGE_CORE` (65%) in the core and reaches 0 at the
+//  silhouette; the shape bias picks the ramp through `edgeFalloffExponent`,
+//  and amount 0 is inert. The four constants are bound as uniforms, so the
+//  fragment cannot re-type them.
 // ============================================================
 
 describe('bristleEdgeFilm — Spec 10, the lateral film in silhouette units', () => {
@@ -738,14 +739,17 @@ describe('bristleEdgeFilm — Spec 10, the lateral film in silhouette units', ()
     }
   })
 
-  it('keeps the core at film 1 for every amount and falloff', () => {
+  it('fades the core by amount · BRISTLE_EDGE_CORE at every falloff', () => {
     for (const amount of [0, 0.25, 0.5, 1]) {
       for (const falloff of [0, 0.5, 1]) {
-        expect(TRACES.bristleEdgeFilm?.(0, amount, falloff), 'the core row never fades').toBe(1)
+        expect(
+          TRACES.bristleEdgeFilm?.(0, amount, falloff),
+          'the core fades with the amount — 65% film at amount 100',
+        ).toBeCloseTo(1 - amount * (TRACES.BRISTLE_EDGE_CORE ?? Number.NaN), 12)
         expect(
           TRACES.bristleEdgeFilm?.(0.55, amount, falloff),
           'the fade starts exactly at BRISTLE_EDGE_START',
-        ).toBeCloseTo(1, 12)
+        ).toBeCloseTo(1 - amount * (TRACES.BRISTLE_EDGE_CORE ?? Number.NaN), 12)
       }
     }
   })
@@ -762,19 +766,21 @@ describe('bristleEdgeFilm — Spec 10, the lateral film in silhouette units', ()
   })
 
   it('reads the landmark table at the fade midpoint (t = 0.5)', () => {
-    // u = (0.775 - 0.55) / 0.45 = 0.5 → film = 1 - amount · 0.5^e.
+    // u = (0.775 - 0.55) / 0.45 = 0.5 → film = 1 - amount · (CORE + (1 - CORE)·0.5^e).
+    const core = TRACES.BRISTLE_EDGE_CORE ?? Number.NaN
+    const mid = (e: number): number => 1 - (core + (1 - core) * 0.5 ** e)
     expect(
       TRACES.bristleEdgeFilm?.(0.775, 1, 0.5),
-      'falloff 50 (e = 1) reads 0.5',
-    ).toBeCloseTo(0.5, 9)
+      'falloff 50 (e = 1) reads 1 - (CORE + (1 - CORE)·0.5)',
+    ).toBeCloseTo(mid(1), 9)
     expect(
       TRACES.bristleEdgeFilm?.(0.775, 1, 0),
-      'falloff 0 (e = 0.5) reads 1 - √0.5 = 0.292893',
-    ).toBeCloseTo(1 - Math.SQRT1_2, 9)
+      'falloff 0 (e = 0.5) reads the broad ramp',
+    ).toBeCloseTo(mid(0.5), 9)
     expect(
       TRACES.bristleEdgeFilm?.(0.775, 1, 1),
-      'falloff 100 (e = 2) reads 0.75',
-    ).toBeCloseTo(0.75, 9)
+      'falloff 100 (e = 2) reads the rim ramp',
+    ).toBeCloseTo(mid(2), 9)
   })
 
   it('fades monotonically from the core to the rim at every falloff', () => {
@@ -845,14 +851,15 @@ describe('edgeFalloffExponent — the Spec 10 shape bias', () => {
 })
 
 describe('the Spec 10 edge constants', () => {
-  it('pins the start anchor and the exponent bounds', () => {
+  it('pins the start anchor, the core share and the exponent bounds', () => {
     expect(TRACES.BRISTLE_EDGE_START, 'the fade starts at 0.55 of the silhouette').toBe(0.55)
+    expect(TRACES.BRISTLE_EDGE_CORE, 'amount 100 leaves 65% film at the core').toBe(0.35)
     expect(TRACES.BRISTLE_EDGE_EXP_MIN, 'falloff 0 is the square-root shape').toBe(0.5)
     expect(TRACES.BRISTLE_EDGE_EXP_MAX, 'falloff 100 is the squared shape').toBe(2)
   })
 
   it('declares each constant once in the package — a second copy fails the build', () => {
-    for (const name of ['BRISTLE_EDGE_START', 'BRISTLE_EDGE_EXP_MIN', 'BRISTLE_EDGE_EXP_MAX']) {
+    for (const name of ['BRISTLE_EDGE_START', 'BRISTLE_EDGE_CORE', 'BRISTLE_EDGE_EXP_MIN', 'BRISTLE_EDGE_EXP_MAX']) {
       const declarations = PACKAGE_SOURCES.filter(({ text }) =>
         new RegExp(`export const ${name}\\b`).test(text),
       ).map(({ file }) => file)

@@ -965,9 +965,11 @@ uniform float uFeatherCap;   // leading end cap, fraction of the radius (all Fea
 uniform float uFeatherMin;   // the threshold shift's start anchor, fraction of the silhouette
 uniform float uFeatherShift; // the rim threshold rise at F100 (BRISTLE_FEATHER_SHIFT)
 // Spec 10 — the lateral edge film (Edge transparency / Edge falloff), in
-// SILHOUETTE units. uEdgeStart is BRISTLE_EDGE_START (0.55); the other two
+// SILHOUETTE units. uEdgeStart is BRISTLE_EDGE_START (0.55) and uEdgeCore
+// is BRISTLE_EDGE_CORE (0.35, the amount's share at the core); the other two
 // are Params members (amount 0..1, bias 0..1).
 uniform float uEdgeStart;
+uniform float uEdgeCore;
 uniform float uEdgeFade;
 uniform float uEdgeFalloff;
 uniform float uTakeoffShift; // the leading frontier's threshold rise (BRISTLE_TAKEOFF_SHIFT)
@@ -1303,11 +1305,14 @@ Gathered gatherBristle(vec2 uv){
   float coverage = body * (0.3 + 0.7 * uPressure) * dryEdge * alongFade * trailSupport;
   // Spec 10 — Edge transparency and Edge falloff. ONE lateral film in
   // SILHOUETTE units (uFeatherEdge is where the mark's visible rim sits):
-  // 1 up to uEdgeStart, then 1 - amount·t^e with e = 2^(2b - 1) (0.5 broad /
-  // 1 linear / 2 rim, the tested twin's edgeFalloffExponent). Cells BEYOND
-  // the silhouette clamp to the full rim factor BY DESIGN: at amount 100
-  // they go inert and the edge narrows — intended, not a paper-threshold
-  // change (the threshold block above is untouched).
+  // 1 - amount·profile, with profile = uEdgeCore + (1 - uEdgeCore)·t^e and
+  // e = 2^(2b - 1) (0.5 broad / 1 linear / 2 rim, the tested twin's
+  // edgeFalloffExponent). Amount 100 therefore leaves 1 - uEdgeCore = 65% of
+  // the film in the CORE and reaches 0 at the silhouette (UAT 2026-11-25:
+  // the artist wants the whole mark translucent, not only its border).
+  // Cells BEYOND the silhouette clamp to the full rim factor BY DESIGN: at
+  // amount 100 they go inert and the edge narrows — intended, not a
+  // paper-threshold change (the threshold block above is untouched).
   //
   // The film is the DEPOSIT WEIGHT, never a colour dilution (UAT 2026-11-24,
   // the artist's white border): the deposit's source is cA * a, so scaling
@@ -1326,7 +1331,8 @@ Gathered gatherBristle(vec2 uv){
   float edgeU = clamp(lateral / max(uFeatherEdge, 1e-4), 0.0, 1.0);
   float edgeT = clamp((edgeU - uEdgeStart) / max(1.0 - uEdgeStart, 1e-4), 0.0, 1.0);
   float edgeExp = exp2(2.0 * uEdgeFalloff - 1.0);
-  float edgeFilm = 1.0 - uEdgeFade * pow(edgeT, edgeExp);
+  float edgeProfile = uEdgeCore + (1.0 - uEdgeCore) * pow(edgeT, edgeExp);
+  float edgeFilm = 1.0 - uEdgeFade * edgeProfile;
   featherFade *= alongFade * trailSupport;
   // The band itself is the reference's constant; its width never moves.
   float inked = uSoftness > 0.0
