@@ -384,7 +384,36 @@ describe('aquarelle layer is a compositor pigment layer (56-12)', () => {
       layer,
       'if (hasCacheableScript(events)) rememberSheet(frame, aquarelleSheetSignature(events), sheet);',
     );
-    expectSource(layer, 'if (hasCacheableScript(leavingEvents)) {');
+    // 2026-11-24: the frame-leave parking also asks whether the leaving
+    // sheet is base-carrying — see the dedicated pin below.
+    expectSource(
+      layer,
+      'if (aquarelleSheetSeeded.value && hasCacheableScript(leavingEvents)) {',
+    );
+  });
+
+  it('SHEET CACHE: only a BASE-CARRYING sheet is parked for the return (2026-11-24)', () => {
+    // The committed base is a display-only underlay and never enters
+    // `captureSheet()`, so a sheet painted over a blank-underlay start holds
+    // the new strokes alone. Parking it made the return restore a base-less
+    // sheet: `seeded` hid the underlay AND the capture merged with
+    // cachedBase=null, replacing the key's committed paint with the strokes
+    // alone until an explicit re-render. A sheet is base-carrying exactly
+    // when it was seeded from one (adopt / a base-carrying restore), which is
+    // what `aquarelleSheetSeeded` means at frame-leave.
+    const rememberBlock = layer.slice(
+      layer.indexOf('const leavingFrame = lastPlayFrameRef.current;'),
+      layer.indexOf('lastPlayFrameRef.current = playFrame;'),
+    );
+    expect(
+      rememberBlock.includes(
+        'if (aquarelleSheetSeeded.value && hasCacheableScript(leavingEvents)) {',
+      ),
+      'missing the base-carrying guard on the frame-leave sheet parking',
+    ).toBe(true);
+    expect(rememberBlock).toContain('engine.captureSheet()');
+    // The adopt path still parks unconditionally: its bake sheet IS the base.
+    expect(layer).toContain('if (hasCacheableScript(events)) rememberSheet(frame, aquarelleSheetSignature(events), sheet);');
   });
 
   it('NAV FLUSH: navigation forces an aquarelle frame-leave capture BEFORE flushing live pixels', () => {

@@ -1260,7 +1260,16 @@ export function AquarelleCanvasLayer(props: {
           // script signature it was built from so the return can upload it.
           const leavingFrame = lastPlayFrameRef.current;
           const leavingEvents = getSeedEventsRef.current?.(leavingFrame) ?? null;
-          if (hasCacheableScript(leavingEvents)) {
+          // PARK ONLY A BASE-CARRYING SHEET (2026-11-24): `captureSheet()` is
+          // the LIVE sheet alone — the committed base is a display-only
+          // underlay that never enters it, so a sheet painted over a
+          // blank-underlay start is strokes only. Parking that one made the
+          // return restore a base-less sheet, `seeded` hide the underlay, and
+          // the capture merge with cachedBase=null: the committed paint was
+          // replaced by the new strokes alone until an explicit re-render.
+          // A sheet IS base-carrying exactly when it was seeded from one (the
+          // re-render adopt path, or a previous base-carrying restore).
+          if (aquarelleSheetSeeded.value && hasCacheableScript(leavingEvents)) {
             rememberSheet(leavingFrame, aquarelleSheetSignature(leavingEvents), engine.captureSheet());
           }
         }
