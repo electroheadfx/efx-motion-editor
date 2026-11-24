@@ -52,6 +52,12 @@ function getActionRowBlock(code: string): string {
 function getActionAriaLabelToken(ariaLabel: string): string {
   if (ariaLabel === 'Insert key before') return 'aria-label={insertRotoKeyDescription}';
   if (ariaLabel === 'Delete Frame') return 'aria-label={deleteRotoScopeLabel}';
+  // Quick 261124-gfy: the clipboard actions render a mode-derived kind
+  // ('<Action> key' raster / '<Action> script' script) through one helper.
+  const clipboardAction = ariaLabel.endsWith(' key') ? ariaLabel.slice(0, -' key'.length) : '';
+  if (['Duplicate', 'Copy', 'Paste', 'Cut'].includes(clipboardAction)) {
+    return `aria-label={clipboardActionLabel('${clipboardAction}')}`;
+  }
   return `aria-label="${ariaLabel}"`;
 }
 function getButtonBlock(code: string, ariaLabel: string): string {
@@ -129,9 +135,10 @@ const ROW_ICON_ACTIONS: ReadonlyArray<{ label: string; guard: string; handler: s
   { label: 'Insert key before', guard: 'canInsertRotoKey', handler: 'props.onInsertRotoFrame?.()' },
   { label: 'Delete Frame', guard: 'canDeleteRotoKey', handler: 'props.onDeleteRotoFrame?.()' },
   { label: 'Duplicate key', guard: 'canDuplicateRotoKey', handler: 'props.onDuplicateRotoKey?.()' },
-  { label: 'Copy key', guard: 'canCopyRotoKey', handler: 'props.onCopyRotoFrame?.()' },
-  { label: 'Paste key', guard: 'canPasteRotoKey', handler: 'props.onPasteRotoFrame?.()' },
-  { label: 'Cut key', guard: 'canCutRotoKey', handler: 'props.onCutRotoFrame?.()' },
+  // Quick 261124-gfy: Copy/Paste/Cut guard on the mode-effective constants.
+  { label: 'Copy key', guard: 'canCopyRotoAction', handler: 'props.onCopyRotoFrame?.()' },
+  { label: 'Paste key', guard: 'canPasteRotoAction', handler: 'props.onPasteRotoFrame?.()' },
+  { label: 'Cut key', guard: 'canCutRotoAction', handler: 'props.onCutRotoFrame?.()' },
   { label: 'Split Key Rail', guard: 'canScissorRotoKey', handler: 'props.onScissorKeyRail?.()' },
 ];
 
@@ -275,21 +282,19 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
 
   it('guards the Paste key icon action with aria-disabled and a styled tooltip', () => {
     const code = source();
-    expect(code).toContain('aria-label="Paste key"');
+    // 261124-gfy: the label is mode-derived; raster renders 'Paste key'.
+    expect(getActionAriaLabelToken('Paste key')).toBe("aria-label={clipboardActionLabel('Paste')}");
     expect(code).toContain('ClipboardPaste');
-    const labelIndex = code.indexOf('aria-label="Paste key"');
-    const buttonStart = code.lastIndexOf('<button', labelIndex);
-    const buttonEnd = code.indexOf('</button>', labelIndex) + '</button>'.length;
-    const pasteBlock = code.slice(buttonStart, buttonEnd);
+    const pasteBlock = getButtonBlock(getActionRowBlock(code), 'Paste key');
     expect(pasteBlock).toContain('aria-disabled');
     expect(pasteBlock).toContain('aria-describedby');
     expect(pasteBlock.replace(/aria-disabled/g, '')).not.toContain('disabled=');
     expect(pasteBlock).not.toContain('title=');
-    const guardIndex = pasteBlock.indexOf('if (!canPasteRotoKey) return;');
+    const guardIndex = pasteBlock.indexOf('if (!canPasteRotoAction) return;');
     const handlerIndex = pasteBlock.indexOf('props.onPasteRotoFrame?.()');
     expect(guardIndex).toBeGreaterThanOrEqual(0);
     expect(handlerIndex).toBeGreaterThan(guardIndex);
-    expect(code).toContain("buildGuardedActionTooltipCopy('Paste key', pasteRotoKeyDisabledReason)");
+    expect(code).toContain("buildGuardedActionTooltipCopy(clipboardActionLabel('Paste'), pasteRotoActionDisabledReason)");
   });
 
   it('renders the Key {n} chip before any action button in the row (D-13)', () => {
@@ -532,10 +537,10 @@ describe('PhysicsPaintWorkflowStrip Cut key contract (quick 260731-9l0)', () => 
     const row = getActionRowBlock(source());
     const insertIndex = row.indexOf(getActionAriaLabelToken('Insert key before'));
     const deleteIndex = row.indexOf(getActionAriaLabelToken('Delete Frame'));
-    const duplicateIndex = row.indexOf('aria-label="Duplicate key"');
-    const copyIndex = row.indexOf('aria-label="Copy key"');
-    const pasteIndex = row.indexOf('aria-label="Paste key"');
-    const cutIndex = row.indexOf('aria-label="Cut key"');
+    const duplicateIndex = row.indexOf(getActionAriaLabelToken('Duplicate key'));
+    const copyIndex = row.indexOf(getActionAriaLabelToken('Copy key'));
+    const pasteIndex = row.indexOf(getActionAriaLabelToken('Paste key'));
+    const cutIndex = row.indexOf(getActionAriaLabelToken('Cut key'));
     const scissorIndex = row.indexOf('aria-label="Split Key Rail"');
     expect(insertIndex).toBeGreaterThanOrEqual(0);
     expect(deleteIndex).toBeGreaterThan(insertIndex);
@@ -556,22 +561,24 @@ describe('PhysicsPaintWorkflowStrip Cut key contract (quick 260731-9l0)', () => 
     const code = source();
     const row = getActionRowBlock(code);
     const block = getButtonBlock(row, 'Cut key');
-    expect(block).toContain('aria-label="Cut key"');
-    expect(block).toContain('aria-disabled={!canCutRotoKey');
-    expect(block).toContain("aria-describedby={!canCutRotoKey && cutRotoKeyDisabledReason ? 'roto-key-action-reason-cut' : undefined}");
+    // 261124-gfy: the label and guard are mode-effective; raster renders
+    // 'Cut key' and the shipped raster eligibility.
+    expect(block).toContain("aria-label={clipboardActionLabel('Cut')}");
+    expect(block).toContain('aria-disabled={!canCutRotoAction');
+    expect(block).toContain("aria-describedby={!canCutRotoAction && cutRotoActionDisabledReason ? 'roto-key-action-reason-cut' : undefined}");
     expect(block.replace(/aria-disabled/g, '')).not.toContain('disabled=');
     expect(block).not.toContain('title=');
-    const guardIndex = block.indexOf('if (!canCutRotoKey) return;');
+    const guardIndex = block.indexOf('if (!canCutRotoAction) return;');
     const handlerIndex = block.indexOf('props.onCutRotoFrame?.()');
     expect(guardIndex).toBeGreaterThanOrEqual(0);
     expect(handlerIndex).toBeGreaterThan(guardIndex);
-    expect(block).toContain("(event.key === 'Enter' || event.key === ' ') && !canCutRotoKey");
+    expect(block).toContain("(event.key === 'Enter' || event.key === ' ') && !canCutRotoAction");
     expect(block).toContain('<Scissors size={18} aria-hidden="true" />');
     expect(block).toContain('<span class="physics-paint-roto-key-icon-label">Cut</span>');
     // Cut sits with the clipboard actions; Delete keeps the trailing destructive position.
     expect(block).not.toContain('destructive');
     expect(code).toContain('id="roto-key-action-reason-cut"');
-    expect(code).toContain("buildGuardedActionTooltipCopy('Cut key', cutRotoKeyDisabledReason)");
+    expect(code).toContain("buildGuardedActionTooltipCopy(clipboardActionLabel('Cut'), cutRotoActionDisabledReason)");
     expect(getWorkflowStripPropsInterface(code)).toContain('onCutRotoFrame?: () => void;');
   });
 });
@@ -1475,9 +1482,9 @@ describe('PhysicsPaintWorkflowStrip top bar regrouping contract (36.15-08, UAT G
     const railIndex = row.indexOf('aria-label="Create rail"');
     const insertIndex = row.indexOf(getActionAriaLabelToken('Insert key before'));
     const deleteIndex = row.indexOf(getActionAriaLabelToken('Delete Frame'));
-    const duplicateIndex = row.indexOf('aria-label="Duplicate key"');
-    const copyIndex = row.indexOf('aria-label="Copy key"');
-    const pasteIndex = row.indexOf('aria-label="Paste key"');
+    const duplicateIndex = row.indexOf(getActionAriaLabelToken('Duplicate key'));
+    const copyIndex = row.indexOf(getActionAriaLabelToken('Copy key'));
+    const pasteIndex = row.indexOf(getActionAriaLabelToken('Paste key'));
     for (const index of [layerIndex, chipIndex, addIndex, railIndex, insertIndex, deleteIndex, duplicateIndex, copyIndex, pasteIndex]) {
       expect(index).toBeGreaterThanOrEqual(0);
     }
@@ -2574,10 +2581,10 @@ describe('260905-d1w action-row layout + Solo-in-pill source contracts', () => {
       'aria-label="Create rail"',
       getActionAriaLabelToken('Insert key before'),
       getActionAriaLabelToken('Delete Frame'),
-      'aria-label="Duplicate key"',
-      'aria-label="Copy key"',
-      'aria-label="Paste key"',
-      'aria-label="Cut key"',
+      getActionAriaLabelToken('Duplicate key'),
+      getActionAriaLabelToken('Copy key'),
+      getActionAriaLabelToken('Paste key'),
+      getActionAriaLabelToken('Cut key'),
       getActionAriaLabelToken('Split Key Rail'),
       'aria-label="Select all keys"',
     ];
@@ -3692,5 +3699,187 @@ describe('261108-d5o snap-frame host plumbing', () => {
     expect(countOccurrences(code, 'physicPaintStore.getRotoRailMotionSnapFrames(')).toBe(1);
     expect(code).toContain('const motionSnapFrames = motionRecord === null');
     expect(code).toContain('snapFrames={motionSnapFrames}');
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* 261124-gfy — grouped clipboard sub-section + Raster|Script toggle   */
+/* ------------------------------------------------------------------ */
+
+describe('261124-gfy clipboard group and Raster|Script toggle', () => {
+  function getClipboardGroupBlock(row: string): string {
+    const groupStart = row.indexOf('<span class="physics-paint-roto-key-clipboard-group"');
+    if (groupStart === -1) return '';
+    // The group closes immediately before the Scissor action span.
+    const groupEnd = row.indexOf('onPointerEnter={scissorKeyTooltip.onPointerEnter}', groupStart);
+    return row.slice(groupStart, groupEnd === -1 ? row.length : groupEnd);
+  }
+
+  it('declares the session mode props and mirrors the Studio default', () => {
+    const code = source();
+    const propsInterface = getWorkflowStripPropsInterface(code);
+    expect(propsInterface).toContain("rotoClipboardMode?: 'raster' | 'script'");
+    expect(propsInterface).toContain("onRotoClipboardModeChange?: (mode: 'raster' | 'script') => void");
+    // Raster is pressed when the prop is absent — the Studio signal owns the
+    // session mode, the strip never keeps its own copy.
+    expect(code).toContain("const isScriptClipboardMode = (props.rotoClipboardMode ?? 'raster') === 'script';");
+    expect(code).toContain("const clipboardActionLabel = (action: string): string => `${action} ${isScriptClipboardMode ? 'script' : 'key'}`;");
+  });
+
+  it('wraps exactly the four clipboard actions in one tonal group after Delete and before Scissor', () => {
+    const row = getActionRowBlock(source());
+    expect(countOccurrences(row, 'physics-paint-roto-key-clipboard-group"')).toBe(1);
+    const groupStart = row.indexOf('<span class="physics-paint-roto-key-clipboard-group"');
+    expect(groupStart).toBeGreaterThanOrEqual(0);
+    expect(groupStart).toBeGreaterThan(row.indexOf(getActionAriaLabelToken('Delete Frame')));
+    expect(groupStart).toBeLessThan(row.indexOf('aria-label="Split Key Rail"'));
+    expect(row).toContain('role="group" aria-label="Copy and paste actions"');
+    const group = getClipboardGroupBlock(row);
+    const ordered = [
+      getActionAriaLabelToken('Duplicate key'),
+      getActionAriaLabelToken('Copy key'),
+      getActionAriaLabelToken('Paste key'),
+      getActionAriaLabelToken('Cut key'),
+    ];
+    const indices = ordered.map((token) => group.indexOf(token));
+    indices.forEach((index) => expect(index).toBeGreaterThanOrEqual(0));
+    for (let i = 1; i < indices.length; i += 1) expect(indices[i]).toBeGreaterThan(indices[i - 1]);
+    // Add / Rail / Insert / Delete and Scissor / All stay outside the group.
+    for (const outside of [
+      'aria-label="Add key"',
+      'aria-label="Create rail"',
+      getActionAriaLabelToken('Insert key before'),
+      getActionAriaLabelToken('Delete Frame'),
+      'aria-label="Split Key Rail"',
+      'aria-label="Select all keys"',
+    ]) {
+      expect(group).not.toContain(outside);
+    }
+  });
+
+  it('renders one mode-derived label helper on every clipboard action', () => {
+    const code = source();
+    // Four aria-labels + four tooltip first arguments.
+    expect(countOccurrences(code, 'clipboardActionLabel(')).toBe(8);
+    for (const action of ['Duplicate', 'Copy', 'Paste', 'Cut'] as const) {
+      expect(code).toContain(`aria-label={clipboardActionLabel('${action}')}`);
+      expect(code).toContain(`buildGuardedActionTooltipCopy(clipboardActionLabel('${action}'),`);
+    }
+    // The static raster literals are gone; the kind is rendered.
+    expect(code).not.toContain('aria-label="Duplicate key"');
+    expect(code).not.toContain('aria-label="Copy key"');
+    expect(code).not.toContain('aria-label="Paste key"');
+    expect(code).not.toContain('aria-label="Cut key"');
+  });
+
+  it('renders the Raster|Script segmented toggle at the end of the group, never a dropdown', () => {
+    const row = getActionRowBlock(source());
+    const group = getClipboardGroupBlock(row);
+    const modeStart = group.indexOf('<span class="physics-paint-roto-key-clipboard-mode"');
+    expect(modeStart).toBeGreaterThanOrEqual(0);
+    expect(group).toContain('role="group" aria-label="Copy and paste kind"');
+    // The toggle follows Cut and is the group's last child.
+    expect(modeStart).toBeGreaterThan(group.indexOf(getActionAriaLabelToken('Cut key')));
+    const toggle = group.slice(modeStart);
+    expect(countOccurrences(toggle, '<button')).toBe(2);
+    expect(countOccurrences(toggle, 'class="physics-paint-roto-key-clipboard-mode-option"')).toBe(2);
+    expect(toggle).toContain('>Raster</button>');
+    expect(toggle).toContain('>Script</button>');
+    // Both options carry aria-pressed; Raster is pressed when the prop is absent.
+    expect(toggle).toContain("aria-pressed={isScriptClipboardMode ? 'false' : 'true'}");
+    expect(toggle).toContain("aria-pressed={isScriptClipboardMode ? 'true' : 'false'}");
+    // Each option routes its literal through the single Studio callback.
+    expect(toggle).toContain("props.onRotoClipboardModeChange?.('raster')");
+    expect(toggle).toContain("props.onRotoClipboardModeChange?.('script')");
+    // Explanatory styled tooltips, never a native title/dropdown.
+    expect(toggle).toContain('Raster — Duplicate, Copy, Paste and Cut move painted keys.');
+    expect(toggle).toContain("Script — they move the key's watercolor script instead of its pixels.");
+    expect(countOccurrences(toggle, '<PhysicsPaintStyledTooltip')).toBe(2);
+    expect(toggle).not.toContain('<select');
+    expect(toggle).not.toContain('<option');
+    expect(toggle).not.toContain('title=');
+  });
+
+  it('computes the mode-effective availability after the untouched raster block', () => {
+    const code = source();
+    expect(code).toContain('const canCopyRotoAction = isScriptClipboardMode ? canCopyScriptAction : canCopyRotoKey;');
+    expect(code).toContain('const copyRotoActionDisabledReason = isScriptClipboardMode ? copyScriptActionDisabledReason : copyRotoKeyDisabledReason;');
+    expect(code).toContain('const canPasteRotoAction = isScriptClipboardMode ? (canApplyScriptAction && Boolean(props.rotoScript?.hasCopiedScript.value)) : canPasteRotoKey;');
+    expect(code).toContain('const pasteRotoActionDisabledReason = isScriptClipboardMode ? applyScriptActionDisabledReason : pasteRotoKeyDisabledReason;');
+    expect(code).toContain('const canCutRotoAction = isScriptClipboardMode ? (canCopyScriptAction && canDeleteRotoKey) : canCutRotoKey;');
+    expect(code).toContain('const cutRotoActionDisabledReason = isScriptClipboardMode ? (canCutRotoAction ? null : (copyScriptActionDisabledReason ?? deleteRotoKeyDisabledReason)) : cutRotoKeyDisabledReason;');
+    // The shipped raster literals stay byte-identical.
+    expect(code).toContain('const canCutRotoKey = canCopyRotoKey && canDeleteRotoKey;');
+    expect(code).toContain('const cutRotoKeyDisabledReason = canCutRotoKey ? null : (copyRotoKeyDisabledReason ?? deleteRotoKeyDisabledReason);');
+    // Every rendered guard/reason uses the effective constant; Duplicate keeps
+    // its shipped single-real-key gate (only its label changes).
+    const row = getActionRowBlock(code);
+    const duplicateBlock = getButtonBlock(row, 'Duplicate key');
+    expect(duplicateBlock).toContain('aria-disabled={!canDuplicateRotoKey');
+    expect(duplicateBlock).toContain('duplicateRotoKeyDisabledReason');
+    const copyBlock = getButtonBlock(row, 'Copy key');
+    expect(copyBlock).toContain('aria-disabled={!canCopyRotoAction');
+    expect(copyBlock).toContain("aria-describedby={!canCopyRotoAction && copyRotoActionDisabledReason ? 'roto-key-action-reason-copy' : undefined}");
+    expect(copyBlock).toContain('if (!canCopyRotoAction) return;');
+    const pasteBlock = getButtonBlock(row, 'Paste key');
+    expect(pasteBlock).toContain('aria-disabled={!canPasteRotoAction');
+    expect(pasteBlock).toContain("aria-describedby={!canPasteRotoAction && pasteRotoActionDisabledReason ? 'roto-key-action-reason-paste' : undefined}");
+    const cutBlock = getButtonBlock(row, 'Cut key');
+    expect(cutBlock).toContain('aria-disabled={!canCutRotoAction');
+    expect(cutBlock).toContain("aria-describedby={!canCutRotoAction && cutRotoActionDisabledReason ? 'roto-key-action-reason-cut' : undefined}");
+  });
+
+  it('styles the recessed group and segmented toggle and stabilizes the identity chip', () => {
+    const styles = css();
+    const group = getCssRuleBlock(styles, '.physics-paint-roto-key-clipboard-group {');
+    expect(group).toContain('display: inline-flex');
+    expect(group).toContain('align-items: center');
+    expect(group).toContain('gap: 4px');
+    expect(group).toContain('height: 26px');
+    expect(group).toContain('padding: 0 3px');
+    expect(group).toContain('border-radius: 8px');
+    expect(group).toContain('background: #161d25');
+    expect(group).toContain('box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35)');
+    expect(group).not.toMatch(/border:\s*1px/);
+
+    const mode = getCssRuleBlock(styles, '.physics-paint-roto-key-clipboard-mode {');
+    expect(mode).toContain('display: inline-flex');
+    expect(mode).toContain('gap: 2px');
+    expect(mode).toContain('margin-left: 2px');
+    expect(mode).toContain('padding-left: 4px');
+    expect(mode).toContain('border-left: 1px solid #2a3540');
+
+    const option = getCssRuleBlock(styles, '.physics-paint-roto-key-clipboard-mode-option {');
+    expect(option).toContain('height: 20px');
+    expect(option).toContain('min-width: 40px');
+    expect(option).toContain('padding: 0 6px');
+    expect(option).toContain('background: transparent');
+    expect(option).toContain('color: #9aa5b1');
+    expect(option).toContain('text-transform: none');
+    expect(option).toContain('border-radius: 5px');
+    expect(option).toContain('font-size: 9.5px');
+    expect(option).toContain('font-weight: 700');
+
+    const pressed = getCssRuleBlock(styles, ".physics-paint-roto-key-clipboard-mode-option[aria-pressed='true'] {");
+    expect(pressed).toContain('background: #2f67e8');
+    expect(pressed).toContain('color: #ffffff');
+
+    const identity = getCssRuleBlock(styles, '.physics-paint-roto-key-identity {');
+    expect(identity).toContain('flex: 0 0 auto');
+    expect(identity).toContain('min-width: 154px');
+    expect(identity).toContain('height: 26px');
+    expect(identity).not.toMatch(/border:\s*1px/);
+    expect(identity).not.toContain('#20262d');
+
+    const layer = getCssRuleBlock(styles, '.physics-paint-roto-key-layer {');
+    expect(layer).toContain('flex: 1 1 auto');
+    expect(layer).toContain('min-width: 0');
+    expect(layer).toContain('max-width: 88px');
+    expect(layer).toContain('overflow: hidden');
+    expect(layer).toContain('text-overflow: ellipsis');
+
+    const context = getCssRuleBlock(styles, '.physics-paint-roto-key-context {');
+    expect(context).toContain('flex: 0 0 auto');
+    expect(context).toContain('min-width: 44px');
   });
 });

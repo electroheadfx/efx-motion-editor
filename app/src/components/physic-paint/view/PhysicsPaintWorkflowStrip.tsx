@@ -453,6 +453,14 @@ export interface PhysicsPaintWorkflowStripProps {
   onCutRotoFrame?: () => void;
   onScissorKeyRail?: () => void;
   onPasteRotoFrame?: () => void;
+  /**
+   * Quick 261124-gfy: the Roto clipboard kind governing Duplicate, Copy,
+   * Paste and Cut. Session-local (the Studio owns the signal): defaults to
+   * 'raster' (Raster pressed) and resets on every Studio open; never persisted.
+   */
+  rotoClipboardMode?: 'raster' | 'script';
+  /** Quick 261124-gfy: the segmented Raster|Script toggle intent. */
+  onRotoClipboardModeChange?: (mode: 'raster' | 'script') => void;
   /** Physical real-key records for identity-based Drag targeting (D-01/D-07). */
   rotoKeyRecords?: readonly PhysicPaintRotoRealKeyRecord[];
   /** Accepted lifecycle Groups used to distinguish owned deletion gaps from unrelated empty cells. */
@@ -3500,6 +3508,18 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   // delete controller reason verbatim.
   const canCutRotoKey = canCopyRotoKey && canDeleteRotoKey;
   const cutRotoKeyDisabledReason = canCutRotoKey ? null : (copyRotoKeyDisabledReason ?? deleteRotoKeyDisabledReason);
+  // Quick 261124-gfy: the Raster|Script toggle governs Duplicate, Copy, Paste
+  // and Cut. The strip only mirrors the Studio's session mode — every raster
+  // literal above stays byte-identical; script re-points the four clipboard
+  // actions at the shipped Living Script seams with no silent raster fallback.
+  const isScriptClipboardMode = (props.rotoClipboardMode ?? 'raster') === 'script';
+  const clipboardActionLabel = (action: string): string => `${action} ${isScriptClipboardMode ? 'script' : 'key'}`;
+  const canCopyRotoAction = isScriptClipboardMode ? canCopyScriptAction : canCopyRotoKey;
+  const copyRotoActionDisabledReason = isScriptClipboardMode ? copyScriptActionDisabledReason : copyRotoKeyDisabledReason;
+  const canPasteRotoAction = isScriptClipboardMode ? (canApplyScriptAction && Boolean(props.rotoScript?.hasCopiedScript.value)) : canPasteRotoKey;
+  const pasteRotoActionDisabledReason = isScriptClipboardMode ? applyScriptActionDisabledReason : pasteRotoKeyDisabledReason;
+  const canCutRotoAction = isScriptClipboardMode ? (canCopyScriptAction && canDeleteRotoKey) : canCutRotoKey;
+  const cutRotoActionDisabledReason = isScriptClipboardMode ? (canCutRotoAction ? null : (copyScriptActionDisabledReason ?? deleteRotoKeyDisabledReason)) : cutRotoKeyDisabledReason;
   // Select All guarded icon (37-04; D-03): availability flows from the 37-03
   // canSelectAllKeys / selectAllKeysDisabledReason computeds plus the shared
   // busy lock; the disabled reason stays verbatim from the controller port
@@ -3566,6 +3586,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const pasteKeyTooltip = useStyledTooltip();
   const deleteKeyTooltip = useStyledTooltip();
   const selectAllTooltip = useStyledTooltip();
+  const rasterClipboardModeTooltip = useStyledTooltip();
+  const scriptClipboardModeTooltip = useStyledTooltip();
   // 261022-iff IFF-01: the global Solo is a SESSION track focus, not a rail
   // playback filter — a mode toggle enabled whenever the document HAS an
   // active track (and editing isn't mutation-locked). The target is followed
@@ -6682,11 +6704,16 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                     {buildGuardedActionTooltipCopy(deleteRotoScopeLabel, deleteRotoKeyDisabledReason)}
                   </PhysicsPaintStyledTooltip>
                 </span>
+                {/* Quick 261124-gfy: Duplicate / Copy / Paste / Cut are ONE
+                    tonal clipboard sub-section; the Raster|Script segmented
+                    toggle at its end re-points all four (and the Cmd
+                    shortcuts through the same Studio wrappers). */}
+                <span class="physics-paint-roto-key-clipboard-group" role="group" aria-label="Copy and paste actions">
                 <span class="physics-paint-roto-key-icon-action" onPointerEnter={duplicateKeyTooltip.onPointerEnter} onPointerLeave={duplicateKeyTooltip.onPointerLeave}>
                   <button
                     type="button"
                     class="physics-paint-roto-key-icon-button"
-                    aria-label="Duplicate key"
+                    aria-label={clipboardActionLabel('Duplicate')}
                     aria-disabled={!canDuplicateRotoKey ? 'true' : undefined}
                     aria-describedby={!canDuplicateRotoKey && duplicateRotoKeyDisabledReason ? 'roto-key-action-reason-duplicate' : undefined}
                     onFocus={duplicateKeyTooltip.onFocus}
@@ -6707,92 +6734,130 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                     <span id="roto-key-action-reason-duplicate" class="physics-paint-sr-only">{duplicateRotoKeyDisabledReason}</span>
                   ) : null}
                   <PhysicsPaintStyledTooltip visible={duplicateKeyTooltip.visible} region="bottom">
-                    {buildGuardedActionTooltipCopy('Duplicate key', duplicateRotoKeyDisabledReason)}
+                    {buildGuardedActionTooltipCopy(clipboardActionLabel('Duplicate'), duplicateRotoKeyDisabledReason)}
                   </PhysicsPaintStyledTooltip>
                 </span>
                 <span class="physics-paint-roto-key-icon-action" onPointerEnter={copyKeyTooltip.onPointerEnter} onPointerLeave={copyKeyTooltip.onPointerLeave}>
                   <button
                     type="button"
                     class="physics-paint-roto-key-icon-button"
-                    aria-label="Copy key"
-                    aria-disabled={!canCopyRotoKey ? 'true' : undefined}
-                    aria-describedby={!canCopyRotoKey && copyRotoKeyDisabledReason ? 'roto-key-action-reason-copy' : undefined}
+                    aria-label={clipboardActionLabel('Copy')}
+                    aria-disabled={!canCopyRotoAction ? 'true' : undefined}
+                    aria-describedby={!canCopyRotoAction && copyRotoActionDisabledReason ? 'roto-key-action-reason-copy' : undefined}
                     onFocus={copyKeyTooltip.onFocus}
                     onBlur={copyKeyTooltip.onBlur}
                     onClick={() => {
                       copyKeyTooltip.hide();
-                      if (!canCopyRotoKey) return;
+                      if (!canCopyRotoAction) return;
                       props.onCopyRotoFrame?.();
                     }}
                     onKeyDown={(event) => {
-                      if ((event.key === 'Enter' || event.key === ' ') && !canCopyRotoKey) event.preventDefault();
+                      if ((event.key === 'Enter' || event.key === ' ') && !canCopyRotoAction) event.preventDefault();
                     }}
                   >
                     <ClipboardCopy size={18} aria-hidden="true" />
                     <span class="physics-paint-roto-key-icon-label">Copy</span>
                   </button>
-                  {!canCopyRotoKey && copyRotoKeyDisabledReason ? (
-                    <span id="roto-key-action-reason-copy" class="physics-paint-sr-only">{copyRotoKeyDisabledReason}</span>
+                  {!canCopyRotoAction && copyRotoActionDisabledReason ? (
+                    <span id="roto-key-action-reason-copy" class="physics-paint-sr-only">{copyRotoActionDisabledReason}</span>
                   ) : null}
                   <PhysicsPaintStyledTooltip visible={copyKeyTooltip.visible} region="bottom">
-                    {buildGuardedActionTooltipCopy('Copy key', copyRotoKeyDisabledReason)}
+                    {buildGuardedActionTooltipCopy(clipboardActionLabel('Copy'), copyRotoActionDisabledReason)}
                   </PhysicsPaintStyledTooltip>
                 </span>
                 <span class="physics-paint-roto-key-icon-action" onPointerEnter={pasteKeyTooltip.onPointerEnter} onPointerLeave={pasteKeyTooltip.onPointerLeave}>
                   <button
                     type="button"
                     class="physics-paint-roto-key-icon-button"
-                    aria-label="Paste key"
-                    aria-disabled={!canPasteRotoKey ? 'true' : undefined}
-                    aria-describedby={!canPasteRotoKey && pasteRotoKeyDisabledReason ? 'roto-key-action-reason-paste' : undefined}
+                    aria-label={clipboardActionLabel('Paste')}
+                    aria-disabled={!canPasteRotoAction ? 'true' : undefined}
+                    aria-describedby={!canPasteRotoAction && pasteRotoActionDisabledReason ? 'roto-key-action-reason-paste' : undefined}
                     onFocus={pasteKeyTooltip.onFocus}
                     onBlur={pasteKeyTooltip.onBlur}
                     onClick={() => {
                       pasteKeyTooltip.hide();
-                      if (!canPasteRotoKey) return;
+                      if (!canPasteRotoAction) return;
                       props.onPasteRotoFrame?.();
                     }}
                     onKeyDown={(event) => {
-                      if ((event.key === 'Enter' || event.key === ' ') && !canPasteRotoKey) event.preventDefault();
+                      if ((event.key === 'Enter' || event.key === ' ') && !canPasteRotoAction) event.preventDefault();
                     }}
                   >
                     <ClipboardPaste size={18} aria-hidden="true" />
                     <span class="physics-paint-roto-key-icon-label">Paste</span>
                   </button>
-                  {!canPasteRotoKey && pasteRotoKeyDisabledReason ? (
-                    <span id="roto-key-action-reason-paste" class="physics-paint-sr-only">{pasteRotoKeyDisabledReason}</span>
+                  {!canPasteRotoAction && pasteRotoActionDisabledReason ? (
+                    <span id="roto-key-action-reason-paste" class="physics-paint-sr-only">{pasteRotoActionDisabledReason}</span>
                   ) : null}
                   <PhysicsPaintStyledTooltip visible={pasteKeyTooltip.visible} region="bottom">
-                    {buildGuardedActionTooltipCopy('Paste key', pasteRotoKeyDisabledReason)}
+                    {buildGuardedActionTooltipCopy(clipboardActionLabel('Paste'), pasteRotoActionDisabledReason)}
                   </PhysicsPaintStyledTooltip>
                 </span>
                 <span class="physics-paint-roto-key-icon-action" onPointerEnter={cutKeyTooltip.onPointerEnter} onPointerLeave={cutKeyTooltip.onPointerLeave}>
                   <button
                     type="button"
                     class="physics-paint-roto-key-icon-button"
-                    aria-label="Cut key"
-                    aria-disabled={!canCutRotoKey ? 'true' : undefined}
-                    aria-describedby={!canCutRotoKey && cutRotoKeyDisabledReason ? 'roto-key-action-reason-cut' : undefined}
+                    aria-label={clipboardActionLabel('Cut')}
+                    aria-disabled={!canCutRotoAction ? 'true' : undefined}
+                    aria-describedby={!canCutRotoAction && cutRotoActionDisabledReason ? 'roto-key-action-reason-cut' : undefined}
                     onFocus={cutKeyTooltip.onFocus}
                     onBlur={cutKeyTooltip.onBlur}
                     onClick={() => {
                       cutKeyTooltip.hide();
-                      if (!canCutRotoKey) return;
+                      if (!canCutRotoAction) return;
                       props.onCutRotoFrame?.();
                     }}
                     onKeyDown={(event) => {
-                      if ((event.key === 'Enter' || event.key === ' ') && !canCutRotoKey) event.preventDefault();
+                      if ((event.key === 'Enter' || event.key === ' ') && !canCutRotoAction) event.preventDefault();
                     }}
                   >
                     <Scissors size={18} aria-hidden="true" />
                     <span class="physics-paint-roto-key-icon-label">Cut</span>
                   </button>
-                  {!canCutRotoKey && cutRotoKeyDisabledReason ? (
-                    <span id="roto-key-action-reason-cut" class="physics-paint-sr-only">{cutRotoKeyDisabledReason}</span>
+                  {!canCutRotoAction && cutRotoActionDisabledReason ? (
+                    <span id="roto-key-action-reason-cut" class="physics-paint-sr-only">{cutRotoActionDisabledReason}</span>
                   ) : null}
                   <PhysicsPaintStyledTooltip visible={cutKeyTooltip.visible} region="bottom">
-                    {buildGuardedActionTooltipCopy('Cut key', cutRotoKeyDisabledReason)}
+                    {buildGuardedActionTooltipCopy(clipboardActionLabel('Cut'), cutRotoActionDisabledReason)}
                   </PhysicsPaintStyledTooltip>
+                </span>
+                {/* Quick 261124-gfy: the two-state Raster|Script segmented
+                    toggle closes the clipboard sub-section. Never a dropdown:
+                    both options are buttons carrying aria-pressed. */}
+                <span class="physics-paint-roto-key-clipboard-mode" role="group" aria-label="Copy and paste kind">
+                  <button
+                    type="button"
+                    class="physics-paint-roto-key-clipboard-mode-option"
+                    aria-pressed={isScriptClipboardMode ? 'false' : 'true'}
+                    onPointerEnter={rasterClipboardModeTooltip.onPointerEnter}
+                    onPointerLeave={rasterClipboardModeTooltip.onPointerLeave}
+                    onFocus={rasterClipboardModeTooltip.onFocus}
+                    onBlur={rasterClipboardModeTooltip.onBlur}
+                    onClick={() => {
+                      rasterClipboardModeTooltip.hide();
+                      props.onRotoClipboardModeChange?.('raster');
+                    }}
+                  >Raster</button>
+                  <button
+                    type="button"
+                    class="physics-paint-roto-key-clipboard-mode-option"
+                    aria-pressed={isScriptClipboardMode ? 'true' : 'false'}
+                    onPointerEnter={scriptClipboardModeTooltip.onPointerEnter}
+                    onPointerLeave={scriptClipboardModeTooltip.onPointerLeave}
+                    onFocus={scriptClipboardModeTooltip.onFocus}
+                    onBlur={scriptClipboardModeTooltip.onBlur}
+                    onClick={() => {
+                      scriptClipboardModeTooltip.hide();
+                      props.onRotoClipboardModeChange?.('script');
+                    }}
+                  >Script</button>
+                  <PhysicsPaintStyledTooltip visible={rasterClipboardModeTooltip.visible} region="bottom">
+                    Raster — Duplicate, Copy, Paste and Cut move painted keys.
+                  </PhysicsPaintStyledTooltip>
+                  <PhysicsPaintStyledTooltip visible={scriptClipboardModeTooltip.visible} region="bottom">
+                    Script — they move the key's watercolor script instead of its pixels.
+                  </PhysicsPaintStyledTooltip>
+                </span>
                 </span>
                 <span class="physics-paint-roto-key-icon-action" onPointerEnter={scissorKeyTooltip.onPointerEnter} onPointerLeave={scissorKeyTooltip.onPointerLeave}>
                   <button
