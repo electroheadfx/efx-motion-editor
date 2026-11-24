@@ -52,7 +52,7 @@ requirements-completed: []
 
 coverage:
   - id: D1
-    description: "Spec 10 film law: one lateral edgeFilm scales coverage, cA, cB and alpha together and rides the deposit S term; inert at amount 0"
+    description: "Spec 10 film law: one lateral edgeFilm scales the deposit weight (coverage + cover alpha) across the whole mark, core included, and rides the scatter S through a; carried cA/cB full strength; inert at amount 0"
     verification:
       - kind: unit
         ref: "packages/efx-watercolor/src/playground/bristles.test.ts#bristleEdgeFilm; scattering.test.ts#gather film pins"
@@ -212,11 +212,37 @@ feather".
   probe gates PASS; app vitest 9875 passed / 1 pre-existing `physicPaintBridge`
   timeout flake (passes in isolation); `tsc --noEmit` clean.
 
+## UAT feedback (2026-11-25) — the film fades the whole mark
+
+The artist's second look: at amount 100 the four strokes' bodies were
+identical (measured mean RGB ~235,134,97) and only the fringe changed — the
+slider read as a "feather/noise edge remover". The spec's `film(0) = 1` kept
+the core opaque; the artist wants amount 100 to make the whole mark read
+translucent.
+
+- **Fix (`e0f040f33`):** the profile gains a core share —
+  `edgeProfile = BRISTLE_EDGE_CORE + (1 - CORE)·t^e` with
+  `BRISTLE_EDGE_CORE = 0.35` — and `edgeFilm = 1 - amount·edgeProfile`.
+  Amount 100 leaves 65 % film in the core, reaches 0 at the silhouette, and
+  the falloff shapes the ramp (mid reads 0.19 / 0.325 / 0.49 at amount 100
+  for falloff 0 / 50 / 100).
+  Amount 0 is unchanged (the product is exactly zero).
+- **Unchanged:** the film is still the deposit weight (cA/cB full strength,
+  S through `a`), the cover equilibrium still fades with the film, and the
+  relief/touch weights still follow the coverage.
+- **Probe:** the comparator's core bar now expects `1 - amount·EDGE_CORE`
+  and widens to ±0.06 for the coverage channel's many-dab convergence lag
+  (measured 0.693 where the law reads 0.650); the harness fixture encodes
+  the new profile independently.
+- **Gates after the change:** package vitest 1057 passed / 8 skipped; the
+  five probe gates PASS (two identity + three sweeps); app tsc clean; app
+  vitest 9876 passed / 4 skipped.
+
 ## Next Phase Readiness
 
-- Gates green: package vitest 1057 passed / 8 skipped; app vitest 9875 passed / 4 skipped / 96 todo (the only intermittent failure is the pre-existing `physicPaintBridge.test.ts` bounded-wait timeout, which passes in isolation); `tsc --noEmit` clean; three sweeps PASS.
+- Gates green: package vitest 1057 passed / 8 skipped; app vitest 9876 passed / 4 skipped / 96 todo; `tsc --noEmit` clean; five probe gates PASS.
 - Mode-1 identity at amount 0 passes against baselines captured from `d509a886d`.
-- The artist can run rows 1-9 now, including the white-border case (Feather 100, Edge 100, falloff 0 and 100); the last automated state is `1028861ed`.
+- The artist can run rows 1-9 now, including the white-border case (Feather 100, Edge 100, falloff 0 and 100) and the whole-mark fade at amount 100 (core 65 % film); the last automated state is `e0f040f33`.
 
 ---
 
