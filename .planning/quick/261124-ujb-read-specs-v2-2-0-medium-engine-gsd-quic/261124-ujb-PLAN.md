@@ -39,7 +39,7 @@ estimate:
 must_haves:
   truths:
     - "Edge transparency 0 is inert by construction: with amount 0 the edge film early-returns 1 and the probe captures at (amount 0, falloff 0) and (0, 100), painted by a live `bristle-round` stroke (`brushId: 'bristle-round'` on the script entry, so `gatherBristle` runs), are byte-identical to baselines captured from the pre-change engine (UAT row 1)."
-    - "The film fades the whole carried film together: coverage, cA, cB and alpha all carry `edgeFilm`, and the scatter S term carries `g.film` — so at amount 100 the rim is inert (no deposit, no erase), never an eraser, and no milky white rim appears from Body (UAT rows 3 and 5)."
+    - "The film is the DEPOSIT WEIGHT, never a colour dilution (revised after UAT 2026-11-24 — the artist's white border): coverage and the cover alpha carry `edgeFilm`; cA/cB stay full strength because the deposit's source is `cA * a`; the scatter S rides the film through `a` alone. At amount 100 the rim is inert (no deposit, no erase), and the rim inside the band is a proportional mixture of the underlayer and full-strength paint — never a pale rail (UAT rows 3 and 5)."
     - "film(0) = 1 at every amount and falloff (the core never moves), film(rim) = 1 − amount at every falloff, and the fade midpoint reads 0.293 / 0.5 / 0.75 at amount 1 for falloff 0 / 50 / 100 (the landmark table)."
     - "Falloff 0 reads broad (transparency reaches mid-width), 50 linear, 100 rim (fade hugs the silhouette), and the three points are separated in the probe's lateral profile by more than the tolerance."
     - "Both params are canonical: they live inside the Gouache and Pen medium records with 0 / 50, Reset restores 0 / 50, and re-picking a medium resets both like every other medium param (D-03)."

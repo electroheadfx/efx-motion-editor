@@ -184,11 +184,39 @@ None — both rows are wired to real record keys, and no placeholder value or em
 
 Automated-ready only. UAT rows 1-9 (the live artist judgment: the transparent rim keeps the core, the rim is inert at amount 100 with no milky Body rim, falloff shapes read broad/linear/rim, watercolor and the Water tool are unchanged, Reset restores 0 / 50) are handed off — not claimed here.
 
+## UAT feedback (2026-11-24) — the law revised
+
+The artist's first live look reported a **white border** on a Gouache mark at
+Edge transparency 100 (Feather 100), amplified at falloff 100, "destroying the
+feather".
+
+- **Root cause (probed):** the deposit's source is `cA * a`. Scaling the
+  carried coefficients by `edgeFilm` *and* carrying the film in `a` squared the
+  replacement while the attenuation of the underlayer stayed linear — inside
+  the fade band the underlayer was erased ~1× against a ~film² deposit, leaving
+  a pale rail. A two-stroke probe (opaque red underlayer + the edge stroke)
+  measured the red's pigment alpha dropping from 177 to 86 where the new paint
+  deposited almost nothing; the same band read (250,198,199) in the transparent
+  export.
+- **Fix (`1028861ed`):** the lateral film is the **deposit weight**, never a
+  colour dilution. `g.coverage` and `g.alpha` carry it; `cA`/`cB` stay full
+  strength (the caps' `featherFade` still applies); the scatter S rides it
+  through `a` alone (no second factor). The same probe capture after the fix
+  keeps the red at alpha ~150 in the band (the amount-0 control level) with a
+  proportional full-colour deposit.
+- **Unchanged:** the cover channel's equilibrium (`target / a`) is still
+  `edgeFilm`-scaled, so the committed base is retained proportionally; the
+  relief and touch weights still follow the coverage; the probe's coverage
+  stations, the identity baselines and the three sweeps are unchanged and pass.
+- **Gates after the fix:** package vitest 1057 passed / 8 skipped; the five
+  probe gates PASS; app vitest 9875 passed / 1 pre-existing `physicPaintBridge`
+  timeout flake (passes in isolation); `tsc --noEmit` clean.
+
 ## Next Phase Readiness
 
-- Gates green: package vitest 1057 passed / 8 skipped; app vitest 9876 passed / 4 skipped / 96 todo; `tsc --noEmit` clean; three sweeps PASS.
+- Gates green: package vitest 1057 passed / 8 skipped; app vitest 9875 passed / 4 skipped / 96 todo (the only intermittent failure is the pre-existing `physicPaintBridge.test.ts` bounded-wait timeout, which passes in isolation); `tsc --noEmit` clean; three sweeps PASS.
 - Mode-1 identity at amount 0 passes against baselines captured from `d509a886d`.
-- The artist can run rows 1-9 now; the last automated state is `e08e356f9`.
+- The artist can run rows 1-9 now, including the white-border case (Feather 100, Edge 100, falloff 0 and 100); the last automated state is `1028861ed`.
 
 ---
 

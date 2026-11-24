@@ -6,8 +6,8 @@ status: completed
 stopped_at: Phase 64 complete — all phases complete
 last_updated: "2026-11-24T22:25:12.313Z"
 last_activity: 2026-11-24
-last_activity_desc: Quick 261124-ujb automated-ready (Edge transparency + Edge falloff)
-state_head: 6dc87a30b7929bf1b16a411a44e23d1045ee0c9c
+last_activity_desc: Quick 261124-ujb automated-ready (edge film is the deposit weight — UAT fix)
+state_head: ee0c6b03f
 progress:
   total_phases: 2
   completed_phases: 2
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-22 after Phase 64)
 Phase: 64
 Plan: Not started
 Status: All phases complete
-Last activity: 2026-11-24 — Quick task 261124-ujb: Edge transparency and Edge falloff for the Gouache/Pen brush family (Spec 10). Two bristle-only sliders drive ONE lateral `edgeFilm` in `gatherBristle`, in silhouette units (`u = lateral / uFeatherEdge`, `BRISTLE_EDGE_START` 0.55, exponent `2^(2b−1)` = 0.5 / 1 / 2); it scales coverage + cA/cB/alpha through `featherFade` and the carried deposit S through `g.film`, so the rim thins as one film and is inert at amount 100 — no second fade in the attenuation half, no threshold change, no Body or alpha-law change. `edgeFade`/`edgeFalloff` are canonical (0 / 50), live in both sixteen-key medium records (acrylic literal, watercolor derived), ride the bag / snapshot / selection allowlist / Reset, and render as two Gouache-only rows after Feather. Amount 0 is bit-identical to the pre-change engine (two probe identity baselines captured from `d509a886d` pass all twelve fields; three `--differs-from` sweeps pass). The shader uses the plain arithmetic film — a ternary guard drifted amount-0 codegen — and the comparator calibrates stations from the film's own rim floor at amount > 0. Gates: package suite 1057 passed / 8 skipped, package tsc, touched app tests 95 passed / 3 skipped, app tsc, probe identities + sweeps. AUTOMATED-READY — UAT rows 1-9 pending (plus a side-by-side falloff 0 / 50 / 100 visual check: the probe's broad-vs-linear margin is 0.074, under the 0.12 bar). Previous: 261124-tje (UAT-APPROVED) — per-brush landing bags; 261124-iq9 (UAT-APPROVED) — two media and twelve responses.
+Last activity: 2026-11-24 — Quick task 261124-ujb: Edge transparency and Edge falloff for the Gouache/Pen brush family (Spec 10), law revised after the artist's first UAT look. Two bristle-only sliders drive ONE lateral `edgeFilm` in `gatherBristle`, in silhouette units (`u = lateral / uFeatherEdge`, `BRISTLE_EDGE_START` 0.55, exponent `2^(2b−1)` = 0.5 / 1 / 2). The film is the DEPOSIT WEIGHT, never a colour dilution: coverage and the cover alpha carry it, the carried colour stays full strength (the deposit's source is `cA * a`, so scaling cA too squared the replacement — the artist's white border, worst at falloff 100), and the scatter S rides it through `a`. `edgeFade`/`edgeFalloff` are canonical (0 / 50), live in both sixteen-key medium records (acrylic literal, watercolor derived), ride the bag / snapshot / selection allowlist / Reset, and render as two Gouache-only rows after Feather. Amount 0 is bit-identical to the pre-change engine (two probe identity baselines captured from `d509a886d` pass all twelve fields; three `--differs-from` sweeps pass). The shader uses the plain arithmetic film — a ternary guard drifted amount-0 codegen — and the comparator calibrates stations from the film's own rim floor at amount > 0. Gates after the revision: package suite 1057 passed / 8 skipped, five probe gates PASS, app tsc clean, app suite 9875 passed (only the pre-existing `physicPaintBridge` bounded-wait timeout flake, green in isolation). AUTOMATED-READY — UAT rows 1-9 pending, including the white-border case (Feather 100, Edge 100, falloff 0 / 100). Previous: 261124-tje (UAT-APPROVED) — per-brush landing bags; 261124-iq9 (UAT-APPROVED) — two media and twelve responses.
 
 
 ## Performance Metrics
@@ -718,7 +718,7 @@ Items acknowledged and carried forward from previous milestone close:
 | 56 | Studio Roto: white glow on multi-selected keys (Cmd / All); the marker survives the startFrame reseed and paints without a CSS filter (WebKit clipped the glow) (UAT approved 2026-11-24) | 2026-11-24 | e7c78249f | — |
 | 261124-iq9 | New brushes convention: Watercolor + Gouache only; remove Gouache Round/Flat, all Chalk and Graphite brushes, and Bristle Flat; rename Bristle Round and the Acrylic medium to Gouache; hide Viscosity/Water for Gouache (UAT approved) | 2026-11-24 | f5da7c094 | [261124-iq9-new-brushes-convention-and-parameters-in](./quick/261124-iq9-new-brushes-convention-and-parameters-in/) |
 | 261124-tje | Gouache lands 40 px / Pigment 100 / Pickup 100 / Dry 0 / Feather 100; new Pen brush (10 px, #373633, Pigment 100, Pickup 0, Dry 0, Feather 85) in the Brush family (UAT approved) | 2026-11-24 | eb40c638d | [261124-tje-new-default-brush-and-new-brush-pen-brus](./quick/261124-tje-new-default-brush-and-new-brush-pen-brus/) |
-| 261124-ujb | Edge transparency and Edge falloff for the Gouache/Pen brush family — two bristle-only sliders driving one lateral film; automated-ready, UAT rows 1-9 pending | 2026-11-24 | 6dc87a30b | [261124-ujb-read-specs-v2-2-0-medium-engine-gsd-quic](./quick/261124-ujb-read-specs-v2-2-0-medium-engine-gsd-quic/) |
+| 261124-ujb | Edge transparency and Edge falloff for the Gouache/Pen brush family — two bristle-only sliders; the film is the deposit weight (UAT revision: no white border at amount 100); automated-ready, UAT rows 1-9 pending | 2026-11-24 | 1028861ed | [261124-ujb-read-specs-v2-2-0-medium-engine-gsd-quic](./quick/261124-ujb-read-specs-v2-2-0-medium-engine-gsd-quic/) |
 
 ## Roadmap Evolution
 
