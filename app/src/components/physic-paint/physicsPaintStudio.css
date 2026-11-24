@@ -8737,10 +8737,13 @@ input[type="range"].physics-paint-photo-reference-slider-input {
 }
 
 /* Cursor + multi-select (v2.0.1 UAT): no orange. The marker is a bright
-   WHITE border plus a soft WHITE glow plus a brightness step, so a key, an
+   WHITE border over a white ring and a soft white glow, so a key, an
    in-between and an empty current frame all read the same. The glow is white,
    never the row's rail colour: a green glow on green keys was invisible, so a
    Cmd/Ctrl multi-selection and Select All painted no visible glow at all.
+   NO `filter` here: WebKit sizes an element's filter region at ~110% of the
+   cell, which clipped the glow (and could skip the repaint) — the ring plus
+   the spread shadow is the whole marker and paints the same in every engine.
    The white belongs to the selection marker only — the rail's start carries
    no white tick. */
 .physics-paint-roto-cells .physics-paint-roto-cell.current,
@@ -8752,8 +8755,9 @@ input[type="range"].physics-paint-photo-reference-slider-input {
 .physics-paint-roto-cells .physics-paint-roto-cell.selected:focus,
 .physics-paint-roto-cells .physics-paint-roto-cell.selected:focus-visible {
   border-color: #EAF0FF !important;
-  box-shadow: 0 0 7px 1px rgba(234, 240, 255, 0.55);
-  filter: brightness(1.18);
+  box-shadow:
+    0 0 0 1px rgba(234, 240, 255, 0.92),
+    0 0 8px 2px rgba(234, 240, 255, 0.6);
 }
 
 /* v2.0.1 UAT: the current-frame marker is a dedicated overlay (never a cell

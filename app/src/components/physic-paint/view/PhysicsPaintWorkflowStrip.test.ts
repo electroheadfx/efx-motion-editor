@@ -1600,11 +1600,14 @@ describe('PhysicsPaintWorkflowStrip Gap E cosmetic contract (36.15-09, UAT Gap E
     // marker; the white border + glow + brightness is that marker. No fill,
     // no outline box, no size change, no squared radius.
     expect(current).toContain('border-color: #EAF0FF !important');
-    // The glow is WHITE: a rail-coloured glow on green keys was invisible, so
-    // multi-selected keys painted no visible glow (quick 261124 glow fix).
-    expect(current).toContain('0 0 7px 1px rgba(234, 240, 255, 0.55)');
+    // The marker is a WHITE ring under a white glow: a rail-coloured glow on
+    // green keys was invisible, so multi-selected keys painted no visible glow
+    // (quick 261124 glow fix). No CSS filter — WebKit's 110% filter region
+    // clipped the glow and could skip the repaint entirely.
+    expect(current).toContain('0 0 0 1px rgba(234, 240, 255, 0.92)');
+    expect(current).toContain('0 0 8px 2px rgba(234, 240, 255, 0.6)');
+    expect(current).not.toContain('filter:');
     expect(current).not.toContain('var(--rail-line');
-    expect(current).toContain('filter: brightness(1.18)');
     expect(current).not.toContain('background:');
     expect(current).not.toContain('#f5a623');
     expect(current).not.toContain('outline:');
@@ -2164,13 +2167,15 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     expect(css()).toContain('.physics-paint-roto-cell.roto-spacing-proxy-selected:not(.current)');
     expect(css()).toContain('.physics-paint-roto-cell.roto-linked-repeat.roto-spacing-proxy-selected:not(.current)');
     const ordinarySelection = getCssRuleBlock(css(), '.physics-paint-roto-cells .physics-paint-roto-cell.current,');
-    // v2.0.1 UAT: the selection is a white border plus a soft white glow plus
-    // brightness — no fill, no outline, no size/radius change. The glow must
-    // stay white (not the rail colour) so every multi-selected key reads.
+    // v2.0.1 UAT: the selection is a white border over a white ring plus a
+    // soft white glow — no fill, no outline, no filter, no size/radius change.
+    // The glow must stay white (not the rail colour) so every multi-selected
+    // key reads.
     expect(ordinarySelection).toContain('border-color: #EAF0FF !important');
-    expect(ordinarySelection).toContain('0 0 7px 1px rgba(234, 240, 255, 0.55)');
+    expect(ordinarySelection).toContain('0 0 0 1px rgba(234, 240, 255, 0.92)');
+    expect(ordinarySelection).toContain('0 0 8px 2px rgba(234, 240, 255, 0.6)');
+    expect(ordinarySelection).not.toContain('filter:');
     expect(ordinarySelection).not.toContain('var(--rail-line');
-    expect(ordinarySelection).toContain('filter: brightness(1.18)');
     expect(ordinarySelection).not.toContain('background:');
     expect(ordinarySelection).not.toContain('outline:');
   });
