@@ -39,13 +39,17 @@
 //      presence + i16 hundredths of a degree (quick 261116-inu). The AQTL body
 //      is the ONE hundredths boundary in the feature: `Math.round(degrees*100)`
 //      here, `value/100` on read; every JSON carrier stays in integer DEGREES.
-//    Vector block (61-05 / 61-30 / 261111-wd6 / 62-UAT), AFTER the engine
-//      block's playFrame presence and BEFORE the texture presence byte and
-//      pointCount: u8 vectorFlags
+//    Vector block (61-05 / 61-30 / 261111-wd6 / 62-UAT / 261124-1d7), AFTER
+//      the engine block's playFrame presence and BEFORE the texture presence
+//      byte and pointCount: u8 vectorFlags
 //      (bit 0 = a non-empty anchor list follows, bit 1 = LEGACY optional
 //      byte, never written, bit 2 = a curve-mode byte follows, bit 3 = every
 //      anchor carries a colour-presence byte, bit 4 = the stroke was drawn by
-//      the vector pen — the bit IS the whole marker, NO payload byte follows),
+//      the vector pen — the bit IS the whole marker, NO payload byte follows,
+//      bit 5 and bit 6 = LEGACY relief markers written by the reverted
+//      261123-jak/kpy build during the 2026-11-23 window — each is the whole
+//      marker too, NO payload byte follows, accepted and discarded, never
+//      written here),
 //      then when bit 0 is set u16
 //      anchorCount + per anchor u8-order: f32 x, f32 y, u8 kindCode
 //      (auto=0, bezier=1), u8 handleFlags (bit 0 in-present, bit 1
@@ -63,7 +67,10 @@
 //      with no anchor colour sets no bit 3 and writes no colour byte, and a
 //      converted painted path sets no bit 4. An older reader refuses bit 3
 //      and bit 4 (reserved-flags check): fail closed, exactly like every
-//      other unknown vector flag.
+//      other unknown vector flag. Bits 5 and 6 are the documented LEGACY
+//      exception (261124-1d7) — accepted and discarded so snapshots from the
+//      reverted relief window restore, and dropped by the next save — while
+//      bit 7 and above remain refused by the same reserved-flags check.
 //    Point record (16 bytes): u16 x, u16 y, u16 p, i16 tx, i16 ty,
 //      i16 tw, u32 tick.
 //
@@ -213,12 +220,21 @@ const VECTOR_FLAG_CURVE_MODE = 1 << 2;
 const VECTOR_FLAG_ANCHOR_COLOR = 1 << 3;
 // 62-UAT: drawn-by-the-vector-pen provenance (the bit IS the whole marker).
 const VECTOR_FLAG_DRAWN = 1 << 4;
+// quick 261124-1d7: the two relief-modifier markers the reverted 261123-jak/kpy
+// build wrote between 2026-11-23 15:36 and 17:08. Bit-only — NO payload byte
+// follows. Accepted and discarded so a snapshot from that window still
+// restores; the encoder never writes them, so the next save drops them from
+// the file. Never exported.
+const VECTOR_FLAG_LEGACY_RELIEF_ERODE = 1 << 5;
+const VECTOR_FLAG_LEGACY_RELIEF_DEPOSIT = 1 << 6;
 const VECTOR_FLAGS_MASK =
   VECTOR_FLAG_ANCHORS
   | VECTOR_FLAG_LEGACY_BYTE
   | VECTOR_FLAG_CURVE_MODE
   | VECTOR_FLAG_ANCHOR_COLOR
-  | VECTOR_FLAG_DRAWN;
+  | VECTOR_FLAG_DRAWN
+  | VECTOR_FLAG_LEGACY_RELIEF_ERODE
+  | VECTOR_FLAG_LEGACY_RELIEF_DEPOSIT;
 const ANCHOR_HANDLE_IN = 1 << 0;
 const ANCHOR_HANDLE_OUT = 1 << 1;
 const ANCHOR_HANDLE_MASK = ANCHOR_HANDLE_IN | ANCHOR_HANDLE_OUT;
