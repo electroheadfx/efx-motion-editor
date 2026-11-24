@@ -5,11 +5,11 @@
 //  A brush has TWO independent axes:
 //   · the RESPONSE — a preset id that owns every Brush field
 //     (physics, size, spacing, rotation, grain…). The grid below is
-//     the response axis: FIVE sections over BRUSH_PRESETS, one per
-//     medium group in the fixed order Watercolor, Gouache, Chalk,
-//     Graphite, Acrylic (64-11 MED-27), always expanded. A group
-//     with no member renders nothing. A response card is never a
-//     texture and never a project import.
+//     the response axis: TWO sections over BRUSH_PRESETS, one per
+//     medium group in the fixed order Watercolor, Gouache (quick
+//     261124-iq9), always expanded. A group with no member renders
+//     nothing. A response card is never a texture and never a
+//     project import.
 //   · the TEXTURE — an optional mask that replaces the footprint and
 //     nothing else. The WatercolorTextureStrip texture row above the
 //     grid is that axis: Default first (the response's own tip), then

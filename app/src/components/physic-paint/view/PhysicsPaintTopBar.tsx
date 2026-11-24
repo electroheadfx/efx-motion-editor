@@ -17,6 +17,7 @@ import {
   aquarelleParams,
   aquarelleRecordClock,
   aquarelleScriptRecordingEnabled,
+  aquarelleSelectedMediumId,
   aquarelleSelectedTipId,
   aquarelleTextureMenuOpen,
   emitAquarelleDry,
@@ -35,6 +36,7 @@ import {
   setAquarelleSelectMode,
 } from './aquarelleStrokeSelection';
 import { commitAquarelleSelectionParam } from './aquarellePaintControls';
+import { isAquarelleParamRowVisible } from './aquarelleParamVisibility';
 
 /**
  * 261017-vcn I-04 remainder: the top bar keeps status pill + brush trigger +
@@ -407,6 +409,11 @@ export function PhysicsPaintTopBar({
   // Narrow signal reads: picking a brush or opening the dropdown re-renders
   // only this bar.
   const selectedTipId = aquarelleSelectedTipId.value;
+  // quick 261124-iq9: the selected medium decides whether the Water slider
+  // belongs in the settings cluster. The gate reads the Paint panel's OWN row
+  // law (`isAquarelleParamRowVisible`), never a hand-rolled medium comparison,
+  // so the bar and the panel cannot disagree.
+  const selectedMediumId = aquarelleSelectedMediumId.value;
   // 261029-hy2: the Eraser pill shows its own shape selection (same Filbert
   // fallback the retired native picker used).
   const liftTipId = aquarelleLiftTipId.value ?? 'filbert';
@@ -458,6 +465,11 @@ export function PhysicsPaintTopBar({
   // painting watercolor.
   const toolOwnsSettings =
     activeTool === 'brush' || activeTool === 'watercolor' || activeTool === 'lift';
+  // quick 261124-iq9: Water is absent for the Gouache (acrylic) paint context
+  // and present for Watercolor — the SAME row law the Paint panel renders, so
+  // the two surfaces stay together. Edges and Grain are deliberately NOT
+  // gated (the requirement names Viscosity and Water only).
+  const waterRowVisible = isAquarelleParamRowVisible(activeTool, selectedMediumId, 'water');
 
   return (
     <header class="physics-paint-topbar" aria-label="Physics Paint controls">
@@ -604,19 +616,21 @@ export function PhysicsPaintTopBar({
               }}
               disabled={disabled}
             />
-            <TopBarSlider
-              id="physics-aquarelle-water"
-              label="Water"
-              min={0}
-              max={100}
-              value={aquarelleParams.value.water}
-              onChange={(value) => setAquarelleParam('water', value)}
-              onCommit={(value) => {
-                void commitAquarelleSelectionParam('water', value);
-              }}
-              disabled={disabled}
-              class="physics-paint-topbar-optional-water"
-            />
+            {waterRowVisible && (
+              <TopBarSlider
+                id="physics-aquarelle-water"
+                label="Water"
+                min={0}
+                max={100}
+                value={aquarelleParams.value.water}
+                onChange={(value) => setAquarelleParam('water', value)}
+                onCommit={(value) => {
+                  void commitAquarelleSelectionParam('water', value);
+                }}
+                disabled={disabled}
+                class="physics-paint-topbar-optional-water"
+              />
+            )}
             <TopBarSlider
               id="physics-aquarelle-edges"
               label="Edges"

@@ -14,17 +14,22 @@
 //  exposure law with NO schema change and NO migration.
 //
 //  Decision B (artist, 2026-11-21): the Refill row is hidden for
-//  the Acrylic medium (its record fixes 0) AND for the Watercolor
-//  medium — the engine binds `uRefillRate` only into the bristle
-//  carrier (`bristleCarrierFS`), so the fluid row is dead. The row
-//  STAYS visible for gouache / chalk / graphite: that exposure is
-//  the artist's DEFERRED decision, and their records keep 60.
+//  the Acrylic (Gouache) medium — its record fixes 0 — AND for the
+//  Watercolor medium: the engine binds `uRefillRate` only into the
+//  bristle carrier (`bristleCarrierFS`), so the fluid row is dead.
 //
 //  quick 261121-mtu (rev 3): PICKUP follows the same audit — the
 //  engine binds it only as the bristle carrier rate (`uPickupRate`)
 //  and the gather's smear (`uSmear`), so the watercolor context
-//  hides it too. Gouache / chalk / graphite keep it as the same
-//  DEFERRED class.
+//  hides it too.
+//
+//  quick 261124-iq9: VISCOSTY and WATER are hidden for the Gouache
+//  (acrylic) paint context — the opaque medium reads neither — and
+//  stay visible for Watercolor. This is an exposure law, not a
+//  watermark: `hiddenForMedia` is consulted only in the paint
+//  branch, so the Water tool's fluid set keeps Viscosity under
+//  every medium. `isAquarelleParamRowVisible` is the ONE selector
+//  the Paint panel and the Studio top bar share.
 //
 //  `body` has no row anywhere (bag-only, Reset-only) and
 //  `wetSeconds` has no row (it is seconds, not a 0..100 global) —
@@ -107,24 +112,24 @@ const EMBOSS_MIN = -15;
 const EMBOSS_MAX = 15;
 
 const WATERCOLOR_ONLY: readonly MediumId[] = Object.freeze(['watercolor']);
-/** Every bristle medium — Feather is the bristle band's width (spec §3). */
-const BRISTLE_MEDIA: readonly MediumId[] = Object.freeze([
-  'gouache',
-  'pastel',
-  'graphite',
-  'acrylic',
-]);
+/** The only bristle medium — Feather is the bristle band's width (spec §3). */
+const BRISTLE_MEDIA: readonly MediumId[] = Object.freeze(['acrylic']);
 /** Decision B: Acrylic fixes Refill at 0; the fluid path never reads it. */
 const REFILL_HIDDEN: readonly MediumId[] = Object.freeze(['acrylic', 'watercolor']);
 /**
  * quick 261121-mtu (rev 3): Pickup is the bristle carrier's reservoir rate
  * (`uPickupRate`) and the gather's deposit smear (`uSmear`) — the ONLY two
  * bindings. The fluid path reads neither, so the row is dead for the fluid
- * watercolor context and hidden there. Gouache / chalk / graphite are also
- * non-bristle but keep the row: that exposure is the artist's DEFERRED
- * decision, same class as Refill.
+ * watercolor context and hidden there.
  */
 const PICKUP_HIDDEN: readonly MediumId[] = Object.freeze(['watercolor']);
+/**
+ * quick 261124-iq9: Viscosity and Water are hidden for the Gouache (acrylic)
+ * paint context — the opaque medium reads neither — and stay visible for
+ * Watercolor. The paint branch is the only consumer, so the Water tool keeps
+ * Viscosity via its `water: true` filter.
+ */
+const ACRYLIC_HIDDEN: readonly MediumId[] = Object.freeze(['acrylic']);
 
 /**
  * The thirteen rows in Matrix 2's order (twelve canvas rows + the
@@ -132,7 +137,14 @@ const PICKUP_HIDDEN: readonly MediumId[] = Object.freeze(['watercolor']);
  * key set (`rows - lift` + `body`) reproduce the shipped patch.
  */
 export const AQUARELLE_PARAM_ROWS: readonly AquarelleParamRow[] = Object.freeze([
-  Object.freeze({ key: 'viscosity', label: 'Viscosity', group: 'medium', paint: 'all', water: true }),
+  Object.freeze({
+    key: 'viscosity',
+    label: 'Viscosity',
+    group: 'medium',
+    paint: 'all',
+    hiddenForMedia: ACRYLIC_HIDDEN,
+    water: true,
+  }),
   // Gated off 2026-11-23: the display emboss is a first-order heightmap shade
   // (one-texel gradient, black clamp, no specular) that turns to speckle as
   // strokes accumulate. The row stays so the medium record, the Reset key set
@@ -154,7 +166,13 @@ export const AQUARELLE_PARAM_ROWS: readonly AquarelleParamRow[] = Object.freeze(
     paint: 'all',
     hiddenForMedia: REFILL_HIDDEN,
   }),
-  Object.freeze({ key: 'water', label: 'Water', group: 'drying', paint: 'all' }),
+  Object.freeze({
+    key: 'water',
+    label: 'Water',
+    group: 'drying',
+    paint: 'all',
+    hiddenForMedia: ACRYLIC_HIDDEN,
+  }),
   Object.freeze({ key: 'dry', label: 'Dry speed', group: 'drying', paint: 'all', water: true }),
   Object.freeze({ key: 'feather', label: 'Feather', group: 'edge', paint: BRISTLE_MEDIA }),
   Object.freeze({ key: 'flow', label: 'Flow', group: 'watercolor', paint: WATERCOLOR_ONLY, water: true }),
@@ -194,6 +212,20 @@ export function visibleAquarelleParamRows(
     if (row.hiddenForMedia?.includes(medium)) return false;
     return true;
   });
+}
+
+/**
+ * quick 261124-iq9: is ONE row visible in this context? A membership test
+ * over {@link visibleAquarelleParamRows} — the Paint panel and the Studio top
+ * bar read this same selector, so a row the panel hides can never keep a
+ * top-bar slider alive (or the reverse).
+ */
+export function isAquarelleParamRowVisible(
+  tool: AquarelleTool,
+  mediumId: MediumId | null,
+  key: AquarelleGlobalKey,
+): boolean {
+  return visibleAquarelleParamRows(tool, mediumId).some((row) => row.key === key);
 }
 
 /**

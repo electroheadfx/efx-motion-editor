@@ -26,6 +26,7 @@ import {
   aquarelleScriptRecordingEnabled,
   aquarelleTextureMenuAnchor,
   aquarelleTextureMenuOpen,
+  applyAquarelleMedium,
   recordAquarelleStroke,
   setAquarelleScriptRecordingEnabled,
   setAquarelleTextureMenuOpen,
@@ -658,6 +659,9 @@ describe('261018-f15 watercolor top-bar aquarelle globals', () => {
     vi.doMock('./aquarelleRecordState', () => ({
       aquarelleParams: { value: { size: 22, load: 80, water: 40, edge: 60, granulation: 35, lift: 22 } },
       aquarelleActiveTool: { value: 'brush' },
+      // quick 261124-iq9: this case pins the WATERCOLOR bar (five labels,
+      // Water included); the mock states the medium the gate reads.
+      aquarelleSelectedMediumId: { value: 'watercolor' },
       aquarelleSelectedTipId: { value: 'chalk' },
       // 261029-hy2: the bar reads the lift tip unconditionally now (the pill's
       // preset for the Eraser tool), exactly like aquarelleSelectedTipId.
@@ -1166,12 +1170,13 @@ describe('quick 261111-ucf top-bar slider release commits', () => {
     setAquarelleSelectMode(true);
     setScriptStrokeSelection([10701]);
 
+    // quick 261124-iq9: the real store opens on the ACRYLIC (Gouache) medium,
+    // whose row law hides Water — the bar renders four sliders.
     const nodes = childrenOf(renderTopBar(baseTopBarProps())) as AnyVNode[];
     const byId = (id: string) => nodes.find((n) => n.props?.id === id);
     const released: Array<[string, string]> = [
       ['physics-brush-size', 'size'],
       ['physics-aquarelle-pigment', 'load'],
-      ['physics-aquarelle-water', 'water'],
       ['physics-aquarelle-edges', 'edge'],
       ['physics-aquarelle-grain', 'granulation'],
     ];
@@ -1180,6 +1185,7 @@ describe('quick 261111-ucf top-bar slider release commits', () => {
       expect(byId(id), `${id} must render`).toBeDefined();
       expect(typeof byId(id)!.props?.onCommit, `${id} exposes onCommit`).toBe('function');
     }
+    expect(byId('physics-aquarelle-water'), 'the Gouache bar hides Water').toBeUndefined();
     // A drag (onChange) never commits: the port is silent until a release.
     expect(calls).toHaveLength(0);
 
@@ -1191,10 +1197,39 @@ describe('quick 261111-ucf top-bar slider release commits', () => {
       const expected = id === 'physics-brush-size' ? aquarellePaintCanonicalFromPx(37) : 37;
       expect(calls[calls.length - 1]!.patch, `${id} forwards ${key}`).toEqual({ params: { [key]: expected } });
     }
-    expect(calls, 'one patch per release').toHaveLength(5);
+    expect(calls, 'one patch per release').toHaveLength(4);
     expect(calls.map((call) => call.ids)).toEqual([
-      [10701], [10701], [10701], [10701], [10701],
+      [10701], [10701], [10701], [10701],
     ]);
+  });
+
+  // quick 261124-iq9: the Water slider follows the selected medium through the
+  // SAME row law the Paint panel renders.
+  it('brings the Water slider back under the Watercolor medium and removes it under Gouache', () => {
+    setAquarelleTool('brush');
+    applyAquarelleMedium('watercolor');
+    try {
+      const watercolorNodes = childrenOf(renderTopBar(baseTopBarProps())) as AnyVNode[];
+      const watercolorById = (id: string) => watercolorNodes.find((n) => n.props?.id === id);
+      const water = watercolorById('physics-aquarelle-water');
+      expect(water, 'the Watercolor bar renders Water').toBeDefined();
+      expect(typeof water!.props?.onCommit, 'Water exposes onCommit').toBe('function');
+
+      applyAquarelleMedium('acrylic');
+      const acrylicNodes = childrenOf(renderTopBar(baseTopBarProps())) as AnyVNode[];
+      expect(
+        acrylicNodes.find((n) => n.props?.id === 'physics-aquarelle-water'),
+        'the Gouache bar renders no Water',
+      ).toBeUndefined();
+    } finally {
+      applyAquarelleMedium('acrylic');
+    }
+  });
+
+  it('gates Water through the shared selector, never a hand-rolled medium comparison (source pin)', () => {
+    const body = stripComments(topBarSource());
+    expect(body, 'the bar reads the shared row law').toContain('isAquarelleParamRowVisible');
+    expect(body, 'the bar reads the selected medium').toContain('aquarelleSelectedMediumId');
   });
 
   it('the Eraser cluster never commits a paint param', () => {

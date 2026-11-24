@@ -7,10 +7,12 @@
  *   a null medium resolves to DEFAULT_MEDIUM_ID (a fresh session)
  *   empty groups are dropped; the six group ids keep their fixed order
  *   the Eraser context renders the Lift row alone
+ *   quick 261124-iq9: Viscosity and Water are ABSENT for the Gouache
+ *     (acrylic) paint context — the opaque medium reads neither — and
+ *     PRESENT for Watercolor; the Water tool keeps Viscosity under every
+ *     medium (the paint-context law never reaches its fluid set)
  *   Refill (decision B): ABSENT for acrylic (record fixes 0) and for
- *     watercolor (the engine reads refill only in the bristle carrier);
- *     PRESENT for gouache / chalk(pastel) / graphite — the DEFERRED item,
- *     whose records keep 60
+ *     watercolor (the engine reads refill only in the bristle carrier)
  *   `body` and `wetSeconds` never have a row; Emboss is the ONE signed
  *     row (-15..15, quick 261123-hr5) — every other row keeps 0..100
  *   the module is pure data: no Preact, no signals, no DOM
@@ -27,24 +29,26 @@ import type { AquarelleTool } from '@efxlab/efx-watercolor/payload';
 import {
   AQUARELLE_PARAM_GROUPS,
   AQUARELLE_PARAM_ROWS,
+  isAquarelleParamRowVisible,
   visibleAquarelleParamGroups,
   visibleAquarelleParamRows,
   type AquarelleParamRow,
 } from './aquarelleParamVisibility';
 
 const PAINT_TOOLS: readonly AquarelleTool[] = ['brush', 'watercolor', 'pen'];
-/** The five medium ids in the engine's fixed order. */
-const MEDIA = ['watercolor', 'gouache', 'pastel', 'graphite', 'acrylic'] as const;
+/** The two medium ids in the engine's fixed order. */
+const MEDIA = ['watercolor', 'acrylic'] as const;
 
 // 2026-11-23: Emboss is gated off — hidden in every context until a new
 // display renderer replaces the first-order heightmap shade (see RELIEF_BUMP).
 // The ROW survives in AQUARELLE_PARAM_ROWS; only its visibility went.
-const P_A = 'viscosity|load|pickup|water|dry|feather';
+// quick 261124-iq9: Viscosity and Water leave the Gouache (acrylic) context,
+// and Pickup/Refill leave it too (bristle-program keys), leaving four rows.
+const P_A = 'load|pickup|dry|feather';
 // rev 3: Pickup joins Refill as bristle-only — `uPickupRate` (carrier) and
 // `uSmear` (gather) are the only bindings, so the fluid row is dead and the
 // watercolor context hides it.
 const P_W = 'viscosity|load|water|dry|flow|bleed|edge|granulation';
-const P_D = 'viscosity|load|pickup|refill|water|dry|feather';
 const W_KEYS = 'viscosity|dry|flow|bleed|edge|granulation';
 const L_KEYS = 'lift';
 
@@ -56,12 +60,11 @@ function expectedKeys(tool: AquarelleTool, medium: (typeof MEDIA)[number]): stri
   if (tool === 'lift') return L_KEYS;
   if (tool === 'water') return W_KEYS;
   if (medium === 'acrylic') return P_A;
-  if (medium === 'watercolor') return P_W;
-  return P_D;
+  return P_W;
 }
 
 describe('Matrix 2 — the row set per (tool, medium) context', () => {
-  it('pins every paint tool crossed with every medium (P-A / P-W / P-D)', () => {
+  it('pins every paint tool crossed with every medium (P-A / P-W)', () => {
     for (const tool of PAINT_TOOLS) {
       for (const medium of MEDIA) {
         expect(keys(visibleAquarelleParamRows(tool, medium)), `${tool} + ${medium}`).toBe(
@@ -71,9 +74,15 @@ describe('Matrix 2 — the row set per (tool, medium) context', () => {
     }
   });
 
-  it('pins the Water tool as medium-independent (W)', () => {
+  it('pins the Water tool as medium-independent (W) and keeps Viscosity there', () => {
     for (const medium of MEDIA) {
       expect(keys(visibleAquarelleParamRows('water', medium)), `water + ${medium}`).toBe(W_KEYS);
+      // quick 261124-iq9: `hiddenForMedia` is a PAINT-context law — the Water
+      // tool's fluid set deliberately ignores it and keeps Viscosity.
+      expect(
+        visibleAquarelleParamRows('water', medium).map((row) => row.key),
+        `water + ${medium} keeps Viscosity`,
+      ).toContain('viscosity');
     }
   });
 
@@ -96,14 +105,13 @@ describe('Matrix 2 — the row set per (tool, medium) context', () => {
     }
   });
 
-  it('reproduces the gated row counts: P-A 6, P-W 8, P-D 7, W 6, L 1', () => {
-    expect(visibleAquarelleParamRows('brush', 'acrylic'), 'P-A').toHaveLength(6);
+  it('reproduces the gated row counts: P-A 4, P-W 8, W 6, L 1', () => {
+    expect(visibleAquarelleParamRows('brush', 'acrylic'), 'P-A').toHaveLength(4);
     expect(visibleAquarelleParamRows('brush', 'watercolor'), 'P-W').toHaveLength(8);
-    expect(visibleAquarelleParamRows('brush', 'gouache'), 'P-D').toHaveLength(7);
-    expect(visibleAquarelleParamRows('brush', 'pastel'), 'P-D (chalk)').toHaveLength(7);
-    expect(visibleAquarelleParamRows('brush', 'graphite'), 'P-D').toHaveLength(7);
     expect(visibleAquarelleParamRows('water', 'watercolor'), 'W').toHaveLength(6);
+    expect(visibleAquarelleParamRows('water', 'acrylic'), 'W (acrylic)').toHaveLength(6);
     expect(visibleAquarelleParamRows('lift', 'watercolor'), 'L').toHaveLength(1);
+    expect(visibleAquarelleParamRows('lift', 'acrylic'), 'L (acrylic)').toHaveLength(1);
   });
 
   it('keeps Emboss out of EVERY context while the display emboss is gated', () => {
@@ -131,13 +139,13 @@ describe('decision B — Refill visibility per medium', () => {
     }
   });
 
-  it('shows Refill for gouache, chalk and graphite — the DEFERRED item', () => {
-    // DEFERRED (artist, 2026-11-21): the row is shown and keeps 60 until the
-    // artist decides whether the non-acrylic bristle media should lose it too.
+  it('shows Refill under NO surviving paint medium (the deferred class is gone)', () => {
+    // quick 261124-iq9: the gouache / chalk / graphite media that carried the
+    // deferred exposure are retired, so both surviving records hide the row.
     for (const tool of PAINT_TOOLS) {
-      for (const medium of ['gouache', 'pastel', 'graphite'] as const) {
+      for (const medium of MEDIA) {
         const paintKeys = visibleAquarelleParamRows(tool, medium).map((row) => row.key);
-        expect(paintKeys.includes('refill'), `${tool} + ${medium} shows Refill`).toBe(true);
+        expect(paintKeys.includes('refill'), `${tool} + ${medium} hides Refill`).toBe(false);
       }
     }
   });
@@ -169,11 +177,9 @@ describe('groups — fixed order, empty groups dropped', () => {
     expect(ids.join('|')).toBe('medium|paint|drying|watercolor');
   });
 
-  it('keeps the Edge group for the three bristle media', () => {
-    for (const medium of ['gouache', 'pastel', 'graphite', 'acrylic'] as const) {
-      const ids = visibleAquarelleParamGroups('brush', medium).map((group) => group.id);
-      expect(ids.join('|'), `brush + ${medium}`).toBe('medium|paint|drying|edge');
-    }
+  it('drops the Medium group for the only bristle medium (Viscosity is hidden there)', () => {
+    const ids = visibleAquarelleParamGroups('brush', 'acrylic').map((group) => group.id);
+    expect(ids.join('|'), 'brush + acrylic').toBe('paint|drying|edge');
   });
 
   it('renders Medium · Drying · Watercolor only for the Water tool', () => {
@@ -236,14 +242,18 @@ describe('the row table itself', () => {
     }
   });
 
-  it('uses hiddenForMedia on exactly Refill and Pickup', () => {
+  it('uses hiddenForMedia on exactly Viscosity, Pickup, Refill and Water', () => {
     // Decision B hides Refill for acrylic (fixed 0) and watercolor; rev 3
     // hides Pickup for watercolor (both laws are bristle-program-only).
+    // quick 261124-iq9 hides Viscosity and Water for the Gouache (acrylic)
+    // paint context — the opaque medium reads neither.
     const hidden = AQUARELLE_PARAM_ROWS.filter((row) => row.hiddenForMedia !== undefined);
-    // Table order: Pickup precedes Refill.
-    expect(hidden.map((row) => row.key).join('|')).toBe('pickup|refill');
-    expect(hidden[0]!.hiddenForMedia!.join('|')).toBe('watercolor');
-    expect(hidden[1]!.hiddenForMedia!.join('|')).toBe('acrylic|watercolor');
+    // Table order: Viscosity, Pickup, Refill, Water.
+    expect(hidden.map((row) => row.key).join('|')).toBe('viscosity|pickup|refill|water');
+    expect(hidden[0]!.hiddenForMedia!.join('|')).toBe('acrylic');
+    expect(hidden[1]!.hiddenForMedia!.join('|')).toBe('watercolor');
+    expect(hidden[2]!.hiddenForMedia!.join('|')).toBe('acrylic|watercolor');
+    expect(hidden[3]!.hiddenForMedia!.join('|')).toBe('acrylic');
   });
 
   it('gives the Lift row no paint/water context and the other rows no lift context', () => {
@@ -271,5 +281,47 @@ describe('the row table itself', () => {
     expect(imports, 'no signal import').not.toContain('signal');
     expect(source, 'no signal read').not.toContain('.value');
     expect(source, 'no DOM access').not.toContain('document.');
+  });
+});
+
+// quick 261124-iq9: the panel and the Studio top bar share ONE law. The top
+// bar gates its Water slider through this selector, so the two surfaces cannot
+// drift; a hand-rolled medium comparison in the bar would fail this pin.
+describe('the shared row selector — isAquarelleParamRowVisible', () => {
+  it('answers for Water exactly as the row law does', () => {
+    for (const tool of ['brush', 'watercolor'] as AquarelleTool[]) {
+      expect(isAquarelleParamRowVisible(tool, 'watercolor', 'water'), `${tool} + watercolor`).toBe(
+        true,
+      );
+      expect(isAquarelleParamRowVisible(tool, 'acrylic', 'water'), `${tool} + acrylic`).toBe(false);
+    }
+  });
+
+  it('keeps the Eraser-only Lift row out of every other tool context', () => {
+    for (const tool of ['brush', 'watercolor', 'pen', 'water'] as AquarelleTool[]) {
+      expect(isAquarelleParamRowVisible(tool, 'watercolor', 'lift'), `${tool} hides Lift`).toBe(
+        false,
+      );
+      expect(isAquarelleParamRowVisible(tool, 'acrylic', 'lift'), `${tool} hides Lift`).toBe(false);
+    }
+    expect(isAquarelleParamRowVisible('lift', 'watercolor', 'lift'), 'the Eraser shows Lift').toBe(
+      true,
+    );
+    expect(isAquarelleParamRowVisible('lift', 'acrylic', 'lift'), 'the Eraser shows Lift').toBe(true);
+  });
+
+  it('hides Viscosity for Brush + acrylic and keeps it for Brush + watercolor and the Water tool', () => {
+    expect(isAquarelleParamRowVisible('brush', 'acrylic', 'viscosity')).toBe(false);
+    expect(isAquarelleParamRowVisible('brush', 'watercolor', 'viscosity')).toBe(true);
+    for (const medium of MEDIA) {
+      expect(isAquarelleParamRowVisible('water', medium, 'viscosity'), `water + ${medium}`).toBe(
+        true,
+      );
+    }
+  });
+
+  it('resolves a null medium to DEFAULT_MEDIUM_ID (watercolor)', () => {
+    expect(isAquarelleParamRowVisible('brush', null, 'water')).toBe(true);
+    expect(isAquarelleParamRowVisible('brush', null, 'viscosity')).toBe(true);
   });
 });

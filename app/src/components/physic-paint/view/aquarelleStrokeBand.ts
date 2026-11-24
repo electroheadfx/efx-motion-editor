@@ -84,7 +84,8 @@ export interface StrokeBandTip {
  * angle, and `aquarelleFootprintFor` reports `aspect: 1, angle: 0`. The
  * recorder, however, stores the SELECTED tip's overrides for pen too, so an
  * unforced band would draw an off-law ellipse for a pen stroke recorded with
- * flat/chalk. Force aspect 1 and angle 0 here.
+ * a surviving asymmetric-tip response (e.g. `flat`). Force aspect 1 and
+ * angle 0 here.
  */
 export function paintTipForStroke(
   stroke: Pick<AquarelleStroke, 'tool' | 'brushId' | 'toolOverrides' | 'textureId'>,

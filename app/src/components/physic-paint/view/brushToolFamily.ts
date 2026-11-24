@@ -3,8 +3,8 @@
 //
 //  The response library is not one flat catalog under every tool:
 //  the paint tools select a brush FAMILY, and the lists follow it.
-//    · Brush      → every group except Watercolor (gouache, chalk,
-//                   graphite, acrylic)
+//    · Brush      → every group except Watercolor (the Gouache group,
+//                   i.e. the acrylic medium)
 //    · Watercolor → the Watercolor group only
 //    · Water / Pen / Eraser → the whole table: these tools carry no
 //                   family of their own (Water is a wet blend, the
@@ -51,8 +51,8 @@ export function brushSectionsForTool(tool: AquarelleTool): BrushGroupSection[] {
 /**
  * The family's first response — the landing brush when a tool pick leaves the
  * active tip in another family. Derived from `brushGroupOrder` (never a
- * hardcoded id): the first non-watercolor group today is gouache, so the
- * Brush tool lands on `gouache-round`.
+ * hardcoded id): the only non-watercolor group today is acrylic, so the
+ * Brush tool lands on `bristle-round`.
  */
 export function firstBrushPresetForTool(tool: AquarelleTool): BrushPreset | null {
   const groups = brushGroupsForTool(tool);

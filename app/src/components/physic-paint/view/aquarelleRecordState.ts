@@ -162,10 +162,11 @@ export const MULTIPLIER_MAX = 2.0;
 export const MULTIPLIER_DEFAULT = 1.0;
 
 /**
- * 2026-11-22 (artist): a fresh Studio opens on the ACRYLIC family — Bristle
- * Round selected, the Brush tool (derived from the tip's group, never
- * hardcoded) and the Acrylic medium record loaded into the bag, so the Paint
- * panel, the response grid and the live params all describe the same medium.
+ * 2026-11-22 (artist): a fresh Studio opens on the ACRYLIC family — the
+ * Gouache response (`bristle-round`) selected, the Brush tool (derived from
+ * the tip's group, never hardcoded) and the acrylic medium record (displayed
+ * as Gouache, quick 261124-iq9) loaded into the bag, so the Paint panel, the
+ * response grid and the live params all describe the same medium.
  * Existing recorded strokes keep the brushId and params they carry — this
  * only describes a fresh session's first stroke.
  */
@@ -173,9 +174,10 @@ const DEFAULT_TIP_ID = 'bristle-round';
 const INITIAL_MEDIUM_ID: MediumId = 'acrylic';
 /**
  * quick 261122-gys (artist decision 2026-11-22): the Acrylic family's landing
- * brush. The acrylic group's table order is `bristle-flat` THEN `bristle-round`,
- * so "the group's first preset" would land the wrong brush — the acrylic
- * default is stated here instead of derived from the table.
+ * brush. The acrylic group now holds exactly one preset, `bristle-round`
+ * (quick 261124-iq9 deleted its flat sibling), which is also
+ * `ACRYLIC_DEFAULT_TIP_ID`; the stated default and its special case are kept
+ * as the family's identity.
  */
 const ACRYLIC_DEFAULT_TIP_ID = 'bristle-round';
 
@@ -185,8 +187,8 @@ export const aquarelleParams = signal<AquarelleGlobalParams>({
 });
 /**
  * quick 261121-mtu (rev 3): the fresh Studio's tool follows the DEFAULT BRUSH's
- * family — `bristle-round` is an acrylic preset, so the opening tool is Brush
- * (the Acrylic family). Derived, never hardcoded: changing the default brush
+ * family — `bristle-round` is an acrylic preset (displayed as Gouache), so the
+ * opening tool is Brush. Derived, never hardcoded: changing the default brush
  * moves the opening tool with it.
  */
 export const aquarelleActiveTool = signal<AquarelleTool>(paintToolForTip(DEFAULT_TIP_ID));
@@ -268,8 +270,9 @@ function presetGroupOfId(presetId: string | null): MediumId | null {
 
 /**
  * The landing tip of a group with no remembered pick: its first table entry,
- * except acrylic — whose table order would land `bristle-flat` — which lands
- * on the stated `ACRYLIC_DEFAULT_TIP_ID` (Bristle Round).
+ * except acrylic — which lands on the stated `ACRYLIC_DEFAULT_TIP_ID`
+ * (`bristle-round`, displayed as Gouache; the only member since quick
+ * 261124-iq9).
  */
 function firstTipIdInGroup(group: MediumId): string | null {
   if (group === 'acrylic') {
@@ -291,8 +294,8 @@ function lastTipIdInGroup(group: MediumId): string | null {
 
 /**
  * The Brush family's remembered pick, validated as a non-watercolor preset.
- * The fallback chain is the acrylic landing brush (Bristle Round), then the
- * first non-watercolor table entry.
+ * The fallback chain is the acrylic landing brush (Gouache, id
+ * `bristle-round`), then the first non-watercolor table entry.
  */
 function lastBrushFamilyTipId(): string | null {
   const remembered = aquarelleLastBrushFamilyTipId.value;
@@ -572,7 +575,7 @@ export function clearAquarelleTextureSelectionIfDeleted(deletedTipId: string | n
 /**
  * quick 261121-mtu: the brush pick's family law. The paint tool follows the
  * picked brush's GROUP — a watercolor-group preset returns the Watercolor
- * tool; every other group (gouache/pastel/graphite/acrylic) and every pick
+ * tool; every other group (acrylic, displayed as Gouache) and every pick
  * with no `BRUSH_PRESETS` entry (a catalog `wc/custom-*`, an unknown id or
  * null) returns the Brush tool — today's fallback, unchanged.
  */
@@ -588,8 +591,8 @@ export function paintToolForTip(tipId: string | null): AquarelleTool {
  * rail, the test-only tool row, the Studio's `selectAquarelleTool`).
  *
  * ONE invariant, superseding quick 261121-mtu's "a Brush press changes neither
- * tip nor medium" (which produced the artist's gouache brush with watercolor
- * params): the selected medium equals the selected preset's group.
+ * tip nor medium" (which once produced an acrylic brush label carrying
+ * watercolor params): the selected medium equals the selected preset's group.
  *
  * - `'watercolor'`: binds the Watercolor family. A watercolor tip is kept and
  *   remembered; any other tip crosses to the family's last picked tip
@@ -652,7 +655,8 @@ export function selectAquarellePaintTool(tool: AquarelleTool): void {
  * quick 261122-gys — the Medium dropdown's ONE handler. A pick binds a preset
  * of the picked group so the label, the rows and the brush can never
  * disagree: the current in-group tip is kept, else the group's last picked
- * tip lands, else the group's first preset (acrylic → Bristle Round). The
+ * tip lands, else the group's first preset (acrylic → `bristle-round`,
+ * displayed as Gouache; its only member). The
  * record is then applied — unconditionally, so a re-pick of a drifted record
  * restores it (D-03). A medium pick edits no recorded stroke (D-03/D-04), so
  * there is no selection commit here. An unknown id is a total no-op.
