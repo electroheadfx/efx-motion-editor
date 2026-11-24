@@ -45,8 +45,8 @@ describe('brushMenuPresets', () => {
 
     const brushIds = brushMenuPresets('brush', 'brush').map((preset) => preset.id);
     expect(brushIds).not.toContain('round');
-    // quick 261124-iq9: the acrylic (Gouache) group has exactly one member.
-    expect(brushIds).toEqual(['bristle-round']);
+    // quick 261124-tje: the Gouache (acrylic) group now has two members.
+    expect(brushIds).toEqual(['bristle-round', 'pen']);
 
     // The utility tools carry no family of their own.
     for (const tool of ['water', 'pen', 'lift'] as const) {

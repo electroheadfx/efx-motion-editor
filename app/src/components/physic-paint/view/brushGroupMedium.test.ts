@@ -4,7 +4,9 @@
 //  Laws pinned here:
 //   1. A pick whose group differs applies that group's medium
 //      through applyAquarelleMedium: ONE bag write plus the id,
-//      never size, never lift, never a selection params patch.
+//      never size, never lift, never a selection params patch —
+//      then the brush's own landing bag (quick 261124-tje) as a
+//      SECOND spread write, so the bag always wins over the record.
 //   2. A pick inside the same group writes nothing, so a manual
 //      global tweak survives (MED-13).
 //   3. The committed selection patch stays { brushId, toolOverrides }
@@ -54,6 +56,7 @@ import {
   aquarelleSelectedTipId,
   aquarelleToolOverrides,
   applyAquarelleMedium,
+  aquarellePaintCanonicalFromPx,
   getRecordedAquarelleStroke,
   recordAquarelleStroke,
   resetAquarelleRecordState,
@@ -90,6 +93,33 @@ const MEDIUM_KEYS: readonly MediumParamKey[] = [
   'refill',
   'wetSeconds',
 ];
+
+/** quick 261124-tje: the Gouache (acrylic) landing bag — the four medium
+ *  keys the bag overwrites last, on the record's own 0..100 scale. */
+const ACRYLIC_BAG_KEYS: readonly MediumParamKey[] = ['load', 'pickup', 'dry', 'feather'];
+const ACRYLIC_BAG: Readonly<Partial<Record<MediumParamKey, number>>> = {
+  load: 100,
+  pickup: 100,
+  dry: 0,
+  feather: 100,
+};
+/** The record keys the bag never touches (ten of the fourteen). */
+const RECORD_ONLY_KEYS = MEDIUM_KEYS.filter((key) => !ACRYLIC_BAG_KEYS.includes(key));
+
+/** The ten record-only keys still equal the acrylic record. */
+function expectAcrylicRecordMinusBag(): void {
+  const record = mediumById('acrylic')!;
+  for (const key of RECORD_ONLY_KEYS) {
+    expect(aquarelleParams.value[key], `acrylic.${key} is the record's`).toBe(record.params[key]);
+  }
+}
+
+/** The four bag keys carry the Gouache bag (they land LAST). */
+function expectAcrylicBag(): void {
+  for (const key of ACRYLIC_BAG_KEYS) {
+    expect(aquarelleParams.value[key], `bag.${key}`).toBe(ACRYLIC_BAG[key]);
+  }
+}
 
 interface PortCall {
   ids: readonly number[];
@@ -193,15 +223,15 @@ describe('a cross-group pick applies the group medium (64-12 MED-28)', () => {
 
     await pickAquarelleBrush('bristle-round');
 
-    expect(bag.count(), 'one spread assignment, not a per-key cascade').toBe(1);
+    expect(bag.count(), 'the record is one spread assignment, the brush bag a second').toBe(2);
     bag.stop();
     expect(ids.count(), 'the medium id moves once').toBe(1);
     ids.stop();
     expect(aquarelleSelectedMediumId.value).toBe('acrylic');
-    const acrylic = mediumById('acrylic')!;
-    for (const key of MEDIUM_KEYS) {
-      expect(aquarelleParams.value[key], key).toBe(acrylic.params[key]);
-    }
+    // quick 261124-tje: the record lands FIRST, the Gouache bag LAST — so the
+    // ten non-bag medium keys equal the record and the four bag keys the bag.
+    expectAcrylicRecordMinusBag();
+    expectAcrylicBag();
     expect(calls, 'exactly one selection patch').toHaveLength(1);
     expect(calls[0]!.patch.brushId).toBe('bristle-round');
   });
@@ -232,7 +262,11 @@ describe('a cross-group pick applies the group medium (64-12 MED-28)', () => {
     setAquarelleParam('size', 77);
     setAquarelleParam('lift', 33);
     await pickAquarelleBrush('bristle-round');
-    expect(aquarelleParams.value.dry, 'acrylic landed').toBe(70);
+    expect(aquarelleParams.value.dry, 'the Gouache bag landed last').toBe(0);
+    // quick 261124-tje: the brush bag owns size — capture the landed canonical
+    // and re-prove the MEDIUM law below with a medium-only call.
+    const bagSize = aquarelleParams.value.size;
+    expect(bagSize, 'the bag stores the 40 px conversion').toBe(aquarellePaintCanonicalFromPx(40));
 
     await pickAquarelleBrush('round');
 
@@ -241,11 +275,12 @@ describe('a cross-group pick applies the group medium (64-12 MED-28)', () => {
     for (const key of MEDIUM_KEYS) {
       expect(aquarelleParams.value[key], `${key} is neutral again`).toBe(neutral.params[key]);
     }
-    expect(aquarelleParams.value.size, 'a medium never resizes the brush').toBe(77);
+    applyAquarelleMedium('watercolor');
+    expect(aquarelleParams.value.size, 'a medium never resizes the brush').toBe(bagSize);
     expect(aquarelleParams.value.lift, 'a medium never changes the eraser').toBe(33);
   });
 
-  it('writes nothing when the dropdown already selected the pick group', async () => {
+  it('lands only the brush bag when the record is already applied', async () => {
     // The Paint-tab dropdown's own handler, before a single response pick.
     applyAquarelleMedium('acrylic');
     const applied = aquarelleParams.value;
@@ -254,11 +289,13 @@ describe('a cross-group pick applies the group medium (64-12 MED-28)', () => {
 
     await pickAquarelleBrush('bristle-round');
 
-    expect(bag.count(), 'the record is already the bag').toBe(0);
+    expect(bag.count(), 'only the brush bag writes — a pick is a pick').toBe(1);
     expect(ids.count(), 'the id compare-then-write stays closed').toBe(0);
     bag.stop();
     ids.stop();
-    expect(aquarelleParams.value, 'the bag reference is untouched').toBe(applied);
+    expect(aquarelleParams.value, 'the landing is a new reference').not.toBe(applied);
+    expectAcrylicRecordMinusBag();
+    expectAcrylicBag();
     expect(aquarelleSelectedMediumId.value, 'the dropdown and the params agree').toBe('acrylic');
   });
 
@@ -285,17 +322,51 @@ describe('a cross-group pick applies the group medium (64-12 MED-28)', () => {
     );
   });
 
-  it('keeps size and lift across every cross-group pick', async () => {
+  it('the medium never resizes or moves lift; the brush bag owns size', async () => {
     setAquarelleParam('size', 64);
     setAquarelleParam('lift', 31);
 
     await pickAquarelleBrush('bristle-round');
+    const bagSize = aquarellePaintCanonicalFromPx(40);
+    expect(aquarelleParams.value.size, 'the Gouache bag landed its 40 px').toBe(bagSize);
     await pickAquarelleBrush('flat');
+    expect(aquarelleParams.value.size, 'a watercolor pick carries no bag').toBe(bagSize);
     await pickAquarelleBrush('bristle-round');
 
     expect(aquarelleSelectedMediumId.value).toBe('acrylic');
-    expect(aquarelleParams.value.size, 'size is not a medium key').toBe(64);
+    expect(aquarelleParams.value.size, 'the brush bag owns size').toBe(bagSize);
     expect(aquarelleParams.value.lift, 'lift is not a medium key').toBe(31);
+    // The MEDIUM law alone: a record apply never resizes and never moves lift.
+    applyAquarelleMedium('acrylic');
+    expect(aquarelleParams.value.size).toBe(bagSize);
+    expect(aquarelleParams.value.lift).toBe(31);
+  });
+
+  it('a cross-group pick of Pen lands the acrylic record then the Pen bag', async () => {
+    recordAquarelleStroke(10904, stroke({ points: [point(0.3, 0.5)] }));
+    setAquarelleSelectMode(true);
+    setScriptStrokeSelection([10904]);
+    const { calls } = installPort();
+    const bag = countBagWrites();
+    const ids = countIdWrites();
+
+    await pickAquarelleBrush('pen');
+
+    expect(bag.count(), 'the record plus the bag, two spread writes').toBe(2);
+    bag.stop();
+    expect(ids.count(), 'the medium id moves once').toBe(1);
+    ids.stop();
+    expect(aquarelleSelectedMediumId.value).toBe('acrylic');
+    expect(calls, 'exactly one selection patch').toHaveLength(1);
+    expect(calls[0]!.patch.brushId).toBe('pen');
+    expectAcrylicRecordMinusBag();
+    expect(aquarelleParams.value.size, 'the Pen bag size, via the live response').toBe(
+      aquarellePaintCanonicalFromPx(10),
+    );
+    expect(aquarelleParams.value.load).toBe(100);
+    expect(aquarelleParams.value.pickup).toBe(0);
+    expect(aquarelleParams.value.dry).toBe(0);
+    expect(aquarelleParams.value.feather).toBe(85);
   });
 
   it('gives a non-preset id no group, no medium write, and the door refusal', async () => {
@@ -326,10 +397,9 @@ describe('a cross-group pick applies the group medium (64-12 MED-28)', () => {
 });
 
 describe('the Paint tab agrees after a cross-group pick (64-12 MED-28)', () => {
-  it('moves the selected medium id and the fourteen globals with the group', async () => {
+  it('moves the selected medium id and the ten record globals with the group', async () => {
     setAquarelleParam('size', 55);
     setAquarelleParam('lift', 27);
-    const sizeBefore = aquarelleParams.value.size;
     const liftBefore = aquarelleParams.value.lift;
     const group = presetGroup('bristle-round');
     expect(group, 'bristle-round is tagged').not.toBeNull();
@@ -337,17 +407,15 @@ describe('the Paint tab agrees after a cross-group pick (64-12 MED-28)', () => {
     await pickAquarelleBrush('bristle-round');
 
     expect(aquarelleSelectedMediumId.value, 'the dropdown renders this id').toBe(group);
-    const record = mediumById(group!)!;
-    const globals = Object.fromEntries(
-      MEDIUM_KEYS.map((key) => [key, aquarelleParams.value[key]]),
-    );
-    expect(Object.keys(globals), 'exactly the fourteen keys D-02 names').toHaveLength(14);
-    expect(globals, 'the fourteen globals equal the record').toEqual(record.params);
+    // quick 261124-tje: the record lands first, the Gouache bag last — the
+    // record-only keys equal the record, the four bag keys equal the bag.
+    expectAcrylicRecordMinusBag();
+    expectAcrylicBag();
     expect(Object.keys(aquarelleParams.value).sort(), 'the bag keeps its sixteen keys').toEqual(
       [...MEDIUM_KEYS, 'size', 'lift'].sort(),
     );
-    expect(aquarelleParams.value.size, 'size is reference-equal to its prior value').toBe(
-      sizeBefore,
+    expect(aquarelleParams.value.size, 'the brush bag owns size').toBe(
+      aquarellePaintCanonicalFromPx(40),
     );
     expect(aquarelleParams.value.lift, 'lift is reference-equal to its prior value').toBe(
       liftBefore,

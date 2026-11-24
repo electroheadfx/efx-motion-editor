@@ -536,7 +536,9 @@ describe('Phase 64 medium dropdown', () => {
     writes = 0;
     (item!.props?.['onClick'] as () => void)();
     stop();
-    expect(writes, 'one spread assignment, not a per-key cascade').toBe(1);
+    // quick 261124-tje: the record is one spread assignment, the Gouache
+    // brush bag (the dropdown lands bristle-round) a second.
+    expect(writes, 'the record then the brush bag, two spread assignments').toBe(2);
     // D-25 retuned the acrylic record: water 26 (was 8 before the retune).
     expect(aquarelleParams.value.water, 'acrylic water').toBe(26);
     expect(aquarelleParams.value.body, 'acrylic body').toBe(100);
@@ -567,7 +569,10 @@ describe('Phase 64 medium dropdown', () => {
     expect(aquarelleSelectedTipId.value, 'the acrylic landing brush').toBe('bristle-round');
     expect(aquarelleSelectedMediumId.value).toBe('acrylic');
     expect(aquarelleParams.value.body).toBe(100);
-    expect(aquarelleParams.value.feather).toBe(85);
+    // quick 261124-tje: the Gouache bag lands LAST — feather 100 (not the
+    // record's 85) and dry 0 (not the record's 70), size 40 px.
+    expect(aquarelleParams.value.feather).toBe(100);
+    expect(aquarelleParams.value.dry).toBe(0);
     expect(aquarelleParams.value.viscosity).toBe(90);
     expect(aquarelleParams.value.water).toBe(26);
     expect(aquarelleParams.value.wetSeconds).toBe(12);

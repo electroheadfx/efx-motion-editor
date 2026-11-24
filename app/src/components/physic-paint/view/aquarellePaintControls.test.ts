@@ -240,10 +240,9 @@ describe('commitAquarelleSelectionParam(s) — event-time params patches', () =>
 
   // quick 261121-mtu (decision B): a same-group acrylic pick writes no record,
   // so the acrylic Refill 0 survives the pick instead of reverting to 60.
-  // quick 261124-iq9: the acrylic group has exactly one member, so the
-  // pre-pick tip is written directly — the seam compares the SELECTED MEDIUM
-  // with the incoming group, never the tip.
-  it('a same-group acrylic brush pick leaves the acrylic Refill at 0', () => {
+  // quick 261124-tje: a pick is a pick — the same-group pick still lands the
+  // brush's own bag LAST (Dry 0, Feather 100), never the record.
+  it('a same-group acrylic pick lands the brush bag, never the record', () => {
     applyAquarelleMedium('acrylic');
     aquarelleSelectedTipId.value = 'round';
     expect(aquarelleParams.value.refill, 'acrylic landed with Refill 0').toBe(0);
@@ -252,8 +251,10 @@ describe('commitAquarelleSelectionParam(s) — event-time params patches', () =>
     pickAquarelleBrush('bristle-round');
 
     expect(aquarelleSelectedMediumId.value, 'the group did not change').toBe('acrylic');
-    expect(aquarelleParams.value, 'the pick wrote no record').toBe(bag);
-    expect(aquarelleParams.value.refill, 'Refill stays 0').toBe(0);
+    expect(aquarelleParams.value, 'the landing is a new reference').not.toBe(bag);
+    expect(aquarelleParams.value.refill, 'Refill stays 0 — no record write').toBe(0);
+    expect(aquarelleParams.value.dry, 'the Gouache bag landed').toBe(0);
+    expect(aquarelleParams.value.feather).toBe(100);
   });
 
   it('sends the Reset batch as ONE call, and an empty batch is no attempt', async () => {

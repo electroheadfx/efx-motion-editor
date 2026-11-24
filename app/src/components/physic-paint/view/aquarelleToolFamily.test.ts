@@ -17,6 +17,8 @@
  *     (`bristle-round` / acrylic by default) and applies that record
  *   a no-group tip (catalog / TIPS / unknown) keeps the current medium
  *   a second press of the active paint tool writes no signal at all
+ *   quick 261124-tje: every bag-carrying pick lands the brush's own landing
+ *     bag LAST — the record's ten keys survive, the four bag keys win
  *   the Water tool is a plain tool write (no family or medium change)
  *
  * Assertion style: scalar predicates so TAP diagnostics stay one-line.
@@ -51,6 +53,34 @@ function expectRecordApplied(group: MediumId): void {
   for (const [key, value] of Object.entries(record.params)) {
     expect(aquarelleParams.value[key as keyof typeof record.params], `${group}.${key}`).toBe(value);
   }
+}
+
+// quick 261124-tje: the acrylic family's landing bags. The Gouache bag
+// overwrites four of the record's fourteen keys, so a bag-carrying pick is
+// pinned as record-minus-bag PLUS the bag — the record's other ten keys
+// survive, proving the medium landed first and the bag last.
+const ACRYLIC_BAG_KEYS: readonly string[] = ['load', 'pickup', 'dry', 'feather'];
+const ACRYLIC_RECORD_ONLY_KEYS = Object.keys(mediumById('acrylic')!.params).filter(
+  (key) => !ACRYLIC_BAG_KEYS.includes(key),
+);
+
+/** The ten acrylic record keys the brush bag never overwrites. */
+function expectAcrylicRecordMinusBag(): void {
+  const record = mediumById('acrylic')!;
+  for (const key of ACRYLIC_RECORD_ONLY_KEYS) {
+    expect(
+      aquarelleParams.value[key as keyof typeof record.params],
+      `acrylic.${key} is the record's`,
+    ).toBe(record.params[key as keyof typeof record.params]);
+  }
+}
+
+/** The four Gouache bag keys (they land LAST, after the record). */
+function expectBrushBagApplied(): void {
+  expect(aquarelleParams.value.load, 'Gouache bag load').toBe(100);
+  expect(aquarelleParams.value.pickup, 'Gouache bag pickup').toBe(100);
+  expect(aquarelleParams.value.dry, 'Gouache bag dry').toBe(0);
+  expect(aquarelleParams.value.feather, 'Gouache bag feather').toBe(100);
 }
 
 describe('the opening tool follows the default brush (2026-11-22)', () => {
@@ -156,10 +186,14 @@ describe('selectAquarellePaintTool — the identity law (quick 261122-gys)', () 
     expect(aquarelleActiveTool.value).toBe('brush');
     expect(aquarelleSelectedTipId.value).toBe('bristle-round');
     expect(aquarelleSelectedMediumId.value).toBe('acrylic');
-    expectRecordApplied('acrylic');
-    // The five values the artist named in the report, stated literally.
+    // quick 261124-tje: the record lands first, the Gouache bag last.
+    expectAcrylicRecordMinusBag();
+    expectBrushBagApplied();
+    // The artist-named values, at their source: the record's body / viscosity /
+    // water / wetSeconds, the bag's feather 100 and dry 0.
     expect(aquarelleParams.value.body).toBe(100);
-    expect(aquarelleParams.value.feather).toBe(85);
+    expect(aquarelleParams.value.feather).toBe(100);
+    expect(aquarelleParams.value.dry).toBe(0);
     expect(aquarelleParams.value.viscosity).toBe(90);
     expect(aquarelleParams.value.water).toBe(26);
     expect(aquarelleParams.value.wetSeconds).toBe(12);
@@ -203,7 +237,8 @@ describe('selectAquarellePaintTool — the identity law (quick 261122-gys)', () 
     expect(aquarelleActiveTool.value).toBe('brush');
     expect(aquarelleSelectedTipId.value, 'the tip is kept').toBe('bristle-round');
     expect(aquarelleSelectedMediumId.value, 'the label is repaired').toBe('acrylic');
-    expectRecordApplied('acrylic');
+    expectAcrylicRecordMinusBag();
+    expectBrushBagApplied();
   });
 
   it('a staying Brush press never wipes a manual global tweak (MED-13)', () => {
@@ -228,7 +263,8 @@ describe('selectAquarellePaintTool — the identity law (quick 261122-gys)', () 
     expect(aquarelleActiveTool.value).toBe('brush');
     expect(aquarelleSelectedTipId.value).toBe('bristle-round');
     expect(aquarelleSelectedMediumId.value).toBe('acrylic');
-    expectRecordApplied('acrylic');
+    expectAcrylicRecordMinusBag();
+    expectBrushBagApplied();
   });
 
   it('the Brush tool lands on the family\'s remembered pick (bristle-round)', () => {
@@ -238,7 +274,8 @@ describe('selectAquarellePaintTool — the identity law (quick 261122-gys)', () 
     selectAquarellePaintTool('brush');
     expect(aquarelleSelectedTipId.value).toBe('bristle-round');
     expect(aquarelleSelectedMediumId.value).toBe('acrylic');
-    expectRecordApplied('acrylic');
+    expectAcrylicRecordMinusBag();
+    expectBrushBagApplied();
   });
 
   it('a no-group tip keeps the medium on a Brush press and crosses on a Watercolor press', () => {
@@ -275,6 +312,37 @@ describe('selectAquarellePaintTool — the identity law (quick 261122-gys)', () 
     for (const stop of stops) stop();
     expect(writes, 'a no-op press wakes no subscriber').toBe(0);
     expect(aquarelleParams.value).toBe(params);
+    expect(aquarelleSelectedTipId.value).toBe(tip);
+    expect(aquarelleSelectedMediumId.value).toBe(medium);
+    expect(aquarelleActiveTool.value).toBe(tool);
+  });
+
+  // quick 261124-tje: the bag reload is gated by the SAME condition as the
+  // medium repair (MED-13) — a staying Brush press whose label already agrees
+  // must not reload the bag over the artist's manual tweaks.
+  it('a staying Brush press writes no signal at all (the bag is gated like the record)', () => {
+    selectAquarelleTip('bristle-round');
+    applyAquarelleMedium('acrylic');
+    // The first press settles the family memory; the second is the no-op.
+    selectAquarellePaintTool('brush');
+    const params = aquarelleParams.value;
+    const tip = aquarelleSelectedTipId.value;
+    const medium = aquarelleSelectedMediumId.value;
+    const tool = aquarelleActiveTool.value;
+    let writes = 0;
+    const stops = [
+      aquarelleParams.subscribe(() => { writes += 1; }),
+      aquarelleSelectedTipId.subscribe(() => { writes += 1; }),
+      aquarelleSelectedMediumId.subscribe(() => { writes += 1; }),
+      aquarelleActiveTool.subscribe(() => { writes += 1; }),
+      aquarelleLastTipByGroup.subscribe(() => { writes += 1; }),
+      aquarelleLastBrushFamilyTipId.subscribe(() => { writes += 1; }),
+    ];
+    writes = 0;
+    selectAquarellePaintTool('brush');
+    for (const stop of stops) stop();
+    expect(writes, 'a staying Brush press wakes no subscriber').toBe(0);
+    expect(aquarelleParams.value, 'the bag reference is untouched').toBe(params);
     expect(aquarelleSelectedTipId.value).toBe(tip);
     expect(aquarelleSelectedMediumId.value).toBe(medium);
     expect(aquarelleActiveTool.value).toBe(tool);

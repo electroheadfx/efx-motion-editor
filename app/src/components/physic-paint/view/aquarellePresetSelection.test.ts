@@ -11,6 +11,7 @@
  *   quick 261124-iq9: the catalog is twelve responses in two groups — the
  *   Chalk/Graphite/Gouache-round responses and Bristle Flat are retired, so
  *   the old chalk dry-media contract is deleted with its subject
+ *   quick 261124-tje: the Pen appends to the acrylic group — thirteen ids
  *   legacy wc/* tip ids and the null-clear path stay unchanged
  *
  * Assertion style: scalar predicates so TAP diagnostics stay one-line.
@@ -57,6 +58,7 @@ describe('I-03 playground preset ids on the tip seam', () => {
   it('exposes every playground preset id in catalog order', () => {
     // quick 261124-iq9: twelve survivors in two groups — Watercolor keeps its
     // eleven, the Gouache (acrylic) group keeps exactly `bristle-round`.
+    // quick 261124-tje: the Pen appends after Gouache — thirteen ids.
     expect(PRESET_IDS).toEqual([
       'round',
       'detail',
@@ -70,6 +72,7 @@ describe('I-03 playground preset ids on the tip seam', () => {
       'sumi',
       'dagger',
       'bristle-round',
+      'pen',
     ]);
   });
 
@@ -117,6 +120,8 @@ describe('I-03 playground preset ids on the tip seam', () => {
       expect(aquarelleActiveTool.value, `pick during ${tool} must select the watercolor family`).toBe('watercolor');
       selectAquarelleTip('bristle-round');
       expect(aquarelleActiveTool.value, `pick during ${tool} must select the brush family`).toBe('brush');
+      selectAquarelleTip('pen');
+      expect(aquarelleActiveTool.value, `pick of the Pen during ${tool} must select the brush family`).toBe('brush');
     }
   });
 

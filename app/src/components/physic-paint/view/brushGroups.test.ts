@@ -169,8 +169,9 @@ const EXPECTED_SECTION_IDS = [
 
 const EXPECTED_TITLES = ['Watercolor', 'Gouache']
 
-// The classification table, restated as counts per section.
-const EXPECTED_COUNTS = [11, 1]
+// The classification table, restated as counts per section (quick 261124-tje:
+// the Gouache section holds Gouache + Pen).
+const EXPECTED_COUNTS = [11, 2]
 
 /** A minimal canvas stub so getStrokeThumb can paint under node (no DOM). */
 function makeStubCanvas(): Record<string, unknown> {
