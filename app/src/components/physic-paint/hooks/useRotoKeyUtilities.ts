@@ -80,7 +80,13 @@ export interface RotoKeyUtilities {
   resetSession: (options?: { clearClipboard?: boolean }) => void;
   executeSessionEffects: (effects: readonly RotoSessionEffect[]) => Promise<void>;
   runSessionResult: (result: RotoSessionActionResult, sourceSession?: RotoSession) => Promise<void>;
-  duplicateKey: () => void;
+  /**
+   * Quick 261124-gfy: the Roto Raster|Script toggle governs Duplicate.
+   * `scriptAware: false` (Raster mode) SKIPS the `duplicateWithScript` port
+   * entirely and runs the shipped 261023-bxm settle-then-clone; the default
+   * (true) keeps the shipped 261023-cxc script-aware port and its fallback.
+   */
+  duplicateKey: (options?: { scriptAware?: boolean }) => void;
   copyKey: () => void;
   cutKey: (deleteSelection: () => Promise<boolean>) => void;
   pasteKey: () => void;
@@ -254,8 +260,10 @@ export function useRotoKeyUtilities(input: RotoKeyUtilitiesInput): RotoKeyUtilit
   // promoted blank key (the duplicate is immediately editable). Anything else
   // falls back to the unchanged 261023-bxm settle-then-clone in the same
   // click; a post-navigation abort runs neither — the port already published
-  // its explicit message.
-  const duplicateKey = useCallback(() => {
+  // its explicit message. Quick 261124-gfy: `scriptAware: false` (the Raster
+  // clipboard mode) skips the script-aware port entirely; Script mode keeps
+  // the shipped port and its raster fallback.
+  const duplicateKey = useCallback((options?: { scriptAware?: boolean }) => {
     if (blocked || keyActionInFlightRef.current || !requireCurrentRealKey()) return;
     const sourceKeyId = input.currentKeyId;
     if (!sourceKeyId) {
@@ -263,11 +271,14 @@ export function useRotoKeyUtilities(input: RotoKeyUtilitiesInput): RotoKeyUtilit
       return;
     }
     const sourceAppFrame = input.currentFrame;
+    // Quick 261124-gfy: Raster-mode Duplicate must skip the script-aware port
+    // entirely; Script mode keeps the shipped port and its raster fallback.
+    const scriptAware = options?.scriptAware ?? true;
     keyActionInFlightRef.current = true;
     setKeyActionInFlight(true);
     void (async () => {
       try {
-        if (input.duplicateWithScript) {
+        if (scriptAware && input.duplicateWithScript) {
           const outcome = await input.duplicateWithScript({ sourceKeyId, sourceAppFrame });
           if (outcome === 'fallback') await runSettleThenClone(sourceKeyId);
           return;

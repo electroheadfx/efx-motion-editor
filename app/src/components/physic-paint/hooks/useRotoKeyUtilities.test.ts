@@ -901,3 +901,75 @@ describe('61-24 G-15 — +Key records the previous key script onto the new key',
     expect(harness.setApplyMessage).not.toHaveBeenCalledWith('Could not add an empty Roto key.');
   });
 });
+
+// Quick 261124-gfy Task 1: the Roto Raster|Script toggle governs Duplicate.
+// Raster-mode Duplicate is today's plain settle-then-clone (261023-bxm) — it
+// must NEVER consult the 261023-cxc script-aware port. Script mode keeps the
+// shipped port and its raster fallback verbatim; the default is script-aware
+// so the pre-toggle callers stay byte-identical.
+describe('261124-gfy duplicateKey scriptAware', () => {
+  it('raster bypass: never consults the script port and clones the source key once', async () => {
+    const duplicateWithScript = vi.fn(async (_input: { sourceKeyId: string; sourceAppFrame: number }): Promise<RotoDuplicateWithScriptOutcome> => 'handled');
+    const harness = createHarness({
+      currentFrame: 3,
+      records: [realKeyRecord('key-a', 3)],
+      realKeyFrames: [realKeyFrame(3)],
+      duplicateWithScript,
+    });
+
+    harness.utils.duplicateKey({ scriptAware: false });
+    await flushAsync();
+
+    expect(duplicateWithScript).not.toHaveBeenCalled();
+    expect(harness.input.physicalKeyUtilities.duplicateKey).toHaveBeenCalledTimes(1);
+    expect(harness.input.physicalKeyUtilities.duplicateKey).toHaveBeenCalledWith('key-a');
+    expect(harness.setApplyStatus).not.toHaveBeenCalledWith('error');
+  });
+
+  it('raster bypass with settle: bakes the displayed paint, then clones — the script port is never called', async () => {
+    const displayedBytes = testWebpBytes('displayed-paint');
+    const records: PhysicPaintRotoRealKeyRecord[] = [realKeyRecordWithoutBytes('key-a', 3)];
+    const bakeRotoKeyPaint = vi.fn(async (_paint: { keyId: string; appFrame: number; bytes: Uint8Array; width?: number; height?: number }) => {
+      records[0] = realKeyRecord('key-a', 3, 'settled');
+      return true;
+    });
+    const duplicateWithScript = vi.fn(async (_input: { sourceKeyId: string; sourceAppFrame: number }): Promise<RotoDuplicateWithScriptOutcome> => 'handled');
+    const harness = createHarness({
+      currentFrame: 3,
+      records,
+      realKeyFrames: [realKeyFrame(3)],
+      resolveDisplayedKeyPaint: () => ({ keyId: 'key-a', bytes: displayedBytes }),
+      bakeRotoKeyPaint,
+      duplicateWithScript,
+    });
+
+    harness.utils.duplicateKey({ scriptAware: false });
+    await flushAsync();
+
+    expect(duplicateWithScript).not.toHaveBeenCalled();
+    expect(bakeRotoKeyPaint).toHaveBeenCalledTimes(1);
+    expect(harness.input.physicalKeyUtilities.duplicateKey).toHaveBeenCalledTimes(1);
+    expect(harness.input.physicalKeyUtilities.duplicateKey).toHaveBeenCalledWith('key-a');
+    expect(harness.setApplyStatus).not.toHaveBeenCalledWith('error');
+  });
+
+  it('default and explicit-true still consult the script port exactly once', async () => {
+    for (const options of [undefined, { scriptAware: true }] as const) {
+      const duplicateWithScript = vi.fn(async (_input: { sourceKeyId: string; sourceAppFrame: number }): Promise<RotoDuplicateWithScriptOutcome> => 'handled');
+      const harness = createHarness({
+        currentFrame: 3,
+        records: [realKeyRecord('key-a', 3)],
+        realKeyFrames: [realKeyFrame(3)],
+        duplicateWithScript,
+      });
+
+      harness.utils.duplicateKey(options);
+      await flushAsync();
+
+      expect(duplicateWithScript).toHaveBeenCalledTimes(1);
+      expect(duplicateWithScript).toHaveBeenCalledWith({ sourceKeyId: 'key-a', sourceAppFrame: 3 });
+      expect(harness.input.physicalKeyUtilities.duplicateKey).not.toHaveBeenCalled();
+      expect(harness.setApplyStatus).not.toHaveBeenCalledWith('error');
+    }
+  });
+});
