@@ -133,8 +133,8 @@ const ACRYLIC_HIDDEN: readonly MediumId[] = Object.freeze(['acrylic']);
 
 /**
  * The fifteen rows in Matrix 2's order (fourteen canvas rows + the
- * Eraser-context Lift row). The 15-key count is what makes the Reset
- * key set (`rows - lift` + `body`) reproduce the shipped patch.
+ * Eraser-context Lift row). Reset restores the active medium record's
+ * full sixteen-key set; `size` and `lift` stay outside it.
  */
 export const AQUARELLE_PARAM_ROWS: readonly AquarelleParamRow[] = Object.freeze([
   Object.freeze({

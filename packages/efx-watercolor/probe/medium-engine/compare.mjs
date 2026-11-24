@@ -1175,17 +1175,18 @@ function edgeTransparencyFailures(data, reference) {
       `brush ${JSON.stringify(data.brush)} is not 'bristle-round' (the report must echo the live response)`,
     )
   }
-  if (typeof data.edgeAmount !== 'number' || data.edgeAmount < 0 || data.edgeAmount > 100) {
+  if (!Number.isFinite(data.edgeAmount) || data.edgeAmount < 0 || data.edgeAmount > 100) {
     failures.push(`edgeAmount ${JSON.stringify(data.edgeAmount)} is not a 0..100 knob (the capture must echo it)`)
   }
-  if (typeof data.edgeFalloff !== 'number' || data.edgeFalloff < 0 || data.edgeFalloff > 100) {
+  if (!Number.isFinite(data.edgeFalloff) || data.edgeFalloff < 0 || data.edgeFalloff > 100) {
     failures.push(`edgeFalloff ${JSON.stringify(data.edgeFalloff)} is not a 0..100 knob (the capture must echo it)`)
   }
   if (reference === null || typeof reference !== 'object' || reference.width !== data.width) {
-    failures.push(
+    return [
+      ...failures,
       `width ${data.width} does not match the reference ${reference && reference.width} ` +
         '(the silhouette is calibrated in the same document pixels)',
-    )
+    ]
   }
   const profile = data.edgeAcross
   if (

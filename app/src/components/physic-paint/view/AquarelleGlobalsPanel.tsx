@@ -23,16 +23,16 @@
 //  Eraser.
 //
 //  Param keys stay water/load/flow/bleed/edge/granulation/dry/
-//  viscosity/body/feather/pickup/refill/emboss — `body` rides the
-//  bag and the Reset law but has NO row (post-UAT 2026-11-22: the
-//  compositor's alpha is max(pigment-darkness, cover), so Body is
-//  invisible for every pigmented paint and only reads on near-white
-//  pigments). `size` is NOT here — the shared Size slider owns it
-//  (D-05). Hiding a row never removes its key: Reset restores the
-//  active medium record's full fourteen-key set.
+//  viscosity/body/feather/pickup/refill/emboss/edgeFade/edgeFalloff —
+//  `body` rides the bag and the Reset law but has NO row (post-UAT
+//  2026-11-22: the compositor's alpha is max(pigment-darkness,
+//  cover), so Body is invisible for every pigmented paint and only
+//  reads on near-white pigments). `size` is NOT here — the shared
+//  Size slider owns it (D-05). Hiding a row never removes its key:
+//  Reset restores the active medium record's full sixteen-key set.
 //
 //  Reset (quick 261122-gys) restores the ACTIVE MEDIUM RECORD — all
-//  fourteen keys including `wetSeconds` — through the one
+//  sixteen keys including `wetSeconds` — through the one
 //  record-path seam (setAquarelleParam), then forwards the same
 //  values as ONE selection batch (one undo entry; no selection is a
 //  no-op). The ×100 playground DEFAULT_PARAMS law is retired. Never
@@ -145,7 +145,7 @@ export function AquarelleGlobalsPanel() {
 
   // I-01 Reset (quick 261122-gys): restores the ACTIVE MEDIUM RECORD — the
   // same record the Medium label resolves — through the one record seam
-  // (setAquarelleParam), then forwards the same fourteen values as ONE
+  // (setAquarelleParam), then forwards the same sixteen values as ONE
   // selection patch (at most one undo entry; no selection is a no-op). This
   // retires the ×100 playground DEFAULT_PARAMS law and the acrylic refill-0
   // branch (Refill 0 lives in the Acrylic record). Never writes size (top-bar
