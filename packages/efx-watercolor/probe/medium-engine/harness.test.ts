@@ -1066,6 +1066,7 @@ const EDGE_FIXTURE_EDGE_START = 0.55
 function edgeFixtureProfile(
   amount: number,
   falloff: number,
+  silhouette = EDGE_FIXTURE_SILHOUETTE,
 ): { offsets: number[]; cover: number[]; ink: number[] } {
   const offsets: number[] = []
   const cover: number[] = []
@@ -1073,13 +1074,13 @@ function edgeFixtureProfile(
   const exponent = 2 ** (2 * (falloff / 100) - 1)
   for (let o = -140; o <= 140; o += 1) {
     offsets.push(o)
-    const u = Math.min(1, Math.abs(o) / EDGE_FIXTURE_SILHOUETTE)
+    const u = Math.min(1, Math.abs(o) / silhouette)
     const t = Math.max(
       0,
       Math.min(1, (u - EDGE_FIXTURE_EDGE_START) / (1 - EDGE_FIXTURE_EDGE_START)),
     )
     const film = amount <= 0 ? 1 : 1 - (amount / 100) * t ** exponent
-    const inside = Math.abs(o) <= EDGE_FIXTURE_SILHOUETTE
+    const inside = Math.abs(o) <= silhouette
     cover.push(inside ? EDGE_FIXTURE_PEAK * film : 0)
     ink.push(inside ? 2 * film : 0)
   }
@@ -2152,9 +2153,13 @@ describe('the alpha-law blocks discriminate (64-31 task 2, executed)', () => {
 //      `resolvedBrush` `brush` echo, with `edgeAmount`, `edgeFalloff`,
 //      `edgeAcross { offsets, cover, ink }` and `edgeTiling.enclosed`.
 //  32. compare.mjs dispatches `edge-transparency` to a REFERENCE-aware
-//      invariant: the visible silhouette is calibrated from the neutral
-//      baseline's coverage (2 % of peak, min of both sides, ≥ 8 px), and the
-//      coverage profile — normalised by its own peak — asserts the three
+//      invariant. At amount > 0 the station domain is the FILM's own floor
+//      boundary on both sides (the contiguous tail at 1 − amount, averaged,
+//      the side difference halved as the axis), because the film reaches u = 1
+//      at the engine's silhouette while the reference's 2 %-of-peak rim lies
+//      outside it; at amount 0 the domain is the reference's coverage (2 % of
+//      peak, min of both sides). Both branches require ≥ 8 px. The profile —
+//      normalised against the neutral reference row by row — asserts the three
 //      stations: core 1 (± 0.02), mid 1 − amount·0.5^e and rim 1 − amount
 //      (± 0.12), where e = 2^(2b − 1). Ink carries a direction check only.
 //  33. `edge-transparency` is a BRISTLE capture for the alpha law through ONE
@@ -2203,6 +2208,9 @@ describe('the edge-transparency gate (Spec 10)', () => {
       expectContains(COMPARE, 'const EDGE_STATION_TOLERANCE = 0.12')
       expectContains(COMPARE, 'const EDGE_MID_U = 0.775')
       expectContains(COMPARE, 'function edgeSilhouettePx(reference) {')
+      expectContains(COMPARE, 'const EDGE_FLOOR_EPS = 1e-3')
+      expectContains(COMPARE, 'function edgeFilmFloorBoundary(offsets, filmAt, side, floor) {')
+      expectContains(COMPARE, 'edgeFilmFloorBoundary(offsets, filmAt, -1, 1 - amount)')
       expectContains(COMPARE, '1 - amount * 0.5 ** exponent')
       expectContains(COMPARE, 'data.strokeBrush !== \'bristle-round\'')
     })
@@ -2279,6 +2287,30 @@ describe('the edge-transparency gate (Spec 10)', () => {
 
       expect(status, lawVerdict(status, output)).toBe(1)
       expect(invariantLine(output)).toContain('never runs gatherBristle')
+    })
+
+    // The calibration is FILM-domain, not reference-domain: the actual's rim
+    // floor sits at 16 px while the reference's 2 %-of-peak rim is 24 px. A
+    // reference-calibrated station would land at 19 px — outside the actual
+    // profile entirely, so the mid row could not even be normalised. Passing
+    // here proves the comparator reads the silhouette from the film itself.
+    it('calibrates the station domain from the film, not the wider reference rim', () => {
+      const actual = {
+        ...validEdgeTransparencyCapture(100, 50),
+        edgeAcross: edgeFixtureProfile(100, 50, 16),
+      }
+      const reference = {
+        ...validEdgeTransparencyCapture(0, 50),
+        edgeAcross: edgeFixtureProfile(0, 50, 24),
+      }
+      const { status, output } = compareSynthetic(
+        'nyquist-edge-film-domain',
+        actual,
+        reference,
+      )
+
+      expect(status, lawVerdict(status, output)).toBe(0)
+      expect(fieldsLine(output)).toContain('scenario invariants hold')
     })
   })
 })

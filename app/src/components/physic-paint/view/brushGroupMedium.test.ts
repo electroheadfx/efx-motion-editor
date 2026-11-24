@@ -16,7 +16,7 @@
 //      the live surface, and returns the record door's refusal
 //      instead of throwing.
 //   5. The Paint tab agrees after a cross-group pick — the selected
-//      medium id and the fourteen globals — and a texture selection
+//      medium id and the sixteen globals — and a texture selection
 //      changes neither.
 //   6. One seam: every response surface calls pickAquarelleBrush, and
 //      only the pick seam and the store's own `pickAquarelleMedium`
@@ -76,7 +76,7 @@ import type { ScriptStrokeAppearancePatch } from './strokeSettingsModel';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
-/** The ten keys a medium may set — never size, never lift (D-02). */
+/** The sixteen keys a medium may set — never size, never lift (D-02). */
 const MEDIUM_KEYS: readonly MediumParamKey[] = [
   'water',
   'load',
@@ -92,6 +92,8 @@ const MEDIUM_KEYS: readonly MediumParamKey[] = [
   'pickup',
   'refill',
   'wetSeconds',
+  'edgeFade',
+  'edgeFalloff',
 ];
 
 /** quick 261124-tje: the Gouache (acrylic) landing bag — the four medium
@@ -103,10 +105,10 @@ const ACRYLIC_BAG: Readonly<Partial<Record<MediumParamKey, number>>> = {
   dry: 0,
   feather: 100,
 };
-/** The record keys the bag never touches (ten of the fourteen). */
+/** The record keys the bag never touches (twelve of the sixteen). */
 const RECORD_ONLY_KEYS = MEDIUM_KEYS.filter((key) => !ACRYLIC_BAG_KEYS.includes(key));
 
-/** The ten record-only keys still equal the acrylic record. */
+/** The twelve record-only keys still equal the acrylic record. */
 function expectAcrylicRecordMinusBag(): void {
   const record = mediumById('acrylic')!;
   for (const key of RECORD_ONLY_KEYS) {
@@ -229,7 +231,7 @@ describe('a cross-group pick applies the group medium (64-12 MED-28)', () => {
     ids.stop();
     expect(aquarelleSelectedMediumId.value).toBe('acrylic');
     // quick 261124-tje: the record lands FIRST, the Gouache bag LAST — so the
-    // ten non-bag medium keys equal the record and the four bag keys the bag.
+    // twelve non-bag medium keys equal the record and the four bag keys the bag.
     expectAcrylicRecordMinusBag();
     expectAcrylicBag();
     expect(calls, 'exactly one selection patch').toHaveLength(1);
@@ -397,7 +399,7 @@ describe('a cross-group pick applies the group medium (64-12 MED-28)', () => {
 });
 
 describe('the Paint tab agrees after a cross-group pick (64-12 MED-28)', () => {
-  it('moves the selected medium id and the ten record globals with the group', async () => {
+  it('moves the selected medium id and the twelve record globals with the group', async () => {
     setAquarelleParam('size', 55);
     setAquarelleParam('lift', 27);
     const liftBefore = aquarelleParams.value.lift;
@@ -411,7 +413,7 @@ describe('the Paint tab agrees after a cross-group pick (64-12 MED-28)', () => {
     // record-only keys equal the record, the four bag keys equal the bag.
     expectAcrylicRecordMinusBag();
     expectAcrylicBag();
-    expect(Object.keys(aquarelleParams.value).sort(), 'the bag keeps its sixteen keys').toEqual(
+    expect(Object.keys(aquarelleParams.value).sort(), 'the bag keeps its eighteen keys').toEqual(
       [...MEDIUM_KEYS, 'size', 'lift'].sort(),
     );
     expect(aquarelleParams.value.size, 'the brush bag owns size').toBe(

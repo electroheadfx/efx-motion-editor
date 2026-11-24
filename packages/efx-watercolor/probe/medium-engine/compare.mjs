@@ -1064,9 +1064,8 @@ function bristleLineFailures(data) {
 // Normalising by the capture's own peak cannot work — the base profile is not
 // flat (the neutral baseline peaks off-centre at +15 px, 0.8188 vs 0.7493 on
 // row 0), so core-at-0 would read 0.915 and the identity could never pass.
-// Three stations, in SILHOUETTE units relative to the REFERENCE's visible rim
-// (the neutral baseline, whose coverage still reaches the silhouette; at
-// amount 100 the capture's own rim is inert and cannot calibrate itself):
+// Three stations, in SILHOUETTE units (`u = lateral / uFeatherEdge` — the same
+// denominator gatherBristle uses):
 //   core (offset 0)     film 1                            ± 0.02
 //   mid  (0.775·rim)    film 1 - amount · 0.5^e            ± 0.12
 //   rim  (the rim)      film 1 - amount                    ± 0.12
@@ -1074,10 +1073,20 @@ function bristleLineFailures(data) {
 // the landmark table's 0.293 / 0.5 / 0.75 at amount 1, separated by more than
 // the tolerance, so one capture distinguishes all three shapes.
 //
-// The silhouette is the widest row whose coverage is at least 2 % of the
-// reference's peak, taken as the MIN of both sides (a one-sided fringe cannot
-// inflate it), guarded to at least 8 px — a degenerate reference fails rather
-// than silently judging a 1 px station.
+// THE SILHOUETTE MUST BE THE FILM'S OWN DOMAIN, not the reference's visible
+// rim. On the engine `uFeatherEdge` is BRISTLE_FEATHER_EDGE (0.66) of the
+// nominal footprint, which sits INSIDE the 2 %-of-peak rim the paper carries
+// (measured 2026-11-24: reference rim 22 px, film floor boundary 16-17 px) —
+// calibrating from the reference put the mid station BEYOND the band and all
+// three sweeps read a blank row. At amount > 0 the film reaches exactly its
+// rim floor (1 - amount) at u = 1, so the contiguous tail at that floor
+// locates the silhouette directly; the two side boundaries are averaged
+// (their difference is the profile grid's sub-pixel offset from the dab
+// axis). At amount 0 the film is 1 everywhere and the identity capture is
+// calibrated from the REFERENCE's rim as before (the widest row at 2 % of
+// its peak, the MIN of both sides so a one-sided fringe cannot inflate it).
+// Both branches are guarded to at least 8 px — a degenerate profile fails
+// rather than silently judging a 1 px station.
 //
 // `ink` (the delivered absorbance) is supporting evidence only: it is a
 // seven-channel pigment sum that mixes colour coefficients, so it carries a
@@ -1087,6 +1096,9 @@ const EDGE_CORE_TOLERANCE = 0.02
 const EDGE_STATION_TOLERANCE = 0.12
 const EDGE_SILHOUETTE_FRACTION = 0.02
 const EDGE_SILHOUETTE_MIN_PX = 8
+/** Within this of the rim floor is "at the floor": the film is exactly
+ *  1 - amount past u = 1, so the tail is flat to float noise only. */
+const EDGE_FLOOR_EPS = 1e-3
 /** The fade band's midpoint in silhouette units: (0.775 - 0.55) / 0.45 = 0.5. */
 const EDGE_MID_U = 0.775
 
@@ -1112,6 +1124,39 @@ function edgeSilhouettePx(reference) {
   }
   const extent = Math.min(left, right)
   return extent >= EDGE_SILHOUETTE_MIN_PX ? extent : null
+}
+
+/** The film's floor boundary on one side, in document pixels: the smallest
+ *  |offset| of the contiguous tail where the film sits at its rim floor
+ *  (1 - amount). At amount > 0 only the film itself locates u = 1 — the
+ *  reference's 2 %-of-peak rim lies OUTSIDE the engine's silhouette. Null when
+ *  the tail never reaches the floor (the film did not fade, or the profile is
+ *  degenerate); rows the reference cannot normalise (baseline cover 0) are
+ *  ignored. */
+function edgeFilmFloorBoundary(offsets, filmAt, side, floor) {
+  const rows = offsets
+    .filter((offset) => side * offset > 0)
+    .sort((a, b) => Math.abs(a) - Math.abs(b))
+  let last = -1
+  for (let i = rows.length - 1; i >= 0; i -= 1) {
+    const ratio = filmAt(rows[i])
+    if (ratio === null || ratio === undefined) continue
+    last = i
+    break
+  }
+  if (last < 0) return null
+  if (Math.abs(filmAt(rows[last]) - floor) > EDGE_FLOOR_EPS) return null
+  let boundary = last
+  for (let i = last - 1; i >= 0; i -= 1) {
+    const ratio = filmAt(rows[i])
+    if (ratio === null || ratio === undefined) {
+      boundary = i
+      continue
+    }
+    if (Math.abs(ratio - floor) > EDGE_FLOOR_EPS) break
+    boundary = i
+  }
+  return Math.abs(rows[boundary])
 }
 
 function edgeTransparencyFailures(data, reference) {
@@ -1167,14 +1212,6 @@ function edgeTransparencyFailures(data, reference) {
   const amount = data.edgeAmount / 100
   const bias = data.edgeFalloff / 100
   const exponent = 2 ** (2 * bias - 1)
-  const silhouette = edgeSilhouettePx(reference)
-  if (silhouette === null) {
-    return [
-      ...failures,
-      'the reference profile cannot calibrate a visible silhouette (the widest row at 2% of its ' +
-        `peak is under ${EDGE_SILHOUETTE_MIN_PX} px, or edgeAcross is missing); a capture cannot be judged without it`,
-    ]
-  }
   let peak = 0
   for (const value of cover) peak = Math.max(peak, value)
   if (!(peak > 0)) {
@@ -1208,11 +1245,48 @@ function edgeTransparencyFailures(data, reference) {
     const index = offsets.indexOf(station)
     return index >= 0 ? ink[index] : null
   }
-  const midStation = Math.round(EDGE_MID_U * silhouette)
+  // The station domain: the film's own floor boundary when the film executes,
+  // the reference's rim on the identity capture (see the block comment).
+  let silhouette
+  let midStation
+  let rimStation
+  if (amount > 0) {
+    const left = edgeFilmFloorBoundary(offsets, filmAt, -1, 1 - amount)
+    const right = edgeFilmFloorBoundary(offsets, filmAt, 1, 1 - amount)
+    if (left === null || right === null) {
+      return [
+        ...failures,
+        'edge film never reaches its rim floor (1 - amount) on both sides of the profile — ' +
+          'the silhouette cannot be calibrated from the film itself',
+      ]
+    }
+    const axis = (left - right) / 2
+    silhouette = (left + right) / 2
+    midStation = Math.round(axis + EDGE_MID_U * silhouette)
+    rimStation = Math.round(axis + silhouette)
+  } else {
+    silhouette = edgeSilhouettePx(reference)
+    if (silhouette === null) {
+      return [
+        ...failures,
+        'the reference profile cannot calibrate a visible silhouette (the widest row at 2% of its ' +
+          `peak is under ${EDGE_SILHOUETTE_MIN_PX} px, or edgeAcross is missing); a capture cannot be judged without it`,
+      ]
+    }
+    midStation = Math.round(EDGE_MID_U * silhouette)
+    rimStation = silhouette
+  }
+  if (silhouette < EDGE_SILHOUETTE_MIN_PX) {
+    return [
+      ...failures,
+      `the calibrated silhouette ${silhouette} px is under ${EDGE_SILHOUETTE_MIN_PX} px — ` +
+        'a degenerate profile cannot be judged',
+    ]
+  }
   const stations = [
     ['core', 0, 1, EDGE_CORE_TOLERANCE],
     ['mid', midStation, 1 - amount * 0.5 ** exponent, EDGE_STATION_TOLERANCE],
-    ['rim', silhouette, 1 - amount, EDGE_STATION_TOLERANCE],
+    ['rim', rimStation, 1 - amount, EDGE_STATION_TOLERANCE],
   ]
   for (const [label, station, expected, tolerance] of stations) {
     const measured = filmAt(station)
@@ -1242,7 +1316,9 @@ function edgeTransparencyFailures(data, reference) {
   }
   if (amount > 0) {
     const coreInk = inkAt(0)
-    const rimInk = inkAt(silhouette)
+    // The same integer row the rim bar reads (the calibrated silhouette can
+    // land on a half pixel when the two floor boundaries disagree).
+    const rimInk = inkAt(rimStation)
     if (coreInk === null || rimInk === null) {
       failures.push('the ink profile carries no core/rim row for the supporting direction check')
     } else if (!(rimInk < coreInk)) {
