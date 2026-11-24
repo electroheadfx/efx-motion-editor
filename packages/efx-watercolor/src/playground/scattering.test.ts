@@ -621,7 +621,7 @@ describe('64-22 — the bristle gather rides the one curve (T-64-72)', () => {
     // 261119-pod: the carried half reads the smear-adjusted locals (`cA`,
     // `cB`), which equal the gathered value when Pickup is 0.
     expectContains(deposit, 'oA = cA * a;')
-    expectContains(deposit, 'oB = vec4(cB * a, uScatter * a);')
+    expectContains(deposit, 'oB = vec4(cB * a, uScatter * a * g.film);')
     // The old additive law is gone: no bare `uAmount` multiply remains.
     expectNotContains(deposit, 'uAmount')
     // Never an RGB average: the gathered value stays in coefficient space.
@@ -721,6 +721,121 @@ describe('64-22 — the bristle gather rides the one curve (T-64-72)', () => {
       (alloc.match(/this\.\w+ = g\.(?:double|target)\(/g) ?? []).length,
       'fifteen allocations: 64-24 adds the documented R32F last-touch pair; 261119-pod adds the smear snapshot target; the gather adds no target of its own',
     ).toBe(15)
+  })
+})
+
+// ============================================================
+//  Spec 10 — the lateral edge film (Edge transparency / Edge falloff).
+//
+//  ONE lateral factor in SILHOUETTE units multiplies `featherFade` before it
+//  scales the whole carried film (coverage, cA, cB, alpha), and the deposit's
+//  scatter S rides the SAME film. The three uniforms are bound once in
+//  `bindGather`, so every consumer (deposit, cover, relief) reads them.
+//  Everything the film must NOT touch is pinned negatively: the attenuation
+//  half, the paper-threshold block, the cover write, the relief and the
+//  touch stamp.
+// ============================================================
+
+describe('Spec 10 — the lateral edge film rides the ONE gather', () => {
+  it('declares the three uniforms and binds them for every consumer', () => {
+    const gather = sliceBetween(
+      SHADERS_SOURCE,
+      'export const BRISTLE_GATHER',
+      'export const bristleDepositFS',
+    )
+    expectContains(gather, 'uniform float uEdgeStart;')
+    expectContains(gather, 'uniform float uEdgeFade;')
+    expectContains(gather, 'uniform float uEdgeFalloff;')
+    // The start anchor is the constant; the two knobs are Params members
+    // clamped at the bind exactly like Feather.
+    const imports = ENGINE_SOURCE.slice(0, ENGINE_SOURCE.indexOf("from './bristles';"))
+    expectContains(imports, 'BRISTLE_EDGE_START,')
+    const bind = sliceBetween(ENGINE_SOURCE, 'private bindGather(', 'private bristleInk(')
+    expectContains(bind, 'gl.uniform1f(p.u.uEdgeStart!, BRISTLE_EDGE_START);')
+    expectContains(bind, 'gl.uniform1f(p.u.uEdgeFade!, clamp(this.params.edgeFade, 0, 1));')
+    expectContains(bind, 'gl.uniform1f(p.u.uEdgeFalloff!, clamp(this.params.edgeFalloff, 0, 1));')
+  })
+
+  it('scales the whole carried film once and carries the film on the S term', () => {
+    const gather = sliceBetween(
+      SHADERS_SOURCE,
+      'export const BRISTLE_GATHER',
+      'export const bristleDepositFS',
+    )
+    // The film is computed in SILHOUETTE units — lateral is footprint-
+    // normalised, so it divides by uFeatherEdge before the start anchor.
+    expectContains(gather, 'float edgeU = clamp(lateral / max(uFeatherEdge, 1e-4), 0.0, 1.0);')
+    expectContains(gather, 'float edgeExp = exp2(2.0 * uEdgeFalloff - 1.0);')
+    // The plain arithmetic form, never a guarding ternary: at amount 0 the
+    // product is exactly zero and the film is exactly 1.0, so the pre-change
+    // program renders bit-identically (the mode-1 identity gates). A ternary
+    // guard measured a ULP drift through the whole export (quick 261124-ujb).
+    expectContains(gather, 'float edgeFilm = 1.0 - uEdgeFade * pow(edgeT, edgeExp);')
+    expectContains(gather, 'featherFade *= edgeFilm;')
+    expectContains(gather, 'g.film = edgeFilm;')
+    // The struct carries the film and both early returns leave it neutral.
+    expectContains(gather, 'float film;')
+    expectContains(gather, 'g.film = 1.0;')
+    // The ONE weight still scales the four carried channels together.
+    expectContains(gather, 'g.coverage = inked * featherFade;')
+    expectContains(gather, 'g.cA *= featherFade;')
+    expectContains(gather, 'g.cB *= featherFade;')
+    expectContains(gather, 'g.alpha *= featherFade;')
+    const deposit = sliceBetween(
+      SHADERS_SOURCE,
+      'export const bristleDepositFS',
+      'export const bristleCoverFS',
+    )
+    // The scatter S rides the film — scaling the colour alone would leave a
+    // full-strength diffuse rim while the pigment faded.
+    expectContains(deposit, 'uScatter * a * g.film')
+  })
+
+  it('never touches the attenuation half, the threshold, the cover, relief or touch', () => {
+    const deposit = sliceBetween(
+      SHADERS_SOURCE,
+      'export const bristleDepositFS',
+      'export const bristleCoverFS',
+    )
+    const attenuation = sliceBetween(deposit, 'if (uMode == 1) {', '} else {')
+    expectContains(attenuation, 'oA = vec4(a);')
+    expectContains(attenuation, 'oB = vec4(a);')
+    expectNotContains(attenuation, 'g.film')
+    // `uEdge` alone is the watercolor tide-line uniform (a substring of
+    // `uEdgeDarken`), so the refusals name the THREE film identifiers.
+    const edgeUniforms = ['uEdgeStart', 'uEdgeFade', 'uEdgeFalloff']
+    const refuseEdge = (source: string, where: string): void => {
+      for (const name of edgeUniforms) {
+        expect(source.includes(name), `unexpected ${name} in ${where}`).toBe(false)
+      }
+    }
+    // The paper threshold is the Feather law's alone; the edge narrows by
+    // scaling the carried film, never by re-thresholding the paper.
+    const threshold = sliceBetween(
+      SHADERS_SOURCE,
+      'float threshold = uGrain',
+      'float featherFade = 1.0;',
+    )
+    refuseEdge(threshold, 'the paper-threshold block')
+    const cover = sliceBetween(
+      SHADERS_SOURCE,
+      'export const bristleCoverFS',
+      'export const bristleReliefFS',
+    )
+    expectContains(cover, 'o0 = vec4(target, 0.0, 0.0, a);')
+    refuseEdge(cover, 'bristleCoverFS')
+    const relief = sliceBetween(
+      SHADERS_SOURCE,
+      'export const bristleReliefFS',
+      'export const bristleTouchFS',
+    )
+    refuseEdge(relief, 'bristleReliefFS')
+    const touch = sliceBetween(
+      SHADERS_SOURCE,
+      'export const bristleTouchFS',
+      'export const paperFieldFS',
+    )
+    refuseEdge(touch, 'bristleTouchFS')
   })
 })
 
@@ -1307,7 +1422,7 @@ describe('261119-pod — the §3.3 smear, the snapshot and the four-side Feather
     expectContains(d, 'cA = mix(cA, snapA, smear);')
     expectContains(d, 'cB = mix(cB, snapB.xyz, smear);')
     expectContains(d, 'oA = cA * a;')
-    expectContains(d, 'oB = vec4(cB * a, uScatter * a);')
+    expectContains(d, 'oB = vec4(cB * a, uScatter * a * g.film);')
     const c = cover()
     expectContains(c, 'if (uSmear > 0.0) {')
     expectContains(c, 'float target = a * uCoverTarget * g.alpha;')

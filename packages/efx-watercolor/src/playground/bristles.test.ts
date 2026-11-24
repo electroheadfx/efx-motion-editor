@@ -378,6 +378,12 @@ const TRACES = bristleModule as unknown as {
   bristleEdgeBias?: (across: number) => number
   bristleBody?: (wide: number, local: number, presence: number, hairs: number) => number
   bristleCoverage?: (body: number, pressure: number, edgeBias: number) => number
+  // Spec 10: the lateral edge film and its shape-bias exponent.
+  BRISTLE_EDGE_START?: number
+  BRISTLE_EDGE_EXP_MIN?: number
+  BRISTLE_EDGE_EXP_MAX?: number
+  edgeFalloffExponent?: (bias: number) => number
+  bristleEdgeFilm?: (lateral: number, amount: number, falloff: number) => number
 }
 
 const SRC_ROOT = resolve(HERE, '..')
@@ -704,6 +710,157 @@ describe('bristleCoverage — §4.5 / §5.5', () => {
       TRACES.bristleCoverage?.(0.5, 1, Number.NaN),
       'a missing edge bias reads as no bias',
     ).toBeCloseTo(0.5, 9)
+  })
+})
+
+// ============================================================
+//  Spec 10 — the lateral edge film (Edge transparency and Edge falloff).
+//
+//  `gatherBristle` scales the WHOLE carried film — coverage, cA, cB and
+//  alpha together — through ONE lateral factor. The argument is in
+//  SILHOUETTE units: 1 is the visible rim (BRISTLE_FEATHER_EDGE of the
+//  nominal footprint), not the footprint's own edge. Inside
+//  BRISTLE_EDGE_START the film is exactly 1 at every amount; it reaches
+//  `1 - amount` at the silhouette; between them the shape bias picks the
+//  fade through `edgeFalloffExponent`. The three constants are bound as
+//  uniforms, so the fragment cannot re-type them.
+// ============================================================
+
+describe('bristleEdgeFilm — Spec 10, the lateral film in silhouette units', () => {
+  it('is inert at amount 0 for every falloff', () => {
+    for (const falloff of [0, 0.5, 1]) {
+      for (const lateral of [0, 0.3, 0.55, 0.775, 1, 1.4]) {
+        expect(
+          TRACES.bristleEdgeFilm?.(lateral, 0, falloff),
+          `amount 0 must not move the film (lateral ${lateral}, falloff ${falloff})`,
+        ).toBe(1)
+      }
+    }
+  })
+
+  it('keeps the core at film 1 for every amount and falloff', () => {
+    for (const amount of [0, 0.25, 0.5, 1]) {
+      for (const falloff of [0, 0.5, 1]) {
+        expect(TRACES.bristleEdgeFilm?.(0, amount, falloff), 'the core row never fades').toBe(1)
+        expect(
+          TRACES.bristleEdgeFilm?.(0.55, amount, falloff),
+          'the fade starts exactly at BRISTLE_EDGE_START',
+        ).toBeCloseTo(1, 12)
+      }
+    }
+  })
+
+  it('reads 1 - amount at the silhouette for every falloff', () => {
+    for (const amount of [0.25, 0.5, 1]) {
+      for (const falloff of [0, 0.5, 1]) {
+        expect(
+          TRACES.bristleEdgeFilm?.(1, amount, falloff),
+          'the rim must read exactly 1 - amount',
+        ).toBeCloseTo(1 - amount, 12)
+      }
+    }
+  })
+
+  it('reads the landmark table at the fade midpoint (t = 0.5)', () => {
+    // u = (0.775 - 0.55) / 0.45 = 0.5 → film = 1 - amount · 0.5^e.
+    expect(
+      TRACES.bristleEdgeFilm?.(0.775, 1, 0.5),
+      'falloff 50 (e = 1) reads 0.5',
+    ).toBeCloseTo(0.5, 9)
+    expect(
+      TRACES.bristleEdgeFilm?.(0.775, 1, 0),
+      'falloff 0 (e = 0.5) reads 1 - √0.5 = 0.292893',
+    ).toBeCloseTo(1 - Math.SQRT1_2, 9)
+    expect(
+      TRACES.bristleEdgeFilm?.(0.775, 1, 1),
+      'falloff 100 (e = 2) reads 0.75',
+    ).toBeCloseTo(0.75, 9)
+  })
+
+  it('fades monotonically from the core to the rim at every falloff', () => {
+    for (const falloff of [0, 0.5, 1]) {
+      let previous = 1
+      for (let step = 0; step <= 20; step += 1) {
+        const film = TRACES.bristleEdgeFilm?.(step / 20, 1, falloff) ?? Number.NaN
+        expect(
+          film,
+          `film must never rise between the core and the rim (falloff ${falloff}, step ${step})`,
+        ).toBeLessThanOrEqual(previous + 1e-9)
+        previous = film
+      }
+      expect(previous, 'the sweep ends at the rim').toBeCloseTo(0, 9)
+    }
+  })
+
+  it('clamps cells beyond the silhouette to the full rim factor by design', () => {
+    // The film narrows the mark at amount > 0 — intended, not a threshold change.
+    expect(TRACES.bristleEdgeFilm?.(1.5, 1, 0.5), 'beyond the rim is the rim').toBeCloseTo(0, 12)
+    expect(TRACES.bristleEdgeFilm?.(99, 0.5, 0), 'a far cell keeps the rim film').toBeCloseTo(
+      0.5,
+      12,
+    )
+  })
+
+  it('never returns NaN', () => {
+    for (const [lateral, amount, falloff] of [
+      [Number.NaN, 1, 0.5],
+      [0.5, Number.NaN, 0.5],
+      [0.5, 1, Number.NaN],
+      [Number.POSITIVE_INFINITY, 1, 0.5],
+    ] as const) {
+      expect(
+        TRACES.bristleEdgeFilm?.(lateral, amount, falloff),
+        `a non-finite argument reads as the neutral film (${lateral}/${amount}/${falloff})`,
+      ).toBe(1)
+    }
+  })
+})
+
+describe('edgeFalloffExponent — the Spec 10 shape bias', () => {
+  it('maps the canonical 0 / 50 / 100 onto 0.5 / 1 / 2', () => {
+    expect(typeof TRACES.edgeFalloffExponent, 'edgeFalloffExponent is exported').toBe('function')
+    expect(TRACES.edgeFalloffExponent?.(0), 'canonical 0 — the broad fade').toBeCloseTo(0.5, 12)
+    expect(TRACES.edgeFalloffExponent?.(0.5), 'canonical 50 — linear').toBeCloseTo(1, 12)
+    expect(TRACES.edgeFalloffExponent?.(1), 'canonical 100 — the rim fade').toBeCloseTo(2, 12)
+  })
+
+  it('is monotone between the anchors and clamped to the exponent bounds', () => {
+    let previous = 0
+    for (let step = 0; step <= 100; step += 1) {
+      const exponent = TRACES.edgeFalloffExponent?.(step / 100) ?? Number.NaN
+      expect(exponent).toBeGreaterThanOrEqual(previous)
+      expect(exponent).toBeGreaterThanOrEqual(TRACES.BRISTLE_EDGE_EXP_MIN ?? 0.5)
+      expect(exponent).toBeLessThanOrEqual(TRACES.BRISTLE_EDGE_EXP_MAX ?? 2)
+      previous = exponent
+    }
+    // Out-of-track biases clamp to the same bounds.
+    expect(TRACES.edgeFalloffExponent?.(-1)).toBeCloseTo(0.5, 12)
+    expect(TRACES.edgeFalloffExponent?.(2)).toBeCloseTo(2, 12)
+  })
+
+  it('never returns NaN (a missing bias reads linear)', () => {
+    expect(TRACES.edgeFalloffExponent?.(Number.NaN), 'a missing bias is linear').toBe(1)
+    expect(TRACES.edgeFalloffExponent?.(Number.POSITIVE_INFINITY), 'a broken bias is linear').toBe(1)
+  })
+})
+
+describe('the Spec 10 edge constants', () => {
+  it('pins the start anchor and the exponent bounds', () => {
+    expect(TRACES.BRISTLE_EDGE_START, 'the fade starts at 0.55 of the silhouette').toBe(0.55)
+    expect(TRACES.BRISTLE_EDGE_EXP_MIN, 'falloff 0 is the square-root shape').toBe(0.5)
+    expect(TRACES.BRISTLE_EDGE_EXP_MAX, 'falloff 100 is the squared shape').toBe(2)
+  })
+
+  it('declares each constant once in the package — a second copy fails the build', () => {
+    for (const name of ['BRISTLE_EDGE_START', 'BRISTLE_EDGE_EXP_MIN', 'BRISTLE_EDGE_EXP_MAX']) {
+      const declarations = PACKAGE_SOURCES.filter(({ text }) =>
+        new RegExp(`export const ${name}\\b`).test(text),
+      ).map(({ file }) => file)
+      expect(declarations.length, `${name} is declared once in the package`).toBe(1)
+      expect(declarations[0], `${name} is declared in playground/bristles.ts`).toBe(
+        'playground/bristles.ts',
+      )
+    }
   })
 })
 

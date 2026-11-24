@@ -964,6 +964,12 @@ uniform float uFeatherEdge;  // silhouette radius, in nominal footprint units
 uniform float uFeatherCap;   // leading end cap, fraction of the radius (all Feathers)
 uniform float uFeatherMin;   // the threshold shift's start anchor, fraction of the silhouette
 uniform float uFeatherShift; // the rim threshold rise at F100 (BRISTLE_FEATHER_SHIFT)
+// Spec 10 — the lateral edge film (Edge transparency / Edge falloff), in
+// SILHOUETTE units. uEdgeStart is BRISTLE_EDGE_START (0.55); the other two
+// are Params members (amount 0..1, bias 0..1).
+uniform float uEdgeStart;
+uniform float uEdgeFade;
+uniform float uEdgeFalloff;
 uniform float uTakeoffShift; // the leading frontier's threshold rise (BRISTLE_TAKEOFF_SHIFT)
 uniform float uCapGain;      // the along-cap fade's gain (BRISTLE_CAP_GAIN)
 uniform float uDrySpeed;     // the Dry slider, 0..1
@@ -1081,6 +1087,7 @@ struct Gathered {
   vec4 cA;                   // carried absorbance 0..3
   vec3 cB;                   // carried absorbance 4..6
   float alpha;               // carried layer alpha
+  float film;                // Spec 10: the lateral edge film (1 = neutral)
   float coverage;            // §4.4-thresholded body, 0..1
   int nearest;               // the gathered centre bristle
 };
@@ -1090,6 +1097,9 @@ Gathered gatherBristle(vec2 uv){
   g.cA = vec4(0.0);
   g.cB = vec3(0.0);
   g.alpha = 0.0;
+  // Both early returns leave the struct from this init, so a cell the gather
+  // never reaches still carries the neutral film.
+  g.film = 1.0;
   g.coverage = 0.0;
   g.nearest = 0;
   vec2 p = uv - uPoint;
@@ -1295,6 +1305,25 @@ Gathered gatherBristle(vec2 uv){
   // brush instead of thinning as one solid veil. The carried film keeps the
   // same fade so the surviving specks fade with it.
   float coverage = body * (0.3 + 0.7 * uPressure) * dryEdge * alongFade * trailSupport;
+  // Spec 10 — Edge transparency and Edge falloff. ONE lateral film in
+  // SILHOUETTE units (uFeatherEdge is where the mark's visible rim sits)
+  // scales the WHOLE carried film below — coverage, cA, cB and alpha — so
+  // the rim thins as one film instead of a pale, long-memory partial
+  // deposit. 1 up to uEdgeStart, then 1 - amount·t^e with e = 2^(2b - 1)
+  // (0.5 broad / 1 linear / 2 rim, the tested twin's edgeFalloffExponent).
+  // Cells BEYOND the silhouette clamp to the full rim factor BY DESIGN: at
+  // amount 100 they go inert and the edge narrows — intended, not a
+  // paper-threshold change (the threshold block above is untouched).
+  // The film is the PLAIN arithmetic form, never a ternary amount guard: at
+  // amount 0 the product is exactly zero, so the film is exactly 1.0 and the
+  // pre-change program renders bit-identically (the mode-1 identity gates).
+  // A guarded ternary measured a whole-export ULP drift (quick 261124-ujb).
+  float edgeU = clamp(lateral / max(uFeatherEdge, 1e-4), 0.0, 1.0);
+  float edgeT = clamp((edgeU - uEdgeStart) / max(1.0 - uEdgeStart, 1e-4), 0.0, 1.0);
+  float edgeExp = exp2(2.0 * uEdgeFalloff - 1.0);
+  float edgeFilm = 1.0 - uEdgeFade * pow(edgeT, edgeExp);
+  g.film = edgeFilm;
+  featherFade *= edgeFilm;
   featherFade *= alongFade * trailSupport;
   // The band itself is the reference's constant; its width never moves.
   float inked = uSoftness > 0.0
@@ -1387,7 +1416,10 @@ void main(){
     // SAME weight, so the veil lands exactly where the paint does and can
     // never accumulate past uScatter.
     oA = cA * a;
-    oB = vec4(cB * a, uScatter * a);
+    // Spec 10: the scatter S rides the SAME lateral film as the carried
+    // colour — scaling the colour alone would leave a full-strength diffuse
+    // rim while the pigment faded.
+    oB = vec4(cB * a, uScatter * a * g.film);
   }
 }`;
 
