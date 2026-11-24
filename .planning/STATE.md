@@ -4,10 +4,10 @@ milestone: v2.2.0
 current_phase: 64
 status: completed
 stopped_at: Phase 64 complete — all phases complete
-last_updated: "2026-11-24T11:12:50.773Z"
+last_updated: "2026-11-24T11:37:45.819Z"
 last_activity: 2026-11-24
 last_activity_desc: Quick 261124-gfy UAT approved (Roto clipboard Raster|Script toggle)
-state_head: b11368da7151076692a765b6348ab1321ed2b09d
+state_head: 91bf2a59b42706e07584890ba9d2acd163392500
 progress:
   total_phases: 2
   completed_phases: 2
@@ -715,6 +715,7 @@ Items acknowledged and carried forward from previous milestone close:
 | 261124-0l5 | Living Script Apply pastes the copied script onto the key (recorded timeline under fresh ids bound to the destination keyId, then baked; one undo; replaces an existing script) | 2026-11-24 | b5c6c387c | [261124-0l5-paste-script-doesn-t-paste-strokes-scrip](./quick/261124-0l5-paste-script-doesn-t-paste-strokes-scrip/) |
 | 261124-1d7 | Fix AQTL v4 snapshots written during the reverted 261123-jak/kpy window | 2026-11-24 | 576ade2dd | [261124-1d7-fix-aqtl-v4-snapshots-written-during-the](./quick/261124-1d7-fix-aqtl-v4-snapshots-written-during-the/) |
 | 261124-gfy | Roto key actions: group Duplicate/Copy/Paste/Cut in a tonal sub-section with a Raster\|Script toggle after Cut, and pin the "Layer N Key N" identity block width (UAT approved) | 2026-11-24 | b11368da7 | [261124-gfy-roto-key-actions-group-duplicate-copy-pa](./quick/261124-gfy-roto-key-actions-group-duplicate-copy-pa/) |
+| 56 | Studio Roto: white glow on multi-selected keys (Cmd / All) | 2026-11-24 | 91bf2a59b | — |
 
 ## Roadmap Evolution
 
