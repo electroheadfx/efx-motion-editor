@@ -793,10 +793,12 @@ describe('AQTL v2 per-vertex colour (261111-wd6)', () => {
 
   it('still refuses an unknown vector flag bit', () => {
     const bytes = encodeScriptTimelineBinary([coloredVectorStroke()]);
-    // 0x10 is the 62-UAT drawn marker; the next free bit is 0x20.
+    // 0x10 is the 62-UAT drawn marker; bits 5 and 6 (0x20/0x40) are the
+    // documented LEGACY relief markers (quick 261124-1d7). The next reserved
+    // bit is 0x80 — the reserved-flags check must keep refusing it.
     new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).setUint8(
       VECTOR_FLAG_OFFSET,
-      VECTOR_FLAG_ANCHOR_COLOR | 0x20,
+      VECTOR_FLAG_ANCHOR_COLOR | 0x80,
     );
     expect(expectedCode(() => decodeScriptTimelineBinary(bytes))).toBe('invalid-value');
   });
@@ -1256,5 +1258,89 @@ describe('AQTL fail-closed validation', () => {
 
     const longBrush = { ...minimalStroke(), brushId: 'x'.repeat(70000) };
     expect(expectedCode(() => encodeScriptTimelineBinary([longBrush]))).toBe('invalid-string');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// quick 261124-1d7 — the AQTL v4 reader accepts the two LEGACY relief markers.
+//
+//  The reverted 261123-jak/kpy build wrote vectorFlags bit 5 (erode) and bit 6
+//  (deposit) into real snapshots between 2026-11-23 15:36 and 17:08. Both are
+//  bit-only markers with NO payload byte: accepting them consumes nothing, so
+//  the stream cannot desync. They are accepted and DISCARDED — the engine
+//  gains neither `reliefOnly` nor `relief`, and the encoder never writes them,
+//  so the next save drops them from the file. Bit 7 and above stay refused.
+// ---------------------------------------------------------------------------
+
+describe('261124-1d7 legacy relief markers (bit 5/6)', () => {
+  // Same prefix as every one-stroke fixture: the vector-flags byte sits just
+  // before the texture presence byte (see the documented minimal layout in
+  // the "Minimal one-stroke buffer" banner above). Scoped to this describe —
+  // the identically named constant next door belongs to its own fixture.
+  const VECTOR_FLAG_OFFSET = 73;
+
+  /** The minimal stroke carrying the drawn-by-the-vector-pen provenance. */
+  function drawnMinimalStroke(): StudioStroke<AquarelleStrokePayload> {
+    const base = minimalStroke();
+    return { ...base, engine: { ...base.engine, vectorDrawn: true } };
+  }
+
+  it('decodes a body carrying bits 5/6 as the drawn stroke and re-encodes to the original bytes', () => {
+    const plainBytes = encodeScriptTimelineBinary([minimalStroke()]);
+    const drawnBytes = encodeScriptTimelineBinary([drawnMinimalStroke()]);
+
+    // The drawn bit is the whole marker: same size, one differing byte.
+    expect(drawnBytes.byteLength).toBe(plainBytes.byteLength);
+    const differingOffsets: number[] = [];
+    for (let offset = 0; offset < drawnBytes.byteLength; offset += 1) {
+      if (plainBytes[offset] !== drawnBytes[offset]) differingOffsets.push(offset);
+    }
+    expect(differingOffsets).toEqual([VECTOR_FLAG_OFFSET]);
+    expect(plainBytes[VECTOR_FLAG_OFFSET]).toBe(0x00);
+    expect(drawnBytes[VECTOR_FLAG_OFFSET]).toBe(0x10);
+
+    // The window's real shape: 0x10 | 0x20 | 0x40.
+    const legacy = drawnBytes.slice();
+    legacy[VECTOR_FLAG_OFFSET] = 0x70;
+
+    const decoded = decodeScriptTimelineBinary(legacy);
+    expect(decoded).toHaveLength(1);
+    expect(decoded).toEqual([drawnMinimalStroke()]);
+    const engine = asStroke(decoded[0]!).engine;
+    expect(engine.vectorDrawn).toBe(true);
+    expect('reliefOnly' in engine).toBe(false);
+    expect('relief' in engine).toBe(false);
+
+    // Convergent repair: the encoder writes no bit 5/6, so the next save
+    // reproduces the plain drawn bytes and the file is cleaned.
+    expect(encodeScriptTimelineBinary(decoded)).toEqual(drawnBytes);
+  });
+
+  it('still fails closed on bit 7', () => {
+    const reserved = encodeScriptTimelineBinary([drawnMinimalStroke()]);
+    reserved[VECTOR_FLAG_OFFSET] = 0x80;
+    expect(expectedCode(() => decodeScriptTimelineBinary(reserved))).toBe('invalid-value');
+  });
+
+  it('never writes bits 5/6: the maximal marker stroke encodes 0x1d', () => {
+    const base = minimalStroke();
+    const maximal: StudioStroke<AquarelleStrokePayload> = {
+      ...base,
+      engine: {
+        ...base.engine,
+        anchors: [
+          { x: 0.25, y: 0.5, kind: 'auto', color: '#ff0000' },
+          { x: 0.75, y: 0.125, kind: 'auto' },
+        ],
+        curveMode: 'spline',
+        vectorDrawn: true,
+      },
+    };
+    const bytes = encodeScriptTimelineBinary([maximal]);
+    // Only the flags byte is asserted — payload bytes elsewhere in the buffer
+    // legitimately carry 0x20/0x40 patterns.
+    const flags = bytes[VECTOR_FLAG_OFFSET]!;
+    expect(flags).toBe(0x1d);
+    expect(flags & 0x60).toBe(0);
   });
 });
