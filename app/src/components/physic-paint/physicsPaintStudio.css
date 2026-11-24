@@ -4706,24 +4706,27 @@ button.destructive {
   background: transparent;
 }
 
-/* 261124-gfy: the clipboard sub-section — ONE recessed tonal group holding
-   Duplicate / Copy / Paste / Cut plus the Raster|Script kind toggle. The
-   inset shadow (never a 1px outline) matches the recessed segmented rail. */
+/* 261124-gfy: the clipboard sub-section — ONE recessed tonal well holding
+   Duplicate / Copy / Paste / Cut plus the Raster|Script kind toggle, so the
+   toggle visibly governs the four actions inside it. The inset shadow (never
+   a 1px outline) matches the recessed segmented rail. */
 .physics-paint-roto-key-clipboard-group {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
   height: 26px;
-  padding: 0 3px;
+  padding: 2px 3px;
   border-radius: 8px;
   background: #161d25;
   box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35);
 }
 
-/* The kind toggle: two segments separated from Cut by a hairline divider. */
+/* The kind toggle: two segments separated from Cut by a hairline divider that
+   spans the well's inner height. */
 .physics-paint-roto-key-clipboard-mode {
   display: inline-flex;
   align-items: center;
+  align-self: stretch;
   gap: 2px;
   margin-left: 2px;
   padding-left: 4px;
@@ -4934,6 +4937,35 @@ button.destructive {
   color: #7d8791;
   cursor: default;
   opacity: 1;
+}
+
+/* 261124-gfy: inside the clipboard well the four actions are segments of it,
+   not free-standing raised pills — the well owns the surface, the button owns
+   only its hover and press state. Declared after the base icon-button rules so
+   the cascade reads base-then-scope. */
+.physics-paint-roto-key-clipboard-group .physics-paint-roto-key-icon-button {
+  height: 22px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #e6ecf1;
+}
+
+.physics-paint-roto-key-clipboard-group .physics-paint-roto-key-icon-button:hover:not([aria-disabled="true"]),
+.physics-paint-roto-key-clipboard-group .physics-paint-roto-key-icon-button:focus-visible:not([aria-disabled="true"]) {
+  background: rgba(255, 255, 255, 0.07);
+  color: #f2f5f7;
+}
+
+.physics-paint-roto-key-clipboard-group .physics-paint-roto-key-icon-button:active:not([aria-disabled="true"]),
+.physics-paint-roto-key-clipboard-group .physics-paint-roto-key-icon-button[data-pressed="true"] {
+  background: #2f67e8;
+  color: #ffffff;
+}
+
+.physics-paint-roto-key-clipboard-group .physics-paint-roto-key-icon-button[aria-disabled="true"] {
+  background: transparent;
+  color: #6d7883;
 }
 
 /* 261108-d5o: the shared four-glyph easing control's sheet row. One compact

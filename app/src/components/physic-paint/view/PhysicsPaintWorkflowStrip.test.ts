@@ -3834,16 +3834,35 @@ describe('261124-gfy clipboard group and Raster|Script toggle', () => {
     const group = getCssRuleBlock(styles, '.physics-paint-roto-key-clipboard-group {');
     expect(group).toContain('display: inline-flex');
     expect(group).toContain('align-items: center');
-    expect(group).toContain('gap: 4px');
+    expect(group).toContain('gap: 2px');
     expect(group).toContain('height: 26px');
-    expect(group).toContain('padding: 0 3px');
+    expect(group).toContain('padding: 2px 3px');
     expect(group).toContain('border-radius: 8px');
     expect(group).toContain('background: #161d25');
     expect(group).toContain('box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35)');
     expect(group).not.toMatch(/border:\s*1px/);
 
+    // The toggle groups the four actions: inside the well they drop the raised
+    // pill chrome and read as segments of the recessed surface.
+    const groupedButton = getCssRuleBlock(
+      styles,
+      '.physics-paint-roto-key-clipboard-group .physics-paint-roto-key-icon-button {',
+    );
+    expect(groupedButton).toContain('height: 22px');
+    expect(groupedButton).toContain('border: 0');
+    expect(groupedButton).toContain('background: transparent');
+    expect(groupedButton).toContain('border-radius: 5px');
+
+    const groupedDisabled = getCssRuleBlock(
+      styles,
+      '.physics-paint-roto-key-clipboard-group .physics-paint-roto-key-icon-button[aria-disabled="true"] {',
+    );
+    expect(groupedDisabled).toContain('background: transparent');
+    expect(groupedDisabled).toContain('color: #6d7883');
+
     const mode = getCssRuleBlock(styles, '.physics-paint-roto-key-clipboard-mode {');
     expect(mode).toContain('display: inline-flex');
+    expect(mode).toContain('align-self: stretch');
     expect(mode).toContain('gap: 2px');
     expect(mode).toContain('margin-left: 2px');
     expect(mode).toContain('padding-left: 4px');
