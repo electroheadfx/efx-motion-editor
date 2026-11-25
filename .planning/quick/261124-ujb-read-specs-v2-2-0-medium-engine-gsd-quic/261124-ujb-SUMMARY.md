@@ -400,23 +400,76 @@ pigment laid in its place — a replacement, not a hole.
   probe gates PASS on fresh captures (two profile identities + three
   amount-100 sweeps); app `tsc --noEmit` clean; app vitest as recorded below.
 
+## UAT feedback (2026-11-25 #5) — "always full transparence"
+
+The artist's sixth look, a pink stroke at amount 100 over a blue under-stroke:
+"always full transparence, test with falloff 100 and 0" plus the hypothesis
+"the pickup maybe take the color from transparency and grab white". Pixel
+sampling refuted both the pickup and the paper: the pale bands are PALE
+PIGMENT (L ≈ 205, the paper is 240) — the pigment itself was washed.
+
+- **The pickup is innocent.** With no covered tap under a bristle the gather's
+  canvas sample is a no-op (`canvasA = paintA` when `wSum <= 1e-4`), so a
+  blank sheet (a committed base lives UNDER the sheet, not in it) lifts
+  nothing. The pickup only ever mixes a covered, different paint — it cannot
+  grab white.
+- **Root cause (v5's uniform share).** `g.film = 1 − amount·0.55` scaled the
+  delivered ABSORBANCE of the whole mark by 0.45. Absorbance scaling punishes
+  pale pigments hardest (a light pink at 45 % absorbance keeps ~25 % of its
+  darkness), so the whole stroke read washed; and because the film carried no
+  lateral coordinate, falloff 0 and 100 could only differ inside the narrow
+  edge band (the dissolve started at 0.55 of the silhouette). The spec had
+  already named uniform opacity a NON-GOAL ("the film stays full in the core");
+  v5 smuggled it in as the answer to UAT #2's "core 65 % film".
+- **Fix (v6 law) — the dissolve alone:** delete `BRISTLE_EDGE_CORE`,
+  `bristleEdgeFilm`, `uEdgeCore`, `g.film` and every multiply it fed (the
+  deposit's absorbance, the scatter S, the cover target). The threshold
+  dissolve is the entire mechanism. `BRISTLE_EDGE_START` moves 0.55 → **0.30**
+  so the band spans silhouette units 0.30→1.0 and the falloff visibly
+  redistributes it (broad reaches the middle, rim hugs the silhouette). The
+  core keeps its full paint; opened cells stay inert; survivors print the
+  mark's own full-depth pigment.
+- **Measured (1080 sheet, amount 100, silhouette 15 px, mid station 10 px =
+  t 0.5):** core cover ratio 1.000 and core ink ratio 1.000 (the paint is
+  kept, versus v5's 0.495); rim cover share 0.000 (fully dissolved); the
+  PRINTED fraction at the mid reads **0.161 / 0.709 / 0.898** for falloff
+  0 / 50 / 100 — the falloff is now the control the artist expected. The
+  paper tooth's CDF still sets the amplitude (the law's naive 0.293 / 0.5 /
+  0.75); the ordering and the spread are the law's.
+- **App plumbing verified, not assumed:** both knobs ride the same per-stroke
+  record bag (`AQUARELLE_GLOBAL_KEYS`) into `toEngineParams` (÷100 clamp), so
+  the falloff reached the engine all along — the invisible falloff was the
+  narrow band, not a wiring bug.
+- **Gate retune:** the cover core bar expects 1.0 (was `film`), the rim still
+  `1 − amount`; the ink core bar expects 1.0 and now REJECTS a uniform share
+  (its message names "always full transparence"); the print bars are
+  unchanged in shape, re-anchored to the new midpoint; the executed fixture
+  encodes the dissolve-only law, and two synthesised v5 captures (cover wash /
+  ink wash) must fail it — pinned.
+- **Gates after the change:** package vitest 1060 passed / 8 skipped; app
+  `tsc --noEmit` clean; app vitest as recorded below; five probe gates PASS
+  on fresh captures (two amount-0 profile identities + three amount-100
+  sweeps). The amount-0 identity stays profile-exact (≤ 2e-4; measured 0) with
+  the ULP digest drift documented above.
+
 ## Next Phase Readiness
 
-- Gates green: package vitest 1062 passed / 8 skipped; app vitest and
+- Gates green: package vitest 1060 passed / 8 skipped; app vitest and
   `tsc --noEmit` green (see the latest session log); five probe gates PASS.
 - Mode-1 identity at amount 0: the profile matches the pre-change baselines
-  row-for-row; the four digests drift by GPU ULP only (see above).
-- The artist can re-run rows 1-9 now: at amount 100 the body is a uniform
-  ~65 % wash with the paper grain through it, and the edge DISSOLVES into
-  full-depth specks over whatever is beneath — the under-stroke shows in the
-  gaps, never a white veil. The falloff moves where the dissolve starts.
-  Two caveats to judge live: (a) the dissolve band is narrow relative to a
-  big brush (the paper tooth's CDF is steep) — if the artist wants it wider,
-  `BRISTLE_EDGE_START` (0.55 → lower) or `BRISTLE_EDGE_SHIFT` (1.1) are the
-  knobs, a product call; (b) the body still REPLACES same-sheet paint at full
-  print (the one law, the spec's documented limitation, UAT row 6) — only the
-  fringe preserves it.
-- Last automated state: the v5 law commit.
+  row-for-row; the four digests drift by GPU ULP only (see UAT #4 above).
+- The artist can re-run rows 1-9 now: the mark keeps its paint at the core
+  (cover and ink ratios 1.000), the edge dissolves into full-depth specks
+  over whatever is beneath, and the falloff visibly moves the dissolve across
+  the mark (mid printed fraction 0.16 / 0.71 / 0.90 for falloff 0 / 50 / 100
+  at amount 100). Over a same-sheet under-stroke the opened gaps show the
+  under-stroke, never a pale film.
+- Remaining live judgment: if the amount-100 broad setting still feels too
+  gentle or too strong on a big brush, `BRISTLE_EDGE_START` (0.30) and
+  `BRISTLE_EDGE_SHIFT` (1.1) are the two knobs — a product call. The body
+  still REPLACES same-sheet paint where it prints (the one law, the spec's
+  documented limitation, UAT row 6); only the opened fringe preserves it.
+- Last automated state: the v6 law commit.
 
 ---
 
