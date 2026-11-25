@@ -11,7 +11,7 @@ requires:
 provides:
   - Spec 10's two bristle-only controls — Edge transparency (amount) and Edge falloff (shape bias) — end to end
   - the `edge-transparency` probe scenario with two pre-change identity baselines and three `--differs-from` sweeps
-  - a film-domain silhouette calibration in the probe comparator
+  - a geometric (reference coverage-peak) silhouette calibration and a printed-fraction gate in the probe comparator
 affects: [medium-engine UAT rows 1-9, Studio Paint panel, probe medium-engine gates]
 
 # Actuals (#2632) — same estimateTokens scale (chars/4 over the realized diff).
@@ -26,8 +26,8 @@ actuals:
 tech-stack:
   added: []
   patterns:
-    - "ONE lateral film in silhouette units inside gatherBristle, in the plain arithmetic form so amount 0 is bit-inert"
-    - "Film-domain station calibration in the probe comparator at amount > 0; reference-rim calibration at amount 0"
+    - "One UNIFORM pigment share (no lateral coordinate) plus a LATERAL paper-threshold dissolve in gatherBristle — the engine's shipped edge idiom; the plain arithmetic form keeps amount 0 exactly inert"
+    - "Geometric station calibration (the reference's coverage peak) in the probe comparator; the printed fraction is the sparse edge's witness"
 
 key-files:
   created:
@@ -334,11 +334,89 @@ paint: "No transparence, edge white fringe".
   `tsc --noEmit` clean; app vitest 9875 passed (the known
   `physicPaintBridge` load flake, green in isolation) / 4 skipped.
 
+## UAT feedback (2026-11-25 #4) — "I have always this opaque white fringe"
+
+The artist's fifth look, one crop at amount 100 (Feather 100): a pale, smooth,
+veiled band hugging the stroke boundaries — "opaque white fringe". Pixel
+sampling of the crop showed the band is NOT bare paper (L ≈ 203 against the
+paper's 240): the under-stroke's ink was partially ERASED and a faint new
+pigment laid in its place — a replacement, not a hole.
+
+- **Root cause (v4, the lateral depth film).** The one lerp's fixed point is
+  its TARGET. A lateral depth film sets every fringe cell's target to
+  `cA · film` — a pigment paler than the under-stroke — so each dab replaces
+  the paint beneath it with a thinner film. The Studio makes this reachable:
+  a sheet ACCUMULATES the visit's strokes ("the base must stay the frame cache
+  as of SHEET START" — `PhysicsPaintStudio.handleAquarelleCaptureFrame`), so
+  in-visit strokes meet each other through the one lerp, and the v4 rim
+  quenches them cell by cell. Scaling the weight too only slows the quench
+  (the target is still below the underlayer); scaling only the weight returns
+  the v2 cut-off. No depth film can hold a lateral fade without erasing what
+  lies beneath — the lerp's target is the whole story.
+- **Fix (v5 law) — the edge dissolves instead of thinning:**
+  1. the amount's UNIFORM pigment share `1 - amount·BRISTLE_EDGE_CORE` (0.45
+     at 100 — the artist's "core 65% film"), scaling the deposit weight, the
+     carried absorbance, the scatter S and the cover target — with NO lateral
+     coordinate, so no fringe cell ever carries a paler target;
+  2. the LATERAL DISSOLVE `amount · BRISTLE_EDGE_SHIFT · t^e` (1.1, the same
+     paper-tooth threshold the Feather law and the takeoff raise), so the
+     fringe opens into full-depth specks of the mark's own pigment and every
+     opened cell is INERT — the deposit discards `a <= 1e-3`, leaving the
+     under-stroke exactly as it was (the spec's own rim law: no deposit, no
+     erase). The falloff (0.5 / 1 / 2) shapes how early the dissolve begins.
+- **Why this is the engine's idiom:** the 2026-11-20/22 rulings already
+  established that this engine's edge is a threshold rag, never a depth fade
+  ("a texel is either inked — the dry-brush speck — or open paper"); the
+  depth form had failed UAT in every variant (#1 border, #2 cut-off, #3
+  white fringe, #4 veil).
+- **Measured (1080 sheet, amount 100, silhouette 15 px, linear falloff):**
+  core ink/cover ratios 0.495 (the ~65 % film); the printed fraction 0.894 at
+  the core, then 0.885 / 0.670 / 0.278 / 0.000 at 11 / 12 / 13 / 14 px; broad
+  dissolves one pixel earlier, rim one pixel later — the falloff's ordering
+  holds. The opened cells keep the underlayer (no erasure); the printed cells
+  carry the body's own pigment (no pale film).
+- **Gate retune:** the station anchor is now the REFERENCE's coverage peak
+  (the geometric silhouette — the dissolve moves the visible edge, so a
+  film-floor calibration would put the same station at a different u for
+  every falloff); the `print` metric (the coverage raster's printed fraction,
+  half-peak criterion) is the sparse edge's witness — core ≥ 0.85, mid per
+  the falloff (±0.25: the paper tooth's height CDF is steeper than the
+  shift's ramp, and its shape belongs to the paper, not the law), rim 0 at
+  amount 100; the cover keeps its core and rim bars (the mid is the same
+  law's product as the print bar and was redundant); the core ink bar stays
+  the law's teeth. A synthesised depth-film capture (every texel printed)
+  must fail the print bars — pinned.
+- **Amount-0 identity — a codegen caveat.** The threshold term adds new
+  dataflow to the gather, so the GPU's register allocation reorders the
+  bristle summation by a few ULPs: the four export digests drift while the
+  rendered scene is identical. Verified by stashing the change: the
+  pre-change engine still reproduces all four baseline digests exactly in
+  this environment, so the drift is the new instruction schedule, not a stale
+  baseline. The comparator now proves the identity on the PROFILE (every
+  cover/ink row vs the pre-change baseline, tolerance 2e-4 — measured 0
+  difference to 4 dp) and reports the digests as drift evidence, for the edge
+  gates at amount 0 only.
+- **Gates after the change:** package vitest 1062 passed / 8 skipped; five
+  probe gates PASS on fresh captures (two profile identities + three
+  amount-100 sweeps); app `tsc --noEmit` clean; app vitest as recorded below.
+
 ## Next Phase Readiness
 
-- Gates green: package vitest 1058 passed / 8 skipped; app vitest 9875 passed / 4 skipped / 96 todo; `tsc --noEmit` clean; five probe gates PASS.
-- Mode-1 identity at amount 0 passes byte-for-byte against baselines captured from `d509a886d` (re-verified after the v4 law).
-- The artist can re-run rows 1-9 now: at amount 100 the body should read as a lighter wash (~69 % of its original density, the darkest channel 41 % → 60 % transmission) with the paper grain showing through, the edge should dissolve gradually with the falloff moving where the ramp sits, and no white fringe should appear — including where strokes overlap. If the body still reads too solid, `BRISTLE_EDGE_CORE` (0.55) is the one constant: 0.70 would put the body near half its original density. Last automated state: the v4 law commit.
+- Gates green: package vitest 1062 passed / 8 skipped; app vitest and
+  `tsc --noEmit` green (see the latest session log); five probe gates PASS.
+- Mode-1 identity at amount 0: the profile matches the pre-change baselines
+  row-for-row; the four digests drift by GPU ULP only (see above).
+- The artist can re-run rows 1-9 now: at amount 100 the body is a uniform
+  ~65 % wash with the paper grain through it, and the edge DISSOLVES into
+  full-depth specks over whatever is beneath — the under-stroke shows in the
+  gaps, never a white veil. The falloff moves where the dissolve starts.
+  Two caveats to judge live: (a) the dissolve band is narrow relative to a
+  big brush (the paper tooth's CDF is steep) — if the artist wants it wider,
+  `BRISTLE_EDGE_START` (0.55 → lower) or `BRISTLE_EDGE_SHIFT` (1.1) are the
+  knobs, a product call; (b) the body still REPLACES same-sheet paint at full
+  print (the one law, the spec's documented limitation, UAT row 6) — only the
+  fringe preserves it.
+- Last automated state: the v5 law commit.
 
 ---
 
