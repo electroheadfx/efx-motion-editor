@@ -11,6 +11,7 @@
 import { describe, expect, it } from 'vitest'
 import { displayFS, liftFS, stampFS } from './shaders'
 import * as shaderModule from './shaders'
+import { STROKE_LAYER_BANDS } from './spectral'
 
 const ROTATION_FORMULA = 'vec2 tq = vec2(q.x * cos(a) - q.y * sin(a), q.x * sin(a) + q.y * cos(a));'
 
@@ -98,5 +99,100 @@ describe('coverage composite shaders (SPIKE 001)', () => {
     pin('vec3 tBase = fromSRGB(texture(uUnderlay, uv).rgb);')
     pin('float cov = clamp(texture(uCover, uv).x, 0.0, 1.0);')
     pin('vec3 all = min(toSRGB(tNew * pow(tBase, vec3(1.0 - cov))), vec3(1.0));')
+  })
+})
+
+// ============================================================
+//  261125-kvl (SPIKE 006) — the per-stroke stroke layer.
+//
+//  The layer's law is frozen: the lateral alpha `A = 1 - amount·t^e`, the
+//  composite's `aEff = A·cover_L`, the 8-band rank-one LM encoder and the
+//  storage write-back `fit/k - fixed`. The shipped compositor must not have
+//  learned anything about the layer (the amount-0 path is the shipped path),
+//  and the merge's compiled band list must stay exactly the spike's eight
+//  indices — a uniform mask would shrink nothing.
+// ============================================================
+describe('stroke layer shaders (261125-kvl, SPIKE 006)', () => {
+  const exports = shaderModule as Record<string, unknown>
+  const merge = exports.strokeLayerMergeFS as string
+  const cover = exports.bristleCoverLayerFS as string
+  const clear = exports.strokeLayerClearFS as string
+  const coverUnion = exports.strokeLayerCoverFS as string
+  const reliefUnion = exports.strokeLayerReliefFS as string
+
+  it('compiles the merge against exactly the eight frozen display bands', () => {
+    expect(STROKE_LAYER_BANDS).toEqual([1, 3, 5, 7, 9, 10, 11, 13])
+    expect(typeof merge, 'strokeLayerMergeFS must be a string').toBe('string')
+    const pin = (needle: string) =>
+      expect(merge.includes(needle), `missing shader text: ${needle}`).toBe(true)
+    pin('const int BANDS = 8;')
+    // Eight basis entries in each compiled array — a 16-entry block is the
+    // uniform-mask design the spike rejected.
+    const b4 = merge.match(/const vec4 B4\[BANDS\] = vec4\[BANDS\]\(([^;]*)\);/)?.[1] ?? ''
+    const b3 = merge.match(/const vec3 B3\[BANDS\] = vec3\[BANDS\]\(([^;]*)\);/)?.[1] ?? ''
+    expect(b4.split('vec4(').length - 1, 'eight B4 entries').toBe(8)
+    expect(b3.split('vec3(').length - 1, 'eight B3 entries').toBe(8)
+  })
+
+  it('carries the frozen lateral law in the merge and both union passes', () => {
+    for (const [name, src] of [
+      ['merge', merge],
+      ['cover', coverUnion],
+      ['relief', reliefUnion],
+    ] as const) {
+      const pin = (needle: string) =>
+        expect(src!.includes(needle), `${name} is missing shader text: ${needle}`).toBe(true)
+      pin('float layerAEff(vec2 uv){')
+      pin('float t = clamp((u - uEdgeStart) / max(1.0 - uEdgeStart, 1e-4), 0.0, 1.0);')
+      pin('float e = exp2(2.0 * uEdgeFalloff - 1.0);')
+      pin('return clamp((1.0 - uEdgeFade * pow(t, e)) * coverL, 0.0, 1.0);')
+    }
+    expect(coverUnion.includes('1.0 - (1.0 - texture(uCoverS, uv).x) * (1.0 - layerAEff(uv))')).toBe(true)
+    expect(reliefUnion.includes('texture(uReliefS, uv).x + layerAEff(uv) * texture(uReliefL, uv).x')).toBe(true)
+  })
+
+  it('keeps the encoder frozen: rank-one Jacobian, seed mix, bounded LM, exact endpoints, /k write-back', () => {
+    const pin = (needle: string) =>
+      expect(merge.includes(needle), `missing shader text: ${needle}`).toBe(true)
+    pin('float ha = max(1e-5, abs(x[0]) * 1e-4);')
+    pin('vec4 seedA = mix(sa, la, aEff);')
+    pin('if (it >= uMaxIter) break;')
+    pin('if (maxResid(ca, cb, cs, tgt) < 1e-5) break;')
+    pin('if (aEff >= 1.0 - 1e-4){')
+    pin('if (aEff <= 1e-4){')
+    pin('oA = vec4(x[0], x[1], x[2], x[3]) / k - fixedA;')
+    pin('oB = vec4(x[4], x[5], x[6], max(x[7], 0.0)) / k - fixedB;')
+    pin('float k = max(1.0 + uGranulation * (0.5 - texture(uPaper, uv).g) * 2.2, 1e-3);')
+  })
+
+  it('writes the layer film as two attachments: the cover lerp and the MIN lateral field', () => {
+    const pin = (needle: string) =>
+      expect(cover.includes(needle), `missing shader text: ${needle}`).toBe(true)
+    pin('layout(location=0) out vec4 o0;')
+    pin('layout(location=1) out vec4 o1;')
+    pin('o0 = vec4(target, 0.0, 0.0, a);')
+    pin('o1 = vec4(clamp(abs(q.x) / max(uFeatherEdge, 1e-4), 0.0, 1.0));')
+    // The gather is read ONCE and the shipped guard is kept verbatim; the
+    // fragment needs the record itself for `g.alpha` and the smear, so it
+    // names it in a local (the structure is never widened).
+    expect(cover.includes('Gathered g = gatherBristle(vUv);')).toBe(true)
+    expect(cover.includes('float a = clamp(g.coverage, 0.0, 1.0);')).toBe(true)
+    expect(cover.includes('if (a <= 1e-3) discard;')).toBe(true)
+    // The clear pass starts the lateral field at 1 (empty), never 0 (core).
+    expect(clear.includes('o0 = vec4(0.0);')).toBe(true)
+    expect(clear.includes('o1 = vec4(1.0);')).toBe(true)
+  })
+
+  it('leaves the shipped displayFS and gather programs free of the layer', () => {
+    for (const needle of [
+      'uLayerA', 'uLayerB', 'uLayer', 'uCoverL', 'uLateral', 'uEdgeFade', 'uEdgeStart', 'uEdgeFalloff',
+    ]) {
+      expect(displayFS.includes(needle), `displayFS must not carry ${needle}`).toBe(false)
+    }
+    const deposit = exports.bristleDepositFS as string
+    const shippedCover = exports.bristleCoverFS as string
+    expect(deposit.includes('uEdgeFade')).toBe(false)
+    expect(shippedCover.includes('uEdgeFade')).toBe(false)
+    expect(shippedCover.includes('layout(location=1)'), 'struct Gathered stays unwidened').toBe(false)
   })
 })

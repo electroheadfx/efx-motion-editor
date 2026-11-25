@@ -453,6 +453,20 @@ export function clampDocSize(w: number, h: number, maxSide = MAX_DOC_LONG): [num
 const union = (a: Rect | null, b: Rect): Rect =>
   a ? { x0: Math.min(a.x0, b.x0), y0: Math.min(a.y0, b.y0), x1: Math.max(a.x1, b.x1), y1: Math.max(a.y1, b.y1) } : { ...b };
 
+/**
+ * Per-draw-buffer blend for the stroke layer's two-attachment film write.
+ * WebGL2 does NOT expose ES 3.0's `blendFunci` / `blendEquationi` on the
+ * context (measured: this Chrome's WebGL2RenderingContext has neither); they
+ * live on the OES_draw_buffers_indexed extension under the `…OES` spellings,
+ * and a few early WebGL2 builds had them as core. Both shapes are normalised
+ * through this interface; when neither exists the caller runs the same law as
+ * two single-attachment draws instead (see `layerBlend`).
+ */
+interface PerBufferBlend {
+  blend(buf: number, src: number, dst: number): void;
+  equation(buf: number, mode: number): void;
+}
+
 export class WatercolorEngine {
   params: Params = { ...DEFAULT_PARAMS };
   tool: Tool = 'brush';
@@ -625,6 +639,35 @@ export class WatercolorEngine {
    */
   private bristleContent = false;
   private bristlePrev: { x: number; y: number; along: number } | null = null;
+  /**
+   * 261125-kvl (SPIKE 006, Spec 10) — the per-stroke stroke layer.
+   *
+   * Edge transparency is a LAYER, not a dab law: while the flag is on and the
+   * tool is the bristle Brush, every dab also lands on a stroke-sized film
+   * (`layerInk` halves + `layerFilm` [cover_L, MIN lateral] + `layerRelief`),
+   * and the stroke end merges that film into the sheet with the frozen 8-band
+   * encoder. Amount 0 never allocates a target and never draws a merge, so
+   * the shipped path stays byte-identical.
+   *
+   * The targets persist for the engine's life (4K ≈ 200 MB, measured in the
+   * quick's Task 5) so a stroke never pays an allocation.
+   */
+  private layerInk: DoubleTarget | null = null;
+  private layerFilm: Target | null = null;
+  private layerRelief: Target | null = null;
+  private mergeRelief: Target | null = null;
+  /** A layer stroke is open: dabs route to the layer, the sheet is untouched. */
+  private layerOpen = false;
+  /** The stroke the open layer belongs to (identity-checked at merge). */
+  private layerStroke: Stroke | null = null;
+  /** Document rect the open layer has dabs in — the merge and clear bounds. */
+  private layerRect: Rect | null = null;
+  private layerAllocated = false;
+  /** Merges drawn since construction (probe counter; one per layer stroke). */
+  private mergeDraws = 0;
+  /** Cached per-draw-buffer blend resolver (see `layerBlend`). */
+  private layerBlendChecked = false;
+  private layerBlendExt: PerBufferBlend | null = null;
   private paper!: Target;
   private wetMask!: Target;                    // coarse "is there water here" map, read back to bound the sim
   private maskPixels = new Uint8Array(0);
@@ -748,6 +791,14 @@ export class WatercolorEngine {
     // pinned literal (twenty-three stays). The delivery law's fourth pass,
     // drawing only when Pickup > 0.
     this.programs.bristleCanvas = this.g.program(S.bristleCanvasFS);
+    // 261125-kvl (SPIKE 006): the stroke layer's programs, same rule — outside
+    // the pinned literal (twenty-three stays). One clear, one two-attachment
+    // dab write, and the three merge passes.
+    this.programs.strokeLayerClear = this.g.program(S.strokeLayerClearFS);
+    this.programs.bristleCoverLayer = this.g.program(S.bristleCoverLayerFS);
+    this.programs.strokeLayerMerge = this.g.program(S.strokeLayerMergeFS);
+    this.programs.strokeLayerCover = this.g.program(S.strokeLayerCoverFS);
+    this.programs.strokeLayerRelief = this.g.program(S.strokeLayerReliefFS);
     this.fitCanvas();
     this.createDocument(size ?? this.screenSize);
     this.attachInput();
@@ -893,11 +944,238 @@ export class WatercolorEngine {
     // (resize, applyWhole) and wipe reach, and costs nothing per edition.
     // 261119-pod: the smear snapshot joins document-sized disposal right
     // after the shape (it is rebuilt per dab, so a wipe of zeros is harmless).
+    // 261125-kvl: the lazy stroke-layer targets join here (empty until the
+    // first Edge stroke), BEFORE the last-touch/cover tail the sheet-wipe
+    // order pins (coverage must stay last).
     return [this.velocity.read, this.velocity.write, this.pressure.read, this.pressure.write, this.divergence, this.curl,
       this.ink.read, this.ink.write, this.fixed, this.wet.read, this.wet.write, this.paper, this.wetMask,
+      ...this.layerTargets(),
       this.bristles.read, this.bristles.write, this.bristleShape, this.smearCanvas, this.relief,
       this.lastTouch.read, this.lastTouch.write,
       this.cover.read, this.cover.write];
+  }
+
+  /** The lazy stroke-layer targets, or nothing while unallocated. */
+  private layerTargets(): Target[] {
+    if (this.layerInk === null || this.layerFilm === null || this.layerRelief === null || this.mergeRelief === null) return [];
+    return [this.layerInk.read, this.layerInk.write, this.layerFilm, this.layerRelief, this.mergeRelief];
+  }
+
+  /* ------------------------------------------- 261125-kvl: the stroke layer */
+
+  /**
+   * The per-stroke gate — the SAME predicate at stroke start, every dab and
+   * the merge: Edge amount on, the bristle Brush, a bristle response. Never
+   * `bristleContent` (sheet-sticky, and set only on the stroke's FIRST dab —
+   * reached after both stroke-creation sites, so a fresh engine's first Edge
+   * stroke would open no layer) and never a value captured at open: the law
+   * reads `this.params` live, so a mid-stroke amount change moves the display
+   * and the merge together. Only the open/closed decision is fixed at start.
+   */
+  private layerStrokeActive(s: Stroke): boolean {
+    return this.params.edgeFade > 0 && s.tool === 'brush' && isBristleResponse(this.brush);
+  }
+
+  /** Allocate the lazy layer targets (once per engine life, ~24 B/px). */
+  private ensureLayer() {
+    if (this.layerAllocated && this.layerInk !== null && this.layerFilm !== null
+      && this.layerRelief !== null && this.mergeRelief !== null) return;
+    const { gl, g } = this;
+    this.layerInk = g.double(this.dw, this.dh, [HALF_FLOAT_RGBA, HALF_FLOAT_RGBA], gl.LINEAR);
+    // Attachment 0 is the layer's cover (`cover_L`); attachment 1 is the MIN
+    // lateral coordinate `clamp(|across| / uFeatherEdge, 0, 1)`. NEAREST: the
+    // merge reads one texel per texel.
+    this.layerFilm = g.target(this.dw, this.dh, [HALF_FLOAT_R, HALF_FLOAT_R], gl.NEAREST);
+    this.layerRelief = g.target(this.dw, this.dh, [HALF_FLOAT_R], gl.LINEAR);
+    this.mergeRelief = g.target(this.dw, this.dh, [HALF_FLOAT_R], gl.LINEAR);
+    this.layerAllocated = true;
+  }
+
+  /**
+   * Open the stroke layer for `s` (stroke start). Clears the layer: ink and
+   * relief to zero, and the film to (cover 0, lateral 1) — `clearTarget`
+   * cannot be reused on the film, because a lateral field of zero would read
+   * every texel as "core" before the first dab covers it.
+   */
+  private openLayer(s: Stroke) {
+    if (!this.layerStrokeActive(s)) return;
+    this.ensureLayer();
+    const { gl, g } = this;
+    g.clearTarget(this.layerInk!.read);
+    g.clearTarget(this.layerInk!.write);
+    g.clearTarget(this.layerRelief!);
+    const clear = this.programs.strokeLayerClear;
+    clear.bind();
+    gl.disable(gl.BLEND);
+    g.draw(this.layerFilm, { x0: 0, y0: 0, x1: this.dw, y1: this.dh });
+    this.layerOpen = true;
+    this.layerStroke = s;
+    this.layerRect = null;
+  }
+
+  /**
+   * Close the layer without committing. Idempotent and safe on an already
+   * nulled layer — the recreate sites null the fields first and free the
+   * targets, so a later discard in the same call path is a no-op and never
+   * clears a freed target. Clears only while a stroke's layer is open.
+   */
+  private discardLayer() {
+    if (this.layerOpen) {
+      const { g } = this;
+      g.clearTarget(this.layerInk!.read);
+      g.clearTarget(this.layerInk!.write);
+      g.clearTarget(this.layerFilm!);
+      g.clearTarget(this.layerRelief!);
+    }
+    this.layerOpen = false;
+    this.layerStroke = null;
+    this.layerRect = null;
+  }
+
+  /** Drop every reference to the layer targets (their disposal is the caller's). */
+  private forgetLayer() {
+    this.layerInk = null;
+    this.layerFilm = null;
+    this.layerRelief = null;
+    this.mergeRelief = null;
+    this.layerOpen = false;
+    this.layerStroke = null;
+    this.layerRect = null;
+    this.layerAllocated = false;
+  }
+
+  /**
+   * Commit the open layer for `s` at stroke end: ONE merge over the stroke's
+   * rect with the frozen encoder, then clear and close. Runs inside the
+   * stroke's undo step and after the end-cap dab, BEFORE `this.stroke = null`.
+   */
+  private commitLayer(s: Stroke) {
+    if (!this.layerOpen) return;
+    if (this.layerStroke !== s) {
+      this.discardLayer();
+      return;
+    }
+    const rect = this.layerRect;
+    if (rect) this.mergeStrokeLayer(rect);
+    this.discardLayer();
+  }
+
+  /** The three lateral-law uniforms every layer shader reads. */
+  private bindLayerAlpha(p: Program) {
+    const { gl } = this;
+    gl.uniform1f(p.u.uEdgeFade!, clamp(this.params.edgeFade, 0, 1));
+    gl.uniform1f(p.u.uEdgeStart!, BRISTLE_EDGE_START);
+    gl.uniform1f(p.u.uEdgeFalloff!, clamp(this.params.edgeFalloff, 0, 1));
+  }
+
+  /**
+   * Resolve per-draw-buffer blend for the layer film's two attachments, once
+   * per engine life. WebGL2 does NOT put ES 3.0's `blendFunci` on the context
+   * (measured in this Chrome: absent — the methods live on the
+   * OES_draw_buffers_indexed extension as `blendFunciOES`), and a few early
+   * WebGL2 builds had the core spellings, so both are accepted. `null` means
+   * neither exists and `bristleLayerInk` runs the same law as two
+   * single-attachment draws (MIN is a core blend equation).
+   */
+  private layerBlend(): PerBufferBlend | null {
+    if (this.layerBlendChecked) return this.layerBlendExt;
+    this.layerBlendChecked = true;
+    const gl = this.gl as unknown as {
+      blendFunci?: (buf: number, src: number, dst: number) => void;
+      blendEquationi?: (buf: number, mode: number) => void;
+    };
+    if (typeof gl.blendFunci === 'function' && typeof gl.blendEquationi === 'function') {
+      this.layerBlendExt = { blend: gl.blendFunci.bind(this.gl), equation: gl.blendEquationi.bind(this.gl) };
+      return this.layerBlendExt;
+    }
+    const ext = this.gl.getExtension('OES_draw_buffers_indexed') as {
+      blendFunciOES?: (buf: number, src: number, dst: number) => void;
+      blendEquationiOES?: (buf: number, mode: number) => void;
+    } | null;
+    if (ext && typeof ext.blendFunciOES === 'function' && typeof ext.blendEquationiOES === 'function') {
+      this.layerBlendExt = { blend: ext.blendFunciOES.bind(ext), equation: ext.blendEquationiOES.bind(ext) };
+    }
+    return this.layerBlendExt;
+  }
+
+  /** Draw the current program into ONE attachment of `target` (the no-extension
+   *  fallback for the layer film: the other attachment's output is discarded). */
+  private drawView(target: Target, attachment: number, rect: Rect) {
+    const { gl } = this;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, target.views[attachment]!);
+    gl.viewport(0, 0, target.w, target.h);
+    gl.enable(gl.SCISSOR_TEST);
+    gl.scissor(rect.x0, rect.y0, Math.max(0, rect.x1 - rect.x0), Math.max(0, rect.y1 - rect.y0));
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.disable(gl.SCISSOR_TEST);
+  }
+
+  /**
+   * THE STROKE-END MERGE (SPIKE 006, the frozen encoder) — three passes into
+   * the WRITE halves, then a copy back over `rect` only. The read halves stay
+   * authoritative: a swap would leave the read half stale outside the merge
+   * rect (lastAdvectRect minus mergeRect), so it is never done.
+   */
+  private mergeStrokeLayer(rect: Rect) {
+    const { gl, g } = this;
+    this.mergeDraws++;
+    // Pass 1: encode `aEff·band_L + (1−aEff)·band_S` back into the sheet's
+    // seven coefficients + S, in storage form `fit/k − fixed` (.a = S).
+    const m = this.programs.strokeLayerMerge;
+    m.bind();
+    gl.disable(gl.BLEND);
+    gl.uniform1i(m.u.uInkA!, g.bindTex(0, this.ink.read.tex[0]!));
+    gl.uniform1i(m.u.uInkB!, g.bindTex(1, this.ink.read.tex[1]!));
+    gl.uniform1i(m.u.uFixedA!, g.bindTex(2, this.fixed.tex[0]!));
+    gl.uniform1i(m.u.uFixedB!, g.bindTex(3, this.fixed.tex[1]!));
+    gl.uniform1i(m.u.uLayerA!, g.bindTex(4, this.layerInk!.read.tex[0]!));
+    gl.uniform1i(m.u.uLayerB!, g.bindTex(5, this.layerInk!.read.tex[1]!));
+    gl.uniform1i(m.u.uCoverL!, g.bindTex(6, this.layerFilm!.tex[0]!));
+    gl.uniform1i(m.u.uLateral!, g.bindTex(7, this.layerFilm!.tex[1]!));
+    gl.uniform1i(m.u.uPaper!, g.bindTex(8, this.paper.tex[0]!));
+    gl.uniform2f(m.u.uOutSize!, this.dw, this.dh);
+    gl.uniform2f(m.u.uTexel!, 1 / this.dw, 1 / this.dh);
+    // The display's OWN granulation step (see the merge shader's header): the
+    // live compositor runs uFlat 0, and `bristleContent` is already true at
+    // THIS stroke's first dab, so k reduces to `gran` with the display's
+    // 0.55-scaled granulation.
+    gl.uniform1f(m.u.uGranulation!, this.params.granulation * 0.55);
+    // The SAME polish displayFS applies: T is a display-domain band value
+    // (`band(mix(blur(S), blur(L), aEff))`), so the merge must read the film
+    // the compositor renders, not the raw store.
+    gl.uniform1f(m.u.uFilmBlur!, this.bristleContent ? BRISTLE_FILM_BLUR : 0);
+    gl.uniform1i(m.u.uMaxIter!, 4);
+    this.bindLayerAlpha(m);
+    g.draw(this.ink.write, rect);
+    // Pass 2: `cover_out = 1 − (1 − cover_S)·(1 − aEff)`.
+    const c = this.programs.strokeLayerCover;
+    c.bind();
+    gl.disable(gl.BLEND);
+    gl.uniform1i(c.u.uCoverS!, g.bindTex(0, this.cover.read.tex[0]!));
+    gl.uniform1i(c.u.uCoverL!, g.bindTex(1, this.layerFilm!.tex[0]!));
+    gl.uniform1i(c.u.uLateral!, g.bindTex(2, this.layerFilm!.tex[1]!));
+    gl.uniform2f(c.u.uOutSize!, this.dw, this.dh);
+    this.bindLayerAlpha(c);
+    g.draw(this.cover.write, rect);
+    // Pass 3: `relief_out = relief_S + aEff · relief_L` into the scratch.
+    const r = this.programs.strokeLayerRelief;
+    r.bind();
+    gl.disable(gl.BLEND);
+    gl.uniform1i(r.u.uReliefS!, g.bindTex(0, this.relief.tex[0]!));
+    gl.uniform1i(r.u.uReliefL!, g.bindTex(1, this.layerRelief!.tex[0]!));
+    gl.uniform1i(r.u.uCoverL!, g.bindTex(2, this.layerFilm!.tex[0]!));
+    gl.uniform1i(r.u.uLateral!, g.bindTex(3, this.layerFilm!.tex[1]!));
+    gl.uniform2f(r.u.uOutSize!, this.dw, this.dh);
+    this.bindLayerAlpha(r);
+    g.draw(this.mergeRelief!, rect);
+    // Copy back — the rect only; outside it the halves already agree.
+    const w = rect.x1 - rect.x0, h = rect.y1 - rect.y0;
+    if (w <= 0 || h <= 0) return;
+    for (let i = 0; i < 2; i++) {
+      g.blit(this.ink.write.views[i]!, rect.x0, rect.y0, this.ink.read.views[i]!, rect.x0, rect.y0, w, h);
+    }
+    g.blit(this.cover.write.views[0]!, rect.x0, rect.y0, this.cover.read.views[0]!, rect.x0, rect.y0, w, h);
+    g.blit(this.mergeRelief!.views[0]!, rect.x0, rect.y0, this.relief.views[0]!, rect.x0, rect.y0, w, h);
   }
 
   /** (Re)create a blank `w`×`h` sheet. Discards the painting. */
@@ -906,6 +1184,9 @@ export class WatercolorEngine {
     [this.dw, this.dh] = clampDocSize(w, h, this.maxSide);
     // a reference placed on paper of another shape would be stretched; fit it afresh
     if (this.ref && Math.abs(this.aspect - oldAspect) > 1e-3) this.fitReference();
+    // 261125-kvl: the layer targets are about to be freed with everything else;
+    // a surviving field would make ensureLayer() skip re-allocation.
+    this.forgetLayer();
     this.g.disposeTargets();
     this.allocateTargets();
     this.allocateHistory();
@@ -954,6 +1235,9 @@ export class WatercolorEngine {
     const ox = Math.round((w - ow) / 2), oy = Math.round((h - oh) / 2);
     const meta: StepMeta = { ...this.currentMeta(), whole: this.captureWhole(), paperOrigin: [...this.paperOrigin] };
     const old = { targets: this.docTargets(), ink: this.ink.read, fixed: this.fixed, wet: this.wet.read, relief: this.relief, cover: this.cover.read, lastTouch: this.lastTouch.read };
+    // 261125-kvl: the old set (layer targets included) is disposed at the end
+    // of this method; null the fields BEFORE anything can bind them again.
+    this.forgetLayer();
     this.dw = w; this.dh = h;
     this.allocateTargets();
     this.history.beginBoundary({ kind: 'resize', label: `Resize ${w} × ${h}` }, meta, w, h);
@@ -1063,6 +1347,8 @@ export class WatercolorEngine {
   /** Replace the sheet with `whole` (another size, usually), keeping the history atlases. */
   private applyWhole(whole: WholeDoc, paperOrigin: [number, number]) {
     const old = this.docTargets();
+    // 261125-kvl: same rule as resize — the old layer set is freed below.
+    this.forgetLayer();
     this.dw = whole.w; this.dh = whole.h;
     this.allocateTargets();
     old.forEach(t => this.g.disposeTarget(t));
@@ -1180,6 +1466,9 @@ export class WatercolorEngine {
     this.dropFill();
     this.queue = [];
     if (this.ref) { this.gl.deleteTexture(this.ref.tex); this.ref = null; }
+    // 261125-kvl: disposeTargets() frees every docTargets() entry, the layer
+    // set included — null the fields first (never clear a freed target).
+    this.forgetLayer();
     this.g.disposeTargets();
     this.dw = w; this.dh = h;
     this.allocateTargets();
@@ -1501,6 +1790,8 @@ export class WatercolorEngine {
       widthFrom: 1, widthTo: 1,
       pigFrom: null, pigTo: null,
     };
+    // 261125-kvl: the per-stroke layer decision, at stroke start.
+    this.openLayer(this.stroke);
     this.queue.push({ x, y, p: scriptPressure(pressure), t: this.clock(), tx: tiltX, ty: tiltY, w: scriptWidthFactor(widthScale), pig: pigment });
     this.schedule();
     return true;
@@ -2162,6 +2453,9 @@ export class WatercolorEngine {
     this.stroke = null;
     this.restoreStrokePigment();
     this.queue = [];
+    // 261125-kvl: a dropped stroke never merges — close the layer first, so
+    // the blank-sheet early return below cannot leave one open.
+    this.discardLayer();
     if (!this.everPainted && !this.fill) return;   // already blank
     this.beginStep('clear', 'Clear');
     if (this.everPainted) {
@@ -2194,6 +2488,8 @@ export class WatercolorEngine {
     this.restoreStrokePigment();
     this.queue = [];
     this.dropFill();
+    // 261125-kvl: the replay seam drops any in-flight stroke without merging.
+    this.discardLayer();
     for (const t of this.docTargets()) if (t !== this.paper) this.g.clearTarget(t);
     // 64-24: a wiped sheet is DRY — clearTarget wrote 0, which the field reads
     // as "touched at t = 0"; restore the one-week sentinel.
@@ -2211,6 +2507,8 @@ export class WatercolorEngine {
     this.stroke = null;
     this.restoreStrokePigment();
     this.queue = [];
+    // 261125-kvl: the aborted stroke's layer is discarded, never merged.
+    this.discardLayer();
     if (s.pointerId !== SCRIPT_POINTER) this.callbacks.onStrokeTool?.(null);
     if (this.history.canUndo) { this.travel('undo'); this.history.discardRedo(); this.notifyHistory(); }
   }
@@ -2254,6 +2552,9 @@ export class WatercolorEngine {
     this.restoreStrokePigment();
     this.dropFill();
     this.queue = [];
+    // 261125-kvl: a history move swaps the sheet targets under any open
+    // layer; a surviving film would leak into the next stroke.
+    this.discardLayer();
     this.fixTimer = 0;
     const next = dir === 'undo' ? this.history.peekUndo() : this.history.peekRedo();
     const metaNow: StepMeta = this.currentMeta();
@@ -2440,6 +2741,8 @@ export class WatercolorEngine {
         widthFrom: 1, widthTo: 1,
         pigFrom: null, pigTo: null,
       };
+      // 261125-kvl: the per-stroke layer decision, at stroke start.
+      this.openLayer(this.stroke);
       if (tool !== this.tool) this.callbacks.onStrokeTool?.(tool);
       this.beginStep('stroke', STROKE_LABEL[tool]);
       this.pushSample(e);
@@ -2752,6 +3055,9 @@ export class WatercolorEngine {
       this.stampScripted(s, s.x, s.y, this.pressureOf(s, -1), 0, 0, 0, dt, this.widthFactorAt(s, 1), 1);
     }
     if (s.ending) {
+      // 261125-kvl: commit BEFORE the stroke is dropped — one merge inside the
+      // stroke's own undo step, after the end-cap dab above.
+      this.commitLayer(s);
       this.stroke = null;
       this.restoreStrokePigment();
       if (s.pointerId !== SCRIPT_POINTER) {
@@ -3038,9 +3344,14 @@ export class WatercolorEngine {
           } else if (reliefAmount < 0) {
             // GAP-1: gated by the recorded emboss SIGN only — the paint's own
             // coverage must never erode the relief under it.
+            // 261125-kvl: an open layer stroke ERODES NOTHING on the sheet —
+            // the negative emboss is dropped for the stroke (a layer merge is
+            // additive thickness only).
             const erodeAmount = Math.min(1, -reliefAmount * RELIEF_ERODE_NEGATIVE);
-            if (bristle) this.bristleReliefErode(dx, dy, dr, angle, erodeAmount, contactPr, alongPx, this.bristleEndCap);
-            else this.reliefErode(dx, dy, dr, angle, erodeAmount, dryness, grainThr);
+            if (!this.layerOpen) {
+              if (bristle) this.bristleReliefErode(dx, dy, dr, angle, erodeAmount, contactPr, alongPx, this.bristleEndCap);
+              else this.reliefErode(dx, dy, dr, angle, erodeAmount, dryness, grainThr);
+            }
           }
           // soft brushes wet a little beyond the tip; textured ones keep their
           // edges. A waterless brush never wakes the fluid sim at all.
@@ -3193,7 +3504,10 @@ export class WatercolorEngine {
     gl.enable(gl.BLEND);
     gl.blendEquation(gl.FUNC_ADD);
     gl.blendFunc(gl.ONE, gl.ONE);
-    g.draw(this.relief, this.stampRect(x, y, r, this.dw, this.dh, 1.6));
+    // 261125-kvl: an open stroke layer takes the thickness too — the merge's
+    // pass 3 unions it into the sheet at stroke end.
+    if (this.layerOpen && this.layerRelief !== null) g.draw(this.layerRelief, this.stampRect(x, y, r, this.dw, this.dh, 1.6));
+    else g.draw(this.relief, this.stampRect(x, y, r, this.dw, this.dh, 1.6));
     gl.disable(gl.BLEND);
   }
 
@@ -3735,6 +4049,14 @@ export class WatercolorEngine {
     // bookkeeping and BEFORE the first deposit draw, only at Pickup > 0 —
     // Pickup 0 skips the draw entirely and the weight is zero besides.
     if (this.params.pickup > 0) this.bristleSnapshot(rect);
+    // 261125-kvl: while a stroke layer is open the dab lands on the LAYER —
+    // the sheet stays untouched until the stroke-end merge. The guard sits
+    // after the shared rect/snapshot bookkeeping so the undo tiles, the active
+    // region and the smear all cover the dab exactly as on the shipped path.
+    if (this.layerOpen && this.layerInk !== null && this.layerFilm !== null) {
+      this.bristleLayerInk(rect, x, y, r, angle, bodyAlpha, pr, scatter, alongPx, endCap);
+      return;
+    }
     const d = this.programs.bristleDeposit;
     d.bind();
     this.bindGather(d, x, y, r, angle, pr, alongPx, endCap);
@@ -3813,6 +4135,9 @@ export class WatercolorEngine {
    */
   private bristleTouch(x: number, y: number, r: number, angle: number): void {
     const { gl, g } = this;
+    // 261125-kvl: an open stroke layer's paint never lands on the sheet, so
+    // the sheet's last-touch memory must not record it.
+    if (this.layerOpen) return;
     // `angle` is accepted for signature symmetry with bristleInk: the touch
     // rect is the dab's axis-aligned stamp at the SAME extent (1.6).
     void angle;
@@ -3847,6 +4172,63 @@ export class WatercolorEngine {
     out.set(b, a.length);
     out.set(c, a.length + b.length);
     return out;
+  }
+
+  /**
+   * 261125-kvl: the stroke-layer deposit — `bristleInk`'s two ink draws and
+   * its ONE coverage write, retargeted at the open layer. The layer has no
+   * settled pool, so the `fixed` draw is skipped; the cover write becomes the
+   * TWO-attachment `bristleCoverLayerFS` (the shipped cover lerp at location
+   * 0, the lateral coordinate `clamp(|across| / uFeatherEdge, 0, 1)` kept as
+   * a MIN at location 1) with per-attachment blend state.
+   *
+   * The caller has already run `touch(rect)` and the Pickup snapshot, exactly
+   * as on the shipped path (`bristleInk`'s shared prologue), so the undo
+   * tiles, the active region and the smear cover this dab identically.
+   */
+  private bristleLayerInk(rect: Rect, x: number, y: number, r: number, angle: number, bodyAlpha: number, pr: number, scatter: number, alongPx: number, endCap: boolean): void {
+    const { gl, g } = this;
+    const layerInk = this.layerInk!.read;
+    const d = this.programs.bristleDeposit;
+    d.bind();
+    this.bindGather(d, x, y, r, angle, pr, alongPx, endCap);
+    gl.uniform1f(d.u.uScatter!, scatter);
+    gl.enable(gl.BLEND);
+    gl.blendEquation(gl.FUNC_ADD);
+    // 1) ink *= (1 - a) — the lerp's first half.
+    gl.uniform1i(d.u.uMode!, 1);
+    gl.blendFunc(gl.ZERO, gl.ONE_MINUS_SRC_COLOR);
+    g.draw(layerInk, rect);
+    // 2) + carried * a — the lerp's carried half, the SAME weight.
+    gl.uniform1i(d.u.uMode!, 0);
+    gl.blendFunc(gl.ONE, gl.ONE);
+    g.draw(layerInk, rect);
+    // 3) the film: cover blended (the shipped law), the lateral MIN over the
+    //    layer's covering dabs. Per-attachment state — WebGL2 cannot mix
+    //    ONE_MINUS_SRC_ALPHA and MIN in one equation.
+    const c = this.programs.bristleCoverLayer;
+    c.bind();
+    this.bindGather(c, x, y, r, angle, pr, alongPx, endCap);
+    gl.uniform1f(c.u.uCoverTarget!, bodyAlpha);
+    gl.enable(gl.BLEND);
+    gl.blendEquation(gl.FUNC_ADD);
+    const blend = this.layerBlend();
+    if (blend) {
+      blend.blend(0, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+      blend.equation(1, gl.MIN);
+      g.draw(this.layerFilm!, rect);
+      gl.blendEquation(gl.FUNC_ADD);
+    } else {
+      // No per-draw-buffer blend anywhere: the same law as two draws into the
+      // single-attachment views (the other output is discarded).
+      gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+      this.drawView(this.layerFilm!, 0, rect);
+      gl.blendEquation(gl.MIN);
+      this.drawView(this.layerFilm!, 1, rect);
+      gl.blendEquation(gl.FUNC_ADD);
+    }
+    gl.disable(gl.BLEND);
+    this.layerRect = union(this.layerRect, rect);
   }
 
   /**

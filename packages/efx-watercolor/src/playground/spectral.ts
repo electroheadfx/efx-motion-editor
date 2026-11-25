@@ -149,6 +149,64 @@ export function mixToHex(parts: { pigment: Pigment; amount: number }[]): string 
  * The epsilon and the one-dab deposit maximum are interpolated from
  * ./scattering — never retyped below.
  */
+/**
+ * The stroke layer's compiled FIT band list (spike 006, Q3c): indices into
+ * DISPLAY_BANDS, NOT wavelengths. The merge shader compiles its residual arrays
+ * against this reduced list; the acceptance sweep still re-renders all sixteen
+ * display bands, so the fit is judged where the artist sees it.
+ */
+export const STROKE_LAYER_BANDS: readonly number[] = Object.freeze([1, 3, 5, 7, 9, 10, 11, 13]);
+
+const glslFloat = (v: number) => (Number.isInteger(v) ? v.toFixed(1) : v.toPrecision(7));
+
+/**
+ * The frozen stroke-layer encoder constants (spike 006 `bandConsts` +
+ * `BAND_FN`, transcribed — never retyped): the compiled band table and the
+ * display band function, evaluated for a state `(a, b, s)`.
+ *
+ * `bandOf` is the display law itself — the Kubelka-Munk reflectance over white
+ * above the scatter epsilon, the legacy exponential below — so the FIT's target
+ * and residual live in the same space the compositor renders.
+ */
+export function strokeLayerBandsGLSL(
+  bandList: readonly number[] = STROKE_LAYER_BANDS,
+): string {
+  const f = glslFloat;
+  const b4: string[] = [];
+  const b3: string[] = [];
+  for (const i of bandList) {
+    const band = DISPLAY_BANDS[i]!;
+    b4.push(`vec4(${BASIS.slice(0, 4).map((k) => f(k[band]!)).join(',')})`);
+    b3.push(`vec3(${BASIS.slice(4, 7).map((k) => f(k[band]!)).join(',')})`);
+  }
+  return [
+    `const int BANDS = ${bandList.length};`,
+    `const float SCATTER_EPS = ${f(SCATTER_EPSILON)};`,
+    `const vec4 B4[BANDS] = vec4[BANDS](${b4.join(',')});`,
+    `const vec3 B3[BANDS] = vec3[BANDS](${b3.join(',')});`,
+    ``,
+    `// The display band value, transcribed from displayBasisGLSL(): Kubelka-Munk`,
+    `// reflectance over white above the scatter epsilon, the legacy exponential below.`,
+    `float bandOf(vec4 a, vec3 b, float s, int i){`,
+    `  float A = dot(a, B4[i]) + dot(b, B3[i]);`,
+    `  float k = 0.5 * max(A, 0.0);`,
+    `  if (s > SCATTER_EPS){`,
+    `    if (k <= 0.0) return 1.0;`,
+    `    float arg = sqrt(k * (2.0 * s + k));`,
+    `    float e = exp(-2.0 * arg);`,
+    `    float sh = 0.5 * (1.0 - e);`,
+    `    float ch = 0.5 * (1.0 + e);`,
+    `    float den = (k + s) * sh + arg * ch;`,
+    `    float R = s * sh / den;`,
+    `    float T = arg * sqrt(e) / den;`,
+    `    float om = (k * sh + arg * ch) / den;`,
+    `    return R + T * T / om;`,
+    `  }`,
+    `  return exp(-max(A, 0.0));`,
+    `}`,
+  ].join('\n');
+}
+
 export function displayBasisGLSL(): string {
   const f = (v: number) => (Number.isInteger(v) ? v.toFixed(1) : v.toPrecision(7));
   const scattered: string[] = [];

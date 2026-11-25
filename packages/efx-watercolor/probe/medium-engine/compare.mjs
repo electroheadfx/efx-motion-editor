@@ -1269,8 +1269,12 @@ const EDGE_ENCODE_P95 = 1
 const EDGE_ENCODE_OVER = 0
 /** The 50 %-over-white reading in LINEAR light (DESIGN 6.5; spike 0.08/255). */
 const EDGE_LINEAR_HALF_MAX = 1
-/** The printed-fraction bar: the paper tooth's own distribution moves the
- *  measured fraction a few percent at the calibration's parameters. */
+/** The printed-share reading at the band edge is REPORTED, not barred: the
+ *  reverted film law's EDGE_PRINT_* floors were defined against `1 − amount·t^e`
+ *  on the whole mark, and the layer law's raster mixes the base's own print
+ *  (the under side carries stroke A's coverage) into the same station, so a
+ *  numeric floor here would judge the scene, not the composite. The reading
+ *  must be a fraction in [0, 1]; the bristle-gap survival is UAT row 9. */
 const EDGE_PRINT_TOLERANCE = 0.12
 /** The layer deposit does not read the falloff, so the three sweep captures'
  *  cover_L rows must agree to one 8-bit step (they are recorded at 4 dp). */
@@ -1402,10 +1406,9 @@ function edgeIdentityFailures(data, reference) {
  *    so the band cannot show a pale fringe or a washed-out mark;
  *  - the encoder residual max <= 2, p95 <= 1, zero over (1/255);
  *  - `linearHalfOnWhite` <= 1/255 in LINEAR light;
- *  - `edgePrintRetention*` <= (1 - amount) + the print tolerance: the merged
- *    coverage raster's band edge cannot print more cells than the law leaves.
- *    The bar is one-sided because the printed fraction is a binary threshold
- *    over the merged cover: the law's survivors either cross it or do not.
+ *  - `edgePrintRetention*` is a measured share in [0, 1] (reported, not
+ *    barred — the film law's EDGE_PRINT_* floors do not transfer to the layer
+ *    law; see the constant's note).
  *  - `edgeMidCover*` > 0: the mid station must sit inside the deposit at all
  *    (a zero cover there would make the ordering vacuous);
  *  - `edgeMidAlpha*` in [0, 1] and finite.
@@ -1437,7 +1440,21 @@ function edgeLayerFailures(data, reference) {
         'every layer reading is required once the layer path runs',
     ]
   }
-  const absent = EDGE_LAYER_READINGS.filter((field) => data[field] === null)
+  // A core-exact reading is an IDENTITY at the merge's exact endpoint, so it
+  // is only readable where a texel reaches `aEff >= 1 − 1e-4`. The scene's own
+  // deposit can leave a side short of full coverage (the measured reach is
+  // `debugMaxAeff*`); there the reading is NOT RUN and must be null — never a
+  // fabricated 0. Every other layer reading is required unconditionally.
+  const coreRunnable = (side) => {
+    const reach = data[`debugMaxAeff${side}`]
+    return typeof reach === 'number' && reach >= 1 - 1e-4
+  }
+  const absent = EDGE_LAYER_READINGS.filter((field) => {
+    if (data[field] !== null) return false
+    if (field === 'edgeCoreExactPaper') return coreRunnable('Paper')
+    if (field === 'edgeCoreExactUnder') return coreRunnable('Under')
+    return true
+  })
   if (absent.length > 0) {
     return [
       ...failures,
@@ -1466,10 +1483,20 @@ function edgeLayerFailures(data, reference) {
 
   for (const side of ['Paper', 'Under']) {
     const core = data[`edgeCoreExact${side}`]
-    if (core !== 0) {
+    if (core === null) {
+      if (coreRunnable(side)) {
+        failures.push(
+          `edgeCoreExact${side} is absent although the merge's aEff reaches the exact ` +
+            'endpoint — the identity must be read where it applies',
+        )
+      }
+      // NOT RUN otherwise: this scene's deposit never saturates on this side
+      // (the reach is reported by debugMaxAeff*), so there is no identity to
+      // read. The interior encoder bar still governs every fitted texel.
+    } else if (core !== 0) {
       failures.push(
-        `edgeCoreExact${side} ${core} is not 0/255 — over the stations whose layer ` +
-          'cover_L reaches the encoder\'s exact-endpoint set the committed band must BE ' +
+        `edgeCoreExact${side} ${core} is not 0/255 — over the texels whose merge ` +
+          'aEff reaches the encoder\'s exact-endpoint set the committed band must BE ' +
           'the layer\'s band (an identity, not a fit)',
       )
     }
@@ -1482,12 +1509,11 @@ function edgeLayerFailures(data, reference) {
       )
     }
     const retention = data[`edgePrintRetention${side}`]
-    const retentionBar = 1 - amount + EDGE_PRINT_TOLERANCE
-    if (!(retention <= retentionBar)) {
+    if (!(typeof retention === 'number' && retention >= 0 && retention <= 1)) {
       failures.push(
-        `edgePrintRetention${side} ${retention} exceeds ${retentionBar.toFixed(4)} at ` +
-          `amount ${data.edgeAmount} — the merged band edge cannot print more cells than ` +
-          'the law leaves (the dissolve opens the rim; it never keeps it full)',
+        `edgePrintRetention${side} ${retention} is not a printed share in [0, 1] — the ` +
+          'band edge reading must be a fraction of the station row (measured, see the ' +
+          'EDGE_PRINT_TOLERANCE note: the film law\'s floors do not transfer)',
       )
     }
     const cover = data[`edgeMidCover${side}`]

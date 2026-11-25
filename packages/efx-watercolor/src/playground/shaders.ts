@@ -1,4 +1,4 @@
-import { displayBasisGLSL } from './spectral';
+import { displayBasisGLSL, strokeLayerBandsGLSL } from './spectral';
 
 // Texture layout
 //   velocity  RG16F  (sim grid)       water flow, in sim texels / second
@@ -1496,6 +1496,380 @@ uniform float uNow;
 void main(){
   float weight = clamp(texture(uCover, vUv).x, 0.0, 1.0);
   o0 = vec4(mix(texture(uTimes, vUv).r, uNow, weight));
+}`;
+
+// ============================================================
+//  261125-kvl (SPIKE 006) — THE PER-STROKE STROKE LAYER.
+//
+//  A Gouache/Pen stroke whose Edge transparency is above 0 deposits into a
+//  TRANSIENT layer instead of the sheet and commits ONCE at stroke end through
+//  the frozen composite (DESIGN-stroke-layer-transparency §3.3):
+//
+//    u     = MIN over covering dabs of clamp(|across| / uFeatherEdge, 0, 1)
+//    t     = clamp((u - START) / (1 - START), 0, 1)
+//    e     = 2^(2·falloff - 1)
+//    A     = 1 - amount · t^e
+//    aEff  = A · cover_L
+//    band_out,i = aEff · band_L,i + (1 - aEff) · band_S,i
+//    cover_out  = 1 - (1 - cover_S) · (1 - aEff)
+//    relief_out = relief_S + aEff · relief_L
+//
+//  The layer owns three targets: its ink pair (the same two RGBA16F
+//  attachments a sheet's ink has), its film pair (cover at attachment 0, the
+//  MIN lateral coordinate at attachment 1) and its thickness. Nothing here
+//  edits displayFS / bristleCoverFS / bristleDepositFS: the shipped compositor
+//  is byte-identical at amount 0 by construction, and the amount-0 bypass is a
+//  branch in the Engine, never a value in these shaders.
+// ============================================================
+
+/**
+ * The lateral alpha law — ONE snippet shared verbatim by the merge and the two
+ * union passes, so the three can never disagree. `uCoverL` / `uLateral` are
+ * layerFilm's two attachments; `uEdgeFade` is the amount (0 neutral),
+ * `uEdgeStart` the fade's start anchor (BRISTLE_EDGE_START) and `uEdgeFalloff`
+ * the shape bias (0 broad, 0.5 linear, 1 rim).
+ */
+const STROKE_LAYER_ALPHA = `
+uniform sampler2D uCoverL, uLateral;
+uniform float uEdgeFade, uEdgeStart, uEdgeFalloff;
+float layerAEff(vec2 uv){
+  float u = clamp(texture(uLateral, uv).x, 0.0, 1.0);
+  float coverL = clamp(texture(uCoverL, uv).x, 0.0, 1.0);
+  float t = clamp((u - uEdgeStart) / max(1.0 - uEdgeStart, 1e-4), 0.0, 1.0);
+  float e = exp2(2.0 * uEdgeFalloff - 1.0);
+  return clamp((1.0 - uEdgeFade * pow(t, e)) * coverL, 0.0, 1.0);
+}`;
+
+/**
+ * The layer film's reset at stroke start: cover 0, lateral 1. `clearTarget`
+ * cannot be reused — it zeroes every attachment, and a lateral field of 0
+ * would read every texel as "core" (u = 0) before the first dab covers it.
+ */
+export const strokeLayerClearFS = `${HEADER}
+layout(location=0) out vec4 o0;
+layout(location=1) out vec4 o1;
+void main(){
+  o0 = vec4(0.0);
+  o1 = vec4(1.0);
+}`;
+
+/**
+ * The layer's ONE coverage write per dab, in TWO attachments:
+ *   0: the shipped cover lerp's payload — `vec4(target, 0, 0, a)` blended
+ *      (ONE, ONE_MINUS_SRC_ALPHA), byte-for-byte the law bristleCoverFS
+ *      applies to the sheet;
+ *   1: the lateral coordinate `clamp(|across| / uFeatherEdge, 0, 1)` blended
+ *      with (MIN), so the layer keeps the MINIMUM over its covering dabs.
+ *
+ * A copy of bristleCoverFS's body — the gather and its guard included — that
+ * recomputes the dab frame in main(): `struct Gathered` is never widened (it
+ * is shared by every gather consumer) and the shipped program is untouched.
+ */
+export const bristleCoverLayerFS = `${HEADER}${BRISTLE_GATHER}
+layout(location=0) out vec4 o0;
+layout(location=1) out vec4 o1;
+uniform float uCoverTarget;       // bristleBodyAlpha · carried alpha
+void main(){
+  vec2 p = vUv - uPoint;
+  p.x *= uSheetAspect;
+  vec2 q = vec2(dot(p, uAxis), dot(p, vec2(-uAxis.y, uAxis.x))) / uRadius;
+  if (abs(q.x) > 1.15 || abs(q.y) > 1.15) discard;
+  Gathered g = gatherBristle(vUv);
+  float a = clamp(g.coverage, 0.0, 1.0);
+  if (a <= 1e-3) discard;
+  // §3.3 (261119-pod): the smear carries the cover toward the snapshot's
+  // COVER alpha through the SAME helper and guard as bristleCoverFS.
+  float target = a * uCoverTarget * g.alpha;
+  if (uSmear > 0.0) {
+    float smear = smearWeight(g.nearest, uAlongPx + q.y * uHalfWidthPx, wetAt(vUv));
+    vec4 snapA = texture(uSnapA, vUv);
+    vec4 snapB = texture(uSnapB, vUv);
+    float own2 = dot(uPigmentA, uPigmentA) + dot(uPigmentB, uPigmentB);
+    float can2 = dot(snapA, snapA) + dot(snapB.xyz, snapB.xyz);
+    float cross7 = dot(uPigmentA, snapA) + dot(uPigmentB, snapB.xyz);
+    float samePaint = cross7 / sqrt(max(own2 * can2, 1e-8));
+    smear *= 1.0 - smoothstep(0.975, 0.995, samePaint);
+    target = mix(target, a * uCoverTarget * snapB.a, smear);
+  }
+  o0 = vec4(target, 0.0, 0.0, a);
+  // The lateral field: the dab's across coordinate in footprint units, capped
+  // at the silhouette the display law's fade starts from (uFeatherEdge).
+  o1 = vec4(clamp(abs(q.x) / max(uFeatherEdge, 1e-4), 0.0, 1.0));
+}`;
+
+/**
+ * THE STROKE-END MERGE — the frozen spike-006 encoder (Q3c), in place.
+ *
+ * Per texel it reads the sheet's film (`ink + fixed`), the layer's film (its
+ * two ink attachments), the layer's cover and lateral fields, and the paper
+ * height; it builds the display-band target `T = aEff·band_L + (1−aEff)·band_S`
+ * and encodes T back into the sheet's seven coefficients + S with a bounded
+ * Levenberg–Marquardt fit (8 compiled bands, rank-one Jacobian, `uMaxIter`
+ * steps). The engine's sheet can only store seven coefficients + S, so the
+ * merge is the inverse of the display: it writes
+ *
+ *     ink = fit/k − fixed          (each attachment, S included)
+ *
+ * `k` is displayFS's OWN granulation step, named at its source
+ * (shaders.ts: `gran = 1 + uGranulation·(0.5 − paper.g)·2.2`, then
+ * `k = mix(gran·(1 + uEdgeDarken·edge), 1, uFlat)`; a live compositor render
+ * has uFlat 0 and a bristle sheet has uEdgeDarken 0, so k is `gran`). The
+ * frozen `ink = fit − fixed` is exactly this form's k = 1 case — the spike
+ * probe carried no granulation — and the /k is what preserves the frozen
+ * display-band identity `display = ink + fixed = fit` in the engine's k-scaled
+ * store. The spike digest `3170f21b` is a probe-domain digest and does not
+ * apply verbatim.
+ *
+ * T is computed on the DISPLAY-DOMAIN states: displayFS's 5-tap film soften
+ * (uFilmBlur) of the sheet and of the layer, each then multiplied by k. The
+ * film blur is a spatial pre-filter that cannot be inverted pointwise; the
+ * live display applies it again on the stored field, and that residual is
+ * measured (edgePolishDelta), never hidden.
+ *
+ * Two exact endpoints skip the fit: aEff >= 1 − 1e-4 writes the layer's raw
+ * storage (a storage-domain identity — dividing by k would lose half-float
+ * precision), and aEff <= 1e-4 copies the sheet's raw ink through (the merge
+ * renders into ink.write and the whole rect is blitted back, so every texel
+ * must be written).
+ */
+export const strokeLayerMergeFS = `${HEADER}precision highp int;
+uniform sampler2D uInkA, uInkB, uFixedA, uFixedB, uLayerA, uLayerB, uPaper;
+uniform vec2 uOutSize, uTexel;
+uniform float uGranulation, uFilmBlur;
+uniform int uMaxIter;
+layout(location=0) out vec4 oA;
+layout(location=1) out vec4 oB;
+
+${strokeLayerBandsGLSL()}
+
+${STROKE_LAYER_ALPHA}
+
+// The sheet's film at one texel — displayFS's filmAt(), same two sums.
+void sheetFilm(vec2 uv, out vec4 a, out vec3 b, out float s){
+  a = texture(uInkA, uv) + texture(uFixedA, uv);
+  vec4 ib = texture(uInkB, uv), fb = texture(uFixedB, uv);
+  b = ib.rgb + fb.rgb;
+  s = ib.a + fb.a;
+}
+
+// The layer's own film (no settled half): its two ink attachments.
+void layerFilm(vec2 uv, out vec4 a, out vec3 b, out float s){
+  a = texture(uLayerA, uv);
+  vec4 lb = texture(uLayerB, uv);
+  b = lb.rgb;
+  s = lb.a;
+}
+
+// GLSL ES 3.00 has no arrays of arrays: the 8x9 augmented system is FLAT,
+// row-major, index p*9 + c.
+bool solve8(in float A[72], out float x[8]){
+  float M[72];
+  for (int i = 0; i < 72; i++) M[i] = A[i];
+  for (int col = 0; col < 8; col++){
+    int piv = col;
+    for (int r = col + 1; r < 8; r++){
+      if (abs(M[r * 9 + col]) > abs(M[piv * 9 + col])) piv = r;
+    }
+    if (abs(M[piv * 9 + col]) < 1e-12) return false;
+    if (piv != col){
+      for (int c = 0; c < 9; c++){ float t = M[col * 9 + c]; M[col * 9 + c] = M[piv * 9 + c]; M[piv * 9 + c] = t; }
+    }
+    float p = M[col * 9 + col];
+    for (int c = col; c < 9; c++) M[col * 9 + c] /= p;
+    for (int r = 0; r < 8; r++){
+      if (r == col) continue;
+      float fac = M[r * 9 + col];
+      if (fac == 0.0) continue;
+      for (int c = col; c < 9; c++) M[r * 9 + c] -= fac * M[col * 9 + c];
+    }
+  }
+  for (int i = 0; i < 8; i++) x[i] = M[i * 9 + 8];
+  return true;
+}
+
+float costAt(vec4 a, vec3 b, float s, float tgt[BANDS]){
+  float c = 0.0;
+  for (int i = 0; i < BANDS; i++){
+    float d = bandOf(a, b, s, i) - tgt[i];
+    c += d * d;
+  }
+  return c;
+}
+
+float maxResid(vec4 a, vec3 b, float s, float tgt[BANDS]){
+  float m = 0.0;
+  for (int i = 0; i < BANDS; i++) m = max(m, abs(bandOf(a, b, s, i) - tgt[i]));
+  return m;
+}
+
+void main(){
+  vec2 uv = gl_FragCoord.xy / uOutSize;
+  float aEff = layerAEff(uv);
+  vec4 inkA = texture(uInkA, uv);
+  vec4 inkB = texture(uInkB, uv);
+  vec4 fixedA = texture(uFixedA, uv);
+  vec4 fixedB = texture(uFixedB, uv);
+  vec4 layerA = texture(uLayerA, uv);
+  vec4 layerB = texture(uLayerB, uv);
+
+  // The two exact endpoints need no solve at all.
+  if (aEff >= 1.0 - 1e-4){
+    oA = layerA - fixedA;
+    oB = vec4(layerB.rgb - fixedB.rgb, max(layerB.a, 0.0) - fixedB.a);
+    return;
+  }
+  if (aEff <= 1e-4){
+    oA = inkA;
+    oB = inkB;
+    return;
+  }
+
+  // displayFS's granulation step, at its own source. The 1e-3 floor makes a
+  // pathological granulation unable to reach Inf through the division.
+  float k = max(1.0 + uGranulation * (0.5 - texture(uPaper, uv).g) * 2.2, 1e-3);
+  vec4 sa; vec3 sb; float ss;
+  vec4 la; vec3 lb; float ls;
+  sheetFilm(uv, sa, sb, ss);
+  layerFilm(uv, la, lb, ls);
+  if (uFilmBlur > 0.0){
+    // The display's 5-tap polish (displayFS's filmAt loop), applied to the
+    // sheet AND to the layer, so the target is measured in the space the
+    // compositor renders.
+    vec2 dx = vec2(uTexel.x, 0.0), dy = vec2(0.0, uTexel.y);
+    vec4 a1, a2, a3, a4; vec3 b1, b2, b3, b4; float s1, s2, s3, s4;
+    sheetFilm(uv - dx, a1, b1, s1); sheetFilm(uv + dx, a2, b2, s2);
+    sheetFilm(uv - dy, a3, b3, s3); sheetFilm(uv + dy, a4, b4, s4);
+    sa = mix(sa, (sa + a1 + a2 + a3 + a4) * 0.2, uFilmBlur);
+    sb = mix(sb, (sb + b1 + b2 + b3 + b4) * 0.2, uFilmBlur);
+    ss = mix(ss, (ss + s1 + s2 + s3 + s4) * 0.2, uFilmBlur);
+    layerFilm(uv - dx, a1, b1, s1); layerFilm(uv + dx, a2, b2, s2);
+    layerFilm(uv - dy, a3, b3, s3); layerFilm(uv + dy, a4, b4, s4);
+    la = mix(la, (la + a1 + a2 + a3 + a4) * 0.2, uFilmBlur);
+    lb = mix(lb, (lb + b1 + b2 + b3 + b4) * 0.2, uFilmBlur);
+    ls = mix(ls, (ls + s1 + s2 + s3 + s4) * 0.2, uFilmBlur);
+  }
+  sa *= k; sb *= k; ss *= k;
+  la *= k; lb *= k; ls *= k;
+
+  float tgt[BANDS];
+  for (int i = 0; i < BANDS; i++){
+    float bL = bandOf(la, lb, ls, i);
+    float bS = bandOf(sa, sb, ss, i);
+    tgt[i] = aEff * bL + (1.0 - aEff) * bS;
+  }
+
+  // Seed mix(base, layer, aEff) in coefficient space (the frozen seed: it
+  // removes the aEff 0.25–0.5 outliers a nearer-input seed leaves behind).
+  vec4 seedA = mix(sa, la, aEff);
+  vec3 seedB = mix(sb, lb, aEff);
+  float x[8];
+  x[0] = seedA.x; x[1] = seedA.y; x[2] = seedA.z; x[3] = seedA.w;
+  x[4] = seedB.x; x[5] = seedB.y; x[6] = seedB.z;
+  x[7] = max(mix(ss, ls, aEff), 0.0);
+
+  float lambda = 1e-3;
+  for (int it = 0; it < 32; it++){
+    if (it >= uMaxIter) break;
+    vec4 ca = vec4(x[0], x[1], x[2], x[3]);
+    vec3 cb = vec3(x[4], x[5], x[6]);
+    float cs = x[7];
+    if (maxResid(ca, cb, cs, tgt) < 1e-5) break;
+
+    float r0[BANDS];
+    for (int i = 0; i < BANDS; i++) r0[i] = bandOf(ca, cb, cs, i) - tgt[i];
+
+    // Rank-one Jacobian: bandOf depends on the 7 coefficients ONLY through
+    // A_i = dot(a,B4_i)+dot(b,B3_i), so one perturbed evaluation in A and one
+    // in s give all eight columns — same Newton direction, 32 band
+    // evaluations instead of 128 per iteration.
+    float J[BANDS * 8];
+    float ha = max(1e-5, abs(x[0]) * 1e-4);
+    float hs = max(1e-5, abs(x[7]) * 1e-4);
+    vec4 pa = vec4(x[0] + ha, x[1], x[2], x[3]);
+    float ps = x[7] + hs;
+    for (int i = 0; i < BANDS; i++){
+      float base_i = r0[i] + tgt[i];
+      float denA = ha * B4[i].x;
+      float gA = abs(denA) < 1e-12 ? 0.0 : (bandOf(pa, cb, cs, i) - base_i) / denA;
+      float gS = (bandOf(ca, cb, ps, i) - base_i) / hs;
+      J[i * 8 + 0] = gA * B4[i].x;
+      J[i * 8 + 1] = gA * B4[i].y;
+      J[i * 8 + 2] = gA * B4[i].z;
+      J[i * 8 + 3] = gA * B4[i].w;
+      J[i * 8 + 4] = gA * B3[i].x;
+      J[i * 8 + 5] = gA * B3[i].y;
+      J[i * 8 + 6] = gA * B3[i].z;
+      J[i * 8 + 7] = gS;
+    }
+
+    float H[64];
+    float g[8];
+    for (int i = 0; i < 8; i++){ g[i] = 0.0; for (int j = 0; j < 8; j++) H[i * 8 + j] = 0.0; }
+    for (int i = 0; i < BANDS; i++){
+      for (int p = 0; p < 8; p++){
+        g[p] += J[i * 8 + p] * r0[i];
+        for (int q = 0; q < 8; q++) H[p * 8 + q] += J[i * 8 + p] * J[i * 8 + q];
+      }
+    }
+
+    float c0 = 0.0;
+    for (int i = 0; i < BANDS; i++) c0 += r0[i] * r0[i];
+
+    // Levenberg–Marquardt with step REJECTION — a single damped step per
+    // iteration diverges on a few texels (measured: 165/255 outliers while
+    // the mean stayed at 0.2).
+    bool accepted = false;
+    for (int attempt = 0; attempt < 4; attempt++){
+      float M[72];
+      for (int p = 0; p < 8; p++){
+        for (int q = 0; q < 8; q++) M[p * 9 + q] = H[p * 8 + q] + (p == q ? lambda * (1.0 + abs(H[p * 8 + q])) : 0.0);
+        M[p * 9 + 8] = -g[p];
+      }
+      float d[8];
+      if (!solve8(M, d)){ lambda *= 6.0; continue; }
+      float xn[8];
+      for (int k = 0; k < 8; k++) xn[k] = x[k] + d[k];
+      xn[7] = max(xn[7], 0.0);
+      vec4 na = vec4(xn[0], xn[1], xn[2], xn[3]);
+      vec3 nb = vec3(xn[4], xn[5], xn[6]);
+      float c2 = costAt(na, nb, xn[7], tgt);
+      if (c2 < c0){
+        for (int k = 0; k < 8; k++) x[k] = xn[k];
+        lambda = max(lambda / 3.0, 1e-7);
+        accepted = true;
+        break;
+      }
+      lambda *= 6.0;
+    }
+    if (!accepted) break;
+  }
+
+  // In-place write-back: the storage-domain form that preserves the frozen
+  // display-band identity (see the header).
+  oA = vec4(x[0], x[1], x[2], x[3]) / k - fixedA;
+  oB = vec4(x[4], x[5], x[6], max(x[7], 0.0)) / k - fixedB;
+}`;
+
+/** The merge's coverage union: `cover_out = 1 − (1 − cover_S)·(1 − aEff)`. */
+export const strokeLayerCoverFS = `${HEADER}
+layout(location=0) out vec4 o0;
+uniform sampler2D uCoverS;
+uniform vec2 uOutSize;
+${STROKE_LAYER_ALPHA}
+void main(){
+  vec2 uv = gl_FragCoord.xy / uOutSize;
+  o0 = vec4(1.0 - (1.0 - texture(uCoverS, uv).x) * (1.0 - layerAEff(uv)));
+}`;
+
+/** The merge's thickness union: `relief_out = relief_S + aEff · relief_L`. */
+export const strokeLayerReliefFS = `${HEADER}
+layout(location=0) out vec4 o0;
+uniform sampler2D uReliefS, uReliefL;
+uniform vec2 uOutSize;
+${STROKE_LAYER_ALPHA}
+void main(){
+  vec2 uv = gl_FragCoord.xy / uOutSize;
+  o0 = vec4(texture(uReliefS, uv).x + layerAEff(uv) * texture(uReliefL, uv).x);
 }`;
 
 // Paper, generated per document and whenever the paper is changed, in two passes.

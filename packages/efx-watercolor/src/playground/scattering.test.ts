@@ -754,13 +754,15 @@ describe('post-UAT — the bristle Body mask is gone, Body is film opacity', () 
     )
     expectContains(shipped, '${HEADER}${FOOTPRINT_MASK}')
     expectContains(shipped, 'float m = footprintMask();')
-    // The ONE gather snippet now has exactly three program consumers: the
-    // deposit, the coverage write, and (post-UAT 2026-11-21) the thickness
-    // deposit, so the emboss follows the mark the paint actually made.
+    // The ONE gather snippet now has exactly four program consumers: the
+    // deposit, the coverage write, (post-UAT 2026-11-21) the thickness
+    // deposit, so the emboss follows the mark the paint actually made, and
+    // (261125-kvl) the stroke layer's two-attachment cover write, which
+    // recomputes its own dab frame rather than widening `Gathered`.
     expect(
       (SHADERS_SOURCE.match(/export const bristle\w+FS = `\$\{HEADER\}\$\{BRISTLE_GATHER\}/g) ?? []).length,
-      'three consumers: the deposit, the coverage write and the thickness deposit',
-    ).toBe(3)
+      'four consumers: the deposit, the coverage write, the thickness deposit and the stroke layer cover',
+    ).toBe(4)
   })
 
   it('maps Body to a linear film opacity with a floor that keeps Body 0 painting', () => {
@@ -1039,11 +1041,15 @@ describe('64-24 — the wetness gate and the touch refresh (D-24)', () => {
   // fixture fault — each test must fail on its own assertion instead.
   const carrier = () =>
     sliceBetween(SHADERS_SOURCE, 'export const bristleCarrierFS', 'export const BRISTLE_GATHER')
+  // 261125-kvl: the slice ends where the touch fragment ends. It used to run
+  // to the paper section, which the stroke layer's shaders now sit between;
+  // the pin is about THIS fragment (gather-free, one cheap draw), not about
+  // its neighbours.
   const touch = () =>
     sliceBetween(
       SHADERS_SOURCE,
       'export const bristleTouchFS',
-      '// Paper, generated per document',
+      'export const strokeLayerClearFS',
     )
 
   it('declares the timestamp gate on the carrier, with no wall clock in the bristle fragments', () => {

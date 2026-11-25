@@ -2008,18 +2008,40 @@ const EDGE_LAYER_PAPER_X0 = 0.2
 const EDGE_LAYER_PAPER_X1 = 0.36
 const EDGE_LAYER_UNDER_Y0 = 0.47
 const EDGE_LAYER_UNDER_Y1 = 0.53
-/** The fraction of the stroke fed before the layer is read: late enough that
- *  the lateral field is populated, early enough that the end-cap dab and the
- *  merge have not run. */
-const EDGE_LAYER_PARTIAL = 0.75
-/** The encoder's exact-endpoint set: a station whose layer cover_L reaches
- *  this is an identity (aEff = 1), not a fit. */
-const EDGE_LAYER_CORE_COVER = 0.999
+/** The fraction of the stroke's recorded samples fed before the layer is read.
+ *  ALL of them: the engine's dwell keeps the STAMPED position behind the fed
+ *  samples (measured: 2 of 3 points fed, the stroke at y 0.37 while B's under
+ *  window starts at y 0.47), so a 3/4 feed leaves stroke B short of the
+ *  crossing the capture profiles. The sample count is not the reading: the
+ *  stroke's ending is still pending at the capture (manual mode — `scriptEnd`
+ *  only flags it), so the end-cap dab and the merge have not run, and both
+ *  windows (A's near its start, B's at the crossing) are stamped. */
+const EDGE_LAYER_PARTIAL = 1
+/** The encoder's exact-endpoint set: a texel whose FROZEN band alpha `aEff`
+ *  reaches this is an identity (the merge writes the layer's raw storage),
+ *  not a fit — so `coreExact` may require 0/255 there. cover_L alone is NOT
+ *  the endpoint set: `aEff = (1 − amount·t^e)·cover_L` falls below 1 wherever
+ *  the lateral fade is active even at a full cover. */
+const EDGE_LAYER_CORE_AEFF = 1 - 1e-4
+/** The merge's two exact endpoints (`aEff >= 1 − 1e-4` / `<= 1e-4`): they
+ *  write the layer's raw storage / copy the sheet through, so the expected
+ *  bands at those texels are the UNPOLISHED states — the only place the film
+ *  polish does not enter (the endpoint is a storage-domain identity). */
+const EDGE_LAYER_ENDPOINT = 1e-4
 const EDGE_LAYER_SILHOUETTE_MIN_PX = 8
 /** The encoder bar, in 1/255 units (spike 006 Q4: max 2, p95 1, zero over). */
 const EDGE_LAYER_FIT_MAX = 2
 const EDGE_LAYER_FIT_P95 = 1
 const EDGE_LAYER_FIT_OVER = 0
+/** Mirrors BRISTLE_FILM_BLUR (bristles.ts:244): the display's 5-tap paint-film
+ *  polish, on for every bristle sheet (`bristleContent`). The merge builds its
+ *  target T from the SAME polished states — T is a display-domain value
+ *  (`band(mix(blur(S), blur(L), aEff))`, DESIGN 3.3) — so the probe must
+ *  polish the read-back states before comparing, or it measures the polish
+ *  instead of the encoder. The display polishes the COMMITTED storage again;
+ *  that second pass is a spatial pre-filter that cannot be inverted pointwise
+ *  and is reported separately (edgePolishDelta, Task 4), never hidden here. */
+const EDGE_LAYER_FILM_BLUR = 0.35
 
 /** Spec 10: the two edge operands. Valid ONLY on `edge-layer` — a value on any
  *  other scenario is refused, never silently ignored. Absent keeps the
@@ -2112,6 +2134,7 @@ interface EdgeLayerInternals {
   layerFilm?: { views: WebGLFramebuffer[] }
   layerRelief?: { views: WebGLFramebuffer[] }
   layerAllocated?: boolean
+  layerOpen?: boolean
   mergeDraws?: number
   /** Pre-existing engine fact (reuse rule, NOT fixed here): the first dab's
    *  direction is inherited from the previous stroke, and `resetSheet()` does
@@ -2119,6 +2142,8 @@ interface EdgeLayerInternals {
    *  scene — the plan's `lastDir [1,0]` / `lastAngle 0` definition. */
   lastDir: [number, number]
   lastAngle: number
+  /** Debug: the open stroke's last stamped doc position. */
+  stroke?: { readonly x: number; readonly y: number } | null
 }
 
 /** Pin the stroke-start direction the amount-0 digest is defined on. Probe
@@ -2263,6 +2288,23 @@ function edgeGranulationK(paperG: number, granulation: number): number {
   return Math.max(1e-3, 1 + granulation * 0.55 * (0.5 - paperG) * 2.2)
 }
 
+/**
+ * Spec 10: the frozen lateral law's band alpha `aEff` at one texel, from the
+ * layer's OWN lateral field and the scenario's two knobs —
+ * `A = 1 − amount·t^e`, `aEff = clamp(A·cover_L, 0, 1)` with
+ * `t = clamp((u − START)/(1 − START), 0, 1)` and `e = 2^(2·bias − 1)`.
+ * This is the weight the MERGE applied; the committed sheet's own recovery is
+ * a separate measurement (`midAlpha`), never this law re-read.
+ */
+function edgeLayerAEff(lateral: number, coverL: number): number {
+  const u = Math.min(1, Math.max(0, lateral))
+  const amount = EDGE_LAYER_AMOUNT / 100
+  const bias = EDGE_LAYER_FALLOFF / 100
+  const t = Math.min(1, Math.max(0, (u - EDGE_LAYER_START) / Math.max(1 - EDGE_LAYER_START, 1e-4)))
+  const e = Math.pow(2, 2 * bias - 1)
+  return Math.min(1, Math.max(0, (1 - amount * Math.pow(t, e)) * coverL))
+}
+
 /** One display band's value from a coefficient getter and a scatter term —
  *  the CPU mirror of `displayBasisGLSL` (KM over white above the epsilon, the
  *  legacy `exp(-k)` otherwise; `k = 0` returns 1, the continuous limit). */
@@ -2316,6 +2358,62 @@ function edgeBandsLinear(bands: Float64Array): [number, number, number] {
     out[2] += bands[i]! * w[2]!
   }
   return out
+}
+
+/** sRGB companding — the display's byte space (spectral.ts's `compand`). */
+function edgeCompand(x: number): number {
+  return x < 0.0031308 ? x * 12.92 : 1.055 * Math.pow(x, 1 / 2.4) - 0.055
+}
+
+/**
+ * The 16 bands' DISPLAY BYTES — the spike's `bandRgb8`: the weight sum, the
+ * compand, rounded to the 8-bit channel the compositor writes. The encoder
+ * bar (max 2 / p95 1 / over 0) lives in THESE units, never in band
+ * coefficients: the fit has 8 unknowns for 3 displayed channels, so a band
+ * residual is not a display residual (spike 006 Q4 judged the bar here).
+ */
+function edgeBandsRgb8(bands: Float64Array): [number, number, number] {
+  const lin = edgeBandsLinear(bands)
+  return lin.map((c) =>
+    Math.round(Math.min(1, Math.max(0, edgeCompand(Math.min(1, Math.max(0, c))))) * 255),
+  ) as [number, number, number]
+}
+
+/**
+ * displayFS's 5-tap film soften over a rect plane, the merge's own
+ * `uFilmBlur` step: `v' = mix(v, (v + N + S + E + W) / 5, w)` per channel.
+ * The merge reads the real doc plane; here the neighbour outside the rect is
+ * the clamped edge texel — the profile windows sit inside the rect, and both
+ * fields are smooth there (bare paper, empty layer), so the clamp never
+ * enters a reading.
+ */
+function edgeBlurFilm(
+  a: Float32Array,
+  b: Float32Array,
+  width: number,
+  height: number,
+  weight: number,
+): { a: Float32Array; b: Float32Array } {
+  if (!(weight > 0)) return { a, b }
+  const outA = new Float32Array(a.length)
+  const outB = new Float32Array(b.length)
+  const n = width * height
+  for (let i = 0; i < n; i += 1) {
+    const x = i % width
+    const y = (i - x) / width
+    const l = y * width + Math.max(0, x - 1)
+    const r = y * width + Math.min(width - 1, x + 1)
+    const up = Math.max(0, y - 1) * width + x
+    const dn = Math.min(height - 1, y + 1) * width + x
+    for (let c = 0; c < 4; c += 1) {
+      const o = i * 4 + c
+      const sumA = a[o]! + a[l * 4 + c]! + a[r * 4 + c]! + a[up * 4 + c]! + a[dn * 4 + c]!
+      outA[o] = a[o]! * (1 - weight) + (sumA * 0.2) * weight
+      const sumB = b[o]! + b[l * 4 + c]! + b[r * 4 + c]! + b[up * 4 + c]! + b[dn * 4 + c]!
+      outB[o] = b[o]! * (1 - weight) + (sumB * 0.2) * weight
+    }
+  }
+  return { a: outA, b: outB }
 }
 
 /** One lateral profile: `offsets` are document-pixel distances from the
@@ -2423,13 +2521,44 @@ function edgeLayerProfile(
   }
 }
 
+/**
+ * Spec 10: the ONE merge's own instrument — the sheet and the layer read
+ * immediately BEFORE and immediately AFTER `mergeStrokeLayer`, i.e. the exact
+ * pair the encoder gate must compare:
+ *  - `postSheet` decodes to the encoder's output `fit` (the write-back is
+ *    `fit/k − fixed`, so `k·(ink+fixed) = fit`);
+ *  - `preSheet` / `preLayer` are the merge's own inputs (`aEff·band_L +
+ *    (1−aEff)·band_S`).
+ *
+ * Reading the mid-stroke capture instead would carry two known stalenesses the
+ * gate must not measure: the end-cap catch-up dab lands between the capture
+ * and the merge, and the settle ticks AFTER the merge advect the merged sheet
+ * (measured at 512²: 63 continuity stations and 10.3/255 max residual before
+ * this instrument existed). The instrument is a probe-only instance shadow on
+ * a private method — the same seam `driveBristleEnd` uses on `stampScripted`.
+ */
+interface EdgeMergeSide {
+  readonly preSheet: EdgeDocFields
+  readonly preLayer: EdgeLayerFields | null
+  readonly postSheet: EdgeDocFields
+}
+
 /** Spec 10: one stroke's mid-stroke capture — the layer, the untouched sheet
  *  and the engine's structural counters. */
 interface EdgeStrokeCapture {
   readonly layer: EdgeLayerFields | null
   readonly sheet: EdgeDocFields
   readonly layerAllocated: boolean | null
+  readonly layerOpen: boolean | null
+  /** Debug: full-doc max of the layer film's cover attachment at capture. */
+  readonly layerCoverMax: number | null
+  /** Debug: the open stroke's last stamped doc position at capture. */
+  readonly strokePos: { x: number; y: number } | null
+  /** Debug: max aEff over the capture rect (the endpoint set's reachability). */
+  readonly maxAeff: number | null
   readonly mergeDraws: number | null
+  /** The merge's own pre/post pair, attached once the stroke completes. */
+  readonly merge: EdgeMergeSide | null
 }
 
 /** Spec 10: read one side's capture at the partial point of its stroke. */
@@ -2440,11 +2569,21 @@ function captureEdgeStroke(
 ): EdgeStrokeCapture {
   const rect = edgeLayerRect(sheet, side === 'a' ? 'paper' : 'under')
   const it = engine as unknown as EdgeLayerInternals
+  let layerCoverMax: number | null = null
+  if (it.layerFilm) {
+    const cover = edgeDecodeHalf(it.g.readHalf(it.layerFilm.views[0]!, sheet, sheet, 1))
+    layerCoverMax = 0
+    for (let i = 0; i < cover.length; i += 1) layerCoverMax = Math.max(layerCoverMax, cover[i]!)
+  }
   return {
     layer: readEdgeLayerFields(engine, sheet, rect),
     sheet: readEdgeDocFields(engine, sheet, rect),
     layerAllocated: typeof it.layerAllocated === 'boolean' ? it.layerAllocated : null,
+    layerOpen: typeof it.layerOpen === 'boolean' ? it.layerOpen : null,
+    layerCoverMax,
+    strokePos: it.stroke ? { x: round2(it.stroke.x), y: round2(it.stroke.y) } : null,
     mergeDraws: typeof it.mergeDraws === 'number' ? it.mergeDraws : null,
+    merge: null,
   }
 }
 
@@ -2475,6 +2614,12 @@ interface EdgeSideReadings {
   readonly coreExact: number | null
   readonly continuity: number | null
   readonly printRetention: number | null
+  /** Debug: the largest aEff the merge could have applied in this side's rect
+   *  (the endpoint set's actual reach — a scene where the deposit never
+   *  saturates has no endpoint texel and `coreExact` is legitimately absent). */
+  readonly maxAeff: number | null
+  /** Debug: where that texel is and why (doc x/y, lateral, cover_L, u). */
+  readonly maxAeffAt: Record<string, number> | null
 }
 
 const EDGE_SIDE_ABSENT: EdgeSideReadings = {
@@ -2483,6 +2628,8 @@ const EDGE_SIDE_ABSENT: EdgeSideReadings = {
   coreExact: null,
   continuity: null,
   printRetention: null,
+  maxAeff: null,
+  maxAeffAt: null,
 }
 
 /**
@@ -2512,10 +2659,12 @@ function edgeSideReadings(
   profile: EdgeProfile,
   axis: 'x' | 'y',
 ): EdgeSideReadings {
-  const layer = capture.layer
+  // The merge's own inputs when the instrument ran (Task 3+): the mid-stroke
+  // capture is the fallback for the pre-change tree only.
+  const layer = capture.merge ? capture.merge.preLayer : capture.layer
   if (layer === null || profile.cover === null || profile.print === null) return EDGE_SIDE_ABSENT
-  const { width, height } = capture.sheet
-  const sheetFields = capture.sheet
+  const sheetFields = capture.merge ? capture.merge.preSheet : capture.sheet
+  const { width, height } = sheetFields
   const paperG = readEdgePaperG(engine, sheetFields)
   // The layer's geometric silhouette: its outermost station within 1 % of the
   // cover_L peak. Guarded — a degenerate profile has no station to judge.
@@ -2538,6 +2687,11 @@ function edgeSideReadings(
   const docCentreX = Math.round((sheetRect.x0 + sheetRect.x1 - 1) / 2)
   const k = new Float32Array(width * height)
   for (let i = 0; i < k.length; i += 1) k[i] = edgeGranulationK(paperG[i]!, granulation)
+  // The envelope and the recovered alpha are judged in the MERGE's domain —
+  // the polished states (`uFilmBlur`). The core identity is the one storage-
+  // domain reading and stays on the RAW states.
+  const sheetBlur = edgeBlurFilm(sheetFields.a, sheetFields.b, width, height, EDGE_LAYER_FILM_BLUR)
+  const layerBlur = edgeBlurFilm(layer.a, layer.b, width, height, EDGE_LAYER_FILM_BLUR)
   const layerCover = layer.cover
   // Per-station aggregation, over the same rows the profile averages.
   let alphaSum = 0
@@ -2545,6 +2699,8 @@ function edgeSideReadings(
   let coreMax = 0
   let coreSeen = false
   let outside = 0
+  let maxAeff = 0
+  let maxAeffAt: Record<string, number> | null = null
   for (let oi = 0; oi < profile.offsets.length; oi += 1) {
     const o = profile.offsets[oi]!
     let rowIndex = -1
@@ -2567,23 +2723,52 @@ function edgeSideReadings(
     let rowOutside = 0
     for (let j = 0; j < rowCount; j += 1) {
       const fi = axis === 'y' ? rowIndex * width + j : j * width + rowIndex
-      const bands_s = edgeTexelBands(sheetFields.a, sheetFields.b, fi, k[fi]!)
-      const bands_l = edgeTexelBands(layer.a, layer.b, fi, 1)
+      const bands_s = edgeTexelBands(sheetBlur.a, sheetBlur.b, fi, k[fi]!)
+      // The merge multiplies the LAYER's state by the same display step `k`
+      // before its band reconstruction (`la *= k`), so the layer's display
+      // band is `band(layer · k)` — a k = 1 read would measure the scaling.
+      const bands_l = edgeTexelBands(layerBlur.a, layerBlur.b, fi, k[fi]!)
       const bands_o = edgeTexelBands(merged.a, merged.b, fi, k[fi]!)
       const c = layerCover[fi]!
+      const aEff = edgeLayerAEff(layer.lateral[fi]!, c)
+      // The envelope follows the SAME piecewise domain as the merge: the exact
+      // endpoints are storage identities on the RAW states (the polish cannot
+      // enter), the interior is judged on the polished states.
+      const atCore = aEff >= EDGE_LAYER_CORE_AEFF
+      const atPass = aEff <= EDGE_LAYER_ENDPOINT
+      let envS = bands_s
+      let envL = bands_l
+      if (atCore || atPass) {
+        envS = edgeTexelBands(sheetFields.a, sheetFields.b, fi, k[fi]!)
+        envL = atCore ? edgeTexelBands(layer.a, layer.b, fi, k[fi]!) : envS
+      }
+      if (aEff > maxAeff) {
+        maxAeff = aEff
+        maxAeffAt = {
+          x: sheetRect.x0 + (axis === 'y' ? j : rowIndex),
+          y: sheetRect.y0 + (axis === 'y' ? rowIndex : j),
+          lateral: round4(layer.lateral[fi]!),
+          cover: round4(c),
+        }
+      }
       let inside = true
       for (let bi = 0; bi < bands_o.length; bi += 1) {
-        const lo = Math.min(bands_s[bi]!, bands_l[bi]!) - 1 / 255
-        const hi = Math.max(bands_s[bi]!, bands_l[bi]!) + 1 / 255
+        const lo = Math.min(envS[bi]!, envL[bi]!) - 1 / 255
+        const hi = Math.max(envS[bi]!, envL[bi]!) + 1 / 255
         if (bands_o[bi]! < lo || bands_o[bi]! > hi) {
           inside = false
           break
         }
       }
       if (!inside) rowOutside += 1
-      if (c >= EDGE_LAYER_CORE_COVER) {
+      if (atCore) {
+        // Seen even when the deviation is exactly 0 — the endpoint is an
+        // IDENTITY, so a perfect read is the expected result, never absence.
+        // The endpoint writes the layer's RAW storage (never the polished
+        // film), so the reference is the unblurred layer band.
+        coreSeen = true
         for (let bi = 0; bi < bands_o.length; bi += 1) {
-          rowCore = Math.max(rowCore, Math.abs(bands_o[bi]! - bands_l[bi]!) * 255)
+          rowCore = Math.max(rowCore, Math.abs(bands_o[bi]! - envL[bi]!) * 255)
         }
       }
       if (isMid) {
@@ -2597,10 +2782,7 @@ function edgeSideReadings(
       }
     }
     if (rowOutside > 0) outside += 1
-    if (rowCore > 0) {
-      coreSeen = true
-      coreMax = Math.max(coreMax, rowCore)
-    }
+    coreMax = Math.max(coreMax, rowCore)
     if (isMid && rowAlphaCount > 0) {
       alphaSum += rowAlpha / rowAlphaCount
       alphaCount += 1
@@ -2616,6 +2798,8 @@ function edgeSideReadings(
     coreExact: coreSeen ? round4(coreMax) : null,
     continuity: outside,
     printRetention: rimIndex >= 0 ? round4(profile.print[rimIndex]!) : null,
+    maxAeff: round4(maxAeff),
+    maxAeffAt,
   }
 }
 
@@ -2636,15 +2820,22 @@ function edgeEncodeResidual(
   granulation: number,
   profile: EdgeProfile,
   axis: 'x' | 'y',
-): { residual: number[]; halfOnWhite: number | null } {
-  const layer = capture.layer
-  if (layer === null || profile.cover === null) return { residual: [], halfOnWhite: null }
-  const sheetFields = capture.sheet
+): { residual: number[]; halfOnWhite: number | null; debug: Record<string, number> } {
+  const layer = capture.merge ? capture.merge.preLayer : capture.layer
+  if (layer === null || profile.cover === null) return { residual: [], halfOnWhite: null, debug: {} }
+  const sheetFields = capture.merge ? capture.merge.preSheet : capture.sheet
   const { width, height, rect } = sheetFields
   const paperG = readEdgePaperG(engine, sheetFields)
   const k = new Float32Array(width * height)
   for (let i = 0; i < k.length; i += 1) k[i] = edgeGranulationK(paperG[i]!, granulation)
+  // The merge builds its target on the POLISHED states (displayFS's 5-tap
+  // soften, `uFilmBlur` = BRISTLE_FILM_BLUR on a bristle sheet), so the
+  // expected mix must be computed on the same states — otherwise the
+  // comparison measures the polish instead of the encoder.
+  const sheetBlur = edgeBlurFilm(sheetFields.a, sheetFields.b, width, height, EDGE_LAYER_FILM_BLUR)
+  const layerBlur = edgeBlurFilm(layer.a, layer.b, width, height, EDGE_LAYER_FILM_BLUR)
   const residual: number[] = []
+  const decodeDebug: Record<string, number> = {}
   // The half-on-white scan needs the station whose aEff is nearest 0.5; the
   // value is recovered per texel and averaged over the station row.
   let bestDistance = Number.POSITIVE_INFINITY
@@ -2670,14 +2861,55 @@ function edgeEncodeResidual(
     let rowHalfCount = 0
     for (let j = 0; j < rowCount; j += 1) {
       const fi = axis === 'y' ? rowIndex * width + j : j * width + rowIndex
-      const bandsS = edgeTexelBands(sheetFields.a, sheetFields.b, fi, k[fi]!)
-      const bandsL = edgeTexelBands(layer.a, layer.b, fi, 1)
       const bandsO = edgeTexelBands(merged.a, merged.b, fi, k[fi]!)
-      const cover = layer.cover[fi]!
-      for (let bi = 0; bi < bandsO.length; bi += 1) {
-        const mix = cover * bandsL[bi]! + (1 - cover) * bandsS[bi]!
-        residual.push(Math.abs(bandsO[bi]! - mix) * 255)
+      // The merge multiplies the layer's state by k before encoding (the
+      // storage write-back divides it out), so the layer's bands decode at
+      // the SAME k the sheet's do.
+      const bandsS = edgeTexelBands(sheetBlur.a, sheetBlur.b, fi, k[fi]!)
+      const bandsL = edgeTexelBands(layerBlur.a, layerBlur.b, fi, k[fi]!)
+      // The composite weight is the FROZEN aEff = A·cover_L, never cover_L
+      // alone: the lateral fade inside the footprint lowers the weight and the
+      // expected mix must follow it, not the cover.
+      const mixWeight = edgeLayerAEff(layer.lateral[fi]!, layer.cover[fi]!)
+      // The expected band is PIECEWISE, exactly as the merge's own source is:
+      // the two exact endpoints are STORAGE identities (aEff >= 1 − 1e-4
+      // writes the RAW layer, aEff <= 1e-4 copies the RAW sheet through — the
+      // only texels the film polish cannot enter), and the interior is the
+      // display-domain polish of both states. Judging a passthrough texel
+      // against the polished sheet would measure the polish.
+      const wantBands = new Float64Array(bandsO.length)
+      if (mixWeight >= EDGE_LAYER_CORE_AEFF) {
+        const rawL = edgeTexelBands(layer.a, layer.b, fi, k[fi]!)
+        wantBands.set(rawL)
+      } else if (mixWeight <= EDGE_LAYER_ENDPOINT) {
+        const rawS = edgeTexelBands(sheetFields.a, sheetFields.b, fi, k[fi]!)
+        wantBands.set(rawS)
+      } else {
+        for (let bi = 0; bi < bandsO.length; bi += 1) {
+          wantBands[bi] = mixWeight * bandsL[bi]! + (1 - mixWeight) * bandsS[bi]!
+        }
       }
+      const gotRgb = edgeBandsRgb8(bandsO)
+      const wantRgb = edgeBandsRgb8(wantBands)
+      const texelWorst = Math.max(
+        Math.abs(gotRgb[0] - wantRgb[0]),
+        Math.abs(gotRgb[1] - wantRgb[1]),
+        Math.abs(gotRgb[2] - wantRgb[2]),
+      )
+      residual.push(texelWorst)
+      // Debug: where the tail lives — an endpoint identity, a passthrough, or
+      // the fitted interior (the only place the encoder can miss).
+      const bucket =
+        mixWeight >= EDGE_LAYER_CORE_AEFF
+          ? 'Core'
+          : mixWeight <= EDGE_LAYER_ENDPOINT
+            ? 'Pass'
+            : mixWeight > 0.1
+              ? 'Mid'
+              : 'Low'
+      decodeDebug[`max${bucket}`] = Math.max(decodeDebug[`max${bucket}`] ?? 0, texelWorst)
+      decodeDebug[`n${bucket}`] = (decodeDebug[`n${bucket}`] ?? 0) + 1
+      if (texelWorst > EDGE_LAYER_FIT_MAX) decodeDebug[`over${bucket}`] = (decodeDebug[`over${bucket}`] ?? 0) + 1
       // The recovered aEff at this texel (band-averaged, guarded).
       let alpha = 0
       let alphaCount = 0
@@ -2705,7 +2937,7 @@ function edgeEncodeResidual(
     }
     if (rowHalfCount > 0) bestHalf = rowHalf
   }
-  return { residual, halfOnWhite: bestHalf === null ? null : round4(bestHalf) }
+  return { residual, halfOnWhite: bestHalf === null ? null : round4(bestHalf), debug: decodeDebug }
 }
 
 /** The layer report — every field the comparator names, present or ABSENT. */
@@ -2714,24 +2946,27 @@ function edgeLayerReport(
   sheet: number,
   script: readonly ScriptEntry[],
   captures: { a: EdgeStrokeCapture | null; b: EdgeStrokeCapture | null },
+  mergeDeltas: readonly number[],
   transparent: HTMLCanvasElement,
   roundTrip: boolean | null,
   granulation: number,
 ): Record<string, unknown> {
   const paperRect = edgeLayerRect(sheet, 'paper')
   const underRect = edgeLayerRect(sheet, 'under')
-  const mergedPaper = readEdgeDocFields(engine, sheet, paperRect)
-  const mergedUnder = readEdgeDocFields(engine, sheet, underRect)
+  // The merge's own post-state is the artist-visible committed sheet; the
+  // report-time read is the fallback (no merge ran, e.g. amount 0).
+  const mergedPaper = captures.a?.merge?.postSheet ?? readEdgeDocFields(engine, sheet, paperRect)
+  const mergedUnder = captures.b?.merge?.postSheet ?? readEdgeDocFields(engine, sheet, underRect)
   const paperProfile = edgeLayerProfile(
     mergedPaper,
-    captures.a?.layer ?? null,
+    captures.a?.merge ? captures.a.merge.preLayer : (captures.a?.layer ?? null),
     transparent,
     sheet,
     'y',
   )
   const underProfile = edgeLayerProfile(
     mergedUnder,
-    captures.b?.layer ?? null,
+    captures.b?.merge ? captures.b.merge.preLayer : (captures.b?.layer ?? null),
     transparent,
     sheet,
     'x',
@@ -2746,11 +2981,11 @@ function edgeLayerReport(
       : edgeSideReadings(engine, captures.b, mergedUnder, granulation, underProfile, 'x')
   const paperResidual =
     captures.a === null
-      ? { residual: [], halfOnWhite: null }
+      ? { residual: [], halfOnWhite: null, debug: {} }
       : edgeEncodeResidual(engine, captures.a, mergedPaper, granulation, paperProfile, 'y')
   const underResidual =
     captures.b === null
-      ? { residual: [], halfOnWhite: null }
+      ? { residual: [], halfOnWhite: null, debug: {} }
       : edgeEncodeResidual(engine, captures.b, mergedUnder, granulation, underProfile, 'x')
   const residual = [...paperResidual.residual, ...underResidual.residual].sort((a, b) => a - b)
   const encodeMax = residual.length > 0 ? round4(residual[residual.length - 1]!) : null
@@ -2793,9 +3028,24 @@ function edgeLayerReport(
     edgeEncodeP95: encodeP95,
     edgeEncodeOver: encodeOver,
     linearHalfOnWhite: paperResidual.halfOnWhite,
+    debugEncodePaper: paperResidual.debug,
+    debugEncodeUnder: underResidual.debug,
     layerAllocated: counters === null ? null : counters.layerAllocated,
-    mergeDraws: counters === null ? null : counters.mergeDraws,
-    mergeDrawsFirst: captures.a === null ? null : captures.a.mergeDraws,
+    debugLayerOpenA: captures.a === null ? null : captures.a.layerOpen,
+    debugLayerOpenB: captures.b === null ? null : captures.b.layerOpen,
+    debugLayerCoverMaxA: captures.a === null ? null : round4(captures.a.layerCoverMax ?? Number.NaN),
+    debugLayerCoverMaxB: captures.b === null ? null : round4(captures.b.layerCoverMax ?? Number.NaN),
+    debugMaxAeffPaper: paperReadings.maxAeff,
+    debugMaxAeffUnder: underReadings.maxAeff,
+    debugMaxAeffAtPaper: paperReadings.maxAeffAt,
+    debugMaxAeffAtUnder: underReadings.maxAeffAt,
+    debugStrokeA: captures.a === null ? null : captures.a.strokePos,
+    debugStrokeB: captures.b === null ? null : captures.b.strokePos,
+    // Per-stroke deltas of the cumulative counter: the LAST stroke's merge and
+    // the FIRST stroke's, so a visit that merges once for both (or merges
+    // mid-stroke) cannot pass.
+    mergeDraws: mergeDeltas.length > 0 ? mergeDeltas[mergeDeltas.length - 1]! : null,
+    mergeDrawsFirst: mergeDeltas.length > 0 ? mergeDeltas[0]! : null,
   }
 }
 
@@ -2828,6 +3078,7 @@ function edgeLayerVisitReport(
   sheet: number,
   script: readonly ScriptEntry[],
   captures: { a: EdgeStrokeCapture | null; b: EdgeStrokeCapture | null },
+  mergeDeltas: readonly number[],
   transparent: HTMLCanvasElement,
   visitDigest: string,
   visitPixels: Uint8ClampedArray,
@@ -2866,7 +3117,7 @@ function edgeLayerVisitReport(
   const after = restored ? digestSheetSnapshot(engine.captureSheet().whole) : null
   const delta = edgePixelDelta(visitPixels, oneShot.pixels)
   return {
-    ...edgeLayerReport(engine, sheet, script, captures, transparent, restored ? before === after : false, granulation),
+    ...edgeLayerReport(engine, sheet, script, captures, mergeDeltas, transparent, restored ? before === after : false, granulation),
     // The same-script-twice comparison: the two replay flavours must agree
     // with each other (that is the split-drive-equals-bake-drive question).
     edgeReplaySelfIdentical: oneShot.digest === split.digest,
@@ -4422,12 +4673,47 @@ function run(
     // single way to read a layer before the merge clears it; the replay gate
     // below proves the split drive and the one-shot drive agree byte for byte.
     const edgeCaptures: { a: EdgeStrokeCapture | null; b: EdgeStrokeCapture | null } = { a: null, b: null }
+    // Spec 10: the engine's `mergeDraws` counter is CUMULATIVE for the engine's
+    // life, so the structural gate reads a per-stroke DELTA — measured around
+    // each stroke's own completion (with the capture taken mid-stroke, before
+    // its merge, inside the same loop iteration).
+    const edgeMergeDeltas: number[] = []
     if (scenario === 'edge-layer') {
       pinStrokeStart(engine)
+      // Spec 10: the merge-time instrument (EdgeMergeSide). Installed before
+      // the first stroke; each merge pushes its pre/post pair in stroke order,
+      // and the drive loop attaches it to that stroke's capture below.
+      const mergePaperRect = edgeLayerRect(sheet, 'paper')
+      const mergeUnderRect = edgeLayerRect(sheet, 'under')
+      const mergeSnapshots: Array<{
+        preSheet: { paper: EdgeDocFields; under: EdgeDocFields }
+        preLayer: { paper: EdgeLayerFields | null; under: EdgeLayerFields | null }
+        postSheet: { paper: EdgeDocFields; under: EdgeDocFields }
+      }> = []
+      const mergeHost = engine as unknown as { mergeStrokeLayer: (rect: EdgeRect) => void }
+      const baseMerge = mergeHost.mergeStrokeLayer.bind(engine)
+      mergeHost.mergeStrokeLayer = (rect: EdgeRect) => {
+        const preSheet = {
+          paper: readEdgeDocFields(engine, sheet, mergePaperRect),
+          under: readEdgeDocFields(engine, sheet, mergeUnderRect),
+        }
+        const preLayer = {
+          paper: readEdgeLayerFields(engine, sheet, mergePaperRect),
+          under: readEdgeLayerFields(engine, sheet, mergeUnderRect),
+        }
+        baseMerge(rect)
+        const postSheet = {
+          paper: readEdgeDocFields(engine, sheet, mergePaperRect),
+          under: readEdgeDocFields(engine, sheet, mergeUnderRect),
+        }
+        mergeSnapshots.push({ preSheet, preLayer, postSheet })
+      }
       for (const entry of script) {
         const stroke = makeStroke(entry)
         const partial = Math.max(2, Math.floor(stroke.pts.length * EDGE_LAYER_PARTIAL))
         adapter.renderPartialStrokes([{ stroke, pointCount: partial }])
+        const edgeInternals = engine as unknown as EdgeLayerInternals
+        const drawsBefore = typeof edgeInternals.mergeDraws === 'number' ? edgeInternals.mergeDraws : null
         const side = entry.captureEdge
         if (side !== undefined) {
           const captureStart = performance.now()
@@ -4436,10 +4722,25 @@ function run(
         }
         adapter.renderPartialStrokes([{ stroke, pointCount: Number.MAX_SAFE_INTEGER }])
         // The `applyStroke` tail: one clock step + one engine tick, exactly.
+        // That tick runs the end-cap dab and the stroke's ONE merge.
         adapter.stepTick(0)
+        const snap = mergeSnapshots[mergeSnapshots.length - 1]
+        if (side !== undefined && edgeCaptures[side] !== null && snap !== undefined) {
+          const pick = side === 'a' ? 'paper' : 'under'
+          edgeCaptures[side] = {
+            ...edgeCaptures[side]!,
+            merge: {
+              preSheet: snap.preSheet[pick],
+              preLayer: snap.preLayer[pick],
+              postSheet: snap.postSheet[pick],
+            },
+          }
+        }
         const settle = entry.settle ?? SETTLE_TICKS
         for (let tick = 0; tick <= settle; tick += 1) adapter.stepTick(tick)
         adapter.fix()
+        const drawsAfter = typeof edgeInternals.mergeDraws === 'number' ? edgeInternals.mergeDraws : null
+        if (drawsBefore !== null && drawsAfter !== null) edgeMergeDeltas.push(drawsAfter - drawsBefore)
       }
     }
     script.forEach((entry, index) => {
@@ -4681,6 +4982,7 @@ function run(
             sheet,
             script,
             edgeCaptures,
+            edgeMergeDeltas,
             transparentCanvas,
             transparent.digest,
             transparent.pixels,
