@@ -1292,10 +1292,15 @@ Gathered gatherBristle(vec2 uv){
   // 2026-11-20 (the artist's dry-end reference): the fade also runs through
   // the paper THRESHOLD, not just the film. As it lowers the coverage, the
   // tooth opens pores FIRST, so the end breaks into specks like a drying
-  // brush instead of thinning as one solid veil. The carried film keeps the
-  // same fade so the surviving specks fade with it.
+  // brush instead of thinning as one solid veil.
+  // 2026-11-26 (the artist's dark end block): the trailing trim stays a
+  // COVERAGE/threshold law - the exposed trailing rect opens into pores -
+  // and no longer multiplies the carried FILM. Suppressing the film made a
+  // running body read LIGHTER than its terminal band (the dark end block,
+  // "the body gets lighter as the brush grows"), so the film keeps its full
+  // weight and only the coverage gate breaks the end.
   float coverage = body * (0.3 + 0.7 * uPressure) * dryEdge * alongFade * trailSupport;
-  featherFade *= alongFade * trailSupport;
+  featherFade *= alongFade;
   // The band itself is the reference's constant; its width never moves.
   float inked = uSoftness > 0.0
     ? smoothstep(threshold - uSoftness, threshold + uSoftness, coverage)

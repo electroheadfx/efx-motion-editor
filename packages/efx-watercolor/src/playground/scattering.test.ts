@@ -1451,7 +1451,10 @@ describe('261119-pod — the §3.3 smear, the snapshot and the four-side Feather
     // at its own tip; interior texels sit at q.y <= one spacing, untouched.
     expectContains(g, 'float trailSupport = 1.0 - smoothstep(0.95, 1.2, q.y);')
     expectContains(g, 'float coverage = body * (0.3 + 0.7 * uPressure) * dryEdge * alongFade * trailSupport;')
-    expectContains(g, 'featherFade *= alongFade * trailSupport;')
+    // 2026-11-26 (the artist's dark end block): the trailing trim gates the
+    // coverage THRESHOLD only; the carried film keeps full weight, or the
+    // running body reads lighter than the terminal band.
+    expectContains(g, 'featherFade *= alongFade;')
     // F0 calms the paper tooth at the rim so the edge follows the smooth
     // bristle profile; it must never FABRICATE paint there (the old max() skin
     // left a 1 px line along the silhouette wherever the brush was dry).
