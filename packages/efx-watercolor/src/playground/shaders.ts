@@ -964,12 +964,14 @@ uniform float uFeatherEdge;  // silhouette radius, in nominal footprint units
 uniform float uFeatherCap;   // leading end cap, fraction of the radius (all Feathers)
 uniform float uFeatherMin;   // the threshold shift's start anchor, fraction of the silhouette
 uniform float uFeatherShift; // the rim threshold rise at F100 (BRISTLE_FEATHER_SHIFT)
-// Spec 10 — the lateral edge film (Edge transparency / Edge falloff), in
-// SILHOUETTE units. uEdgeStart is BRISTLE_EDGE_START (0.55) and uEdgeCore
-// is BRISTLE_EDGE_CORE (0.35, the amount's share at the core); the other two
-// are Params members (amount 0..1, bias 0..1).
+// Spec 10 — Edge transparency / Edge falloff. uEdgeCore is
+// BRISTLE_EDGE_CORE (the amount's UNIFORM pigment share at amount 100) and
+// uEdgeShift is BRISTLE_EDGE_SHIFT (the rim's threshold rise at amount 100);
+// uEdgeStart is BRISTLE_EDGE_START (0.55, in SILHOUETTE units) and the other
+// two are Params members (amount 0..1, bias 0..1).
 uniform float uEdgeStart;
 uniform float uEdgeCore;
+uniform float uEdgeShift;
 uniform float uEdgeFade;
 uniform float uEdgeFalloff;
 uniform float uTakeoffShift; // the leading frontier's threshold rise (BRISTLE_TAKEOFF_SHIFT)
@@ -1090,7 +1092,7 @@ struct Gathered {
   vec3 cB;                   // carried absorbance 4..6
   float alpha;               // carried layer alpha
   float coverage;            // §4.4-thresholded body, 0..1
-  float film;                // Spec 10: the retained pigment share (1 = neutral)
+  float film;                // Spec 10: the UNIFORM pigment share (1 = neutral)
   int nearest;               // the gathered centre bristle
 };
 
@@ -1305,43 +1307,39 @@ Gathered gatherBristle(vec2 uv){
   // brush instead of thinning as one solid veil. The carried film keeps the
   // same fade so the surviving specks fade with it.
   float coverage = body * (0.3 + 0.7 * uPressure) * dryEdge * alongFade * trailSupport;
-  // Spec 10 — Edge transparency and Edge falloff. ONE lateral film in
-  // SILHOUETTE units (uFeatherEdge is where the mark's visible rim sits):
-  // 1 - amount·profile, with profile = uEdgeCore + (1 - uEdgeCore)·t^e and
-  // e = 2^(2b - 1) (0.5 broad / 1 linear / 2 rim, the tested twin's
-  // edgeFalloffExponent). Amount 100 therefore keeps 1 - uEdgeCore of the
-  // mark in the CORE and reaches 0 at the silhouette (UAT 2026-11-25: the
-  // artist wants the whole mark translucent, not only its border).
-  // Cells BEYOND the silhouette clamp to the rim factor BY DESIGN: they are
-  // the thin tail of the film, not a paper-threshold change (the block above
-  // is untouched).
+  // Spec 10 — Edge transparency and Edge falloff. TWO parts, and NEITHER is a
+  // depth film on the fringe (UAT 2026-11-25 #4/#5, the opaque white fringe):
   //
-  // THE FILM IS THE FILM. It scales BOTH the pigment it carries and the
-  // OPACITY it lands with — this gather's coverage and the deposit's carried
-  // absorbance. The ONE lerp is ink <- ink·(1-a) + cA·a:
-  //   - scaling only the weight (UAT 2026-11-25 #2, "just a cut off") leaves
-  //     the fixed point at the full cA: overlapping dabs saturate the body to
-  //     solid pigment, and where the weight falls under the convergence the
-  //     fringe disappears outright;
-  //   - scaling only the carried absorbance (UAT 2026-11-25 #3, the white
-  //     fringe) keeps a full attenuation per dab: a fringe dab erases the
-  //     pigment earlier dabs (or an earlier stroke) laid, returns almost
-  //     nothing, and the paper shows through as white scallops.
-  // With BOTH scaled the fixed point is cA·film — the diluted pigment — and
-  // the attenuation is proportional to what the dab lays, so a fringe dab
-  // neither solidifies the body nor erases the mark. The band's texels are
-  // still gated by the untouched paper threshold, so the bristle feather and
-  // its specks survive; the deposit simply thins with the film.
+  //  1. The AMOUNT's UNIFORM pigment share, 1 - amount·uEdgeCore: the whole
+  //     mark thins (the artist's "core 65% film"), scaling the deposit's
+  //     weight and the carried absorbance, its scatter S, and the cover
+  //     target. It carries NO lateral coordinate: a lateral depth film sets
+  //     every fringe cell's lerp target to a paler pigment (cA·film), so each
+  //     dab quietly REPLACES the same-sheet stroke beneath it with a thinner
+  //     film — a smooth, opaque white veil along every edge. The uniform
+  //     share cannot do that: it has no gradient, so every cell either prints
+  //     the mark's own pigment or is opened by the dissolve below.
   //
-  // The film is the PLAIN arithmetic form, never a ternary amount guard: at
-  // amount 0 the product is exactly zero, so the film is exactly 1.0 and the
-  // pre-change program renders bit-identically (the mode-1 identity gates).
-  // A guarded ternary measured a whole-export ULP drift (quick 261124-ujb).
+  //  2. The LATERAL DISSOLVE: the amount raises the SAME paper-tooth
+  //     threshold the Feather law raises, across the band from uEdgeStart to
+  //     the silhouette, shaped by the falloff exponent. An opened cell is
+  //     INERT — the deposit's a <= 1e-3 discard leaves the underlayer exactly
+  //     as it was (the spec's own rim law at amount 100: no deposit, no
+  //     erase), while a surviving cell prints at the mark's uniform pigment
+  //     share, so the fringe breaks into full-depth specks over whatever is
+  //     beneath — the dry-brush rag Feather already ships. The underlayer is
+  //     never erased and the paper never shows as a smooth band.
+  //
+  // Amount 0 is inert by construction: the product is exactly zero, so the
+  // share is exactly 1.0 and the threshold is unchanged — the pre-change
+  // program renders bit-identically (the mode-1 identity gates). Plain
+  // arithmetic, never a ternary guard: a guarded form measured a whole-export
+  // ULP drift (quick 261124-ujb).
   float edgeU = clamp(lateral / max(uFeatherEdge, 1e-4), 0.0, 1.0);
   float edgeT = clamp((edgeU - uEdgeStart) / max(1.0 - uEdgeStart, 1e-4), 0.0, 1.0);
   float edgeExp = exp2(2.0 * uEdgeFalloff - 1.0);
-  float edgeProfile = uEdgeCore + (1.0 - uEdgeCore) * pow(edgeT, edgeExp);
-  g.film = 1.0 - uEdgeFade * edgeProfile;
+  g.film = 1.0 - uEdgeFade * uEdgeCore;
+  threshold += uEdgeFade * uEdgeShift * pow(edgeT, edgeExp);
   featherFade *= alongFade * trailSupport;
   // The band itself is the reference's constant; its width never moves.
   float inked = uSoftness > 0.0
@@ -1423,10 +1421,12 @@ void main(){
     cA = mix(cA, snapA, smear);
     cB = mix(cB, snapB.xyz, smear);
   }
-  // Spec 10: the film's other half. The gather already scaled the deposit
-  // weight (this fragment's coverage weight), so the carried absorbance
-  // carries the film HERE — after the pickup mix, so lifted paint is diluted
-  // exactly like carried paint — and the lerp's fixed point is cA · film.
+  // Spec 10: the amount's UNIFORM pigment share rides the carried absorbance
+  // HERE — after the pickup mix, so lifted paint is diluted exactly like
+  // carried paint — and the lerp's fixed point is cA · film. The share has no
+  // lateral coordinate: the edge's transparency is the gather's threshold
+  // dissolve (an opened cell never reaches this fragment), never a paler
+  // fringe pigment that would replace the underlayer.
   cA *= g.film;
   cB *= g.film;
   if (uMode == 1) {
@@ -1440,10 +1440,10 @@ void main(){
     // SAME weight, so the veil lands exactly where the paint does and can
     // never accumulate past uScatter.
     oA = cA * a;
-    // Spec 10: the scatter S needs the film's second factor because the
-    // weight already carries one — its lerp then converges to uScatter · film,
-    // so a diluted pigment scatters in proportion and the veil can never
-    // outlive the paint it belongs to.
+    // Spec 10: the scatter S carries the same uniform pigment share, so it
+    // converges to uScatter · film: a diluted pigment scatters in proportion
+    // and the veil can never outlive the paint it belongs to (the spec's own
+    // milky-rim warning — S unscaled while the pigment thins).
     oB = vec4(cB * a, uScatter * a * g.film);
   }
 }`;
@@ -1495,9 +1495,12 @@ void main(){
   }
   // Spec 10: this channel is written ONE, ONE_MINUS_SRC_ALPHA, so its update
   // is cover <- target + cover·(1 - a) and its EQUILIBRIUM is target / a —
-  // the weight cancels. The film therefore has to ride the TARGET, exactly
-  // once: the base-replacement share becomes uCoverTarget · g.alpha · film,
-  // so a diluted mark clears the base no further than the film it lays.
+  // the weight cancels. The amount's uniform share therefore rides the
+  // TARGET, exactly once: the base-replacement share becomes
+  // uCoverTarget · g.alpha · film, so the translucent mark clears the base no
+  // further than the pigment it lays. The edge's dissolve needs no factor
+  // here: an opened cell never reaches this fragment, so it writes no cover
+  // and the base shows through it untouched.
   target *= g.film;
   o0 = vec4(target, 0.0, 0.0, a);
 }`;

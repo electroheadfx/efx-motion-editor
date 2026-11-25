@@ -6,6 +6,7 @@ import {
   BRISTLE_DRY_CAP_FULL,
   BRISTLE_DRY_EDGE,
   BRISTLE_EDGE_CORE,
+  BRISTLE_EDGE_SHIFT,
   BRISTLE_EDGE_START,
   BRISTLE_FEATHER_CAP,
   BRISTLE_FEATHER_EDGE,
@@ -3633,11 +3634,12 @@ export class WatercolorEngine {
     gl.uniform1f(p.u.uFeatherCap!, BRISTLE_FEATHER_CAP);
     gl.uniform1f(p.u.uFeatherMin!, BRISTLE_FEATHER_MIN);
     gl.uniform1f(p.u.uFeatherShift!, BRISTLE_FEATHER_SHIFT);
-    // Spec 10: the lateral edge film. Bound unconditionally so every consumer
-    // of the ONE gather program receives the same four values; the start and
-    // core anchors are constants, the two knobs are Params members.
+    // Spec 10: the edge dissolve. Bound unconditionally so every consumer of
+    // the ONE gather program receives the same five values; the start, core
+    // and shift anchors are constants, the two knobs are Params members.
     gl.uniform1f(p.u.uEdgeStart!, BRISTLE_EDGE_START);
     gl.uniform1f(p.u.uEdgeCore!, BRISTLE_EDGE_CORE);
+    gl.uniform1f(p.u.uEdgeShift!, BRISTLE_EDGE_SHIFT);
     gl.uniform1f(p.u.uEdgeFade!, clamp(this.params.edgeFade, 0, 1));
     gl.uniform1f(p.u.uEdgeFalloff!, clamp(this.params.edgeFalloff, 0, 1));
     // The end's takeoff is the same threshold mechanism on the leading

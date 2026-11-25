@@ -728,25 +728,34 @@ describe('64-22 — the bristle gather rides the one curve (T-64-72)', () => {
 })
 
 // ============================================================
-//  Spec 10 — the lateral edge film (Edge transparency / Edge falloff).
+//  Spec 10 — Edge transparency and Edge falloff.
 //
-//  ONE lateral film share in SILHOUETTE units, carried on the gather's
-//  `g.film`. It scales BOTH halves of the ONE deposit lerp: the gather's
-//  coverage (the dab's opacity, which also drives the base replacement and
-//  the relief) and the carried absorbance the deposit fragment multiplies
-//  after the pickup mix (so lifted paint is diluted the same). The lerp's
-//  fixed point is therefore `cA · film` — the diluted pigment — and the
-//  attenuation is proportional to what the dab lays. Scaling only the weight
-//  saturates the body to full pigment and cuts the fringe away; scaling only
-//  the absorbance erases paint without depositing (the white fringe). The
-//  uniforms are bound once in `bindGather`, so the consumers read the share,
-//  never the raw knobs. Everything the film must NOT touch is pinned
-//  negatively: the attenuation half's weight, the paper-threshold block and
-//  the touch stamp.
+//  TWO shares, and neither is a lateral depth film. UAT 2026-11-25 #1-#5
+//  rejected every depth form: a lateral film sets every fringe cell's lerp
+//  target to a paler pigment (cA · film), so each dab replaces the same-sheet
+//  stroke beneath it with a thinner film and the paper reads as a smooth,
+//  opaque white veil.
+//
+//   - the amount's UNIFORM pigment share `g.film = 1 - amount · uEdgeCore`
+//     rides the carried absorbance (the deposit, after the pickup mix), the
+//     scatter S and the cover target. The whole mark thins — the artist's
+//     "core 65% film" — and no fringe cell carries a paler target;
+//   - the LATERAL DISSOLVE `threshold += amount · uEdgeShift · t^e` raises the
+//     SAME paper-tooth threshold the Feather law raises, so the fringe opens
+//     into full-depth specks of the mark's own pigment and every opened cell
+//     is INERT — the deposit's `a <= 1e-3` discard leaves the underlayer
+//     untouched (the spec's own rim law at amount 100: no deposit, no erase).
+//
+//  The uniforms are bound once in `bindGather`; the cover/relief/touch
+//  consumers read the share from the gather, never the raw knobs. What must
+//  NOT move is pinned: the coverage weight carries no depth film, the
+//  attenuation half carries no film, and the threshold terms the Feather and
+//  the takeoff own — everything before the dissolve's one seam — are
+//  untouched.
 // ============================================================
 
-describe('Spec 10 — the lateral edge film rides the ONE gather', () => {
-  it('declares the four uniforms and binds them for every consumer', () => {
+describe('Spec 10 — the edge share and the threshold dissolve ride the ONE gather', () => {
+  it('declares the five uniforms and binds them for every consumer', () => {
     const gather = sliceBetween(
       SHADERS_SOURCE,
       'export const BRISTLE_GATHER',
@@ -754,49 +763,48 @@ describe('Spec 10 — the lateral edge film rides the ONE gather', () => {
     )
     expectContains(gather, 'uniform float uEdgeStart;')
     expectContains(gather, 'uniform float uEdgeCore;')
+    expectContains(gather, 'uniform float uEdgeShift;')
     expectContains(gather, 'uniform float uEdgeFade;')
     expectContains(gather, 'uniform float uEdgeFalloff;')
-    // The start and core anchors are constants; the two knobs are Params
-    // members clamped at the bind exactly like Feather.
+    // The start, core and shift anchors are constants; the two knobs are
+    // Params members clamped at the bind exactly like Feather.
     const imports = ENGINE_SOURCE.slice(0, ENGINE_SOURCE.indexOf("from './bristles';"))
     expectContains(imports, 'BRISTLE_EDGE_START,')
     expectContains(imports, 'BRISTLE_EDGE_CORE,')
+    expectContains(imports, 'BRISTLE_EDGE_SHIFT,')
     const bind = sliceBetween(ENGINE_SOURCE, 'private bindGather(', 'private bristleInk(')
     expectContains(bind, 'gl.uniform1f(p.u.uEdgeStart!, BRISTLE_EDGE_START);')
     expectContains(bind, 'gl.uniform1f(p.u.uEdgeCore!, BRISTLE_EDGE_CORE);')
+    expectContains(bind, 'gl.uniform1f(p.u.uEdgeShift!, BRISTLE_EDGE_SHIFT);')
     expectContains(bind, 'gl.uniform1f(p.u.uEdgeFade!, clamp(this.params.edgeFade, 0, 1));')
     expectContains(bind, 'gl.uniform1f(p.u.uEdgeFalloff!, clamp(this.params.edgeFalloff, 0, 1));')
   })
 
-  it('scales the deposit opacity AND the pigment it carries, so the fixed point is the diluted pigment', () => {
+  it('thins the whole mark uniformly and dissolves the rim through the paper threshold', () => {
     const gather = sliceBetween(
       SHADERS_SOURCE,
       'export const BRISTLE_GATHER',
       'export const bristleDepositFS',
     )
-    // The film is computed in SILHOUETTE units — lateral is footprint-
-    // normalised, so it divides by uFeatherEdge before the start anchor.
+    // The film is UNIFORM — no lateral coordinate on the pigment share. A
+    // lateral depth film was rejected in every form (the white veil).
+    expectContains(gather, 'g.film = 1.0 - uEdgeFade * uEdgeCore;')
+    expectNotContains(gather, 'edgeProfile')
+    // The dissolve rides the SAME threshold, in SILHOUETTE units: lateral is
+    // footprint-normalised, so it divides by uFeatherEdge before the start
+    // anchor, and the falloff exponent shapes how early it begins.
     expectContains(gather, 'float edgeU = clamp(lateral / max(uFeatherEdge, 1e-4), 0.0, 1.0);')
+    expectContains(gather, 'float edgeT = clamp((edgeU - uEdgeStart) / max(1.0 - uEdgeStart, 1e-4), 0.0, 1.0);')
     expectContains(gather, 'float edgeExp = exp2(2.0 * uEdgeFalloff - 1.0);')
-    // UAT 2026-11-25: the amount fades the WHOLE mark — the profile keeps
-    // 1 - uEdgeCore at the core (65% pigment at amount 100) and reaches 1 at
-    // the silhouette, where the falloff shapes the ramp.
-    expectContains(gather, 'float edgeProfile = uEdgeCore + (1.0 - uEdgeCore) * pow(edgeT, edgeExp);')
-    // The plain arithmetic form, never a guarding ternary: at amount 0 the
-    // product is exactly zero and the share is exactly 1.0, so the pre-change
-    // program renders bit-identically (the mode-1 identity gates). A ternary
-    // guard measured a ULP drift through the whole export (quick 261124-ujb).
-    expectContains(gather, 'float film;')
-    expectContains(gather, 'g.film = 1.0;')
-    expectContains(gather, 'g.film = 1.0 - uEdgeFade * edgeProfile;')
-    // UAT 2026-11-25 #2/#3: the share is BOTH halves of the lerp — the
-    // deposit weight (or the body saturates to solid pigment and the fringe
-    // cuts away) AND the carried absorbance (or fringe dabs erase paint
-    // without depositing: the white fringe). The threshold is untouched.
+    expectContains(gather, 'threshold += uEdgeFade * uEdgeShift * pow(edgeT, edgeExp);')
+    // The coverage carries the SAME UNIFORM share (the spec's "both halves"),
+    // so the deposit's weight is diluted exactly like its pigment. The veil
+    // needs a LATERAL gradient in the target — the share above has none (the
+    // expression is pinned; `edgeProfile` must never come back), and the
+    // lateral transparency is the threshold's dissolve.
     expectContains(gather, 'g.coverage = inked * featherFade * g.film;')
-    expectNotContains(gather, 'edgeFilm')
     // The carried channels keep their shipped feather fade in the gather; the
-    // pigment share lands in the deposit, AFTER the pickup mix.
+    // uniform share lands in the deposit, AFTER the pickup mix.
     expectContains(gather, 'g.cA *= featherFade;')
     expectContains(gather, 'g.cB *= featherFade;')
     expectContains(gather, 'g.alpha *= featherFade;')
@@ -807,7 +815,7 @@ describe('Spec 10 — the lateral edge film rides the ONE gather', () => {
       'export const bristleCoverFS',
     )
     // The share lands after the pickup mix, so lifted paint is diluted too;
-    // the scatter S needs the second factor because `a` already carries one.
+    // the scatter S carries the same share (the spec's milky-rim warning).
     expectContains(deposit, 'cA *= g.film;')
     expectContains(deposit, 'cB *= g.film;')
     expectContains(deposit, 'oB = vec4(cB * a, uScatter * a * g.film);')
@@ -817,7 +825,7 @@ describe('Spec 10 — the lateral edge film rides the ONE gather', () => {
     expectNotContains(attenuation, 'g.film')
   })
 
-  it('never touches the attenuation weight, the paper threshold or the touch stamp', () => {
+  it('leaves the Feather/takeoff threshold terms, the cover and the touch stamp alone', () => {
     // `uEdge` alone is the watercolor tide-line uniform (a substring of
     // `uEdgeDarken`), so the refusals name the FOUR film identifiers.
     const edgeUniforms = ['uEdgeStart', 'uEdgeCore', 'uEdgeFade', 'uEdgeFalloff']
@@ -826,23 +834,24 @@ describe('Spec 10 — the lateral edge film rides the ONE gather', () => {
         expect(source.includes(name), `unexpected ${name} in ${where}`).toBe(false)
       }
     }
-    // The paper threshold is the Feather law's alone; the edge dilutes the
-    // pigment, never re-thresholding the paper.
+    // The threshold the Feather and the takeoff compute BEFORE the dissolve's
+    // one seam is theirs alone; the dissolve adds at exactly one line.
     const threshold = sliceBetween(
       SHADERS_SOURCE,
       'float threshold = uGrain',
       'float featherFade = 1.0;',
     )
     refuseEdge(threshold, 'the paper-threshold block')
-    // The cover and relief consumers read the film from the gather's
-    // coverage (`a`), never the raw knobs — one factor, never two.
+    // The cover and relief consumers read the share from the gather, never
+    // the raw knobs — one factor, never two.
     const cover = sliceBetween(
       SHADERS_SOURCE,
       'export const bristleCoverFS',
       'export const bristleReliefFS',
     )
     // The cover channel's equilibrium is target / a (the weight cancels), so
-    // the film rides the target — once.
+    // the uniform share rides the target — once. Opened cells never reach the
+    // fragment, so they write no cover and the base shows through untouched.
     expectContains(cover, 'target *= g.film;')
     expectContains(cover, 'o0 = vec4(target, 0.0, 0.0, a);')
     refuseEdge(cover, 'bristleCoverFS')
@@ -1593,7 +1602,8 @@ describe('261119-pod — the §3.3 smear, the snapshot and the four-side Feather
     expectContains(g, 'g.cA *= featherFade;')
     expectContains(g, 'g.cB *= featherFade;')
     // The Feather fade scales the carried channels exactly as shipped; the
-    // Edge share multiplies the coverage weight on top (Spec 10).
+    // edge's transparency adds the UNIFORM pigment share on both halves plus
+    // the lateral threshold dissolve — never a lateral depth term (Spec 10).
     expectContains(g, 'g.alpha *= featherFade;')
     expectContains(g, 'float inked = uSoftness > 0.0')
     expectContains(g, ': step(threshold, coverage);')

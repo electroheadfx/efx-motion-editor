@@ -266,33 +266,50 @@ export const BRISTLE_DRY_EDGE = 0.35;
 /** §5.4 `paint.landing` — the spread of the staggered landing (1.6). */
 export const BRISTLE_LANDING = 1.6;
 
-// ------------------------- Spec 10: the lateral edge film -------------------------
+// ------------------------- Spec 10: edge transparency and falloff -------------------------
 //
 //  Edge transparency (amount, 0..1) and Edge falloff (shape bias, 0..1) drive
-//  ONE lateral film share, in SILHOUETTE units: 1 is the visible rim
-//  (BRISTLE_FEATHER_EDGE of the nominal footprint), not the footprint's own
-//  edge. The share scales BOTH the deposit's opacity (the gather coverage,
-//  which also carries the base replacement and the relief) AND the pigment it
-//  carries (the deposit's absorbance and scatter) — scaling only one of the
-//  two either saturates the body to solid paint or erases the mark without
-//  depositing (see the gather's film block). The fragment's expression is
-//  mirrored by the tested twin `bristleEdgeFilm` below and the four constants
-//  are bound as uniforms in `bindGather`, so the shader cannot re-type them.
-/** Where the fade starts, in silhouette units (0.55). */
+//  TWO shares, and neither is a lateral depth film:
+//
+//   - the amount's UNIFORM pigment share (`bristleEdgeFilm`): the whole mark
+//     thins — the artist's "core 65% film" — scaling the deposit's weight and
+//     carried absorbance, its scatter S, and the cover target;
+//   - the LATERAL DISSOLVE (`bristleEdgeShift`), in SILHOUETTE units: 1 is the
+//     visible rim (BRISTLE_FEATHER_EDGE of the nominal footprint), not the
+//     footprint's own edge. The amount raises the gather's paper-tooth
+//     THRESHOLD across the band, so the fringe opens into full-depth specks of
+//     the mark's own pigment and every opened cell is INERT — the underlayer
+//     is left exactly as it was.
+//
+//  A lateral DEPTH film is what UAT 2026-11-25 #1/#3/#4/#5 rejected in every
+//  form it was tried: its lerp target is a paler pigment (cA·film), so a
+//  fringe dab replaces the same-sheet stroke beneath it with a thinner film
+//  and the paper shows as an opaque white veil. The threshold is the edge
+//  mechanism this engine already ships (Feather, the takeoff); the twins below
+//  mirror the gather's expressions and the constants are bound as uniforms in
+//  `bindGather`, so the shader cannot re-type them.
+/** Where the dissolve starts, in silhouette units (0.55). */
 export const BRISTLE_EDGE_START = 0.55;
-/** Falloff 0's exponent (0.5): the broad fade — `1 - amount·√t` at the midpoint. */
+/** Falloff 0's exponent (0.5): the broad dissolve — √t rises early. */
 export const BRISTLE_EDGE_EXP_MIN = 0.5;
-/** Falloff 100's exponent (2): the rim fade — the band hugs the silhouette. */
+/** Falloff 100's exponent (2): the rim dissolve — the band hugs the silhouette. */
 export const BRISTLE_EDGE_EXP_MAX = 2;
 /**
- * The amount's share at the CORE (0.55): at amount 100 the core keeps 45% of
- * its pigment, which the display's transmittance law reads as about 65% of
+ * The amount's UNIFORM pigment share at amount 100 (0.55): the core keeps 45%
+ * of its pigment, which the display's transmittance law reads as about 65% of
  * the mark's original opacity — the artist's "core 65% film" judged on the
  * visible density. The first cut (55% pigment) read as ~78% opacity and was
- * reported as no transparency. The fade reaches the rim (0) and the falloff
- * shapes the ramp between.
+ * reported as no transparency.
  */
 export const BRISTLE_EDGE_CORE = 0.55;
+/**
+ * The rim's paper-threshold rise at amount 100 (1.1): the dissolve's scale.
+ * Calibrated like BRISTLE_TAKEOFF_SHIFT — a full-pressure body (1.0 · 0.97)
+ * clears the paper's -0.25 floor with ~1.2 — so 1.1 opens the outermost band
+ * completely (no deposit, no erase: the spec's rim law) while the falloff
+ * spreads the opening across the band.
+ */
+export const BRISTLE_EDGE_SHIFT = 1.1;
 
 // ------------------------- the contact pressure law (spike 004) -------------------------
 //
@@ -439,28 +456,42 @@ export function edgeFalloffExponent(bias: number): number {
 }
 
 /**
- * Spec 10: the mirror of the gather's ONE lateral film share. `lateral` is
- * in SILHOUETTE units (1 = the visible rim), `amount` (0..1) is Edge
- * transparency and `falloff` (0..1) is Edge falloff. The share is
- * `1 - amount·profile` with `profile = BRISTLE_EDGE_CORE + (1 - CORE)·t^e`,
- * `t` the normalised distance into the fade band past BRISTLE_EDGE_START and
- * `e = edgeFalloffExponent(falloff)`: amount 100 keeps 55% of the pigment at
- * the core (~65% of the original opacity), `1 - amount` at the silhouette,
- * and the falloff chooses how quickly the ramp crosses between them. Amount
- * 0 (or a non-finite argument) returns the neutral 1 at every distance.
- *
- * Cells BEYOND the silhouette clamp to the rim factor by design: they are
- * the film's thin tail, not a paper-threshold change — the threshold, the
- * feather and the paper tooth are untouched.
+ * Spec 10: the amount's UNIFORM pigment share — the mirror of the gather's
+ * `g.film`. `amount` (0..1) is Edge transparency; the share is
+ * `1 - amount·BRISTLE_EDGE_CORE`, the SAME at every lateral position (the
+ * edge's transparency is the threshold dissolve, not a depth law — see
+ * `bristleEdgeShift`). Amount 0 (or a non-finite argument) returns the
+ * neutral 1.
  */
-export function bristleEdgeFilm(lateral: number, amount: number, falloff: number): number {
-  if (!Number.isFinite(lateral) || !Number.isFinite(amount) || !Number.isFinite(falloff)) return 1;
+export function bristleEdgeFilm(amount: number): number {
+  if (!Number.isFinite(amount)) return 1;
   const a = clamp01(amount);
   if (a <= 0) return 1;
+  return 1 - a * BRISTLE_EDGE_CORE;
+}
+
+/**
+ * Spec 10: the lateral DISSOLVE — the mirror of the gather's paper-threshold
+ * rise. `lateral` is in SILHOUETTE units (1 = the visible rim), `amount`
+ * (0..1) is Edge transparency and `falloff` (0..1) the shape bias. The rise
+ * is `amount · BRISTLE_EDGE_SHIFT · t^e` with `t` the normalised distance
+ * into the band past BRISTLE_EDGE_START and `e = edgeFalloffExponent(falloff)`:
+ * 0 at the band's start, BRISTLE_EDGE_SHIFT at the silhouette, and the falloff
+ * chooses how early the dissolve begins (broad √t / linear / rim t²). Amount 0
+ * (or a non-finite argument) returns 0 — the threshold never moves.
+ *
+ * Cells BEYOND the silhouette clamp to the rim rise by design: the thin tail
+ * opens completely (the spec's inert rim at amount 100 — no deposit, no
+ * erase). A threshold-opened cell never reaches the deposit, so the
+ * underlayer survives it untouched.
+ */
+export function bristleEdgeShift(lateral: number, amount: number, falloff: number): number {
+  if (!Number.isFinite(lateral) || !Number.isFinite(amount) || !Number.isFinite(falloff)) return 0;
+  const a = clamp01(amount);
+  if (a <= 0) return 0;
   const u = clamp01(lateral);
   const t = clamp01((u - BRISTLE_EDGE_START) / Math.max(1 - BRISTLE_EDGE_START, 1e-4));
-  const profile = BRISTLE_EDGE_CORE + (1 - BRISTLE_EDGE_CORE) * t ** edgeFalloffExponent(falloff);
-  return 1 - a * profile;
+  return a * BRISTLE_EDGE_SHIFT * t ** edgeFalloffExponent(falloff);
 }
 
 // ------------------------- the trace and edge formulas (64-23) -------------------------
