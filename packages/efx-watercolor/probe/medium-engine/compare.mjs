@@ -1311,6 +1311,10 @@ const EDGE_LAYER_READINGS = [
   'edgePolishP95',
   'edgePolishOver',
   'linearHalfOnWhite',
+  // WR-01: the first merge's last-touch pair — required at amount > 0 (the
+  // merge must stamp), absent at amount 0 (no merge runs).
+  'edgeMergedTouchBefore',
+  'edgeMergedTouchAfter',
 ]
 
 /** One profile's arrays, or a failure line when the shape is unusable. */
@@ -1446,7 +1450,12 @@ function edgeLayerFailures(data, reference) {
   // At amount 0 the identity block AND the Studio rows both run: the bypass
   // must reproduce the baseline pixel for pixel AND leave no layer behind.
   if (data.edgeAmount === 0) {
-    return [...failures, ...edgeIdentityFailures(data, reference), ...edgeStudioFailures(data)]
+    return [
+      ...failures,
+      ...edgeIdentityFailures(data, reference),
+      ...edgeStudioFailures(data),
+      ...edgeMergeTouchFailures(data),
+    ]
   }
 
   const amount = data.edgeAmount / 100
@@ -1480,6 +1489,10 @@ function edgeLayerFailures(data, reference) {
         'the pre-change engine cannot measure the layer; this is the RED the tracer closes',
     ]
   }
+  // WR-01: the presence gates above named a missing/null pair; now the law —
+  // the first merge must MOVE the region's last-touch forward (an unstamped
+  // merge leaves the pair equal and the next stroke reads it as dry).
+  failures.push(...edgeMergeTouchFailures(data))
   for (const family of EDGE_PROFILE_FAMILIES) {
     const parsed = edgeProfileOf(data, family)
     if (parsed.error) {
@@ -1862,6 +1875,60 @@ function edgeStudioFailures(data) {
   return failures
 }
 
+/**
+ * WR-01 (261125-kvl): the stroke-end merge must STAMP the merged region's
+ * last-touch. The shipped path stamps after every dab, but `bristleTouch`
+ * stays silent while the layer is open (that paint has not landed yet), so
+ * without a stamp at merge the next stroke reads freshly merged paint as
+ * fully dry — the pre-stroke age, up to the cleared one-week sentinel.
+ *
+ * The probe reads the last-touch lane over the FIRST merge's own rect
+ * immediately before and after `mergeStrokeLayer`. On the visit's fresh sheet
+ * `before` is the sentinel and `after` the stroke-end clock, so an unstamped
+ * merge leaves the pair EQUAL. Amount-keyed: no merge runs at amount 0, so
+ * both readings must be null there. The wall-clock merge times are NOT
+ * involved — this is the layer's own state, not a cost reading.
+ */
+function edgeMergeTouchFailures(data) {
+  const fields = ['edgeMergedTouchBefore', 'edgeMergedTouchAfter']
+  const missing = fields.filter((field) => !(field in data))
+  if (missing.length > 0) {
+    return [
+      `capture is missing ${missing.join(', ')} — re-run --scenario edge-layer ` +
+        "(the merge's last-touch pair is read around each merge)",
+    ]
+  }
+  if (data.edgeAmount === 0) {
+    const failures = []
+    for (const field of fields) {
+      if (data[field] !== null) {
+        failures.push(
+          `${field} ${JSON.stringify(data[field])} is not null at amount 0 — ` +
+            'no merge runs, so no touch stamp may be written',
+        )
+      }
+    }
+    return failures
+  }
+  const failures = []
+  for (const field of fields) {
+    if (typeof data[field] !== 'number' || !Number.isFinite(data[field])) {
+      failures.push(
+        `${field} ${JSON.stringify(data[field])} is not a finite last-touch reading at amount ${data.edgeAmount}`,
+      )
+    }
+  }
+  if (failures.length > 0) return failures
+  if (!(data.edgeMergedTouchAfter > data.edgeMergedTouchBefore)) {
+    failures.push(
+      `edgeMergedTouchAfter ${data.edgeMergedTouchAfter} is not after edgeMergedTouchBefore ` +
+        `${data.edgeMergedTouchBefore} at amount ${data.edgeAmount} — the stroke-end merge must stamp ` +
+        "the merged region's last-touch, or the next stroke reads the merged paint as fully dry",
+    )
+  }
+  return failures
+}
+
 /** The two counters the amount-0 bypass is proven by. */
 const EDGE_STRUCTURAL_COUNTERS = ['layerAllocated', 'mergeDraws', 'mergeDrawsFirst']
 
@@ -1995,6 +2062,14 @@ function printEdgeStudio(data) {
       `restore ${data.edgeRestoreReallocated}, resize ${data.edgeResizeReallocated}, ` +
       `create ${data.edgeCreateReallocated}`,
   )
+  // WR-01: the first merge's last-touch pair — the sentinel before, the
+  // stroke-end clock after (null at amount 0, where no merge runs).
+  if (typeof data.edgeMergedTouchBefore === 'number' || typeof data.edgeMergedTouchAfter === 'number') {
+    parts.push(
+      `merge last-touch ${JSON.stringify(data.edgeMergedTouchBefore)} → ` +
+        `${JSON.stringify(data.edgeMergedTouchAfter)} s`,
+    )
+  }
   console.log(`studio    : ${parts.join(' | ')}`)
   console.log('')
 }

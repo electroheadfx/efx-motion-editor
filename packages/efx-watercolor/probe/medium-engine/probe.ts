@@ -2149,6 +2149,10 @@ interface EdgeLayerInternals {
   fixed: { views: WebGLFramebuffer[] }
   cover: { read: { views: WebGLFramebuffer[] } }
   relief: { views: WebGLFramebuffer[] }
+  /** WR-01: the last-touch R32F lane (SECONDS on the virtual clock). Optional
+   *  so a pre-change engine reports the merge-stamp readings as absent rather
+   *  than crashing the visit. */
+  lastTouch?: { read: { views: WebGLFramebuffer[] } }
   paper: { views: WebGLFramebuffer[] }
   gl: WebGL2RenderingContext
   /** The document size — the Studio rows read it after a resize/create. */
@@ -2264,6 +2268,25 @@ function readEdgeDocFields(engine: WatercolorEngine, sheet: number, rect: EdgeRe
     cover: read(it.cover.read.views[0]!, 1),
     relief: read(it.relief.views[0]!, 1),
   }
+}
+
+/**
+ * WR-01 (261125-kvl): the MAX last-touch over `rect`, in seconds on the
+ * engine's virtual clock, read exactly (R32F; the cleared sentinel is one
+ * week old, −604800 s, which a half-float readback cannot represent). The
+ * fresh-sheet pre-merge value is the sentinel; after the merge's touch stamp
+ * it must move forward to the stroke-end `nowSec()`. `null` when the engine
+ * exposes no last-touch lane (a pre-change tree) — the comparator fails the
+ * reading by name instead of fabricating one.
+ */
+function edgeTouchMax(engine: WatercolorEngine, rect: EdgeRect): number | null {
+  const it = engine as unknown as EdgeLayerInternals
+  if (!it.lastTouch) return null
+  const values = it.g.readFloat(it.lastTouch.read.views[0]!, it.dw, it.dh, rect)
+  if (values.length === 0) return null
+  let max = Number.NEGATIVE_INFINITY
+  for (let i = 0; i < values.length; i += 1) max = Math.max(max, values[i]!)
+  return round4(max)
 }
 
 /** Spec 10: the OPEN stroke's layer over `rect`, or null when the engine has
@@ -2572,6 +2595,12 @@ interface EdgeMergeSide {
   readonly preSheet: EdgeDocFields
   readonly preLayer: EdgeLayerFields | null
   readonly postSheet: EdgeDocFields
+  /** WR-01: max last-touch over the merge's OWN rect immediately before the
+   *  merge, and immediately after it. The merge must stamp the region — an
+   *  unstamped merge leaves the pair EQUAL (the pre value is the cleared
+   *  one-week sentinel on a fresh sheet). */
+  readonly preTouch: number | null
+  readonly postTouch: number | null
 }
 
 /** Spec 10: one stroke's mid-stroke capture — the layer, the untouched sheet
@@ -3084,6 +3113,11 @@ function edgeLayerReport(
   const kMins = [paperResidual.kMin, underResidual.kMin].filter((v): v is number => v !== null)
   const kMaxes = [paperResidual.kMax, underResidual.kMax].filter((v): v is number => v !== null)
   const counters = captures.b ?? captures.a
+  // WR-01: the FIRST merge's last-touch pair over its own rect (stroke A,
+  // whose pre-merge region is still the cleared sentinel). An unstamped merge
+  // leaves the pair equal; the stamp moves `after` to the stroke-end clock.
+  // Null at amount 0 — no merge, no stamp.
+  const firstMerge = captures.a?.merge ?? captures.b?.merge ?? null
   return {
     strokeBrush: script[0]?.brushId ?? null,
     edgeAmount: EDGE_LAYER_AMOUNT,
@@ -3140,6 +3174,8 @@ function edgeLayerReport(
     // mid-stroke) cannot pass.
     mergeDraws: mergeDeltas.length > 0 ? mergeDeltas[mergeDeltas.length - 1]! : null,
     mergeDrawsFirst: mergeDeltas.length > 0 ? mergeDeltas[0]! : null,
+    edgeMergedTouchBefore: firstMerge === null ? null : firstMerge.preTouch,
+    edgeMergedTouchAfter: firstMerge === null ? null : firstMerge.postTouch,
     // Task 5: the merge's own wall clock (the instrument times only
     // `baseMerge`). The visit's two strokes merge first, so entries 0 and 1
     // are stroke A's and B's — measured BEFORE the replay and the Studio rows
@@ -3663,6 +3699,14 @@ interface LineEngineInternals {
       channels: 1 | 4,
       rect?: { x0: number; y0: number; x1: number; y1: number },
     ) => Uint16Array
+    /** Exact float readback — the last-touch lane is R32F and its cleared
+     *  sentinel (−604800 s) is outside half-float's range. */
+    readFloat: (
+      fb: WebGLFramebuffer,
+      w: number,
+      h: number,
+      rect?: { x0: number; y0: number; x1: number; y1: number },
+    ) => Float32Array
   }
   ink: { read: { views: WebGLFramebuffer[] } }
   fixed: { views: WebGLFramebuffer[] }
@@ -5203,6 +5247,8 @@ function run(
         preSheet: { paper: EdgeDocFields; under: EdgeDocFields }
         preLayer: { paper: EdgeLayerFields | null; under: EdgeLayerFields | null }
         postSheet: { paper: EdgeDocFields; under: EdgeDocFields }
+        preTouch: number | null
+        postTouch: number | null
       }> = []
       const mergeHost = engine as unknown as {
         mergeStrokeLayer: (rect: EdgeRect) => void
@@ -5229,14 +5275,19 @@ function run(
           paper: readEdgeLayerFields(engine, sheet, mergePaperRect),
           under: readEdgeLayerFields(engine, sheet, mergeUnderRect),
         }
+        // WR-01: the last-touch lane over the merge's own rect, before and
+        // after — the behavioural proof that the stroke-end merge stamps the
+        // merged region (an unstamped merge leaves the pair equal).
+        const preTouch = edgeTouchMax(engine, rect)
         const start = performance.now()
         baseMerge(rect)
         mergeTimes.push(performance.now() - start)
+        const postTouch = edgeTouchMax(engine, rect)
         const postSheet = {
           paper: readEdgeDocFields(engine, sheet, mergePaperRect),
           under: readEdgeDocFields(engine, sheet, mergeUnderRect),
         }
-        mergeSnapshots.push({ preSheet, preLayer, postSheet })
+        mergeSnapshots.push({ preSheet, preLayer, postSheet, preTouch, postTouch })
       }
       for (const entry of script) {
         const stroke = makeStroke(entry)
@@ -5263,6 +5314,8 @@ function run(
               preSheet: snap.preSheet[pick],
               preLayer: snap.preLayer[pick],
               postSheet: snap.postSheet[pick],
+              preTouch: snap.preTouch,
+              postTouch: snap.postTouch,
             },
           }
         }

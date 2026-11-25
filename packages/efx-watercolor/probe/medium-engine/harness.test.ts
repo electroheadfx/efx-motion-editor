@@ -2145,6 +2145,11 @@ describe('the edge-layer gate (Spec 10)', () => {
       edgePolishP95: layer ? 1 : null,
       edgePolishOver: layer ? 0 : null,
       linearHalfOnWhite: layer ? 0.08 : null,
+      // WR-01: the FIRST merge's last-touch pair over its own rect — the
+      // cleared one-week sentinel before the merge, the stroke-end clock
+      // after. A merge that writes no touch leaves the pair EQUAL.
+      edgeMergedTouchBefore: layer ? -604800 : null,
+      edgeMergedTouchAfter: layer ? 12.5 : null,
       layerAllocated: layer,
       mergeDraws: layer ? 1 : 0,
       mergeDrawsFirst: layer ? 1 : 0,
@@ -2471,4 +2476,38 @@ describe('the edge-layer gate (Spec 10)', () => {
       expect(output).toContain('the layer deposit does not read the falloff')
     })
   })
+
+  // 261125-kvl WR-01: the merge's last-touch stamp is EXECUTED — the fixtures
+  // below mutate one valid capture into a failing one and assert the
+  // comparator rejects it BY NAME. An unstamped merge leaves the pair EQUAL,
+  // so the behavioural probe reading and this failing fixture pin the stamp
+  // from both ends.
+  describe('the merge last-touch stamp, executed on failing fixtures', () => {
+    function rejects(name: string, mutation: Record<string, unknown>): string {
+      const { status, output } = compareSynthetic(name, {
+        ...validEdgeLayerCapture(100, 50),
+        ...mutation,
+      })
+      expect(status, lawVerdict(status, output)).toBe(1)
+      expect(output).toContain('RESULT: FAIL')
+      return output
+    }
+
+    it('WR-01: fails a merge that wrote no last-touch stamp', () => {
+      // An unstamped merge leaves the pair EQUAL — the pre value survives.
+      const output = rejects('nyquist-merge-touch', { edgeMergedTouchAfter: -604800 })
+      expect(invariantLine(output)).toContain('edgeMergedTouchAfter')
+      expect(output).toContain('must stamp')
+    })
+
+    it('WR-01: fails a touch reading reported at amount 0', () => {
+      const { status, output } = compareSynthetic('nyquist-merge-touch-zero', {
+        ...validEdgeLayerCapture(0, 50),
+        edgeMergedTouchAfter: 12.5,
+      })
+      expect(status, lawVerdict(status, output)).toBe(1)
+      expect(invariantLine(output)).toContain('edgeMergedTouchAfter')
+    })
+  })
+
 })

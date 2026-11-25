@@ -1183,6 +1183,30 @@ export class WatercolorEngine {
     }
     g.blit(this.cover.write.views[0]!, rect.x0, rect.y0, this.cover.read.views[0]!, rect.x0, rect.y0, w, h);
     g.blit(this.mergeRelief!.views[0]!, rect.x0, rect.y0, this.relief.views[0]!, rect.x0, rect.y0, w, h);
+    // 261125-kvl (WR-01): a just-merged stroke is STILL WET. The shipped path
+    // stamps last-touch after every dab, but bristleTouch stays silent while
+    // the layer is open (that paint has not landed yet), so without this
+    // stamp the next stroke would read the merged region as fully dry (up to
+    // the one-week sentinel). ONE stamp draw over the merge rect, weighted by
+    // the merged cover pass 2 just produced — a texel the layer did not cover
+    // keeps its true age. Same carry discipline as bristleTouch: the halves
+    // are equal outside the carried rect, blitted read-to-write here, and the
+    // scissored draw plus swap leaves this rect as the only difference.
+    // Undo is safe: every dab's prologue ran touch(rect) with the last-touch
+    // read half in its snapshot (snapshotLayers' fifth entry), and the merge
+    // rect is the union of those exact dabs, so the saved tiles revert this
+    // stamp together with the merged paint.
+    const t = this.programs.bristleTouch!;
+    const carry = takeCarry(this.touchCarry);
+    if (carry) g.blit(this.lastTouch.read.views[0]!, carry.x0, carry.y0, this.lastTouch.write.views[0]!, carry.x0, carry.y0, carry.x1 - carry.x0, carry.y1 - carry.y0);
+    t.bind();
+    gl.disable(gl.BLEND);
+    gl.uniform1i(t.u.uTimes!, g.bindTex(0, this.lastTouch.read.tex[0]!));
+    gl.uniform1i(t.u.uCover!, g.bindTex(1, this.cover.read.tex[0]!));
+    gl.uniform1f(t.u.uNow!, this.nowSec());
+    g.draw(this.lastTouch.write, rect);
+    this.lastTouch.swap();
+    recordStamp(this.touchCarry, rect);
   }
 
   /** (Re)create a blank `w`×`h` sheet. Discards the painting. */
