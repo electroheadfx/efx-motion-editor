@@ -717,13 +717,15 @@ describe('bristleCoverage — §4.5 / §5.5', () => {
 // ============================================================
 //  Spec 10 — the lateral edge film (Edge transparency and Edge falloff).
 //
-//  `gatherBristle` scales the DEPOSIT WEIGHT — coverage and the cover alpha —
-//  through ONE lateral factor; the carried cA/cB stay full strength. The
-//  argument is in SILHOUETTE units: 1 is the visible rim (BRISTLE_FEATHER_EDGE
-//  of the nominal footprint), not the footprint's own edge. At amount 100 the
-//  film keeps `1 - BRISTLE_EDGE_CORE` (65%) in the core and reaches 0 at the
-//  silhouette; the shape bias picks the ramp through `edgeFalloffExponent`,
-//  and amount 0 is inert. The four constants are bound as uniforms, so the
+//  `gatherBristle` computes ONE lateral film share, in SILHOUETTE units: 1 is
+//  the visible rim (BRISTLE_FEATHER_EDGE of the nominal footprint), not the
+//  footprint's own edge. At amount 100 the core keeps `1 - BRISTLE_EDGE_CORE`
+//  (45%) of its pigment — about 65% of the original opacity — and the rim
+//  reaches 0; the shape bias picks the ramp through `edgeFalloffExponent`,
+//  and amount 0 is inert. The share scales BOTH the deposit's opacity (the
+//  gather coverage) and the pigment it carries (the deposit's absorbance),
+//  so the lerp's fixed point is the diluted pigment and no dab ever erases
+//  paint without depositing. The four constants are bound as uniforms, so the
 //  fragment cannot re-type them.
 // ============================================================
 
@@ -744,7 +746,7 @@ describe('bristleEdgeFilm — Spec 10, the lateral film in silhouette units', ()
       for (const falloff of [0, 0.5, 1]) {
         expect(
           TRACES.bristleEdgeFilm?.(0, amount, falloff),
-          'the core fades with the amount — 65% film at amount 100',
+          'the core fades with the amount — 45% pigment at amount 100',
         ).toBeCloseTo(1 - amount * (TRACES.BRISTLE_EDGE_CORE ?? Number.NaN), 12)
         expect(
           TRACES.bristleEdgeFilm?.(0.55, amount, falloff),
@@ -853,7 +855,7 @@ describe('edgeFalloffExponent — the Spec 10 shape bias', () => {
 describe('the Spec 10 edge constants', () => {
   it('pins the start anchor, the core share and the exponent bounds', () => {
     expect(TRACES.BRISTLE_EDGE_START, 'the fade starts at 0.55 of the silhouette').toBe(0.55)
-    expect(TRACES.BRISTLE_EDGE_CORE, 'amount 100 leaves 65% film at the core').toBe(0.35)
+    expect(TRACES.BRISTLE_EDGE_CORE, 'amount 100 keeps 45% of the pigment at the core').toBe(0.55)
     expect(TRACES.BRISTLE_EDGE_EXP_MIN, 'falloff 0 is the square-root shape').toBe(0.5)
     expect(TRACES.BRISTLE_EDGE_EXP_MAX, 'falloff 100 is the squared shape').toBe(2)
   })

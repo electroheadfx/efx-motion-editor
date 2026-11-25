@@ -638,9 +638,8 @@ describe('64-22 — the bristle gather rides the one curve (T-64-72)', () => {
     // destination factor became 1: the channel accumulated additively past
     // its target and mode 4 re-promoted the alpha over its own paint.
     // 261119-pod: the write is the smear-adjusted `target`, which equals
-    // `a * uCoverTarget * g.alpha` when Pickup is 0. Spec 10: the base
-    // replacement rides the pigment share — a diluted film must not clear the
-    // committed base.
+    // `a * uCoverTarget * g.alpha` when Pickup is 0. Spec 10: the blend's
+    // equilibrium is target / a, so the film rides the target.
     expectContains(cover, 'target *= g.film;')
     expectContains(cover, 'o0 = vec4(target, 0.0, 0.0, a);')
   })
@@ -731,18 +730,19 @@ describe('64-22 — the bristle gather rides the one curve (T-64-72)', () => {
 // ============================================================
 //  Spec 10 — the lateral edge film (Edge transparency / Edge falloff).
 //
-//  ONE lateral PIGMENT SHARE in SILHOUETTE units, carried on the gather's
-//  `g.film` and applied by each consumer after its own work: the deposit
-//  (carried absorbance and the scatter S, after the pickup mix), the cover
-//  write (the base-replacement target) and the thickness deposit (the
-//  relief). The deposit WEIGHT stays the full gather coverage — it is the
-//  mark's geometry, its paper-tooth feather and its soft fringe — because the
-//  deposit lerp converges to `cA · film` regardless of the weight: scaling
-//  the weight (the previous law) saturated the body to full pigment and cut
-//  the fringe away. The uniforms are bound once in `bindGather`, so the
-//  consumers read the share, never the raw knobs. Everything the film must
-//  NOT touch is pinned negatively: the attenuation half, the paper-threshold
-//  block and the touch stamp.
+//  ONE lateral film share in SILHOUETTE units, carried on the gather's
+//  `g.film`. It scales BOTH halves of the ONE deposit lerp: the gather's
+//  coverage (the dab's opacity, which also drives the base replacement and
+//  the relief) and the carried absorbance the deposit fragment multiplies
+//  after the pickup mix (so lifted paint is diluted the same). The lerp's
+//  fixed point is therefore `cA · film` — the diluted pigment — and the
+//  attenuation is proportional to what the dab lays. Scaling only the weight
+//  saturates the body to full pigment and cuts the fringe away; scaling only
+//  the absorbance erases paint without depositing (the white fringe). The
+//  uniforms are bound once in `bindGather`, so the consumers read the share,
+//  never the raw knobs. Everything the film must NOT touch is pinned
+//  negatively: the attenuation half's weight, the paper-threshold block and
+//  the touch stamp.
 // ============================================================
 
 describe('Spec 10 — the lateral edge film rides the ONE gather', () => {
@@ -768,7 +768,7 @@ describe('Spec 10 — the lateral edge film rides the ONE gather', () => {
     expectContains(bind, 'gl.uniform1f(p.u.uEdgeFalloff!, clamp(this.params.edgeFalloff, 0, 1));')
   })
 
-  it('makes the film the pigment share and leaves the deposit weight full strength', () => {
+  it('scales the deposit opacity AND the pigment it carries, so the fixed point is the diluted pigment', () => {
     const gather = sliceBetween(
       SHADERS_SOURCE,
       'export const BRISTLE_GATHER',
@@ -789,13 +789,14 @@ describe('Spec 10 — the lateral edge film rides the ONE gather', () => {
     expectContains(gather, 'float film;')
     expectContains(gather, 'g.film = 1.0;')
     expectContains(gather, 'g.film = 1.0 - uEdgeFade * edgeProfile;')
-    // UAT 2026-11-25 #3 (the artist's "just a cut off"): the share is NEVER
-    // the deposit weight. The lerp converges to the same cA whatever `a` is,
-    // so a weighted film reads solid in the body and cuts the fringe away.
-    expectContains(gather, 'g.coverage = inked * featherFade;')
+    // UAT 2026-11-25 #2/#3: the share is BOTH halves of the lerp — the
+    // deposit weight (or the body saturates to solid pigment and the fringe
+    // cuts away) AND the carried absorbance (or fringe dabs erase paint
+    // without depositing: the white fringe). The threshold is untouched.
+    expectContains(gather, 'g.coverage = inked * featherFade * g.film;')
     expectNotContains(gather, 'edgeFilm')
-    // The carried channels keep their shipped feather fade; the pigment share
-    // lands in the consumers, AFTER their own work.
+    // The carried channels keep their shipped feather fade in the gather; the
+    // pigment share lands in the deposit, AFTER the pickup mix.
     expectContains(gather, 'g.cA *= featherFade;')
     expectContains(gather, 'g.cB *= featherFade;')
     expectContains(gather, 'g.alpha *= featherFade;')
@@ -806,7 +807,7 @@ describe('Spec 10 — the lateral edge film rides the ONE gather', () => {
       'export const bristleCoverFS',
     )
     // The share lands after the pickup mix, so lifted paint is diluted too;
-    // the scatter S rides the same share.
+    // the scatter S needs the second factor because `a` already carries one.
     expectContains(deposit, 'cA *= g.film;')
     expectContains(deposit, 'cB *= g.film;')
     expectContains(deposit, 'oB = vec4(cB * a, uScatter * a * g.film);')
@@ -833,13 +834,15 @@ describe('Spec 10 — the lateral edge film rides the ONE gather', () => {
       'float featherFade = 1.0;',
     )
     refuseEdge(threshold, 'the paper-threshold block')
-    // The cover and relief consumers read the share from the gather, never
-    // the raw knobs.
+    // The cover and relief consumers read the film from the gather's
+    // coverage (`a`), never the raw knobs — one factor, never two.
     const cover = sliceBetween(
       SHADERS_SOURCE,
       'export const bristleCoverFS',
       'export const bristleReliefFS',
     )
+    // The cover channel's equilibrium is target / a (the weight cancels), so
+    // the film rides the target — once.
     expectContains(cover, 'target *= g.film;')
     expectContains(cover, 'o0 = vec4(target, 0.0, 0.0, a);')
     refuseEdge(cover, 'bristleCoverFS')
@@ -848,7 +851,7 @@ describe('Spec 10 — the lateral edge film rides the ONE gather', () => {
       'export const bristleReliefFS',
       'export const bristleTouchFS',
     )
-    expectContains(relief, 'o0 = vec4(uAmount * a * g.film);')
+    expectContains(relief, 'o0 = vec4(uAmount * a);')
     refuseEdge(relief, 'bristleReliefFS')
     const touch = sliceBetween(
       SHADERS_SOURCE,
@@ -1096,7 +1099,7 @@ describe('64-23 — the traces in the gather and the carrier', () => {
     expectContains(gather, 'float coverage = body * (0.3 + 0.7 * uPressure) * dryEdge * alongFade * trailSupport;')
     expectContains(gather, 'float inked = uSoftness > 0.0')
     expectContains(gather, ': step(threshold, coverage);')
-    expectContains(gather, 'g.coverage = inked * featherFade;')
+    expectContains(gather, 'g.coverage = inked * featherFade * g.film;')
   })
 
   it('binds every declared constant from bristles.ts — no literal survives', () => {
@@ -1590,11 +1593,11 @@ describe('261119-pod — the §3.3 smear, the snapshot and the four-side Feather
     expectContains(g, 'g.cA *= featherFade;')
     expectContains(g, 'g.cB *= featherFade;')
     // The Feather fade scales the carried channels exactly as shipped; the
-    // Edge share is a separate factor the consumers apply (Spec 10).
+    // Edge share multiplies the coverage weight on top (Spec 10).
     expectContains(g, 'g.alpha *= featherFade;')
     expectContains(g, 'float inked = uSoftness > 0.0')
     expectContains(g, ': step(threshold, coverage);')
-    expectContains(g, 'g.coverage = inked * featherFade;')
+    expectContains(g, 'g.coverage = inked * featherFade * g.film;')
     // Load is the tank ONLY: scaling the pigment with it desaturated the low
     // values (artist: "il y a une perte de couleur sur le LOAD 0, 33, 66").
     expectNotContains(g, 'uLoadGain')

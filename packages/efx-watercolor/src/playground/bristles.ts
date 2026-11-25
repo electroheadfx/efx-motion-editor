@@ -269,14 +269,15 @@ export const BRISTLE_LANDING = 1.6;
 // ------------------------- Spec 10: the lateral edge film -------------------------
 //
 //  Edge transparency (amount, 0..1) and Edge falloff (shape bias, 0..1) drive
-//  ONE lateral PIGMENT SHARE, in SILHOUETTE units: 1 is the visible rim
+//  ONE lateral film share, in SILHOUETTE units: 1 is the visible rim
 //  (BRISTLE_FEATHER_EDGE of the nominal footprint), not the footprint's own
-//  edge. The share dilutes the carried absorbance, the scatter, the base
-//  replacement and the relief; the deposit WEIGHT stays the full gather
-//  coverage, so the mark keeps its geometry and its feather. The fragment's
-//  expression is mirrored by the tested twin `bristleEdgeFilm` below and the
-//  four constants are bound as uniforms in `bindGather`, so the shader cannot
-//  re-type them.
+//  edge. The share scales BOTH the deposit's opacity (the gather coverage,
+//  which also carries the base replacement and the relief) AND the pigment it
+//  carries (the deposit's absorbance and scatter) — scaling only one of the
+//  two either saturates the body to solid paint or erases the mark without
+//  depositing (see the gather's film block). The fragment's expression is
+//  mirrored by the tested twin `bristleEdgeFilm` below and the four constants
+//  are bound as uniforms in `bindGather`, so the shader cannot re-type them.
 /** Where the fade starts, in silhouette units (0.55). */
 export const BRISTLE_EDGE_START = 0.55;
 /** Falloff 0's exponent (0.5): the broad fade — `1 - amount·√t` at the midpoint. */
@@ -284,12 +285,14 @@ export const BRISTLE_EDGE_EXP_MIN = 0.5;
 /** Falloff 100's exponent (2): the rim fade — the band hugs the silhouette. */
 export const BRISTLE_EDGE_EXP_MAX = 2;
 /**
- * The amount's share at the CORE (0.35): at amount 100 the core keeps
- * `1 - 0.35 = 65%` of its pigment, the fade reaches the rim (0), and the
- * falloff shapes the ramp between. UAT 2026-11-25: the artist wants amount
- * 100 to make the whole mark read visibly translucent, not only its border.
+ * The amount's share at the CORE (0.55): at amount 100 the core keeps 45% of
+ * its pigment, which the display's transmittance law reads as about 65% of
+ * the mark's original opacity — the artist's "core 65% film" judged on the
+ * visible density. The first cut (55% pigment) read as ~78% opacity and was
+ * reported as no transparency. The fade reaches the rim (0) and the falloff
+ * shapes the ramp between.
  */
-export const BRISTLE_EDGE_CORE = 0.35;
+export const BRISTLE_EDGE_CORE = 0.55;
 
 // ------------------------- the contact pressure law (spike 004) -------------------------
 //
@@ -436,21 +439,19 @@ export function edgeFalloffExponent(bias: number): number {
 }
 
 /**
- * Spec 10: the mirror of the gather's ONE lateral edge film — the PIGMENT
- * share the deposit, cover and relief consumers multiply. `lateral` is in
- * SILHOUETTE units (1 = the visible rim), `amount` (0..1) is Edge
+ * Spec 10: the mirror of the gather's ONE lateral film share. `lateral` is
+ * in SILHOUETTE units (1 = the visible rim), `amount` (0..1) is Edge
  * transparency and `falloff` (0..1) is Edge falloff. The share is
  * `1 - amount·profile` with `profile = BRISTLE_EDGE_CORE + (1 - CORE)·t^e`,
  * `t` the normalised distance into the fade band past BRISTLE_EDGE_START and
- * `e = edgeFalloffExponent(falloff)`: amount 100 leaves 65% of the pigment
- * at the core, `1 - amount` at the silhouette, and the falloff chooses how
- * quickly the ramp crosses between them. Amount 0 (or a non-finite argument)
- * returns the neutral 1 at every distance.
+ * `e = edgeFalloffExponent(falloff)`: amount 100 keeps 55% of the pigment at
+ * the core (~65% of the original opacity), `1 - amount` at the silhouette,
+ * and the falloff chooses how quickly the ramp crosses between them. Amount
+ * 0 (or a non-finite argument) returns the neutral 1 at every distance.
  *
- * Cells BEYOND the silhouette clamp to the rim factor by design: at amount
- * 100 they carry no pigment and the mark's visible edge moves inward. That is
- * the knob's job, not a paper-threshold change — the deposit weight, the
- * threshold and the feather are untouched.
+ * Cells BEYOND the silhouette clamp to the rim factor by design: they are
+ * the film's thin tail, not a paper-threshold change — the threshold, the
+ * feather and the paper tooth are untouched.
  */
 export function bristleEdgeFilm(lateral: number, amount: number, falloff: number): number {
   if (!Number.isFinite(lateral) || !Number.isFinite(amount) || !Number.isFinite(falloff)) return 1;
