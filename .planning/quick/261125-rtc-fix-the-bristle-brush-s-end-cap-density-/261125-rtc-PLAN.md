@@ -32,25 +32,26 @@ estimate:
   confidence: low
 must_haves:
   truths:
-    - "The medium-engine probe's bristle-end and bristle-line scenarios run the real bristle-round (Gouache) response on both the live and the bake lane: the report echoes bristle-round and the gather census counts bristleInk calls greater than zero on every capture."
-    - "Before any law change, the terminal density block reproduces on the repointed probe at Dry 70 (pigment end-zone mean minus body-zone mean at least 0.02 at stroke size 300 and at least 0.01 at stroke size 100)."
-    - "After the one law change, every matrix cell (5 sizes x Dry 0/70 x stop+bake) and every release-sweep cell (sizes 100 and 300 x Dry 0/70 x release 0.1/0.5/0.9) reads end-to-body pigment density within the declared bar and the coverage inked-fraction gap within its bar. The lift cell is an OBSERVATION cell asserted only to its declared non-regression band: no admissible stamp-time trigger reaches the live lift's pre-release dabs, so its verdict belongs to the live UAT, never to a bar it cannot reach."
-    - "The body and start zones stay within the declared drift on every cell: the fix changes the end, never the reference."
-    - "The end silhouette stays ragged (flatPct and longestFlatRunPx bars) and the pale-line ENCLOSED and halo readings do not regress versus the pre-fix bristle-round captures."
-    - "The law is one gather change with a named constant and a bound uniform, deterministic across two identical runs (byte-identical digests); a diff-scope gate over `git diff --name-only b12d769b1` passes with no path touched outside the plan's declared file set (plus `.planning/`), so no Spec 10 layer, edge-parameter or composite-law source moves."
+    - "The medium-engine probe's bristle-end and bristle-line scenarios run the real bristle-round (Gouache) response on both the live and the bake lane: the report echoes bristle-round on all 41 captures; every one of the 33 bristle-end captures (20 matrix + 12 release + 1 lift) carries a populated census with gather calls greater than zero, taps greater than zero and its own drive name; and every one of the 8 pale-line captures is proven on the `lineSurfaces` tiling (ENCLOSED, coherence) and halo readings its own report carries."
+    - "Before any law change, the terminal density block reproduces on the repointed probe at Dry 70 (pigment end-zone mean minus body-zone mean at least 0.02 at stroke size 300 and at least 0.01 at stroke size 100). (Task 1, committed; not re-opened.)"
+    - "The bar is re-declared on the measured visible block before any law: the end window is anchored to the last recorded census dab at [lastTap − 2.4r, lastTap + 1.05r] with lastTap from endCensus.last40 and r = strokeSize/2 document px (raster-clamped), the metrics are the raw pigment zone mean, the coverage inked share and the visible-composite mean, their tolerances are 0.02 / 0.03 / 0.02, and that declaration plus the per-cell report is written into the plan and mirrored in the SUMMARY before the first shader edit."
+    - "If and only if the re-measurement's sign verdict is UNIFORM on all three series (raw pigment, coverage inked share, visible composite) across the 32 matrix and release cells, one relative law lands: then every one of those cells reads |end − body| within 0.02 on the raw pigment mean, 0.03 on the coverage inked share and 0.02 on the visible composite on the frozen window. If the verdict is OPPOSITE on any series, no shader, constant, uniform, adapter or pin file moves and the SUMMARY reports the measured gaps and the stop as the quick's valid outcome. The lift cell is an OBSERVATION cell asserted only to its declared non-regression band: no admissible stamp-time trigger reaches the live lift's pre-release dabs, so its verdict belongs to the live UAT, never to a bar it cannot reach."
+    - "The body and start zones stay within the declared drift on every one of the 33 bristle-end cells: the fix changes the end, never the reference."
+    - "The end silhouette stays ragged (flatPct and longestFlatRunPx bars) and the pale-line tiling (ENCLOSED, coherence) and halo readings do not regress versus the pre-fix bristle-round captures."
+    - "On the UNIFORM verdict, the law is one gather change with one named bound constant and one uniform, relative to the stroke's own moving-dab terms (no fixed end-to-body delta, no per-size/per-dry table), deterministic across two identical runs (byte-identical digests); a diff-scope gate over `git diff --name-only b12d769b1` passes with no path touched outside the plan's declared file set (plus `.planning/`), so no Spec 10 layer, edge-parameter or composite-law source moves."
   artifacts:
     - path: packages/efx-watercolor/probe/medium-engine/probe.ts
-      provides: "bristle-end/bristle-line repointed to bristle-round; dry/feather/release operands; density zones on transparent/pigment/coverage; one shared tap+gather census installed before the drive branch and reported as endCensus for BOTH lanes (the bake included); end-setup echo"
+      provides: "bristle-end/bristle-line repointed to bristle-round; dry/feather/release operands; the census-anchored visible-block window (lastTap from endCensus.last40, r = strokeSize/2) with raw-pigment, coverage-inked and visible-composite zone reads on that window; one shared tap+gather census installed before the drive branch and reported as endCensus for BOTH lanes (the bake included); end-setup echo"
     - path: packages/efx-watercolor/probe/medium-engine/run.mjs
       provides: "the new flag contract (dry, feather, release, stroke-size up to 400) validated at the CLI before any capture runs"
     - path: packages/efx-watercolor/probe/medium-engine/end-density.mjs
-      provides: "the pre-declared bar as executable code over paired rtc-pre-/rtc-post- captures"
+      provides: "the re-declared bar as executable code over paired rtc-pre-/rtc-post- captures: the frozen census-anchored window, the three metrics and tolerances, the per-cell report and the per-series sign verdict"
     - path: packages/efx-watercolor/src/playground/shaders.ts
-      provides: "the ONE gather law over the terminal dab"
+      provides: "the ONE relative gather law over the terminal dab chain"
     - path: packages/efx-watercolor/src/playground/bristles.ts
-      provides: "the law's named magnitude constant (the BRISTLE_TAKEOFF_SHIFT precedent)"
+      provides: "the law's named bound constant (the BRISTLE_TAKEOFF_SHIFT precedent)"
     - path: packages/efx-watercolor/src/playground/scattering.test.ts
-      provides: "the exact-literal pins of the new law, the new constant's value pin, and every pre-existing negative pin, kept verbatim"
+      provides: "the exact-literal pins of the new law, the named bound's value pin, and every pre-existing negative pin, kept verbatim"
   key_links:
     - from: packages/efx-watercolor/probe/medium-engine/probe.ts
       to: packages/efx-watercolor/src/playground/shaders.ts
@@ -63,7 +64,7 @@ must_haves:
       via: "when the chosen law needs a terminal signal, the adapter's final fed sample marks it before that sample's tick; the live lane's equivalent is the ending tick's catch-up dab. Neither reaches the moving lift's pre-release dabs, which is why the lift cell is an observation cell and not a bar"
     - from: packages/efx-watercolor/probe/medium-engine/end-density.mjs
       to: packages/efx-watercolor/probe/medium-engine/probe.ts
-      via: "reads the endMetrics.density, gather and endCensus blocks the probe writes into every bristle-end capture - including the bake lane: one census installed before the drive branch spans the adapter's script loop (probe.ts 5329-5339) on the same captured engine, so the bake report carries taps, endCaps, last40 and endCapCalls exactly like a live capture"
+      via: "reads the census-anchored density block the probe writes into every bristle-end capture - including the bake lane: density.window { lastTapX, radiusPx, lo, hi, widthPx } and density.zones.transparent|pigment|coverage|visible { body|end { mean, inked } }; one census installed before the drive branch spans the adapter's script loop on the same captured engine, so the bake report carries taps, endCaps, last40 and endCapCalls exactly like a live capture and its last40 attests the window anchor"
 ---
 
 <objective>
@@ -77,12 +78,20 @@ Purpose: measure the block through the real engine on the real bristle path, the
 gather law that makes the end read at the body's density on both the live stop and the bake lane,
 without touching the body, the landing ramp, the silhouette or the pale-line floors.
 
-Output: a repaired probe (the bristle scenarios currently resolve to the watercolor round
-fallback because `bristle-flat` was retired by 261124-iq9), a 41-cell pre-fix matrix (20 stop+bake
-cells, a 12-cell release-pressure sweep at the two sampling extremes - sizes 100 and 300 - across
-both drys, one lift observation cell and 8 pale-line cells), one proven
-law with its regression pins, a deliberate edge-layer-neutral re-capture if the shipped gather
-moves it, and 10 live UAT rows handed off unclaimed.
+The first measurement diagnosed its own bar as wrong: the old end window started 26.7-48.8
+document px AHEAD of the last recorded dab in every cell, sampling the leading frontier of the
+terminal dabs where a trailing-side law is inert. The bar is therefore re-declared on the measured
+visible block (census-anchored window, raw pigment + coverage-inked + visible-composite metrics)
+and FROZEN before any law; the law lands only if the re-measured sign is uniform, otherwise the
+plan stops and reports.
+
+Output: a repaired probe (the bristle scenarios previously resolved to the watercolor round
+fallback because `bristle-flat` was retired by 261124-iq9), a re-declared bar with a 41-cell
+pre-fix matrix re-measured on the visible-block window (20 stop+bake cells, a 12-cell
+release-pressure sweep at the two sampling extremes - sizes 100 and 300 - across both drys, one
+lift observation cell and 8 pale-line cells), one proven relative law with its regression pins
+(or a measured, reported stop when the signs stay opposite), a deliberate edge-layer-neutral
+re-capture if the shipped gather moves it, and 10 live UAT rows handed off unclaimed.
 
 The lift cell is measured, reported and paired pre/post, but never asserted to the absolute bar:
 the live lane stamps its terminal dabs before it knows the stroke ended, the catch-up dab cannot
@@ -91,16 +100,20 @@ pressure-linked taper. The lift's verdict therefore belongs to the press-move-re
 a lift that still blocks is reported, never silently passed.
 
 Execution shape: Task 1 is the tracer - one capture end-to-end through the repaired probe, proving
-the measurement pipeline on the real brush before any matrix expansion. Task 2 expands to the full
-matrix and the writer map with NO law change. Task 3 implements and proves the ONE law against the
-bar Task 2 fixed, then hands off UAT.
+the measurement pipeline on the real brush before any matrix expansion (complete: commit
+d79f9e48a, not re-opened). Task 2 freezes the re-declared visible-block bar,
+implements it in the probe and the checker, re-measures the full matrix with NO law change, and
+reports the per-series sign verdict (commit 3e1112d69 belongs to the first Task 2, the 41-cell pre
+matrix; this re-scoped Task 2 replaces it). Task 3 implements and proves the ONE relative law against the
+frozen bar ONLY if that verdict is uniform; if the signs stay opposite it stops and reports, which
+completes the quick.
 
 Scope guards: no Spec 10 layer code (deposit routing, lateral field, merge, display branch,
 encoder - FROZEN per 261125-kvl), no edgeFade/edgeFalloff, no composite-law change, no depth fade,
 no law triggered only by the live release event (the bake must receive the same law), no
-catch-up-only patch. Release pressure stays a measured candidate trigger: if the 12-cell sweep
-shows it moves the block, a pressure-driven gate is admissible because the recorded pressures ride
-the bake too. `bristle-edge`, `bristle-wet` and
+catch-up-only patch. Release pressure was probed as a measured candidate trigger: the committed
+sweep reads it inert at s100 (bit-identical rp10/50/90), so it is not the law's lever and the law
+need not depend on it. `bristle-edge`, `bristle-wet` and
 `bristle-tip` stay on their current ids in this quick: their committed baselines are keyed to the
 pre-261124 subject and repointing them is a separate re-capture; Task 1 records that finding, it
 does not change them.
@@ -132,6 +145,13 @@ Harness pins harness.test.ts 580, 736, 833. Engine catch-up 3067-3077, `bindGath
 (`uTakeoffShift` 3990, `uEndCap` 4003), `bristleInk` 4073. Adapter `feedDueSample` 477-521.
 Gather literals scattering.test.ts 1370-1439 and the `stamp` call pin 695. Bristle constants
 bristles.ts 130-214, `bristleContactPressure` 320-344.
+
+After the Task 1/Task 2 commits (d79f9e48a, 3e1112d69) the probe anchors drifted; re-grep before
+editing: probe.ts `driveBristleEnd` ~4652, `bristleEndMetrics` ~4757 (density zones ~4917-5010),
+`bristleEndScript` ~5046, the shared census install ~5409-5441, the bristle-end report object
+~5745-5777. end-density.mjs: the bar constants ~57-100, `endReadings` ~190, the pre table ~244.
+Confirm the anchor units: the census records `stampScripted`'s x as a document-width fraction
+(0.85 at the drive's end x = 918 px on a 1080 sheet), and the rasters are read at that same dw.
 </context>
 
 <tasks>
@@ -184,68 +204,76 @@ pnpm --dir packages/efx-watercolor exec tsc --noEmit
 </task>
 
 <task type="auto">
-  <name>Measure the full matrix and bisect the density writers with no law change</name>
-  <files>packages/efx-watercolor/probe/medium-engine/end-density.mjs</files>
+  <name>Freeze the visible-block bar, re-measure the 41-cell pre matrix on the census-anchored window and report the sign verdict</name>
+  <files>packages/efx-watercolor/probe/medium-engine/probe.ts, packages/efx-watercolor/probe/medium-engine/end-density.mjs, packages/efx-watercolor/probe/medium-engine/harness.test.ts</files>
   <action>
-1. Create `packages/efx-watercolor/probe/medium-engine/end-density.mjs`, the bar as code (sibling of compare.mjs, no package installs). CLI: `--pre <dir>` and optional `--post <dir>`; without `--assert` it is report-only but exits 1 if any expected pre capture is missing or lacks the gather proof; with `--assert` it pairs every pre cell with its post twin by suffix and enforces the constants declared at the top of the file (below). It discovers captures as `<dir>/rtc-pre-<suffix>.json` and `<dir>/rtc-post-<suffix>.json`. The pre set is exactly 41 cells: 20 matrix cells `s{050,100,150,200,300}-d{00,70}-{stop,bake}`, 12 release cells `s{100,300}-d{00,70}-stop-rp{10,50,90}`, 1 lift `s100-d70-lift`, and 8 line cells `{line,line-over}-s{035,100}-mut{1,2}`. The determinism pair `det-s100-d70-stop-a/-b` is required in `--assert` mode only. It prints one row per cell: effectiveSampleScale, pigment body/end/delta, coverage inked body/end/gap, transparent body/end/delta, end flatPct and longestFlatRunPx, gather calls and endCapCalls, and the census tap/endCap counts with the cell's drive name.
+The completed measurement diagnosed its own window as wrong, so the fix is a re-declaration, not a law: the old end window `[endMedian - max(30, round(0.25 * thickness)), endMedian - 2]` starts 26.7-48.8 document px AHEAD of the last recorded dab in every cell (s100-d70-stop: last tap 917.6, window [958, 995]), and the stroke travels +x, so every sampled pixel lies on the LEADING side of the dabs that wrote the block - a trailing-side law is inert there. The visible block spans roughly `[lastTap - 1.3...2.4r, lastTap + 1.05r]` (s100-d70: darkness 0.66 to 0.75 from x about 820 to x about 995; s300-d70: 0.62 to 0.81 from x about 700 to x about 1060). This task freezes the re-declared bar, implements it in the probe and the checker, re-measures ALL 41 cells and reports the sign verdict. It changes NO shader, engine, adapter or gather law.
 
-   Declared bar constants (pre-declared now, never tuned after seeing post values):
-   - `PIGMENT_GAP_MAX = 0.02` and `COVERAGE_GAP_MAX = 0.03`, applied to the 32 MATRIX and RELEASE cells only. A cell passes when its post `abs(end minus body)` is at most the constant - the end reads at the body's density on both the carried-pigment and the inked-fraction surfaces, for every cell, defect or not.
-   - `LIFT_OBSERVE_DRIFT_MAX = 0.01` - the lift cell `s100-d70-lift` is an OBSERVATION cell. Its post pigment `abs(end minus body)` must be at most its pre value plus 0.01, and its structural bars (body/start drift, silhouette, census) must hold; it is never asserted to `PIGMENT_GAP_MAX`. Declared before any post capture: the moving lift's terminal dabs are stamped before the engine knows the stroke ended, the catch-up dab cannot lighten committed film, and a pressure-collapse gate would fire mid-stroke on every pressure-linked taper - so no admissible stamp-time trigger reaches the live lift's end. The press-move-release UAT rows are that path's judge; a lift that still blocks is reported, never promoted to a pass.
-   - `BODY_DRIFT_MAX = 0.01`, `START_DRIFT_MAX = 0.01` (zone mean, pigment and transparent), `BODY_THICKNESS_DRIFT_MAX = 2` px.
-   - `FLAT_PCT_GROWTH_MAX = 5` points and `LONGEST_RUN_MAX_PX = 40` on the end silhouette; `START_SHAPE_DRIFT = { flatPct 5, longest 3, spread 3 }`.
-   - `BAKE_LIVE_GAP_MAX = 0.02`: at the same size and dry, the bake cell's pigment end-minus-body delta sits within 0.02 of the stop cell's.
-   - `LINE_FRAC_GROWTH_MAX = 0.5` points, `LINE_RUN_GROWTH_MAX = 3` px with an absolute 20 px cap, per `lineSurfaces` entry's `tiling.enclosed`; `LINE_HALO_PEAK_GROWTH = 0.05` and `LINE_HALO_RUN_GROWTH = 2` rows. The doc's absolute ENCLOSED target (no more than 1 percent and 20 px) is printed beside the comparison; it gates only when the pre capture already meets it.
-   - Every post cell (line cells included): brush equals 'bristle-round', `endCensus` is non-null with `taps` greater than zero and `endCensus.drive` equal to the cell's own drive, and `gather.calls` greater than zero. This is the bake-lane census proof: a bake capture with `endCensus: null` or zero taps fails the bar.
-   - The determinism pair: identical `digestPaper`, `digestTransparent`, `digestWhite`, `digestPigment` and `byteLength`.
+1. THE FROZEN PRE-DECLARATION - declared here, before any law, mirrored verbatim into the SUMMARY before the first shader edit, and never tuned after seeing post values:
+   - WINDOW: `lastTap = endCensus.last40.at(-1).x` (the census records stampScripted's x as a document-width fraction - multiply by dw for raster px; the drive's end x 0.85 reads 918 on a 1080 sheet); `r = strokeSize / 2` document px. End window `[lastTap * dw - 2.4r, lastTap * dw + 1.05r]` clamped to `[0, dw - 1]`. Body zone unchanged at `[round(0.40 * dw), round(0.55 * dw)]`. A bristle-end capture with no census tap fails - never a silent fallback to the old window. The anchor is the LAST recorded dab: the catch-up included on the live lanes, the final scripted sample on the bake.
+   - METRICS, each over that window versus the body zone, on every marked row: RAW-P = the pigment zone MEAN, `(255 - mean RGB) / 255` on the pigment raster; RAW-C = the INKED SHARE, the fraction of zone cells with coverage alpha / 255 at least 0.5; VIS = the visible-composite MEAN, `1 - min(r*a + 255*(1-a), g*a + 255*(1-a), b*a + 255*(1-a)) / 255` read per pixel on the transparent raster - exactly the `endFine.vis` reader, the composite over white the eye sees. The raw transparent mean stays a report-only diagnostic column.
+   - TOLERANCES on the 32 MATRIX and RELEASE cells, post-fix: `|RAW-P end - body| <= 0.02`, `|RAW-C end - body| <= 0.03`, `|VIS end - body| <= 0.02`. The lift stays an OBSERVATION cell: its pigment gap may grow by at most 0.01 versus its pre twin, with the VIS gap printed beside it and never asserted.
+   - SIGN RULE: per cell, sign = sign(end - body) on RAW-P, RAW-C and VIS. A series is OPPOSITE when at least one cell reads end > body + 0.001 and at least one reads end < body - 0.001; otherwise it is UNIFORM (zero cells are neutral). The overall verdict is UNIFORM only when all three series are UNIFORM; otherwise OPPOSITE. UNIFORM admits Task 3's relative law; OPPOSITE stops it - a valid outcome, not a failure of this task.
+   - STRUCTURAL BARS unchanged: `BODY_DRIFT_MAX = 0.01`, `START_DRIFT_MAX = 0.01`, `BODY_THICKNESS_DRIFT_MAX = 2` px, `FLAT_PCT_GROWTH_MAX = 5` points, `LONGEST_RUN_MAX_PX = 40`, `START_SHAPE_DRIFT = { flatPct 5, longest 3, spread 3 }`, `BAKE_LIVE_GAP_MAX = 0.02`, the pale-line growth bars (0.5 point ENCLOSED share, 3 px run under the absolute 20 px cap, coherence 0.05 / 0.05, halo 0.05 peak / 2 rows per side, the doc's absolute ENCLOSED target gating only where the pre cell already met it), the census/gather/brush proof on the 33 bristle-end cells, and the determinism pair.
 
-2. Capture the full 41-cell pre set at sheet 1080, Feather 100 (the artist's bag: acrylic record, Pickup already 100, Body 100):
+2. Implement the declaration in probe.ts:
+   - `bristleEndMetrics(transparent, pigment, coverage, strokeSize, taps: readonly EndTap[])` - add the census taps to the signature; the bristle-end report object passes `endCensus?.taps ?? []`. Derive `lastTap = taps[taps.length - 1]`; throw a named error when it is absent (this runs only for bristle-end, where the census is the declared proof).
+   - Add `visibleDark(x, cr)` verbatim as the `endFine.vis` formula, and `zoneReadRaster(read, threshold, x0, x1)` - the existing `zoneRead` clamped instead to `[0, dw - 1]`. The anchored window must not be clipped by `scanHi` (about 0.94 * dw = 1015 on a 1080 sheet): at size 300 the window reaches about 1075 and the observed block reaches x about 1060. Keep `zoneRead` for the existing zoneDark and along profiles so those fields stay byte-identical.
+   - Replace `bodyThicknessMean` / `endZonePx` with `window: { lastTapX, radiusPx, lo, hi, widthPx }` inside `endMetrics.density`, add `zones.visible`, and read `zones.transparent|pigment|coverage|visible` over the SAME anchored window (body zone unchanged). Keep every other endMetrics key byte-identical: end/start stats and zoneDark/contrastDelta, thickness.*, endFine, endAlongDark, startAlongDark, startProfilePx, endProfilePx, effectiveSampleScale.
+   - If a harness source-scan pin trips on the changed probe text, update only the exact literal that moved; no new pin is added for the window - the capture is the proof.
+
+3. Rewrite end-density.mjs to read the re-declared block:
+   - Replace the `endZonePx` read with the window fields; declare `PIGMENT_GAP_MAX = 0.02`, `COVERAGE_GAP_MAX = 0.03` and the new `VISIBLE_GAP_MAX = 0.02` at the top beside the structural bars; read `zones.visible`.
+   - Pre mode stays report-only and exits 1 only on capture integrity (missing cell, brush echo not 'bristle-round', null or zero census, crossed drive, zero gather) - NEVER on a pre gap or on the sign verdict: the pre run measures the defect.
+   - Print one row per bristle-end cell: drive, effectiveSampleScale, lastTapX, radiusPx, window lo-hi, RAW-P body/end/delta/sign, RAW-C body/end/gap/sign, VIS body/end/delta/sign, transparent raw body/end, end flatPct and longestFlatRunPx, gather calls/endCapCalls, census taps/endCaps. Keep the pale-line table and its absolute-target note unchanged.
+   - After the table print the SIGN VERDICT: for each of RAW-P, RAW-C and VIS the positive/negative/zero cell counts over the 32 cells plus UNIFORM or OPPOSITE, with the extreme deltas named per series.
+   - In `--assert` mode add the three tolerances and keep every structural, pale-line and determinism bar as declared (including the lift's observation band).
+
+4. Re-run the FULL 41-cell pre set at sheet 1080, Feather 100 with the SAME gate names and commands as the committed run, because the probe now writes the new window and metrics (the files are NOT byte-identical to the first pre set - record that in the SUMMARY):
    - Matrix: for size in 50 100 150 200 300, for dry in 0 70, for drive in stop bake, run `--scenario bristle-end --stroke-size SIZE --drive DRIVE --dry DRY --feather 100 --size 1080 --gate rtc-pre-s<3-digit size>-d<2-digit dry>-<drive>`.
-   - Release sweep, stop, at sizes 100 and 300 across both drys: the same loop with `--release 0.1`, `0.5`, `0.9` and gates `rtc-pre-s{100,300}-d{00,70}-stop-rp10` / `rp50` / `rp90` (12 cells). The two sizes bracket the sampling law (2x at 100, 16x at 300), and the default stop cell (authored 0.75) is the fourth pressure point at EVERY size and dry, so the release axis is still probed across all five sizes. This satisfies the CONTEXT's "release pressure is a probe axis" without a full cross product: for bristle-round the gather's pressure is provably constant (pressureLink 0 forces contactPr 1.0), so the sweep is empirical confirmation at the extremes, not a search.
-   - Lift: `--scenario bristle-end --stroke-size 100 --drive lift --dry 70 --feather 100 --size 1080` as `rtc-pre-s100-d70-lift`; this re-establishes the approved-lift baseline for the ROUND tip - the 2026-11-23 lift numbers were measured on the retired flat tip and must not be reused. Its verdict is the observation band, never `PIGMENT_GAP_MAX`.
+   - Release sweep, stop, at sizes 100 and 300 across both drys: the same loop with `--release 0.1`, `0.5`, `0.9` and gates `rtc-pre-s{100,300}-d{00,70}-stop-rp10` / `rp50` / `rp90` (12 cells).
+   - Lift: `--scenario bristle-end --stroke-size 100 --drive lift --dry 70 --feather 100 --size 1080` as `rtc-pre-s100-d70-lift`; its verdict is the observation band, never `PIGMENT_GAP_MAX`.
    - Pale line: `--scenario bristle-line --band 140 --size 1080` at `--stroke-size 35` and `100`, `--mut 1` and `2`, bare and with `--over` (8 cells, gates `rtc-pre-line-...` / `rtc-pre-line-over-...`).
-   The two Task 1 captures are re-run by the matrix loop with identical seeds; byte-identical output is expected.
 
-3. Bisect the writers from the captures alone - no source edits. Extract into the SUMMARY, per family: the pigment/coverage/transparent deltas, the census tap count and endCap count, the final 40 taps' x and authored pressure (read from `endCensus.last40` in every cell, the bake family included - the shared census makes the bake's taps a first-class report field), and the block's left edge (end median minus endZonePx) versus the last taps' positions. Answer these questions with numbers:
-   - Catch-up: compare stop and bake cells at each size/dry. If the gap is the same, the catch-up dab is not the writer.
-   - Release pressure: compare the three release cells against the default stop cell at every size and dry. If the gap is flat, release pressure is not the writer.
-   - Dry: compare Dry 0 and Dry 70 at each size; state whether the block is size-grown, dry-grown or both.
-   - Channel: state which surface carries the block (pigment carried density, coverage inked fraction, or the transparent composite) at each size - the law must target the channel the measurement names.
-   - Which dabs write the block: the taps within one endZonePx of the end median, their spacing/advance, and whether the writer set is one terminal dab or the near-stationary pile. This decides the admissible law form in Task 3.
-   - Record the recorded pale-line baseline numbers (ENCLOSED fracPct and maxRunPx per surface entry, halo peakRel and run per side) as the no-lane reference.
+5. Carry the writer map - do not re-derive it wholesale: catch-up refuted (stop and bake gaps match within 0.02; capped dabs fire in only 6 stop captures, none in bake); release pressure inert at s100 (bit-identical rp10/50/90); writer = the terminal dab chain's own footprints; channel = the coverage inked share plus the carried-pigment zone mean (at s100-d70 the end's INKED texels read pigment about 0.96 versus the body's about 0.72 while coverage is sparser, 0.73 versus 0.88). Re-check each claim against the new window's numbers and restate any claim the re-measurement moves.
 
-4. Report the writer map and the table in the phase SUMMARY. Do not change any law, constant or uniform in this task.
+6. Report in the SUMMARY: the frozen declaration verbatim, the per-cell table, the per-series sign verdict with its counts and extremes, and the writer map re-checked. Do not change any law, constant or uniform in this task.
   </action>
   <verify>
     <automated>node packages/efx-watercolor/probe/medium-engine/end-density.mjs --pre /tmp/medium-engine</automated>
-    [UNVALIDATABLE: end-density.mjs is created by this task]
+    [UNVALIDATABLE: end-density.mjs is rewritten by this task and the pre set it reads is produced by the capture loop in this same task]
   </verify>
-  <done>All 41 pre cells exist with the gather proof and a populated census on BOTH lanes (the bake cells carry taps greater than zero and their own drive name), the checker reports the full pre table plus the pale-line baselines, and the SUMMARY states the writer map: catch-up refuted or confirmed, release pressure refuted or confirmed, the carrying channel, whether the block is one terminal dab or a pile-up, and whether the lift's writer is reachable by a stamp-time gate (if not, the lift stays in its observation band).</done>
+  <done>All 41 pre cells are re-captured with the census-anchored window and the three metrics; every bristle-end capture reports its own lastTapX, radiusPx and window bounds beside RAW-P, RAW-C and VIS; the checker prints the per-cell table and the per-series SIGN VERDICT; and the SUMMARY states the frozen declaration verbatim, the verdict (UNIFORM or OPPOSITE with positive/negative/zero counts and extreme deltas), and the re-checked writer map. No shader, engine, adapter or gather law is touched; a harness literal moves only if a pin trips.</done>
 </task>
 
 <task type="auto">
-  <name>Implement the ONE gather law, prove it against the declared bar, pin it and hand off UAT</name>
+  <name>Implement the ONE relative gather law if the sign is uniform, prove it against the frozen bar, pin it and hand off UAT</name>
   <files>packages/efx-watercolor/src/playground/shaders.ts, packages/efx-watercolor/src/playground/bristles.ts, packages/efx-watercolor/src/playground/Engine.ts, packages/efx-watercolor/src/adapter/engineAdapter.ts, packages/efx-watercolor/src/playground/scattering.test.ts, packages/efx-watercolor/probe/medium-engine/baselines/edge-layer-neutral.json</files>
   <behavior>
-    - The gather source contains the new law as one literal line with the new named constant, the takeoff lines kept verbatim, and the uniform declared and bound exactly once.
+    - The gather source contains the new law as ONE new gather expression with the new named bound constant, the takeoff lines kept verbatim, and the uniform declared and bound exactly once.
+    - The fade's magnitude is derived per stroke from the gather's own moving-dab terms - no fixed end-to-body delta, no per-size or per-dry table, no literal tuned to an average cell.
     - Both existing terminal-path pins still hold: the uEndCap declaration and binding, and the stamp call literal that passes bristleEndCap into bristleInk (unchanged unless the law extends the signature, in which case both pins update to the new exact literal).
     - Every pre-existing negative pin in scattering.test.ts still passes: no takeoff factor multiplies cA, cB, alpha or coverage, and no depth-fade identifier enters the gather.
-    - The new magnitude constant is association-pinned in scattering.test.ts's gather bindings table (the BRISTLE_TAKEOFF_SHIFT precedent at 988) and its value pinned in the same file; bristles.test.ts is not touched (it pins only the sizing constants, never a gather constant).
+    - The new named bound constant is association-pinned in scattering.test.ts's gather bindings table (the BRISTLE_TAKEOFF_SHIFT precedent at 988) and its value pinned in the same file; bristles.test.ts is not touched (it pins only the sizing constants, never a gather constant).
   </behavior>
   <action>
 Implement exactly ONE law chosen from the Task 2 writer map, then prove it on the same pixels.
 
-1. Admissible forms, in the research's ranked order. The measurement selects; the bar decides.
-   - Law A (preferred): a TERMINAL trailing THRESHOLD shift mirroring the 2026-11-23 takeoff. In `gatherBristle`, the takeoff raises the threshold on the leading frontier (`smoothstep(0.45, 1.05, -q.y)`); the end law raises it on the trailing side for the dabs that write the block - one new literal line, one new uniform, one new declared constant next to BRISTLE_TAKEOFF_SHIFT (place it at 169 with a comment stating the measured basis). Do not alter the takeoff lines. The terminal gate must be settable at stamp time on BOTH lanes: the live release already flags its catch-up dab (`bristleEndCap` around the trace at 3067-3077, bound to `uEndCap` at 4003); the bake sets the equivalent flag on its final fed sample(s) from the adapter (`feedDueSample` at 477-521 knows `active.index` reaches `pts.length` - set the terminal flag after the final `scriptMove` and BEFORE that sample's `engine.tick`, so the flagged tick is the one that stamps). Carry the gate as a NEW engine flag mirroring `bristleEndCap` - a new field on the stamp state read by a new line in `bindGather` for the law's own uniform - never by widening `uEndCap`, which already drives `exposedTrail` and the cap silhouette; one law, one uniform. If the writer map shows ONE terminal dab is too narrow, extend the same flag to the final K recorded samples in the adapter and the equivalent live-side signal; do not invent a second law.
-     The gate is a TERMINAL DAB SET, never a single event, and nothing it can do is retroactive: the deposit is a lerp toward the carried colour, so a dab stamped with reduced coverage can only add less, never erase film an earlier dab already committed. Consequence, declared before the measurement: the moving lift's terminal dabs are unreachable by any stamp-time trigger - the live lane stamps them before it knows the stroke ended, and a pressure-collapse gate would fire mid-stroke on every pressure-linked taper and move the body. If the writer map shows the lift's writer is that unreachable set, the lift stays an observation row and the UAT judges it; do not add a live-only trigger to move it.
-   - Law B (only if the writer map shows the block is the near-stationary pile and Law A's one-dab window cannot cover it): the same threshold mechanism gated on a stamp-time stall signal (the dab-centre advance since the previous dab, or the terminal segment), body-inert by construction and proven on both lanes. Still one law, one constant, one uniform.
-   - Forbidden: any depth fade (it cannot remove committed film - refuted 2026-11-23), any law only the live release event can trigger (the bake has no pointerup and no catch-up), a catch-up-only patch, body darkening, and any Spec 10 layer, edgeFade/edgeFalloff, composite-law or Body-law change. Release pressure is not pre-judged: the sweep decides whether it moves the block, and a pressure-keyed gate is admissible only if the same recorded pressures reach the bake. If the measurement demands touching the 2026-11-23 takeoff itself, STOP and report - that is outside this quick.
+0. ADMISSIBILITY GATE. First read the SUMMARY's frozen SIGN VERDICT (Task 2). If it is OPPOSITE on ANY of RAW-P, RAW-C or VIS: STOP. Do not edit shaders.ts, bristles.ts, Engine.ts, engineAdapter.ts, scattering.test.ts or baselines/edge-layer-neutral.json; do not retune the window, a metric or a tolerance; do not touch the takeoff. The plan completes as measurement plus stop: the SUMMARY states the verdict with its per-series counts and extremes and the measured gaps, and no row is claimed fixed. If it is UNIFORM, proceed - the three-series uniformity is the law's premise, not a tunable.
 
-2. Wire it exactly as the takeoff is wired: constant in bristles.ts, uniform declared in the gather source and bound in Engine.bindGather next to `uTakeoffShift`/`uEndCap`, value 0 on every non-terminal dab so the body is bit-identical by construction. Tune only the new constant's magnitude against the bar.
+1. The ONE admissible law: a PER-STROKE NORMALIZED FADE of the terminal dab chain toward the stroke's OWN body density. The measurement selected the channel; the frozen bar decides.
+   - Normalization is the law: the fade's magnitude is derived per stroke from the gather's own moving-dab terms (the same dryEdge / alongFade / trailSupport / cap factors that give an interior dab its coverage), so the terminal chain's coverage converges to the coverage a moving dab of the SAME stroke carries - never to a fixed numeric target, never to a per-size or per-dry table, never to a constant end-to-body delta. A named constant may bound or shape the fade (declared and pinned like BRISTLE_TAKEOFF_SHIFT, with its measured basis in the comment) but it must not encode the end-to-body magnitude; if the measured gaps vary per cell, the law must not be a constant.
+   - One gather change, one named bound constant, one uniform. The 2026-11-23 takeoff stays byte-identical: BRISTLE_TAKEOFF_SHIFT, uTakeoffShift and the `smoothstep(0.45, 1.05, -q.y)` band are not touched.
+   - The terminal set is marked at stamp time on BOTH lanes: the live lane's dabs stamped once `ending` is set (the catch-up included - the engine already sets `bristleEndCap` around that trace at 3067-3077), and the adapter's final fed sample(s) (`feedDueSample` at 477-521 reaches `active.index` = `pts.length` - set the flag after the final `scriptMove` and BEFORE that sample's `engine.tick`, so the flagged tick is the one that stamps). Carry the gate as a NEW engine flag mirroring `bristleEndCap`, read by a new line in `bindGather` for the law's own uniform - never by widening `uEndCap`, which drives `exposedTrail` and the cap silhouette. If the re-measurement shows one terminal dab is too narrow, extend the same flag to the final K recorded samples; still one law, one uniform.
+   - Bake parity is structural: the same flag, the same law, the same gather on both lanes, no dependence on the catch-up dab (the bake has none). Nothing is retroactive: the deposit is a lerp toward the carried colour, so a lighter terminal dab can only add less, never erase film an earlier dab already committed, and the body stays bit-identical because the flag is 0 on every non-terminal dab.
+   - The lift stays outside the absolute bar by construction: its terminal dabs are stamped before the engine knows the stroke ended, and a pressure-collapse gate would fire mid-stroke on every pressure-linked taper and move the body - so no stamp-time trigger reaches the live lift's end and the moving-lift rows remain the live UAT's to judge. A lift that still blocks is reported, never silently passed.
+   - Forbidden: any fixed end-to-body delta or averaged magnitude, any re-tuning of the frozen window / metrics / tolerances, any per-size or per-dry correction table, any depth fade (it cannot remove committed film - refuted 2026-11-23), any law only the live release event can trigger, a catch-up-only patch, body darkening, and any Spec 10 layer, edgeFade/edgeFalloff, composite-law or Body-law change. Release pressure is already measured inert at s100 (bit-identical rp10/50/90) and is not the law's lever. If the uniform sign cannot be corrected without changing the 2026-11-23 takeoff itself, STOP and report - that is outside this quick.
 
-3. Prove on pixels: re-run the same 41 cells with `rtc-post-` prefixes plus two identical determinism captures (`rtc-post-det-s100-d70-stop-a` and `-b`, both `--stroke-size 100 --drive stop --dry 70 --feather 100 --size 1080`). Run the checker in assert mode and iterate the constant until it passes, or stop if no admissible magnitude passes. The lift cell is checked against its observation band only - never `PIGMENT_GAP_MAX`; a lift that does not improve is reported in the SUMMARY and left to the UAT, not treated as a checker failure.
+2. Wire it exactly as the takeoff is wired: bound constant in bristles.ts, uniform declared in the gather source and bound in Engine.bindGather next to `uTakeoffShift`/`uEndCap`, value 0 on every non-terminal dab so the body is bit-identical by construction. Tune only the named bound's value against the frozen bar - never the window, the metrics or the tolerances.
 
-4. Pin the law in scattering.test.ts only: the new gather line, the uniform declaration, the bindGather line, the constant import, and the new constant's value (`expect(BRISTLE_<NAME>).toBe(<value>)` beside the gather describe, where the law's literals already live); keep the takeoff literals and every negative pin byte-identical. bristles.test.ts stays untouched - it pins the sizing constants (BRISTLE_CAP/MIN/SPACING_PX) and no gather constant. If the law extends `bristleInk`'s signature, update the two stamp-call pins (scattering.test.ts 695 and 1440) to the new exact literal. Pins are written after the pixel law proves, per the standing project override - the probe is the test here, the unit pins are the regression net.
+3. Prove on pixels: re-run the same 41 cells with `rtc-post-` prefixes plus two identical determinism captures (`rtc-post-det-s100-d70-stop-a` and `-b`, both `--stroke-size 100 --drive stop --dry 70 --feather 100 --size 1080`). Run the checker in assert mode (it now enforces the re-declared three-metric bar on the frozen window) and iterate the named bound until it passes, or stop if no admissible value passes. The lift cell is checked against its observation band only - never the absolute gaps; a lift that does not improve is reported in the SUMMARY and left to the UAT, not treated as a checker failure.
+
+4. Pin the law in scattering.test.ts only: the new gather expression (pinned as its exact source text), the uniform declaration, the bindGather line, the constant import, and the named bound's value (`expect(BRISTLE_<NAME>).toBe(<value>)` beside the gather describe, where the law's literals already live); keep the takeoff literals and every negative pin byte-identical. bristles.test.ts stays untouched - it pins the sizing constants (BRISTLE_CAP/MIN/SPACING_PX) and no gather constant. If the law extends `bristleInk`'s signature, update the two stamp-call pins (scattering.test.ts 695 and 1440) to the new exact literal. Pins are written after the pixel law proves, per the standing project override - the probe is the test here, the unit pins are the regression net.
 
 5. Re-run the pale-line half through the same checker and confirm no lane: ENCLOSED and halo growth bars as declared in Task 2.
 
@@ -271,7 +299,7 @@ node -e "const {execSync}=require('child_process'); const allowed=['packages/efx
     </automated>
     [VALIDATED: bash -n over the command line and node --check probe/medium-engine/run.mjs exit 0]
     [VALIDATED: bash -n over the command line and node --check probe/medium-engine/run.mjs exit 0]
-    [UNVALIDATABLE: end-density.mjs is created by task 2]
+    [UNVALIDATABLE: end-density.mjs is rewritten by task 2; the pre and post captures are produced by the runs in this plan]
     [VALIDATED: bash -n over the command line exit 0]
     [VALIDATED: bash -n over the command line exit 0]
     [VALIDATED: bash -n over the command line exit 0]
@@ -281,7 +309,7 @@ node -e "const {execSync}=require('child_process'); const allowed=['packages/efx
     [VALIDATED: bash -n over the command line and node --check probe/medium-engine/compare.mjs exit 0]
     [VALIDATED: node --check over the -e payload saved as .cjs exit 0; the payload was also run read-only at plan time and reported one .planning path, in scope]
   </verify>
-  <done>The checker's assert mode passes on the 32 matrix and release cells (pigment end-to-body within 0.02 of the body's density, coverage inked gap within 0.03), the bake cells match their stop twins with a populated census, the lift sits inside its declared observation band and is reported rather than passed, body and start stay within drift, the silhouette and pale-line bars hold, and the determinism pair is byte-identical. The law is one named constant plus one uniform with the takeoff untouched; the pins are updated in scattering.test.ts with the negative pins kept; the diff-scope gate reports only declared paths; gates are green apart from the recorded pre-existing failures; the SUMMARY carries the writer map, the lift observation, the drift decision and the 10 unclaimed UAT rows.</done>
+  <done>If the sign verdict was OPPOSITE: no source, pin or baseline file moved and the SUMMARY states the stop with the frozen declaration, the per-series verdict and the measured gaps - that completes the plan. If it was UNIFORM: the checker's assert mode passes on the 32 matrix and release cells (|RAW-P end - body| within 0.02, |RAW-C| within 0.03 and |VIS| within 0.02 on the frozen census-anchored window), the bake cells match their stop twins with a populated census, the lift sits inside its declared observation band and is reported rather than passed, body and start stay within drift, the silhouette and pale-line bars hold, and the determinism pair is byte-identical. The law is one per-stroke normalized fade with one named bound constant and one uniform, the takeoff untouched; the pins are updated in scattering.test.ts with the negative pins kept; the diff-scope gate reports only declared paths; gates are green apart from the recorded pre-existing failures; the SUMMARY carries the frozen declaration, the writer map, the lift observation, the drift decision and the 10 unclaimed UAT rows.</done>
 </task>
 
 </tasks>
@@ -302,33 +330,36 @@ node -e "const {execSync}=require('child_process'); const allowed=['packages/efx
 | T-RTC-01 | Tampering | run.mjs flag parsing and probe.ts operand readers | low | mitigate | integer/range validation in both layers, `--release` refused on the lanes whose end is a measured pressure tail (lift, decay) or the -1 sentinel (mouse drives), unknown values throw rather than default |
 | T-RTC-02 | Denial of service | headless capture loop (41 pre + 41 post runs) | low | accept | existing `--size` bound 32..4096, new `--stroke-size` bound 1..400, 600 s Chrome timeout; local trusted CLI only |
 | T-RTC-03 | Tampering | baselines/edge-layer-neutral.json | medium | mitigate | re-capture only after the compare reports drift, moved fields recorded, `--edge-structural` must stay green, pre-fix captures use distinct `rtc-pre-` prefixes and are never rewritten by post runs |
-| T-RTC-04 | Repudiation | the pre-declared bar | medium | mitigate | bar constants (including the lift's observation band) declared and committed in end-density.mjs before any post capture; `--assert` pairs every cell; the lift can never be promoted to an absolute pass; determinism pair byte-identical |
-| T-RTC-05 | Repudiation | the shared tap census | low | mitigate | one install before the drive branch spans both lanes; every cell must carry `endCensus.taps` greater than zero and its own drive name, so a null or crossed census fails the bar instead of silently standing in for the bake |
+| T-RTC-04 | Repudiation | the re-declared bar and its sign verdict | medium | mitigate | the window is anchored to a measured tap (`lastTap` from `endCensus.last40`, `r = strokeSize/2`), never chosen; the window, three metrics, three tolerances and the sign rule are frozen in the plan and mirrored in the SUMMARY before the first shader edit; bar constants (including the lift's observation band) declared and committed in end-density.mjs before any post capture; `--assert` pairs every cell; the lift can never be promoted to an absolute pass; determinism pair byte-identical |
+| T-RTC-05 | Repudiation | the shared tap census | low | mitigate | one install before the drive branch spans both lanes; every one of the 33 bristle-end cells must carry `endCensus.taps` greater than zero and its own drive name, so a null or crossed census fails the bar instead of silently standing in for the bake; the 8 pale-line cells are gated on their own lineSurfaces bars |
+| T-RTC-06 | Tampering | the frozen window/metric declaration | medium | mitigate | an OPPOSITE sign verdict must stop the law, never motivate a window, metric or tolerance change; the declaration is carried verbatim in the plan and the SUMMARY so any later change is visible; Task 3's gate forbids editing shader, engine, adapter, pin or baseline files on an OPPOSITE verdict |
 | T-RTC-SC | Tampering | package supply chain | high | mitigate | no package installs in this plan; esbuild and Chrome are pre-existing local tooling; stop and escalate if any install is proposed |
 </threat_model>
 
 <verification>
 Overall phase checks, all from the repo root:
 
-1. `node packages/efx-watercolor/probe/medium-engine/end-density.mjs --pre /tmp/medium-engine --post /tmp/medium-engine --assert` exits 0.
-2. The 41 pre and 41 post captures exist, every one echoes brush bristle-round, carries a populated `endCensus` (taps greater than zero, its own drive name) and gather calls greater than zero; the bake family's census proves the gather ran on the bake lane and gives it the same tap positions the live lanes report.
-3. The determinism pair is digest-identical on all four surfaces and byteLength.
+1. When the sign verdict is UNIFORM, `node packages/efx-watercolor/probe/medium-engine/end-density.mjs --pre /tmp/medium-engine --post /tmp/medium-engine --assert` exits 0; on an OPPOSITE verdict the post half is not run (item 8).
+2. On the UNIFORM verdict, the 41 pre and 41 post captures exist and every one echoes brush bristle-round. The 33 bristle-end captures (20 matrix + 12 release + 1 lift) each carry a populated `endCensus` (taps greater than zero, its own drive name), gather calls greater than zero, and the census-anchored `density.window` (lastTapX, radiusPx, lo, hi) with RAW-P, RAW-C and VIS body/end readings; the bake family's census proves the gather ran on the bake lane and attests the same window anchor the live lanes use. The 8 pale-line captures carry their `lineSurfaces` ENCLOSED, coherence and halo readings, each held to its growth bar against the pre-fix twin; they emit no endCensus, gather, endMetrics, endSetup or drive, so no end-field assertion applies to them.
+3. On the UNIFORM verdict, the determinism pair is digest-identical on all four surfaces and byteLength.
 4. `pnpm --dir packages/efx-watercolor exec vitest run` and `pnpm --dir packages/efx-watercolor exec tsc --noEmit` pass; `pnpm --dir app exec vitest run` and `pnpm --dir app exec tsc --noEmit` pass apart from the recorded physicPaintBridge full-suite timeout, shown green in isolation.
 5. `compare.mjs edge-layer-neutral --edge-structural` passes; the baseline state (unchanged or deliberately re-captured with the moved fields recorded) is stated in the SUMMARY.
-6. The SUMMARY carries the writer map, the law chosen with the measurement that selected it, the lift observation with its pre/post numbers, the pin changes, and the 10-row UAT table with no row claimed passed.
+6. The SUMMARY carries the frozen re-declaration verbatim, the per-series sign verdict, the re-checked writer map, and then either the relative law (with the measurement that selected it, the lift observation with its pre/post numbers, the pin changes, and the 10-row UAT table with no row claimed passed) or, on an OPPOSITE verdict, the measured stop with its numbers and no claimed fix.
 7. The diff-scope gate passes: `git diff --name-only b12d769b1` lists only the plan's declared files plus `.planning/`, so no frozen surface moved.
+8. If the sign verdict is OPPOSITE, no shader, engine, adapter, pin or baseline path appears in the diff and the SUMMARY states the stop; the quick is reported as measured-but-withheld, not failed.
 </verification>
 
 <success_criteria>
-- The probe's end and pale-line scenarios exercise the real bristle-round gather on both live and bake lanes, proven by the census and the brush echo.
-- The block reproduces pre-fix at the stated thresholds on the repointed probe.
-- The full matrix is measured before and after with the same names, seeds and metrics; the pre-declared bar passes on the 32 matrix and release cells, and the lift is reported against its declared observation band, never promoted to an absolute pass.
-- ONE law, one constant, one uniform: the body, start, silhouette and pale-line floors hold, and the bake matches the live end without a catch-up dab.
+- The probe's end and pale-line scenarios exercise the real bristle-round gather on both live and bake lanes, proven by the census on the 33 bristle-end captures and by the brush echo plus the lineSurfaces ENCLOSED, coherence and halo bars on the 8 pale-line captures.
+- The block reproduces pre-fix at the stated thresholds on the repointed probe (Task 1).
+- The bar is re-declared on the measured visible block - the census-anchored window [lastTap - 2.4r, lastTap + 1.05r], the RAW pigment mean, the coverage inked share and the visible-composite mean, with tolerances 0.02 / 0.03 / 0.02 - frozen in the plan and mirrored in the SUMMARY before any shader edit, and the re-measurement reports a per-series sign verdict with its counts and extremes.
+- If the verdict is UNIFORM, the full matrix is measured before and after with the same names, seeds, frozen window and metrics; the re-declared bar passes on the 32 matrix and release cells, and the lift is reported against its declared observation band, never promoted to an absolute pass. If it is OPPOSITE, the plan completes with the measured stop and no source file moves.
+- ONE relative law, one named bound, one uniform: the fade is normalized per stroke against the gather's own moving-dab terms (no fixed end-to-body delta); the body, start, silhouette and pale-line floors hold, and the bake matches the live end without a catch-up dab.
 - Spec 10 layer code, edge params, composite law and the 2026-11-23 takeoff are untouched, proven by the diff-scope gate; the edge-layer-neutral baseline moved only if reported and documented.
 - Regression pins updated with every negative pin kept; the four gates are green apart from the recorded pre-existing failures.
 - 10 live UAT rows handed off, none claimed passed.
 </success_criteria>
 
 <output>
-Create `/Users/lmarques/Dev/efx-motion-editor/.planning/quick/261125-rtc-fix-the-bristle-brush-s-end-cap-density-/261125-rtc-SUMMARY.md` when done. It must carry: the pre/post table per cell, the writer map with the census evidence, the law and its measurement basis, the lift's pre/post numbers against its observation band (reported, never claimed as a pass), the pin changes, the edge-layer-neutral decision, the gate results with the pre-existing failures named, and the 10 unclaimed UAT rows.
+Create `/Users/lmarques/Dev/efx-motion-editor/.planning/quick/261125-rtc-fix-the-bristle-brush-s-end-cap-density-/261125-rtc-SUMMARY.md` when done. It must carry: the frozen pre-declaration verbatim (window, three metrics, three tolerances, sign rule), the re-measured pre/post table per cell with lastTap/radius/window and the RAW-P, RAW-C and VIS gaps, the per-series sign verdict, the re-checked writer map with the census evidence, and then EITHER the relative law with its measurement basis, the lift's pre/post numbers against its observation band (reported, never claimed as a pass), the pin changes, the edge-layer-neutral decision, the gate results with the pre-existing failures named, and the 10 unclaimed UAT rows - OR, when the verdict is OPPOSITE, the measured stop with its per-series numbers, no law, no pin changes and no row claimed fixed.
 </output>
