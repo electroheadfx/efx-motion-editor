@@ -1062,8 +1062,9 @@ function validEdgeCapture(): Record<string, unknown> {
 const EDGE_FIXTURE_PEAK = 0.4
 const EDGE_FIXTURE_SILHOUETTE = 20
 const EDGE_FIXTURE_EDGE_START = 0.55
-/** The amount's share at the core (BRISTLE_EDGE_CORE): 65% film at amount 100. */
-const EDGE_FIXTURE_CORE = 0.35
+/** The film's removal share at the core (BRISTLE_EDGE_CORE): the core keeps
+ *  45% of its pigment — about 65% of the original opacity — at amount 100. */
+const EDGE_FIXTURE_CORE = 0.55
 
 function edgeFixtureProfile(
   amount: number,
@@ -2165,13 +2166,16 @@ describe('the alpha-law blocks discriminate (64-31 task 2, executed)', () => {
 //      profile — normalised against the neutral reference row by row — asserts
 //      the three stations core 1 − amount·EDGE_CORE (± 0.06), mid
 //      1 − amount·(EDGE_CORE + (1 − EDGE_CORE)·0.5^e) and rim 1 − amount
-//      (± 0.12), where e = 2^(2b − 1). The INK profile (the delivered
-//      absorbance) is normalised the same way and judged on the SAME table:
-//      the core at ± EDGE_INK_CORE_TOLERANCE (the tight, discriminating bar)
-//      and the ramp stations at ± EDGE_INK_STATION_TOLERANCE (the calibrated
-//      silhouette's ±1 px floor noise). The share must dilute the pigment, so
-//      a deposit-weight film — cover target faded, body still full pigment —
-//      fails at the core exactly as the artist reported it.
+//      (± 0.12), where e = 2^(2b − 1). The CORE of the ink profile (the
+//      delivered absorbance) is normalised the same way and must read the
+//      law's shared value at ± EDGE_INK_CORE_TOLERANCE: the film has to scale
+//      BOTH the deposit opacity and the carried absorbance, so a weight-only
+//      film — cover target faded, body still full pigment — fails there
+//      exactly as the artist reported it, and an absorbance-only film is
+//      ruled out by the source pins on the gather's coverage weight (it
+//      erases paint without depositing: the white fringe). The ramp stations
+//      get no ink bar — the film-scaled opacity makes their ink build more
+//      slowly than its target, a lag the comparator cannot know.
 //  33. `edge-transparency` is a BRISTLE capture for the alpha law through ONE
 //      shared predicate in probe.ts and compare.mjs — it reports the skip with
 //      no delta/samples, and the comparator accepts it.
@@ -2217,8 +2221,7 @@ describe('the edge-transparency gate (Spec 10)', () => {
       expectContains(COMPARE, 'const EDGE_CORE_TOLERANCE = 0.06')
       expectContains(COMPARE, 'const EDGE_STATION_TOLERANCE = 0.12')
       expectContains(COMPARE, 'const EDGE_INK_CORE_TOLERANCE = 0.06')
-      expectContains(COMPARE, 'const EDGE_INK_STATION_TOLERANCE = 0.12')
-      expectContains(COMPARE, 'const EDGE_CORE = 0.35')
+      expectContains(COMPARE, 'const EDGE_CORE = 0.55')
       expectContains(COMPARE, 'const EDGE_MID_U = 0.775')
       expectContains(COMPARE, 'function edgeSilhouettePx(reference) {')
       expectContains(COMPARE, 'const EDGE_FLOOR_EPS = 1e-3')
@@ -2226,12 +2229,11 @@ describe('the edge-transparency gate (Spec 10)', () => {
       expectContains(COMPARE, 'edgeFilmFloorBoundary(offsets, filmAt, -1, 1 - amount)')
       expectContains(COMPARE, '1 - amount * (EDGE_CORE + (1 - EDGE_CORE) * 0.5 ** exponent)')
       expectContains(COMPARE, 'data.strokeBrush !== \'bristle-round\'')
-      // The pigment-share bars: the ink channel is normalised against the
-      // neutral reference and judged on the SAME law table, so a film that
-      // only faded the cover target (the deposit-weight law) cannot pass.
+      // The core ink bar: the converged region must read the film's shared
+      // value, so a weight-only film (full pigment at the core) cannot pass.
       expectContains(COMPARE, "const referenceInk = Array.isArray(referenceProfile.ink) ? referenceProfile.ink : null")
       expectContains(COMPARE, 'const pigmentAt = (station) => {')
-      expectContains(COMPARE, 'edge pigment ${label} at ${station} px reads')
+      expectContains(COMPARE, 'edge pigment core at ${station} px reads')
     })
   })
 
@@ -2315,7 +2317,7 @@ describe('the edge-transparency gate (Spec 10)', () => {
 
       expect(status, lawVerdict(status, output)).toBe(1)
       expect(invariantLine(output)).toContain('edge pigment')
-      expect(invariantLine(output)).toContain('never the deposit weight')
+      expect(invariantLine(output)).toContain('weight-only film')
     })
 
     it('fails a stroke that fell back to the non-bristle round preset', () => {

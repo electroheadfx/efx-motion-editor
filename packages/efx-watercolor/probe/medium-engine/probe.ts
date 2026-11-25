@@ -3210,14 +3210,17 @@ function readTipTexture(): string | undefined {
 // --- Spec 10: edge transparency and falloff ---------------------------------
 //
 // Two bristle-only sliders — Edge transparency (amount A) and Edge falloff
-// (shape bias b) — drive ONE lateral PIGMENT SHARE in `gatherBristle` that
-// dilutes the carried absorbance, the scatter S, the base-replacement target
-// and the relief across the whole mark: the core keeps 65% of its pigment at
-// amount 100 and the rim reaches 0, with the falloff shaping the ramp. The
-// deposit WEIGHT stays the full gather coverage, so the mark keeps its
-// geometry and its feather (UAT 2026-11-25 #3: a weighted film reads as a
-// solid body with a cut-off fringe, not as transparency). Neutral at amount 0
-// by construction, so the two amount-0 baselines are identity gates captured
+// (shape bias b) — drive ONE lateral film share in `gatherBristle`. It scales
+// BOTH halves of the ONE lerp: the deposit opacity (the gather coverage, which
+// also drives the base replacement and the relief) and the pigment it carries
+// (the absorbance and the scatter S, applied after the pickup mix). The lerp's
+// fixed point is therefore cA·film and the attenuation is proportional to
+// what is laid — the core keeps 45% of its pigment at amount 100 (~65% of the
+// original opacity) and the rim reaches 0, with the falloff shaping the ramp.
+// Scaling only one half either saturates the body to solid pigment with a
+// cut fringe (weight-only, UAT #2) or erases paint without depositing
+// (absorbance-only, the white fringe, UAT #3). Neutral at amount 0 by
+// construction, so the two amount-0 baselines are identity gates captured
 // from the PRE-change engine (UAT row 1's automated proxy).
 //
 // The script entry MUST stamp `brushId: 'bristle-round'` literally:
@@ -3269,9 +3272,9 @@ function readEdgeKnob(name: 'edge' | 'falloff', scenario: string, fallback: numb
 }
 
 /** Spec 10: the lateral profile, read once after the script settles. The
- *  coverage channel carries the base-replacement share and `ink` the delivered
- *  absorbance — both scaled by the same pigment share, and both judged against
- *  the neutral reference (the ink bar is the one a weight-film cannot pass);
+ *  coverage channel carries the base-replacement share (the film's shape bars)
+ *  and `ink` the delivered absorbance (the core pigment bar a weight-film
+ *  cannot pass); both are judged against the neutral reference, and
  *  `edgeTiling.enclosed` is the same lane scan the bristle-line gate uses. */
 function edgeTransparencyMetrics(engine: WatercolorEngine, strokeBrush: string): Record<string, unknown> {
   const profile = lineProfileSet(engine)
