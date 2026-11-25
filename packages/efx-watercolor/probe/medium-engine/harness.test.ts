@@ -1056,25 +1056,31 @@ function validEdgeCapture(): Record<string, unknown> {
 
 /** Spec 10: the synthetic lateral profile — coverage peaks at 0.4 inside the
  *  visible silhouette (±20 px) and falls to bare paper outside it, exactly as
- *  the gather's footprint does. The film law is applied per row so the fixture
- *  encodes the law's landmark table independently of the comparator's own
- *  constants (a fixture built from the comparator would prove nothing). */
+ *  the gather's footprint does. The shipped law is encoded per row so the
+ *  fixture carries the law's landmark table independently of the comparator's
+ *  own constants (a fixture built from the comparator would prove nothing):
+ *  a UNIFORM pigment share (1 − amount·CORE) times a lateral PRINTED FRACTION
+ *  (1 − amount·t^e). The printed fraction is the sparse edge's witness — a
+ *  depth film prints every texel and reads 1 at every station. */
 const EDGE_FIXTURE_PEAK = 0.4
 const EDGE_FIXTURE_SILHOUETTE = 20
 const EDGE_FIXTURE_EDGE_START = 0.55
-/** The film's removal share at the core (BRISTLE_EDGE_CORE): the core keeps
- *  45% of its pigment — about 65% of the original opacity — at amount 100. */
+/** The amount's uniform pigment share at amount 100 (BRISTLE_EDGE_CORE): the
+ *  mark keeps 45% of its pigment — about 65% of the original opacity. */
 const EDGE_FIXTURE_CORE = 0.55
 
 function edgeFixtureProfile(
   amount: number,
   falloff: number,
   silhouette = EDGE_FIXTURE_SILHOUETTE,
-): { offsets: number[]; cover: number[]; ink: number[] } {
+): { offsets: number[]; cover: number[]; ink: number[]; print: number[] } {
   const offsets: number[] = []
   const cover: number[] = []
   const ink: number[] = []
+  const print: number[] = []
   const exponent = 2 ** (2 * (falloff / 100) - 1)
+  const a = Math.max(0, amount / 100)
+  const film = 1 - a * EDGE_FIXTURE_CORE
   for (let o = -140; o <= 140; o += 1) {
     offsets.push(o)
     const u = Math.min(1, Math.abs(o) / silhouette)
@@ -1082,13 +1088,13 @@ function edgeFixtureProfile(
       0,
       Math.min(1, (u - EDGE_FIXTURE_EDGE_START) / (1 - EDGE_FIXTURE_EDGE_START)),
     )
-    const profile = EDGE_FIXTURE_CORE + (1 - EDGE_FIXTURE_CORE) * t ** exponent
-    const film = amount <= 0 ? 1 : 1 - (amount / 100) * profile
     const inside = Math.abs(o) <= silhouette
-    cover.push(inside ? EDGE_FIXTURE_PEAK * film : 0)
-    ink.push(inside ? 2 * film : 0)
+    const printed = inside ? 1 - a * t ** exponent : 0
+    cover.push(EDGE_FIXTURE_PEAK * film * printed)
+    ink.push(2 * film * printed)
+    print.push(printed)
   }
-  return { offsets, cover, ink }
+  return { offsets, cover, ink, print }
 }
 
 function validEdgeTransparencyCapture(
@@ -2152,30 +2158,34 @@ describe('the alpha-law blocks discriminate (64-31 task 2, executed)', () => {
 //      into the loose params bag; `--edge` / `--falloff` are integers 0..100
 //      accepted ONLY for this scenario, in both closed lists.
 //  31. The script entry stamps `brushId: 'bristle-round'` LITERALLY — the
-//      `round` fallback never runs gatherBristle, so the lateral film would
+//      `round` fallback never runs gatherBristle, so the edge law would
 //      never execute — and the report echoes it as `strokeBrush` beside the
 //      `resolvedBrush` `brush` echo, with `edgeAmount`, `edgeFalloff`,
-//      `edgeAcross { offsets, cover, ink }` and `edgeTiling.enclosed`.
+//      `edgeAcross { offsets, cover, ink, dark, print }` and
+//      `edgeTiling.enclosed`.
 //  32. compare.mjs dispatches `edge-transparency` to a REFERENCE-aware
-//      invariant. At amount > 0 the station domain is the FILM's own floor
-//      boundary on both sides (the contiguous tail at 1 − amount, averaged,
-//      the side difference halved as the axis), because the film reaches u = 1
-//      at the engine's silhouette while the reference's 2 %-of-peak rim lies
-//      outside it; at amount 0 the domain is the reference's coverage (2 % of
-//      peak, min of both sides). Both branches require ≥ 8 px. The cover
-//      profile — normalised against the neutral reference row by row — asserts
-//      the three stations core 1 − amount·EDGE_CORE (± 0.06), mid
-//      1 − amount·(EDGE_CORE + (1 − EDGE_CORE)·0.5^e) and rim 1 − amount
-//      (± 0.12), where e = 2^(2b − 1). The CORE of the ink profile (the
-//      delivered absorbance) is normalised the same way and must read the
-//      law's shared value at ± EDGE_INK_CORE_TOLERANCE: the film has to scale
-//      BOTH the deposit opacity and the carried absorbance, so a weight-only
-//      film — cover target faded, body still full pigment — fails there
-//      exactly as the artist reported it, and an absorbance-only film is
-//      ruled out by the source pins on the gather's coverage weight (it
-//      erases paint without depositing: the white fringe). The ramp stations
-//      get no ink bar — the film-scaled opacity makes their ink build more
-//      slowly than its target, a lag the comparator cannot know.
+//      invariant. The shipped law is TWO shares and neither is a lateral
+//      depth film: a UNIFORM pigment share (1 − amount·EDGE_CORE) and a
+//      LATERAL THRESHOLD DISSOLVE (printed fraction 1 − amount·t^e).
+//      At amount > 0 the station domain is the FILM's own floor boundary on
+//      both sides (the contiguous tail at 1 − amount, averaged, the side
+//      difference halved as the axis), because the film reaches u = 1 at the
+//      engine's silhouette while the reference's 2 %-of-peak rim lies outside
+//      it; at amount 0 the domain is the reference's coverage (2 % of peak,
+//      min of both sides). Both branches require ≥ 8 px. The cover profile —
+//      normalised against the neutral reference row by row — asserts the
+//      three stations film·1 at the core (± 0.06), film·(1 − amount·0.5^e) at
+//      the mid and film·(1 − amount) at the rim (± 0.12), where
+//      film = 1 − amount·EDGE_CORE and e = 2^(2b − 1). The CORE of the ink
+//      profile (delivered absorbance) is normalised the same way and must read
+//      the uniform share at ± EDGE_INK_CORE_TOLERANCE: a law that leaves the
+//      body pigment full — the weight-only film, the artist's cut-off — fails
+//      there. The PRINT profile (the coverage raster's fraction of texels at
+//      or above half the peak) is judged as an ABSOLUTE fraction (a fully
+//      opened row's reference mean is near zero): 1 at the core, 1 − amount·0.5^e
+//      at the mid and 1 − amount at the rim — the sparse edge's witness. A
+//      depth film prints every texel and fails the mid/rim print bars: that is
+//      the opaque white veil the artist rejected (UAT 2026-11-25 #4/#5).
 //  33. `edge-transparency` is a BRISTLE capture for the alpha law through ONE
 //      shared predicate in probe.ts and compare.mjs — it reports the skip with
 //      no delta/samples, and the comparator accepts it.
@@ -2208,7 +2218,11 @@ describe('the edge-transparency gate (Spec 10)', () => {
       expectContains(PROBE, 'strokeBrush,')
       expectContains(PROBE, 'edgeAmount: EDGE_AMOUNT,')
       expectContains(PROBE, 'edgeFalloff: EDGE_FALLOFF,')
-      expectContains(PROBE, 'edgeAcross: { offsets: across.offsets, cover: across.cover, ink: across.ink, dark: across.dark },')
+      expectContains(PROBE, 'function lineProfileSet(engine: WatercolorEngine): Record<string, unknown> {')
+      expectContains(PROBE, 'const print: number[] = []')
+      expectContains(PROBE, 'print.push(round4(printed / n))')
+      expectContains(PROBE, 'across: { cover, dark, ink, print },')
+      expectContains(PROBE, 'print: across.print,')
       expectContains(PROBE, 'edgeTiling: { enclosed: tiling.enclosed },')
       expectContains(PROBE, "scenario === 'edge-transparency'")
     })
@@ -2222,15 +2236,40 @@ describe('the edge-transparency gate (Spec 10)', () => {
       expectContains(COMPARE, 'const EDGE_STATION_TOLERANCE = 0.12')
       expectContains(COMPARE, 'const EDGE_INK_CORE_TOLERANCE = 0.06')
       expectContains(COMPARE, 'const EDGE_CORE = 0.55')
+      expectContains(COMPARE, 'const EDGE_PRINT_TOLERANCE = 0.12')
+      // The amount-0 identity: the profile is the anchor; raw digests may
+      // drift by GPU ULPs once the gather's threshold dataflow changes.
+      expectContains(COMPARE, 'const EDGE_IDENTITY_TOLERANCE = 2e-4')
+      expectContains(COMPARE, 'amount-0 identity: the profile differs from the pre-change baseline')
+      expectContains(COMPARE, 'actual.gate.startsWith(\'edge-transparency\') && actual.edgeAmount === 0')
+      expectContains(COMPARE, 'the amount-0 profile identity is asserted')
       expectContains(COMPARE, 'const EDGE_MID_U = 0.775')
+      expectContains(COMPARE, 'const EDGE_START = 0.55')
+      // The station anchor is GEOMETRIC: the reference's coverage peak (its
+      // outermost flat row). The dissolve moves the visible edge, so a
+      // film-floor calibration would drift the stations with the falloff.
       expectContains(COMPARE, 'function edgeSilhouettePx(reference) {')
-      expectContains(COMPARE, 'const EDGE_FLOOR_EPS = 1e-3')
-      expectContains(COMPARE, 'function edgeFilmFloorBoundary(offsets, filmAt, side, floor) {')
-      expectContains(COMPARE, 'edgeFilmFloorBoundary(offsets, filmAt, -1, 1 - amount)')
-      expectContains(COMPARE, '1 - amount * (EDGE_CORE + (1 - EDGE_CORE) * 0.5 ** exponent)')
+      expectContains(COMPARE, 'const flat = peak * 0.99')
+      expectContains(COMPARE, 'const silhouette = edgeSilhouettePx(reference)')
+      expectContains(COMPARE, 'const stationT = (station) => {')
+      expectContains(COMPARE, 'const printedAt = (station) => 1 - amount * stationT(station) ** exponent')
+      expectContains(COMPARE, 'const film = 1 - amount * EDGE_CORE')
+      expectContains(COMPARE, "['rim', rimStation, film * (1 - amount), EDGE_STATION_TOLERANCE],")
+      // The mid is judged on the PRINT bar (the paper CDF makes the cover
+      // mean's mid ambiguous); the cover keeps only its core and rim bars.
+      expectNotContains(COMPARE, "['mid', midStation, film * printedAt(midStation)")
+      // The sparse edge's witness: an absolute printed fraction, never a ratio.
+      expectContains(COMPARE, 'const printProfile = Array.isArray(profile.print) ? profile.print : null')
+      expectContains(COMPARE, 'const EDGE_PRINT_MID_TOLERANCE = 0.25')
+      expectContains(COMPARE, 'const EDGE_PRINT_CORE_FLOOR = 0.85')
+      expectContains(COMPARE, "['core', 0, EDGE_PRINT_CORE_FLOOR, 0, 'floor'],")
+      expectContains(COMPARE, "['mid', midStation, printedAt(midStation), EDGE_PRINT_MID_TOLERANCE, 'band'],")
+      expectContains(COMPARE, "['rim', rimStation, 1 - amount, EDGE_PRINT_TOLERANCE, 'band'],")
+      expectContains(COMPARE, 'edge print ${label} at ${station} px reads')
+      expectContains(COMPARE, 'the paper shows as a milky veil')
       expectContains(COMPARE, 'data.strokeBrush !== \'bristle-round\'')
-      // The core ink bar: the converged region must read the film's shared
-      // value, so a weight-only film (full pigment at the core) cannot pass.
+      // The core ink bar: the converged region must read the uniform share,
+      // so a weight-only film (full pigment at the core) cannot pass.
       expectContains(COMPARE, "const referenceInk = Array.isArray(referenceProfile.ink) ? referenceProfile.ink : null")
       expectContains(COMPARE, 'const pigmentAt = (station) => {')
       expectContains(COMPARE, 'edge pigment core at ${station} px reads')
@@ -2283,7 +2322,8 @@ describe('the edge-transparency gate (Spec 10)', () => {
 
     it('fails a mid station that does not follow the requested falloff', () => {
       // The profile is the BROAD shape, the metadata claims the rim shape:
-      // mid reads 0.190 where the rim falloff promises 0.488.
+      // the printed fraction at the mid reads 1 - 0.556^0.5 ≈ 0.25 where the
+      // rim falloff promises 1 - 0.556^2 ≈ 0.69 (bar ± 0.25).
       const capture = {
         ...validEdgeTransparencyCapture(100, 100),
         edgeAcross: edgeFixtureProfile(100, 0),
@@ -2295,8 +2335,7 @@ describe('the edge-transparency gate (Spec 10)', () => {
       )
 
       expect(status, lawVerdict(status, output)).toBe(1)
-      expect(invariantLine(output)).toContain('edge film mid')
-      expect(invariantLine(output)).toContain('falloff exponent')
+      expect(invariantLine(output)).toContain('edge print mid')
     })
 
     it('fails a weighted film that keeps the body pigment full (the artist\'s cut-off)', () => {
@@ -2320,6 +2359,45 @@ describe('the edge-transparency gate (Spec 10)', () => {
       expect(invariantLine(output)).toContain('weight-only film')
     })
 
+    it('fails an amount-0 capture whose profile moved off the pre-change baseline', () => {
+      // The amount-0 identity is judged on the PROFILE: a row between the
+      // stations is nudged, so the station bars stay silent and only the
+      // row-for-row identity can see the law was not inert.
+      const profile = edgeFixtureProfile(0, 50)
+      const touched = { ...profile, cover: profile.cover.map((v, i) => (i === 60 ? v + 2e-3 : v)) }
+      const { status, output } = compareSynthetic(
+        'nyquist-edge-identity-moved',
+        { ...validEdgeTransparencyCapture(0, 50), edgeAcross: touched },
+        validEdgeTransparencyCapture(0, 50),
+      )
+
+      expect(status, lawVerdict(status, output)).toBe(1)
+      expect(invariantLine(output)).toContain('amount-0 identity')
+    })
+
+    it('fails a lateral depth film that prints every texel (the artist\'s white veil)', () => {
+      // UAT 2026-11-25 #4/#5, synthesised: the cover and ink means are the
+      // shipped law's own (a depth film's continuous factor matches them row
+      // by row), but every texel prints — the fringe is a thinner FILM over
+      // the underlayer, not a dissolve. The source pins hold the gather to
+      // the threshold; this executed bar proves a future depth law cannot
+      // pass the gate silently.
+      const profile = edgeFixtureProfile(100, 50)
+      const capture = {
+        ...validEdgeTransparencyCapture(100, 50),
+        edgeAcross: { ...profile, print: profile.print.map(() => 1) },
+      }
+      const { status, output } = compareSynthetic(
+        'nyquist-edge-depth-film',
+        capture,
+        validEdgeTransparencyCapture(0, 50),
+      )
+
+      expect(status, lawVerdict(status, output)).toBe(1)
+      expect(invariantLine(output)).toContain('edge print')
+      expect(invariantLine(output)).toContain('milky veil')
+    })
+
     it('fails a stroke that fell back to the non-bristle round preset', () => {
       const { status, output } = compareSynthetic(
         'nyquist-edge-round',
@@ -2336,7 +2414,13 @@ describe('the edge-transparency gate (Spec 10)', () => {
     // reference-calibrated station would land at 19 px — outside the actual
     // profile entirely, so the mid row could not even be normalised. Passing
     // here proves the comparator reads the silhouette from the film itself.
-    it('calibrates the station domain from the film, not the wider reference rim', () => {
+    it('anchors the stations to the reference\'s geometric silhouette, so a striped geometry fails', () => {
+      // The capture's stroke is 16 px wide, the reference's 24 px: the
+      // stations (0.775·24 = 19 px) fall outside the capture's own band, so
+      // its cover/print read 0 there and the bars must reject the pair. The
+      // anchor is the reference's coverage PEAK (its outermost flat row) — a
+      // film-floor calibration would have accepted the same mismatched pair,
+      // because each profile's dissolve would have calibrated itself.
       const actual = {
         ...validEdgeTransparencyCapture(100, 50),
         edgeAcross: edgeFixtureProfile(100, 50, 16),
@@ -2351,8 +2435,8 @@ describe('the edge-transparency gate (Spec 10)', () => {
         reference,
       )
 
-      expect(status, lawVerdict(status, output)).toBe(0)
-      expect(fieldsLine(output)).toContain('scenario invariants hold')
+      expect(status, lawVerdict(status, output)).toBe(1)
+      expect(invariantLine(output)).toContain('edge print mid')
     })
   })
 })

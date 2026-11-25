@@ -2284,10 +2284,28 @@ function lineProfileSet(engine: WatercolorEngine): Record<string, unknown> {
   const bandY1 = Math.min(dh, centre + LINE_BAND_PX + 1)
   const absorb = absorbBand(engine, dw, dh, px0, px1, bandY0, bandY1)
 
+  // Spec 10: the edge's SPARSE witness. The coverage raster is the printed
+  // fraction's own record — a threshold-opened cell never reaches the deposit,
+  // so its cover stays 0, while a surviving cell carries the mark's full cover
+  // share. `print` is each row's fraction of texels at or above half the
+  // profile's texel peak: 1 at the core, 1 - amount·t^e across the dissolve
+  // band, 0 at the silhouette at amount 100. A lateral DEPTH film (the
+  // rejected white veil) prints every texel and reads 1 at every station.
+  let coverPeak = 0
+  for (let gy = bandY0; gy < bandY1; gy += 1) {
+    const cr = dh - 1 - gy
+    for (let x = px0; x < px1; x += 1) {
+      const v = cData[(cr * dw + x) * 4]! / 255
+      if (v > coverPeak) coverPeak = v
+    }
+  }
+  const printFloor = coverPeak > 0 ? coverPeak * 0.5 : Number.POSITIVE_INFINITY
+
   const offsets: number[] = []
   const cover: number[] = []
   const dark: number[] = []
   const ink: number[] = []
+  const print: number[] = []
   for (let o = -LINE_BAND_PX; o <= LINE_BAND_PX; o += 1) {
     const gy = centre + o
     if (gy < 0 || gy >= dh) continue
@@ -2295,10 +2313,13 @@ function lineProfileSet(engine: WatercolorEngine): Record<string, unknown> {
     let cSum = 0
     let dSum = 0
     let iSum = 0
+    let printed = 0
     let n = 0
     for (let x = px0; x < px1; x += 1) {
       const i4 = (cr * dw + x) * 4
-      cSum += cData[i4]! / 255
+      const c = cData[i4]! / 255
+      cSum += c
+      if (c >= printFloor) printed += 1
       dSum += 1 - Math.min(tData[i4]!, tData[i4 + 1]!, tData[i4 + 2]!) / 255
       iSum += absorb.data[(gy - bandY0) * absorb.width + (x - px0)]!
       n += 1
@@ -2307,6 +2328,7 @@ function lineProfileSet(engine: WatercolorEngine): Record<string, unknown> {
     cover.push(round4(cSum / n))
     dark.push(round4(dSum / n))
     ink.push(round4(iSum / n))
+    print.push(round4(printed / n))
   }
 
   const peakCover = cover.reduce((m, v) => Math.max(m, v), 0)
@@ -2507,7 +2529,7 @@ function lineProfileSet(engine: WatercolorEngine): Record<string, unknown> {
       },
     },
     offsets,
-    across: { cover, dark, ink },
+    across: { cover, dark, ink, print },
     stations,
     tiling: {
       rows: tilingRows.map(({ darkHp: _darkHp, ...rest }) => rest),
@@ -3210,18 +3232,25 @@ function readTipTexture(): string | undefined {
 // --- Spec 10: edge transparency and falloff ---------------------------------
 //
 // Two bristle-only sliders — Edge transparency (amount A) and Edge falloff
-// (shape bias b) — drive ONE lateral film share in `gatherBristle`. It scales
-// BOTH halves of the ONE lerp: the deposit opacity (the gather coverage, which
-// also drives the base replacement and the relief) and the pigment it carries
-// (the absorbance and the scatter S, applied after the pickup mix). The lerp's
-// fixed point is therefore cA·film and the attenuation is proportional to
-// what is laid — the core keeps 45% of its pigment at amount 100 (~65% of the
-// original opacity) and the rim reaches 0, with the falloff shaping the ramp.
-// Scaling only one half either saturates the body to solid pigment with a
-// cut fringe (weight-only, UAT #2) or erases paint without depositing
-// (absorbance-only, the white fringe, UAT #3). Neutral at amount 0 by
-// construction, so the two amount-0 baselines are identity gates captured
-// from the PRE-change engine (UAT row 1's automated proxy).
+// (shape bias b) — drive TWO shares in `gatherBristle`, and neither is a
+// lateral depth film (UAT 2026-11-25 #1-#5 rejected every depth form: its
+// lerp target is a paler pigment, so each fringe dab replaces the same-sheet
+// stroke beneath it and the paper reads as a smooth opaque white veil):
+//
+//   - the amount's UNIFORM pigment share (1 - amount·CORE) scales the carried
+//     absorbance (after the pickup mix), the scatter S and the cover target.
+//     The core keeps 45% of its pigment at amount 100 (~65% of the original
+//     opacity) — the artist's "core 65% film";
+//   - the LATERAL DISSOLVE raises the same paper-tooth threshold the Feather
+//     law raises (amount · SHIFT · t^e), so the fringe opens into full-depth
+//     specks of the mark's own pigment and every opened cell is INERT — the
+//     deposit discards it and the underlayer survives untouched.
+//
+// Neutral at amount 0 by construction (both products are exactly zero), so
+// the two amount-0 baselines are identity gates captured from the PRE-change
+// engine (UAT row 1's automated proxy). The `print` array is the sparse
+// edge's own witness: a depth film prints every texel (1 at every station), a
+// threshold dissolve prints 1 - amount·t^e across the band.
 //
 // The script entry MUST stamp `brushId: 'bristle-round'` literally:
 // `toStudioStroke` defaults to `BRUSH_ID` (`round`), a NON-bristle preset whose
@@ -3290,10 +3319,19 @@ function edgeTransparencyMetrics(engine: WatercolorEngine, strokeBrush: string):
     strokeBrush,
     edgeAmount: EDGE_AMOUNT,
     edgeFalloff: EDGE_FALLOFF,
-    // `dark` is the artist-facing channel (the transparent export's darkness):
-    // evidence only — the committed amount-0 baselines predate it, so no bar
-    // can normalise against them.
-    edgeAcross: { offsets: across.offsets, cover: across.cover, ink: across.ink, dark: across.dark },
+    // `dark` is the artist-facing channel (the transparent export's darkness)
+    // and `print` the coverage raster's printed fraction — the sparse edge's
+    // law. `dark` is evidence only (the committed amount-0 baselines predate
+    // it); `print` is judged against absolute stations, never a ratio (a
+    // threshold-opened row has a tiny reference mean, so a ratio would be
+    // noise).
+    edgeAcross: {
+      offsets: across.offsets,
+      cover: across.cover,
+      ink: across.ink,
+      dark: across.dark,
+      print: across.print,
+    },
     edgeTiling: { enclosed: tiling.enclosed },
   }
 }
