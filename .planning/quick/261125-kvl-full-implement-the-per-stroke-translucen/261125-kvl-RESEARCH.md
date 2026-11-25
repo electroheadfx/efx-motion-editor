@@ -374,12 +374,16 @@ The plan should: (1) assert the profile rows (cover, ink, dark, print/stations) 
 
 **If this table is empty:** not applicable - see rows above.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Which pool the composite lands in** (DESIGN 7.8) - the merge reads `ink.read + fixed` and writes `fit - fixed` into `ink` only. The spike wrote the mobile pool only and flagged it; the plan must prove the next stroke's pickup and the bake replay read the same value (G5 + UAT).
+   - RESOLVED: Task 3 sums `ink.read + fixed` in-shader; Task 5 carries G5 (summed base) and Task 3/4/5 carry the bake replay (G2/G3) plus the pickup-stays-sheet-side UAT row (Task 6, row 8).
 2. **Relief write-back target** - `relief` is a single target; the plan needs a transient R16F scratch (Q4). Confirm the 4K memory budget with the layer set plus scratch against the 160 MiB ceiling.
+   - RESOLVED: Task 3's merge pass 3 writes into a doc-sized `mergeRelief` R16F scratch and blits it to `relief`; Task 5 measures 1080² and 4K against the ceiling and records the numbers.
 3. **Bristle gaps** - `A_eff = A * cover_L` deliberately lets the base survive in the layer's gaps (print retention 95-96 % at the band edge). This must be an explicit UAT row, not a tuning target (DESIGN 7.9).
+   - RESOLVED: Task 6's UAT row 9 (bristle-gap) carries it as handed to the artist; no tuning target is added.
 4. **The caps** (DESIGN 7.2) - `lateral` ignores the along-axis caps; verify no seam at the caps; the fallback is multiplying the layer alpha by the cap's `alongFade` in the lateral write.
+   - RESOLVED: Task 6's UAT row 5 (Feather 0/85 x falloff 0/100, no seam at caps or rim) judges it; the `alongFade` multiply stays the named fallback, not a planned change.
 
 ## Metadata
 
