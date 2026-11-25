@@ -2851,14 +2851,29 @@ function edgeEncodeResidual(
   granulation: number,
   profile: EdgeProfile,
   axis: 'x' | 'y',
-): { residual: number[]; halfOnWhite: number | null; polish: number[]; debug: Record<string, number> } {
+): {
+  residual: number[]
+  halfOnWhite: number | null
+  polish: number[]
+  kMin: number | null
+  kMax: number | null
+  debug: Record<string, number>
+} {
   const layer = capture.merge ? capture.merge.preLayer : capture.layer
-  if (layer === null || profile.cover === null) return { residual: [], halfOnWhite: null, polish: [], debug: {} }
+  if (layer === null || profile.cover === null) {
+    return { residual: [], halfOnWhite: null, polish: [], kMin: null, kMax: null, debug: {} }
+  }
   const sheetFields = capture.merge ? capture.merge.preSheet : capture.sheet
   const { width, height, rect } = sheetFields
   const paperG = readEdgePaperG(engine, sheetFields)
   const k = new Float32Array(width * height)
   for (let i = 0; i < k.length; i += 1) k[i] = edgeGranulationK(paperG[i]!, granulation)
+  let kMin = Number.POSITIVE_INFINITY
+  let kMax = Number.NEGATIVE_INFINITY
+  for (let i = 0; i < k.length; i += 1) {
+    if (k[i]! < kMin) kMin = k[i]!
+    if (k[i]! > kMax) kMax = k[i]!
+  }
   // The merge builds its target on the POLISHED states (displayFS's 5-tap
   // soften, `uFilmBlur` = BRISTLE_FILM_BLUR on a bristle sheet), so the
   // expected mix must be computed on the same states — otherwise the
@@ -2987,7 +3002,14 @@ function edgeEncodeResidual(
       ),
     )
   }
-  return { residual, halfOnWhite: bestHalf === null ? null : round4(bestHalf), polish, debug: decodeDebug }
+  return {
+    residual,
+    halfOnWhite: bestHalf === null ? null : round4(bestHalf),
+    polish,
+    kMin: k.length > 0 ? round4(kMin) : null,
+    kMax: k.length > 0 ? round4(kMax) : null,
+    debug: decodeDebug,
+  }
 }
 
 /** The layer report — every field the comparator names, present or ABSENT. */
@@ -3032,11 +3054,11 @@ function edgeLayerReport(
       : edgeSideReadings(engine, captures.b, mergedUnder, granulation, underProfile, 'x')
   const paperResidual =
     captures.a === null
-      ? { residual: [], halfOnWhite: null, polish: [], debug: {} }
+      ? { residual: [], halfOnWhite: null, polish: [], kMin: null, kMax: null, debug: {} }
       : edgeEncodeResidual(engine, captures.a, mergedPaper, granulation, paperProfile, 'y')
   const underResidual =
     captures.b === null
-      ? { residual: [], halfOnWhite: null, polish: [], debug: {} }
+      ? { residual: [], halfOnWhite: null, polish: [], kMin: null, kMax: null, debug: {} }
       : edgeEncodeResidual(engine, captures.b, mergedUnder, granulation, underProfile, 'x')
   const residual = [...paperResidual.residual, ...underResidual.residual].sort((a, b) => a - b)
   const encodeMax = residual.length > 0 ? round4(residual[residual.length - 1]!) : null
@@ -3056,6 +3078,11 @@ function edgeLayerReport(
       ? round4(polish[Math.min(polish.length - 1, Math.floor(polish.length * 0.95))]!)
       : null
   const polishOver = polish.length > 0 ? polish.filter((v) => v > EDGE_POLISH_MAX).length : null
+  // The merge's `k` range over the visited rects: the display's granulation
+  // step the write-back divides out (`fit / k - fixed`), measured on the live
+  // paper bytes — never a re-derived constant.
+  const kMins = [paperResidual.kMin, underResidual.kMin].filter((v): v is number => v !== null)
+  const kMaxes = [paperResidual.kMax, underResidual.kMax].filter((v): v is number => v !== null)
   const counters = captures.b ?? captures.a
   return {
     strokeBrush: script[0]?.brushId ?? null,
@@ -3093,6 +3120,8 @@ function edgeLayerReport(
     edgePolishP95: polishP95,
     edgePolishOver: polishOver,
     linearHalfOnWhite: paperResidual.halfOnWhite,
+    edgeKMin: kMins.length > 0 ? Math.min(...kMins) : null,
+    edgeKMax: kMaxes.length > 0 ? Math.max(...kMaxes) : null,
     debugEncodePaper: paperResidual.debug,
     debugEncodeUnder: underResidual.debug,
     layerAllocated: counters === null ? null : counters.layerAllocated,
