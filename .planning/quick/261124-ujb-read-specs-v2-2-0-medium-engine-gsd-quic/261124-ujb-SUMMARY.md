@@ -471,6 +471,31 @@ PIGMENT (L ≈ 205, the paper is 240) — the pigment itself was washed.
   documented limitation, UAT row 6); only the opened fringe preserves it.
 - Last automated state: the v6 law commit.
 
+## REVERTED (2026-11-25) — UAT feedback #6
+
+The artist's seventh look ("now its like back to old system, no transparence,
+nothing ... you are unable to do a falloff transparence") rejected the
+dissolve-only law: at falloff 100 it reads as an ordinary solid stroke, at
+falloff 0 it tears the stroke into two ragged lanes. The edge controls were
+REMOVED (commit `5e6e7a37a`): engine, params, records, UI rows, tests and the
+edge-transparency probe restored EXACTLY to `d509a886d` (verified: the code
+tree diffs clean against it). This quick's planning artifacts stay as the
+record of the six attempts; no edge code ships.
+
+Why every form failed — the structural reason, now settled by six rounds:
+this engine paints every stroke of a visit into ONE sheet, and each dab
+REPLACES what is beneath it (the one lerp toward the brush's pigment). A
+smooth lateral opacity therefore has exactly two outcomes here: (a) a paler
+film that erases the underlayer (the pale band of #1/#4), or (b) inert cells
+(the holes of #3/#6). A true alpha falloff — colour that glazes the paint
+below instead of replacing it — requires each stroke to be composited as its
+OWN LAYER, which the spec itself lists as out of scope ("needs a stroke
+buffer + bake/cache work, not a parameter").
+
+Next: the artist chose to plan that layered fix. Design document:
+`SPECS/v2.2.0-medium-engine/DESIGN-stroke-layer-transparency.md`. No edge
+code until that plan is approved.
+
 ---
 
 ## Self-Check: PASSED
