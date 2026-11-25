@@ -52,13 +52,13 @@ requirements-completed: []
 
 coverage:
   - id: D1
-    description: "Spec 10 film law: one lateral pigment share (g.film) dilutes the carried absorbance (after the pickup mix), the scatter S, the base-replacement target and the relief thickness across the whole mark (core 65% at amount 100); the deposit weight and the paper threshold stay full, so the mark keeps its geometry and feather; inert at amount 0"
+    description: "Spec 10 film law: one lateral share (g.film) scales BOTH halves of the deposit lerp — the gather coverage (opacity, base replacement, relief) and the carried absorbance after the pickup mix — plus the scatter S, so the fixed point is cA·film and the attenuation is proportional to what is laid; the core keeps 45% of its pigment (about 69% of the original density) at amount 100; the paper threshold and the feather are untouched; inert at amount 0"
     verification:
       - kind: unit
-        ref: "packages/efx-watercolor/src/playground/bristles.test.ts#bristleEdgeFilm; scattering.test.ts#gather film pins; harness.test.ts#weighted-film must-fail"
+        ref: "packages/efx-watercolor/src/playground/bristles.test.ts#bristleEdgeFilm; scattering.test.ts#both-halves film pins; harness.test.ts#weighted-film must-fail"
         status: pass
       - kind: integration
-        ref: "compare.mjs edge-transparency-neutral{,-broad} (identity) + the three amount-100 sweeps (cover + ink station bars)"
+        ref: "compare.mjs edge-transparency-neutral{,-broad} (identity, fresh captures) + the three amount-100 sweeps (cover shape bars + core ink bar)"
         status: pass
     human_judgment: false
   - id: D2
@@ -282,11 +282,63 @@ edge, it's just a cut off".
   app vitest 9875 passed (the known `physicPaintBridge` flake, green in
   isolation) / 4 skipped.
 
+## UAT feedback (2026-11-25 #3) — "no work, regressions ... edge white fringe"
+
+The artist's fourth look, three cases at amount 100 (Feather 100 falloff 0,
+Feather 100 falloff 100, Feather 0 falloff 100): every stroke wore a WHITE
+ragged fringe along its edges — pale scallops inside the silhouette, white
+cracks where a stroke crossed another — and the bodies still read as solid
+paint: "No transparence, edge white fringe".
+
+- **Root cause, two mechanisms:**
+  1. **The white fringe (a real regression of v3).** The v3 law diluted only
+     the carried absorbance and left the deposit WEIGHT full. The lerp is
+     `ink <- ink·(1-a) + cA·g·a`, so a dab whose `a` is full still erases
+     `a` of the pigment under it while returning `g·a` worth: at the fringe
+     `g → 0`, every dab wiped paint (an earlier dab's own, or an earlier
+     stroke's) and deposited almost nothing — the paper showed as white
+     scallops. The lateral noise makes each texel's `g` differ dab to dab,
+     so the last fringe dab decided the pixel.
+  2. **No transparence.** The core share kept 65 % of the PIGMENT, and the
+     display's transmittance law maps that to ~82 % of the original opacity
+     (darkness 0.585 → 0.477) — a change the eye reads as "still solid".
+- **Fix (v4 law):** the film now scales BOTH halves of the ONE lerp — the
+  gather's coverage (the dab's opacity, which also drives the base
+  replacement through the cover channel and the relief thickness) and the
+  carried absorbance the deposit applies after the pickup mix. The lerp's
+  fixed point is `cA · film` AND the attenuation is proportional to what the
+  dab lays, so a fringe dab neither solidifies the body nor erases the mark.
+  The cover target carries the film explicitly (its blend is
+  `cover <- target + cover·(1-a)`, so its equilibrium is `target/a` and the
+  weight cancels); the scatter S carries a second factor (its equilibrium is
+  `uScatter · film`); the relief rides the film through the coverage.
+  `BRISTLE_EDGE_CORE` moves 0.35 → 0.55: the core keeps 45 % of its pigment.
+- **Measured (1080 sheet, amount 100 linear):** core darkness 0.585 → 0.402
+  (69 % of the original density; the darkest channel's transmission rises
+  41 % → 60 %), 11 px 0.593 → 0.333, 14 px 0.604 → 0.174, 16 px 0.541 →
+  0.028, 17 px → 0.002 — a graduated dissolve with no step and no erased
+  band. The ink and cover ratios read 0.495 against the law's 0.450 (the
+  few-percent excess is the capture's own wet transport, which the film also
+  scales through the coverage-driven touch field).
+- **Gate:** the core ink bar stays the law's teeth (a weight-only film reads
+  ~1.0 and fails); the ramp stations are judged on the cover channel; the
+  source pins now hold the coverage weight TO the film (the inverted v3 pin
+  that let the white fringe through is gone). The ramp ink bars were dropped
+  — the film-scaled opacity makes their ink build more slowly than its
+  target, a lag the comparator cannot know.
+- **Unchanged:** the params, records, rows, Reset and the amount-0 identity
+  (all 12 fields byte-equal on fresh captures against the pre-change
+  baselines, after the final shader).
+- **Gates after the change:** package vitest 1058 passed / 8 skipped; five
+  probe gates PASS (two identity + three sweeps, fresh captures); app
+  `tsc --noEmit` clean; app vitest 9875 passed (the known
+  `physicPaintBridge` load flake, green in isolation) / 4 skipped.
+
 ## Next Phase Readiness
 
 - Gates green: package vitest 1058 passed / 8 skipped; app vitest 9875 passed / 4 skipped / 96 todo; `tsc --noEmit` clean; five probe gates PASS.
-- Mode-1 identity at amount 0 passes byte-for-byte against baselines captured from `d509a886d` (re-verified after the v3 law).
-- The artist can re-run rows 1-9 now: at amount 100 the whole mark should read translucent (core 65 % of its pigment), the edge should dissolve gradually with the falloff moving where the ramp sits, and the white-border case (Feather 100, falloff 0/100) should show no cut and no pale rail. Last automated state: `f748a5e00`.
+- Mode-1 identity at amount 0 passes byte-for-byte against baselines captured from `d509a886d` (re-verified after the v4 law).
+- The artist can re-run rows 1-9 now: at amount 100 the body should read as a lighter wash (~69 % of its original density, the darkest channel 41 % → 60 % transmission) with the paper grain showing through, the edge should dissolve gradually with the falloff moving where the ramp sits, and no white fringe should appear — including where strokes overlap. If the body still reads too solid, `BRISTLE_EDGE_CORE` (0.55) is the one constant: 0.70 would put the body near half its original density. Last automated state: the v4 law commit.
 
 ---
 
