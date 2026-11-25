@@ -5,6 +5,7 @@ import {
   BRISTLE_DRY_CAP_FLOOR,
   BRISTLE_DRY_CAP_FULL,
   BRISTLE_DRY_EDGE,
+  BRISTLE_EDGE_START,
   BRISTLE_FEATHER_CAP,
   BRISTLE_FEATHER_EDGE,
   BRISTLE_FEATHER_MIN,
@@ -130,6 +131,8 @@ export interface Params {
   pickup: number;      // 64-22: §3.1 carrier pickup rate — how much sheet paint a bristle lifts (0..1)
   refill: number;      // 64-22: §3.1 carrier refill rate — how fast a bristle refills from the load (0..1)
   wetSeconds: number;  // 64-22: last-touch wetness lifetime in SECONDS (>= 1) — declared here so the ONE mapping has one destination; consumed by 64-24
+  edgeFade: number;    // Spec 10: Edge transparency — the stroke layer's lateral alpha scale (0..1, 0 neutral)
+  edgeFalloff: number; // Spec 10: Edge falloff — the fade's shape bias (0..1, 0.5 linear)
 }
 
 export const DEFAULT_PARAMS: Params = {
@@ -145,6 +148,9 @@ export const DEFAULT_PARAMS: Params = {
   pickup: 1.0,
   refill: 0.6,
   wetSeconds: 7,
+  // Spec 10: amount 0 is inert at every falloff; 50 is the linear shape.
+  edgeFade: 0,
+  edgeFalloff: 0.5,
 };
 
 /**
@@ -3626,6 +3632,13 @@ export class WatercolorEngine {
     gl.uniform1f(p.u.uFeatherCap!, BRISTLE_FEATHER_CAP);
     gl.uniform1f(p.u.uFeatherMin!, BRISTLE_FEATHER_MIN);
     gl.uniform1f(p.u.uFeatherShift!, BRISTLE_FEATHER_SHIFT);
+    // Spec 10: the stroke layer's lateral alpha. Bound unconditionally so
+    // every consumer of the ONE gather program receives the same three
+    // values; the start anchor is the constant, the two knobs are Params
+    // members. Inert on any program that does not declare them.
+    gl.uniform1f(p.u.uEdgeStart!, BRISTLE_EDGE_START);
+    gl.uniform1f(p.u.uEdgeFade!, clamp(this.params.edgeFade, 0, 1));
+    gl.uniform1f(p.u.uEdgeFalloff!, clamp(this.params.edgeFalloff, 0, 1));
     // The end's takeoff is the same threshold mechanism on the leading
     // frontier: the last running dab's uncovered band opens into tooth
     // specks instead of ending on a straight wall.

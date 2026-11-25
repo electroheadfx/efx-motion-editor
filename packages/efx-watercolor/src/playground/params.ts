@@ -22,7 +22,8 @@ import type { Params } from './Engine'
 /**
  * The 8 AQUA-04 globals as the UI records them, plus the Lift strength and
  * the Phase 64 medium keys (viscosity, body, emboss, then 64-22's feather,
- * pickup, refill and the seconds-valued wetSeconds).
+ * pickup, refill and the seconds-valued wetSeconds, then Spec 10's edgeFade
+ * and edgeFalloff).
  */
 export interface AquarelleCanonicalParams {
   size: number
@@ -85,6 +86,21 @@ export interface AquarelleCanonicalParams {
    * 7 is the §6 `mixing.wetSeconds` default. Consumed by 64-24.
    */
   wetSeconds: number
+  /**
+   * Spec 10: how transparent the mark's border reads, 0..100. Scales the
+   * per-stroke layer's LATERAL ALPHA — the stroke's own deposited alpha —
+   * from the fade band to the silhouette; the core keeps the layer's full
+   * paint. 0 is neutral: every recorded stroke without the key replays
+   * byte-identically, and amount 0 bypasses the layer entirely (no target
+   * allocated, no merge submitted). Bristle responses only.
+   */
+  edgeFade: number
+  /**
+   * Spec 10: where the edge fade sits, 0..100. 50 is linear; 0 reads broad
+   * (the fade reaches mid-width) and 100 reads rim (the fade hugs the
+   * silhouette). Inert while `edgeFade` is 0.
+   */
+  edgeFalloff: number
 }
 
 export const DEFAULT_CANONICAL_PARAMS: Readonly<AquarelleCanonicalParams> = Object.freeze({
@@ -104,6 +120,8 @@ export const DEFAULT_CANONICAL_PARAMS: Readonly<AquarelleCanonicalParams> = Obje
   pickup: 100,
   refill: 60,
   wetSeconds: 7,
+  edgeFade: 0,
+  edgeFalloff: 50,
 })
 
 function num(v: number | undefined, fallback: number): number {
@@ -208,5 +226,9 @@ export function toEngineParams(
     // keeps the last-touch decay finite; absent/non-finite input falls back
     // to the §6 default so a pre-64-24 stroke replays unchanged.
     wetSeconds: Math.max(1, num(p.wetSeconds, d.wetSeconds)),
+    // Spec 10: both edge knobs are canonical 0..100 globals on the same
+    // clamp01 table; amount 0 is neutral, falloff 50 is linear.
+    edgeFade: clamp01(num(p.edgeFade, d.edgeFade) / 100),
+    edgeFalloff: clamp01(num(p.edgeFalloff, d.edgeFalloff) / 100),
   }
 }

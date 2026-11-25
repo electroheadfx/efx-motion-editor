@@ -266,6 +266,18 @@ export const BRISTLE_DRY_EDGE = 0.35;
 /** §5.4 `paint.landing` — the spread of the staggered landing (1.6). */
 export const BRISTLE_LANDING = 1.6;
 
+// ------------------------- Spec 10: the stroke layer's lateral alpha -------------------------
+//
+//  Edge transparency (amount, 0..1) and Edge falloff (shape bias, 0..1) shape
+//  ONE lateral factor on the per-stroke translucent LAYER's alpha — the
+//  stroke's own deposited paint, never the gather film — computed in
+//  SILHOUETTE units: 1 is the visible rim (BRISTLE_FEATHER_EDGE of the
+//  nominal footprint), not the footprint's own edge. The engine binds the
+//  start anchor as a uniform, and the shape bias's exponent is the tested
+//  twin `edgeFalloffExponent` below.
+/** Where the fade starts, in silhouette units (0.30, DESIGN 3.3): the core keeps layer alpha 1. */
+export const BRISTLE_EDGE_START = 0.3;
+
 // ------------------------- the contact pressure law (spike 004) -------------------------
 //
 //  The pointer's pressure is NOT the pressure the reference's carrier and
@@ -396,6 +408,17 @@ export function gatherSoftness(_feather: number): number {
   // The band is the reference's constant; Feather never widens it (that was
   // the inversion: a wider band lowers the threshold and ADDS paint).
   return BRISTLE_SOFTNESS;
+}
+
+/**
+ * Spec 10: `e = 2^(2b - 1)` — the falloff shape bias as the fade's exponent,
+ * clamped to `[0.5, 2]`. Canonical falloff 0 / 50 / 100 maps to 0.5 / 1 / 2:
+ * the broad fade, linear, and the rim fade. A non-finite bias reads as linear
+ * (1): a missing record key replays the neutral shape, never NaN.
+ */
+export function edgeFalloffExponent(bias: number): number {
+  if (!Number.isFinite(bias)) return 1;
+  return clamp(2 ** (2 * clamp01(bias) - 1), 0.5, 2);
 }
 
 // ------------------------- the trace and edge formulas (64-23) -------------------------

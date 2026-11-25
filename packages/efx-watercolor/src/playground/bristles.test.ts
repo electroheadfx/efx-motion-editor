@@ -378,6 +378,9 @@ const TRACES = bristleModule as unknown as {
   bristleEdgeBias?: (across: number) => number
   bristleBody?: (wide: number, local: number, presence: number, hairs: number) => number
   bristleCoverage?: (body: number, pressure: number, edgeBias: number) => number
+  // Spec 10: the stroke layer's lateral fade and its shape-bias exponent.
+  BRISTLE_EDGE_START?: number
+  edgeFalloffExponent?: (bias: number) => number
 }
 
 const SRC_ROOT = resolve(HERE, '..')
@@ -704,6 +707,62 @@ describe('bristleCoverage — §4.5 / §5.5', () => {
       TRACES.bristleCoverage?.(0.5, 1, Number.NaN),
       'a missing edge bias reads as no bias',
     ).toBeCloseTo(0.5, 9)
+  })
+})
+
+// ============================================================
+//  Spec 10 — the stroke layer's lateral fade (Edge transparency and
+//  Edge falloff).
+//
+//  The engine shapes the per-stroke layer's alpha through ONE lateral
+//  factor in SILHOUETTE units. Only the shape bias's exponent lives here as
+//  a pure twin; the fade itself is evaluated in GLSL against the layer's
+//  own coverage (Task 3), never in TypeScript. `BRISTLE_EDGE_START` is the
+//  anchor the engine binds as a uniform — DESIGN 3.3 pins 0.30, so the
+//  fade reaches mid-width and the core keeps the full layer alpha.
+// ============================================================
+
+describe('edgeFalloffExponent — the Spec 10 shape bias', () => {
+  it('maps the canonical 0 / 50 / 100 onto 0.5 / 1 / 2', () => {
+    expect(typeof TRACES.edgeFalloffExponent, 'edgeFalloffExponent is exported').toBe('function')
+    expect(TRACES.edgeFalloffExponent?.(0), 'canonical 0 — the broad fade').toBeCloseTo(0.5, 12)
+    expect(TRACES.edgeFalloffExponent?.(0.5), 'canonical 50 — linear').toBeCloseTo(1, 12)
+    expect(TRACES.edgeFalloffExponent?.(1), 'canonical 100 — the rim fade').toBeCloseTo(2, 12)
+  })
+
+  it('is monotone between the anchors and clamped to the exponent bounds', () => {
+    let previous = 0
+    for (let step = 0; step <= 100; step += 1) {
+      const exponent = TRACES.edgeFalloffExponent?.(step / 100) ?? Number.NaN
+      expect(exponent).toBeGreaterThanOrEqual(previous)
+      expect(exponent).toBeGreaterThanOrEqual(0.5)
+      expect(exponent).toBeLessThanOrEqual(2)
+      previous = exponent
+    }
+    // Out-of-track biases clamp to the same bounds.
+    expect(TRACES.edgeFalloffExponent?.(-1)).toBeCloseTo(0.5, 12)
+    expect(TRACES.edgeFalloffExponent?.(2)).toBeCloseTo(2, 12)
+  })
+
+  it('never returns NaN (a missing bias reads linear)', () => {
+    expect(TRACES.edgeFalloffExponent?.(Number.NaN), 'a missing bias is linear').toBe(1)
+    expect(TRACES.edgeFalloffExponent?.(Number.POSITIVE_INFINITY), 'a broken bias is linear').toBe(1)
+  })
+})
+
+describe('the Spec 10 edge constant', () => {
+  it('pins the start anchor at DESIGN 3.3s 0.30', () => {
+    expect(TRACES.BRISTLE_EDGE_START, 'the fade starts at 0.30 of the silhouette').toBe(0.3)
+  })
+
+  it('declares the anchor once in the package — a second copy fails the build', () => {
+    const declarations = PACKAGE_SOURCES.filter(({ text }) =>
+      /export const BRISTLE_EDGE_START\b/.test(text),
+    ).map(({ file }) => file)
+    expect(declarations.length, 'BRISTLE_EDGE_START is declared once in the package').toBe(1)
+    expect(declarations[0], 'BRISTLE_EDGE_START is declared in playground/bristles.ts').toBe(
+      'playground/bristles.ts',
+    )
   })
 })
 

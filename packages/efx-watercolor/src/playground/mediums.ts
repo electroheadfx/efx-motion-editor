@@ -2,7 +2,7 @@
 //  mediums.ts — the two built-in paint mediums, as plain data.
 //
 //  A medium is `{ id, name, params }`: a frozen, serializable
-//  record over exactly the fourteen medium keys (the canonical bag
+//  record over exactly the sixteen medium keys (the canonical bag
 //  minus `size` and `lift`, which the medium never writes). No
 //  function, no class, no hidden behaviour — a record is a
 //  parameter set, nothing more.
@@ -10,7 +10,8 @@
 //  The numbers are the spec 04 amendment table, in its column
 //  order: Water, Pigment, Flow, Bleed, Dry, Edges, Grain,
 //  Viscosity, Body, Emboss — then 64-22's four (§3.1/§3.4/§6
-//  defaults: Feather, Pickup, Refill, WetSeconds).
+//  defaults: Feather, Pickup, Refill, WetSeconds) and Spec 10's
+//  two (Edge transparency, Edge falloff).
 //
 //  quick 261124-iq9: the gouache, pastel (Chalk) and graphite
 //  media are retired outright. The acrylic record keeps its id
@@ -23,13 +24,17 @@ import { DEFAULT_CANONICAL_PARAMS } from './params'
 export type MediumId = 'watercolor' | 'acrylic'
 
 /**
- * The fourteen keys a medium may set. `size` (a shared pixel footprint) and
+ * The sixteen keys a medium may set. `size` (a shared pixel footprint) and
  * `lift` (the eraser popover's strength) are deliberately absent: a
  * medium switch must never resize the brush or change the eraser.
  *
  * 64-22 added the reference's user-facing controls: `feather` (the gather's
  * coverage band), `pickup` and `refill` (§3.1 carrier rates) and
  * `wetSeconds` (the §3.4 last-touch lifetime, in seconds).
+ *
+ * Spec 10 adds the bristle edge pair: `edgeFade` (Edge transparency — the
+ * stroke layer's lateral ALPHA scale, 0 neutral) and `edgeFalloff` (the
+ * fade's shape bias: 0 broad / 50 linear / 100 rim).
  */
 export type MediumParamKey =
   | 'water'
@@ -46,6 +51,8 @@ export type MediumParamKey =
   | 'pickup'
   | 'refill'
   | 'wetSeconds'
+  | 'edgeFade'
+  | 'edgeFalloff'
 
 /** One built-in medium: plain serializable data, frozen. */
 export interface MediumRecord {
@@ -79,6 +86,10 @@ const WATERCOLOR_PARAMS: Readonly<Record<MediumParamKey, number>> = Object.freez
   pickup: DEFAULT_CANONICAL_PARAMS.pickup,
   refill: DEFAULT_CANONICAL_PARAMS.refill,
   wetSeconds: DEFAULT_CANONICAL_PARAMS.wetSeconds,
+  // Spec 10: derived, not retyped — the neutral medium paints the shipped
+  // edge (no transparency, the linear falloff shape).
+  edgeFade: DEFAULT_CANONICAL_PARAMS.edgeFade,
+  edgeFalloff: DEFAULT_CANONICAL_PARAMS.edgeFalloff,
 })
 
 // 64-22: the acrylic record states the §6 defaults for the four new keys
@@ -138,6 +149,11 @@ export const MEDIUMS: ReadonlyArray<MediumRecord> = Object.freeze([
       pickup: 100,
       refill: 0,
       wetSeconds: 12,
+      // Spec 10: Edge transparency 0 keeps the shipped acrylic edge — the
+      // artist's mixed Gouache stays fully opaque until that row is moved.
+      // Edge falloff 50 is the linear shape (the neutral twin's default).
+      edgeFade: 0,
+      edgeFalloff: 50,
     }),
   }),
 ])

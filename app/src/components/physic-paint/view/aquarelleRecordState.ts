@@ -114,6 +114,15 @@ export interface AquarelleGlobalParams {
    * corrupt it.
    */
   wetSeconds: number;
+  /**
+   * Spec 10 (Edge transparency / Edge falloff): the per-stroke translucent
+   * layer's two knobs, 0..100. `edgeFade` 0 is neutral — the shipped opaque
+   * edge, and amount 0 bypasses the layer entirely; the falloff bias shapes
+   * the fade (0 broad / 50 linear / 100 rim) and is inert at amount 0. Both
+   * ride the record loop and the selection write allowlist.
+   */
+  edgeFade: number;
+  edgeFalloff: number;
 }
 
 export type AquarelleGlobalKey = keyof AquarelleGlobalParams;
@@ -135,6 +144,8 @@ export const AQUARELLE_GLOBAL_KEYS: readonly AquarelleGlobalKey[] = Object.freez
   'pickup',
   'refill',
   'wetSeconds',
+  'edgeFade',
+  'edgeFalloff',
 ] as const);
 
 export const DEFAULT_AQUARELLE_PARAMS: Readonly<AquarelleGlobalParams> = Object.freeze({
@@ -154,6 +165,9 @@ export const DEFAULT_AQUARELLE_PARAMS: Readonly<AquarelleGlobalParams> = Object.
   pickup: 100,
   refill: 60,
   wetSeconds: 7,
+  // Spec 10: the shipped edge — no transparency, the linear falloff shape.
+  edgeFade: 0,
+  edgeFalloff: 50,
 });
 
 /** D-08 multiplier band. */
@@ -223,8 +237,9 @@ export const aquarelleSelectedMediumId = signal<MediumId | null>(INITIAL_MEDIUM_
  * Phase 64 (D-04): apply a whole medium record to the live bag in ONE spread
  * write, with the id written in the same handler. Never a per-key setter
  * cascade, never the stroke-selection edit path, never `size` or `lift` —
- * the record typeset is exactly the fourteen medium keys (64-22 grew it
- * with feather, pickup, refill and wetSeconds).
+ * the record typeset is exactly the sixteen medium keys (64-22 grew it
+ * with feather, pickup, refill and wetSeconds; Spec 10 added edgeFade and
+ * edgeFalloff).
  *
  * D-03: re-picking the selected medium re-applies its record (the "get back
  * to pure acrylic" path), so the id write is independent of the bag write:

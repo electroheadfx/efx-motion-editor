@@ -20,7 +20,7 @@
  *   near-white pigments. `wetSeconds` is a medium-record value with NO row.
  *   no Size control (top-bar owns it, Q1a) and no Hand row
  *   quick 261122-gys (supersedes quick 261121-mtu): Reset restores the ACTIVE
- *   MEDIUM RECORD's fourteen keys including `wetSeconds`, through
+ *   MEDIUM RECORD's sixteen keys including `wetSeconds`, through
  *   setAquarelleParam and in ONE selection batch, and never writes size or
  *   lift. The ×100 playground DEFAULT_PARAMS law and the acrylic refill-0
  *   special case are retired — the acrylic 0 lives in its record.
@@ -232,6 +232,9 @@ const RESET_EXPECTED = {
   refill: 60,
   // quick 261122-gys: no row, but part of the record — Reset restores it.
   wetSeconds: 7,
+  // Spec 10: the stroke layer's pair; Reset restores both from the record.
+  edgeFade: 0,
+  edgeFalloff: 50,
 } as const;
 
 /** The Acrylic record, same key order — quick 261122-gys: Reset in the
@@ -252,6 +255,8 @@ const ACRYLIC_RESET_EXPECTED = {
   pickup: 100,
   refill: 0,
   wetSeconds: 12,
+  edgeFade: 0,
+  edgeFalloff: 50,
 } as const;
 
 beforeEach(() => {
@@ -331,6 +336,8 @@ describe('AquarelleGlobalsPanel Reset (I-02 / T-261017-WMW-01)', () => {
     setAquarelleParam('refill', 55);
     setAquarelleParam('emboss', 55);
     setAquarelleParam('wetSeconds', 21);
+    setAquarelleParam('edgeFade', 55);
+    setAquarelleParam('edgeFalloff', 5);
     setAquarelleParam('lift', 33);
 
     const tree = renderPanel();
@@ -365,6 +372,8 @@ describe('AquarelleGlobalsPanel Reset (I-02 / T-261017-WMW-01)', () => {
     expect(params.size, 'size is untouched by Reset').toBe(77);
     expect(params.lift, 'lift is untouched by Reset').toBe(33);
     expect(params.wetSeconds, 'wetSeconds → the record value').toBe(RESET_EXPECTED.wetSeconds);
+    expect(params.edgeFade, 'edgeFade → the record').toBe(RESET_EXPECTED.edgeFade);
+    expect(params.edgeFalloff, 'edgeFalloff → the record').toBe(RESET_EXPECTED.edgeFalloff);
   });
 
   // 261119-pod (D-A): Pickup opens at 100 and Reset restores it. quick
@@ -655,8 +664,8 @@ describe('261018-gqo spacing rhythm', () => {
 
 // quick 261111-ucf — each global row commits at its release boundary and
 // Reset sends ONE batch after its live writes. quick 261122-gys: the batch is
-// the active medium record's fourteen keys (wetSeconds included). Id band
-// 10721+.
+// the active medium record's sixteen keys (wetSeconds and Spec 10's edge pair
+// included). Id band 10721+.
 describe('quick 261111-ucf globals release commits + Reset batch', () => {
   afterEach(() => {
     setAquarelleSelectionEditPort(null);
@@ -664,7 +673,7 @@ describe('quick 261111-ucf globals release commits + Reset batch', () => {
     clearScriptStrokeSelection();
   });
 
-  it('Reset commits ONE fourteen-key params patch after the fourteen live writes', () => {
+  it('Reset commits ONE sixteen-key params patch after the sixteen live writes', () => {
     recordAquarelleStroke(10721, stroke10721([point10721(0.5, 0.5)]));
     const calls: Array<{ ids: readonly number[]; patch: ScriptStrokeAppearancePatch }> = [];
     const promise = Promise.resolve(true);
@@ -690,7 +699,7 @@ describe('quick 261111-ucf globals release commits + Reset batch', () => {
     // into the TAP diagnostic and breaks the RED evidence parser.
     expect(
       JSON.stringify(calls[0]!.patch),
-      'the batch is the full fourteen-key record patch',
+      'the batch is the full sixteen-key record patch',
     ).toBe(JSON.stringify({ params: RESET_EXPECTED }));
     expect(Object.keys(calls[0]!.patch.params ?? {}), 'size is never committed').not.toContain('size');
     // quick 261121-mtu: Lift has a row (Eraser context) but Reset never
@@ -868,14 +877,17 @@ describe('tool x medium context rows (quick 261121-mtu)', () => {
     );
   }
 
-  it('Gouache (the acrylic record) shows Pigment, Pickup, Dry speed and Feather only', () => {
+  it('Gouache (the acrylic record) shows its bristle rows only', () => {
     applyAquarelleMedium('acrylic');
     const labels = renderedSliders();
+    // Spec 10: the two edge knobs join the bristle context, after Feather.
     expect(labels).toEqual([
       'Pigment',
       'Pickup',
       'Dry speed',
       'Feather',
+      'Edge transparency',
+      'Edge falloff',
     ]);
     // quick 261124-iq9: Viscosity and Water are hidden for the Gouache paint
     // context; Refill and every fluid-only row stay off the bristle path too.
