@@ -4747,18 +4747,30 @@ function endEdgeStats(values: readonly number[]): EndEdgeStats {
  * for each, the START boundary is the first x above threshold and the END
  * boundary the last, inside the scan window. All numbers are document pixels.
  *
- * quick 261125-rtc: the same body/end zones are also read on the PIGMENT and
- * COVERAGE rasters, and every surface's zone reports `inked` — the share of
- * zone cells at or above the surface's own threshold. The 2026-11-23 debug
- * left the transparent and pigment readings disagreeing, so a fix chosen on
- * one surface alone could miss the artist's block; the density block names all
- * three and the effective sampling factor that produced them.
+ * quick 261125-rtc: the same body/end zones are also read on the PIGMENT,
+ * COVERAGE and VISIBLE-COMPOSITE rasters, and every surface's zone reports
+ * `inked` — the share of zone cells at or above the surface's own threshold.
+ * The 2026-11-23 debug left the transparent and pigment readings disagreeing,
+ * so a fix chosen on one surface alone could miss the artist's block; the
+ * density block names all four and the effective sampling factor that produced
+ * them.
+ *
+ * TASK 2 (FROZEN 2026-11-25): the END zone is anchored to the CENSUS, not to
+ * the measured end median. The first measurement's window started 26.7-48.8
+ * document px AHEAD of the last recorded dab in every cell, sampling the
+ * leading frontier of the terminal dabs where a trailing-side law is inert.
+ * The declared window is `[lastTap - 2.4r, lastTap + 1.05r]` with
+ * `lastTap = endCensus.last40.at(-1).x * dw` and `r = strokeSize / 2` document
+ * px, clamped to `[0, dw - 1]`; a bristle-end capture with no census tap FAILS
+ * rather than silently falling back to the old window. The body zone is
+ * unchanged at `[0.40, 0.55] dw`.
  */
 function bristleEndMetrics(
   transparent: HTMLCanvasElement,
   pigment: HTMLCanvasElement,
   coverage: HTMLCanvasElement,
   strokeSize: number,
+  taps: readonly EndTap[],
 ): Record<string, unknown> {
   const dw = transparent.width
   const dh = transparent.height
@@ -4781,6 +4793,16 @@ function bristleEndMetrics(
   }
   /** The coverage raster's own channel: alpha / 255. */
   const coverageInk = (x: number, cr: number): number => coverageData[(cr * dw + x) * 4 + 3]! / 255
+  /** The visible composite over white — `endFine.vis` verbatim: the darkness
+   *  the eye reads once the film is laid on the paper. */
+  const visibleDark = (x: number, cr: number): number => {
+    const i4 = (cr * dw + x) * 4
+    const r = data[i4]!
+    const g = data[i4 + 1]!
+    const b = data[i4 + 2]!
+    const a = data[i4 + 3]! / 255
+    return 1 - Math.min(r * a + 255 * (1 - a), g * a + 255 * (1 - a), b * a + 255 * (1 - a)) / 255
+  }
 
   const starts: number[] = []
   const ends: number[] = []
@@ -4944,25 +4966,69 @@ function bristleEndMetrics(
     return n > 0 ? { mean: round4(sum / n), inked: round4(above / n) } : { mean: 0, inked: 0 }
   }
 
-  const bodyThicknessMean = thickness(startMedian + window(0.45), startMedian + window(0.55)).meanPx
-  const endZonePx = Math.max(END_BLOCK_PX, Math.round(0.25 * bodyThicknessMean))
-  // The visible-darkness, carried-pigment and inked-fraction readings of the
-  // SAME two zones. `COVERAGE_INKED_THRESHOLD` is the coverage raster's own
-  // 0.5 inked line; pigment reuses the transparent darkness threshold on its
-  // (255 − mean RGB) / 255 reader so "inked" means the same thing on both.
+  /** The same zone read, clamped to the raster instead of the scan band: the
+   *  census-anchored window reaches ~1.05r past the last tap and must never be
+   *  clipped by `scanHi` (about 0.94 dw on a 1080 sheet). */
+  const zoneReadRaster = (
+    read: (x: number, cr: number) => number,
+    threshold: number,
+    x0: number,
+    x1: number,
+  ): { mean: number; inked: number } => {
+    const lo = Math.max(0, Math.round(x0))
+    const hi = Math.min(dw - 1, Math.round(x1))
+    if (hi <= lo) return { mean: 0, inked: 0 }
+    let sum = 0
+    let above = 0
+    let n = 0
+    for (const gy of markRows) {
+      const cr = dh - 1 - gy
+      for (let x = lo; x <= hi; x += 1) {
+        const value = read(x, cr)
+        sum += value
+        if (value >= threshold) above += 1
+        n += 1
+      }
+    }
+    return n > 0 ? { mean: round4(sum / n), inked: round4(above / n) } : { mean: 0, inked: 0 }
+  }
+
+  // TASK 2 (FROZEN 2026-11-25): the declared census-anchored window. The
+  // anchor is the LAST recorded dab — the catch-up included on the live lanes,
+  // the final scripted sample on the bake. `taps` carries fractions of the
+  // document width (stampScripted's own x); multiply by dw for raster px.
+  const lastTap = taps[taps.length - 1]
+  if (lastTap === undefined) {
+    throw new Error(
+      'bristle-end: no census tap to anchor the density window (the shared census must record every stampScripted dab)',
+    )
+  }
+  const lastTapX = round2(lastTap.x * dw)
+  const radiusPx = round2(strokeSize / 2)
+  const windowLo = Math.max(0, lastTapX - 2.4 * radiusPx)
+  const windowHi = Math.min(dw - 1, lastTapX + 1.05 * radiusPx)
+  // The visible-composite, carried-pigment, inked-fraction and raw-transparent
+  // readings of the SAME two zones. `COVERAGE_INKED_THRESHOLD` is the coverage
+  // raster's own 0.5 inked line; pigment and visible reuse the transparent
+  // darkness threshold on their own readers so "inked" means the same thing on
+  // every surface.
   const COVERAGE_INKED_THRESHOLD = 0.5
   const densityZones = {
     transparent: {
-      body: zoneRead(dark, END_DARK_THRESHOLD, bodyLo, bodyHi),
-      end: zoneRead(dark, END_DARK_THRESHOLD, endMedian - endZonePx, endMedian - 2),
+      body: zoneReadRaster(dark, END_DARK_THRESHOLD, bodyLo, bodyHi),
+      end: zoneReadRaster(dark, END_DARK_THRESHOLD, windowLo, windowHi),
     },
     pigment: {
-      body: zoneRead(pigmentDark, END_DARK_THRESHOLD, bodyLo, bodyHi),
-      end: zoneRead(pigmentDark, END_DARK_THRESHOLD, endMedian - endZonePx, endMedian - 2),
+      body: zoneReadRaster(pigmentDark, END_DARK_THRESHOLD, bodyLo, bodyHi),
+      end: zoneReadRaster(pigmentDark, END_DARK_THRESHOLD, windowLo, windowHi),
     },
     coverage: {
-      body: zoneRead(coverageInk, COVERAGE_INKED_THRESHOLD, bodyLo, bodyHi),
-      end: zoneRead(coverageInk, COVERAGE_INKED_THRESHOLD, endMedian - endZonePx, endMedian - 2),
+      body: zoneReadRaster(coverageInk, COVERAGE_INKED_THRESHOLD, bodyLo, bodyHi),
+      end: zoneReadRaster(coverageInk, COVERAGE_INKED_THRESHOLD, windowLo, windowHi),
+    },
+    visible: {
+      body: zoneReadRaster(visibleDark, END_DARK_THRESHOLD, bodyLo, bodyHi),
+      end: zoneReadRaster(visibleDark, END_DARK_THRESHOLD, windowLo, windowHi),
     },
   }
   // The effective sampling factor the stroke actually ran at — the canonical
@@ -5003,7 +5069,13 @@ function bristleEndMetrics(
     startAlongDark,
     endFine,
     density: {
-      endZonePx,
+      window: {
+        lastTapX,
+        radiusPx,
+        lo: round2(windowLo),
+        hi: round2(windowHi),
+        widthPx: round2(windowHi - windowLo),
+      },
       effectiveSampleScale,
       zones: densityZones,
     },
@@ -5763,7 +5835,13 @@ function run(
               calls: endCensus?.gatherCalls ?? 0,
               endCapCalls: endCensus?.endCapCalls ?? 0,
             },
-            endMetrics: bristleEndMetrics(transparentCanvas, pigmentCanvas, coverageCanvas, strokeSize),
+            endMetrics: bristleEndMetrics(
+              transparentCanvas,
+              pigmentCanvas,
+              coverageCanvas,
+              strokeSize,
+              endCensus?.taps ?? [],
+            ),
             pngTransparent: transparentCanvas.toDataURL('image/png'),
             pngCoverage: coverageCanvas.toDataURL('image/png'),
             pngPigment: pigmentCanvas.toDataURL('image/png'),
