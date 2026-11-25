@@ -158,8 +158,11 @@
 //                                     one straight bristle-flat stroke at the
 //                                     acrylic record (Body via --body, default
 //                                     0); three-field across profiles + PNGs
-//             [--stroke-size <1..200>]  bristle-line only: the stroke's `size`
-//                                     key (omitted keeps STROKE_PARAMS' 12)
+//             [--stroke-size <1..400>]  bristle-line/bristle-end only: the
+//                                     stroke's `size` key (omitted keeps
+//                                     STROKE_PARAMS' 12; 261125-rtc widened
+//                                     the band from 200 for the artist's
+//                                     300-size end sweep)
 //             [--band <16..400>]      bristle-line only: the across-profile
 //                                     half-width in document px (default 140,
 //                                     the full brush — the artist-visible
@@ -173,6 +176,25 @@
 //                                     deterministic mask)
 //             [--texture <mask id>]   bristle-tip only: the mask id the stroke
 //                                     carries; omitted is the plain leg
+//             [--scenario bristle-end]
+//                                     2026-11-23 / quick 261125-rtc: ONE end
+//                                     path on the artist's bristle-round bag
+//                                     (acrylic record; Body via --body,
+//                                     default 100), then settle + fix. The
+//                                     report carries endCensus (drive, taps,
+//                                     endCaps, the final 40 taps — populated
+//                                     on BOTH the live and the bake lane),
+//                                     gather (calls, endCapCalls), endSetup,
+//                                     the endMetrics census and its 2x crops.
+//             [--drive <stop|lift|decay|mouse|mouse-lift|bake>]
+//                                     bristle-end only: which end path runs
+//                                     (omitted is stop; bake rides the
+//                                     adapter's scripted replay)
+//             [--dry <0..100>]        bristle-end only: the acrylic Dry key
+//             [--feather <0..100>]    bristle-end only: the acrylic Feather key
+//             [--release <0..1>]      bristle-end only: the LAST authored
+//                                     sample's pressure (stop and bake only;
+//                                     the default stop authors 0.75)
 //             [--scenario emboss-smooth]
 //                                     quick 261123-hr5: a +15 impasto, then
 //                                     the same band at --emboss (default
@@ -268,7 +290,7 @@ const gateFlag = args.indexOf('--gate')
 const gate = gateFlag >= 0 ? args[gateFlag + 1] : undefined
 if (!gate) {
   console.error(
-    'usage: node run.mjs --gate <name> [--scenario cover|cover-over-wet|cover-advect|cover-lift|watercolor-50|white-over-blue|cover-textured|red-over-blue-50|bristle-edge|bristle-wet|bristle-line|bristle-end|bristle-tip|emboss-smooth|edge-layer] [--edge <0..100>] [--falloff <0..100>] [--emboss <-100..100>] [--body <0..100>] [--light <0..4>] [--size <32..4096>] [--brush <id>] [--wet-mode <0|1>] [--texture <mask id>] [--drive <stop|lift|decay|mouse|mouse-lift|bake>]   (e.g. neutral-identity)',
+    'usage: node run.mjs --gate <name> [--scenario cover|cover-over-wet|cover-advect|cover-lift|watercolor-50|white-over-blue|cover-textured|red-over-blue-50|bristle-edge|bristle-wet|bristle-line|bristle-end|bristle-tip|emboss-smooth|edge-layer] [--edge <0..100>] [--falloff <0..100>] [--emboss <-100..100>] [--body <0..100>] [--light <0..4>] [--size <32..4096>] [--brush <id>] [--wet-mode <0|1>] [--texture <mask id>] [--drive <stop|lift|decay|mouse|mouse-lift|bake>] [--stroke-size <1..400>] [--dry <0..100>] [--feather <0..100>] [--release <0..1>]   (e.g. neutral-identity)',
   )
   console.error(
     '       every operand except --gate is optional and additive; an omitted operand writes no key/value, so the neutral gate keeps reproducing the committed baseline',
@@ -404,13 +426,16 @@ if (brush !== undefined && (brush === '' || brush.startsWith('--'))) {
 // 2026-11-22: the bristle-line stroke's own `size` key — the canvas flag
 // `--size` already owns the sheet dimension, so the pale-line size sweep
 // needs this separate operand. Refused for every other scenario here first.
+// quick 261125-rtc: the band widens to 1..400 — the artist's end-block sweep
+// reaches the canonical Size 300 (effective 16x sampling), which the old
+// 200 ceiling refused.
 const strokeSizeFlag = args.indexOf('--stroke-size')
 const strokeSizeRaw = strokeSizeFlag >= 0 ? args[strokeSizeFlag + 1] : undefined
 let strokeSize
 if (strokeSizeRaw !== undefined) {
   const value = Number(strokeSizeRaw)
-  if (!Number.isFinite(value) || value < 1 || value > 200) {
-    console.error(`invalid --stroke-size "${strokeSizeRaw}" (expected 1..200)`)
+  if (!Number.isFinite(value) || value < 1 || value > 400) {
+    console.error(`invalid --stroke-size "${strokeSizeRaw}" (expected 1..400)`)
     process.exit(1)
   }
   if (scenario !== 'bristle-line' && scenario !== 'bristle-end') {
@@ -527,6 +552,52 @@ if (driveRaw !== undefined) {
   drive = driveRaw
 }
 
+// quick 261125-rtc: the end journal's bag overrides and the release-pressure
+// axis. `--dry` and `--feather` are the acrylic record's own two keys (the
+// artist's cells: Dry 0 and 70, Feather 100), folded into every stroke's
+// params bag; `--release` replaces the LAST authored sample's pressure so the
+// release catch-up is captured at its actual pressure. All three are
+// bristle-end only, and `--release` is refused on the paths whose release
+// pressure the script's own points define (only stop and bake are overridable;
+// the default stop cell already authors 0.75).
+const readEndPercent = (flagName) => {
+  const flag = args.indexOf(flagName)
+  const raw = flag >= 0 ? args[flag + 1] : undefined
+  if (raw === undefined) return undefined
+  const value = Number(raw)
+  if (!Number.isInteger(value) || value < 0 || value > 100) {
+    console.error(`invalid ${flagName} "${raw}" (expected an integer 0..100)`)
+    process.exit(1)
+  }
+  if (scenario !== 'bristle-end') {
+    console.error(`${flagName} is only valid with --scenario bristle-end`)
+    process.exit(1)
+  }
+  return value
+}
+const dry = readEndPercent('--dry')
+const feather = readEndPercent('--feather')
+
+const releaseFlag = args.indexOf('--release')
+const releaseRaw = releaseFlag >= 0 ? args[releaseFlag + 1] : undefined
+let release
+if (releaseRaw !== undefined) {
+  const value = Number(releaseRaw)
+  if (!Number.isFinite(value) || value < 0 || value > 1) {
+    console.error(`invalid --release "${releaseRaw}" (expected 0..1)`)
+    process.exit(1)
+  }
+  if (scenario !== 'bristle-end') {
+    console.error('--release is only valid with --scenario bristle-end')
+    process.exit(1)
+  }
+  if (drive !== undefined && drive !== 'stop' && drive !== 'bake') {
+    console.error(`--release is refused on the "${drive}" drive (stop and bake only)`)
+    process.exit(1)
+  }
+  release = value
+}
+
 const pageQuery =
   `gate=${encodeURIComponent(gate)}` +
   (scenario === undefined ? '' : `&scenario=${scenario}`) +
@@ -543,7 +614,10 @@ const pageQuery =
   (over === undefined ? '' : '&over=1') +
   (wetMode === undefined ? '' : `&wetMode=${wetMode}`) +
   (texture === undefined ? '' : `&texture=${encodeURIComponent(texture)}`) +
-  (drive === undefined ? '' : `&drive=${encodeURIComponent(drive)}`)
+  (drive === undefined ? '' : `&drive=${encodeURIComponent(drive)}`) +
+  (dry === undefined ? '' : `&dry=${dry}`) +
+  (feather === undefined ? '' : `&feather=${feather}`) +
+  (release === undefined ? '' : `&release=${release}`)
 const resultPath = join(outDir, `${gate}.json`)
 
 const esbuildCandidates = [

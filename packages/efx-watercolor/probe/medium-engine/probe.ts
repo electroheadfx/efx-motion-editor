@@ -228,7 +228,10 @@ import { buildBrushForStroke } from '../../src/playground/brushBridge'
 // the adapter's own `configure()` — the same param mapping, colour resolution
 // and per-stroke seed derivation, so a live end and its re-bake are the same
 // stroke in every input the engine sees.
-import { toEngineParams } from '../../src/playground/params'
+import { engineScaleToSize, sizeToEngineScale, toEngineParams } from '../../src/playground/params'
+// quick 261125-rtc: the report names the effective sampling factor the dab
+// chain ran at, through the engine's OWN size round trip.
+import { bristleSampleScale } from '../../src/playground/bristles'
 import { pigmentFromHex } from '../../src/playground/spectral'
 // Spec 10: the CPU band mirror (`displayBasisGLSL`'s own tables and epsilon)
 // — the probe decodes the committed sheet through the display's exact law.
@@ -1842,15 +1845,24 @@ function understoryLine(y: number): readonly AquarellePoint[] {
 /**
  * The FULL artist bag: the acrylic record verbatim, Body overridden, plus the
  * canonical members the record does not hold. The spread order is the point —
- * a record key wins, then `size`/`lift` are added, then Body is pinned.
+ * a record key wins, then `size`/`lift` are added, then the quick-261125-rtc
+ * Dry/Feather overrides, then Body is pinned. The overrides MUST follow the
+ * record's spread: the acrylic record states Feather 85 and the artist's bag
+ * is Feather 100, so the operand is the only way to reach it.
  */
-function bristleLineParams(body: number, strokeSize: number): Record<string, number> {
+function bristleLineParams(
+  body: number,
+  strokeSize: number,
+  overrides?: { dry: number | null; feather: number | null },
+): Record<string, number> {
   const acrylic = MEDIUMS.find((medium) => medium.id === 'acrylic')
   if (!acrylic) throw new Error('bristle-line: the acrylic medium record is missing')
   return {
     size: strokeSize,
     lift: STROKE_PARAMS['lift']!,
     ...acrylic.params,
+    ...(overrides?.dry != null ? { dry: overrides.dry } : {}),
+    ...(overrides?.feather != null ? { feather: overrides.feather } : {}),
     body,
   }
 }
@@ -1880,12 +1892,16 @@ function bristleLineOverEntry(): ScriptEntry {
     points: understoryLine(LINE_OVER_Y),
     mutationId: LINE_OVER_MUTATION_ID,
     params: { ...bristleLineParams(0, LINE_OVER_SIZE), load: LINE_OVER_LOAD, feather: 100 },
-    brushId: 'bristle-flat',
+    // quick 261125-rtc: `bristle-flat` was retired by 261124-iq9 and silently
+    // resolves to the watercolor `round`, so every pale-line capture ran the
+    // classic path. The artist's brush is bristle-round (Gouache): the gate
+    // must exercise the gather to be a no-lane gate at all.
+    brushId: 'bristle-round',
     fixAfter: false,
   }
 }
 
-/** ONE straight bristle-flat stroke at the artist's parameters. `--over`
+/** ONE straight bristle-round stroke at the artist's parameters. `--over`
  *  prepends the understory; the judged entry is always last and alone carries
  *  `captureLine`, so the profile captures never include the bare understory. */
 function bristleLineScript(
@@ -1899,7 +1915,7 @@ function bristleLineScript(
     points: straightLine(LINE_Y),
     mutationId: mut,
     params: bristleLineParams(body, strokeSize),
-    brushId: 'bristle-flat',
+    brushId: 'bristle-round',
     captureLine: true,
   }
   return over ? [bristleLineOverEntry(), judged] : [judged]
@@ -1931,13 +1947,15 @@ function readOver(): boolean {
 }
 
 /** 2026-11-22: the bristle-line stroke's own `size` key — absent keeps
- *  STROKE_PARAMS' 12 so the first captures stay reproducible. */
+ *  STROKE_PARAMS' 12 so the first captures stay reproducible.
+ *  quick 261125-rtc: the ceiling widens 200 -> 400 for the artist's five-size
+ *  sweep (50/100/150/200/300); 300 is the 16x sampling cell. */
 function readStrokeSize(): number {
   const raw = new URLSearchParams(location.search).get('strokeSize')
   if (raw === null || raw === '') return STROKE_PARAMS['size']!
   const value = Number(raw)
-  if (!Number.isFinite(value) || value < 1 || value > 200) {
-    throw new Error(`invalid strokeSize "${raw}" (expected 1..200)`)
+  if (!Number.isFinite(value) || value < 1 || value > 400) {
+    throw new Error(`invalid strokeSize "${raw}" (expected 1..400)`)
   }
   return value
 }
@@ -4416,6 +4434,57 @@ function readEndMut(): number {
   return Math.floor(value)
 }
 
+/**
+ * quick 261125-rtc: the artist's bag operands for the bristle-end scenario.
+ * `dry`/`feather` are integers 0..100 folded into the stroke's params bag
+ * (the acrylic record states Dry 70 / Feather 85; the artist's bag is Feather
+ * 100); `release` is the pressure of the LAST authored pen sample. The pen
+ * lanes whose end is one terminal authored pressure are the only ones a
+ * release override may drive: `lift` and `decay` carry their own measured
+ * pressure tails (END_LIFT_PRESSURES, the 0.75-to-0.10 decay ramp) and the
+ * mouse drives keep the -1 sentinel, so an override there would silently
+ * rewrite a tail the capture is supposed to measure.
+ */
+interface EndSetup {
+  readonly dry: number | null
+  readonly feather: number | null
+  readonly release: number | null
+}
+
+const NO_END_SETUP: EndSetup = { dry: null, feather: null, release: null }
+
+/** The `--dry` / `--feather` / `--release` operands, read once beside the
+ *  drive. run.mjs is the first line of defence (same bounds, same refusals);
+ *  this is the second, so a hand-built page query can never capture a stroke
+ *  the flags were supposed to forbid. */
+function readEndSetup(drive: EndDrive | undefined): EndSetup {
+  const query = new URLSearchParams(location.search)
+  const readPercent = (key: 'dry' | 'feather'): number | null => {
+    const raw = query.get(key)
+    if (raw === null || raw === '') return null
+    const value = Number(raw)
+    if (!Number.isInteger(value) || value < 0 || value > 100) {
+      throw new Error(`invalid ${key} "${raw}" (expected an integer 0..100)`)
+    }
+    return value
+  }
+  const dry = readPercent('dry')
+  const feather = readPercent('feather')
+  const releaseRaw = query.get('release')
+  let release: number | null = null
+  if (releaseRaw !== null && releaseRaw !== '') {
+    const value = Number(releaseRaw)
+    if (!Number.isFinite(value) || value < 0 || value > 1) {
+      throw new Error(`invalid release "${releaseRaw}" (expected 0..1)`)
+    }
+    if (drive !== 'stop' && drive !== 'bake') {
+      throw new Error(`release override refused on the "${drive ?? 'stop'}" drive (stop and bake only)`)
+    }
+    release = value
+  }
+  return { dry, feather, release }
+}
+
 /** One queued sample of the live drive. `p` keeps the mouse sentinel (-1). */
 interface EndSample {
   readonly x: number
@@ -4452,42 +4521,55 @@ function endJitter(pressure: number): EndSample[] {
 const END_LIFT_TAIL = 6
 const END_LIFT_PRESSURES: readonly number[] = [0.55, 0.4, 0.25, 0.12, 0.05, 0.02]
 
-/** The samples each live drive feeds: the moves, the drive's own end path. */
-function endDriveSamples(drive: EndDrive): EndSample[] {
+/** The samples each live drive feeds: the moves, the drive's own end path.
+ *  quick 261125-rtc: `release` replaces the LAST authored pen sample's
+ *  pressure (the catch-up dab then derives its own pressure from it through
+ *  the engine — the census records the `pr` values rather than assuming
+ *  them). Only the stop/bake drives accept it; the others carry their own
+ *  measured tails and read none. */
+function endDriveSamples(drive: EndDrive, release: number | null = null): EndSample[] {
   const mouse = drive === 'mouse' || drive === 'mouse-lift'
   const pressure = mouse ? -1 : END_PRESS
   const moves = endMoves(pressure)
-  if (drive === 'mouse-lift') return moves
-  if (drive === 'lift') {
+  let out: EndSample[]
+  if (drive === 'mouse-lift') {
+    out = moves
+  } else if (drive === 'lift') {
     // The artist's lift: the LAST moves already carry the collapsing pressure
     // (the hand is still moving), then pointerup — no rest, no jitter.
-    const out = moves
+    out = moves
     for (let i = 0; i < END_LIFT_TAIL; i += 1) {
       const idx = out.length - END_LIFT_TAIL + i
       const sample = out[idx]!
       out[idx] = { x: sample.x, y: sample.y, p: END_LIFT_PRESSURES[i]! }
     }
-    return out
-  }
-  if (drive === 'decay') {
-    const out = moves
+  } else if (drive === 'decay') {
+    out = moves
     let x = END_X1
     for (let i = 1; i <= END_DECAY_SAMPLES; i += 1) {
       x += END_DECAY_STEP_X
       const t = i / END_DECAY_SAMPLES
       out.push({ x, y: END_LANE_Y, p: END_DECAY_FROM + (END_DECAY_TO - END_DECAY_FROM) * t })
     }
-    return out
+  } else {
+    // stop / mouse: the held pointer's jitter, then the release.
+    out = [...moves, ...endJitter(pressure)]
   }
-  // stop / mouse: the held pointer's jitter, then the release.
-  return [...moves, ...endJitter(pressure)]
+  if (release !== null) {
+    const last = out[out.length - 1]
+    if (last === undefined) throw new Error('bristle-end: the drive has no samples')
+    out[out.length - 1] = { x: last.x, y: last.y, p: release }
+  }
+  return out
 }
 
 /** The re-bake surface's recorded points: the `stop` drive's sequence — a
  *  recorded stop-then-release stroke carries the jitter, and the scripted feed
- *  replays it one sample per host tick, exactly like the app's re-bake. */
-function endBakePoints(): readonly AquarellePoint[] {
-  return endDriveSamples('stop').map((sample) => ({
+ *  replays it one sample per host tick, exactly like the app's re-bake. The
+ *  `--release` override rides the same final sample, so the bake receives the
+ *  exact tail the live stop lane measured. */
+function endBakePoints(setup: EndSetup): readonly AquarellePoint[] {
+  return endDriveSamples('stop', setup.release).map((sample) => ({
     x: sample.x,
     y: sample.y,
     p: sample.p,
@@ -4505,7 +4587,10 @@ function configureLiveEnd(
   engine: WatercolorEngine,
   bag: Record<string, number>,
   mut: number,
-  brushId = 'bristle-flat',
+  // quick 261125-rtc: the artist's brush. `bristle-flat` was retired by
+  // 261124-iq9, so the old default silently resolved to the watercolor
+  // `round` and every live end capture measured the wrong path.
+  brushId = 'bristle-round',
   color = END_COLOR,
 ): void {
   engine.setParams(toEngineParams(bag))
@@ -4538,7 +4623,6 @@ interface EndLiveEngine {
   clock: () => number
 }
 
-/** Drive one LIVE end path through the real engine, then settle and fix. */
 /** One recorded impression: where a dab landed, at what pressure, and whether
  *  it carried the catch-up's uEndCap flag. The census proves which dabs (if
  *  any) carry the cap on each end path. */
@@ -4549,21 +4633,33 @@ interface EndTap {
   readonly endCap: boolean
 }
 
-interface EndCensus {
-  readonly taps: number
-  readonly endCaps: number
-  readonly last: readonly EndTap[]
+/** quick 261125-rtc: the ONE shared tap + gather census. Installed once on the
+ *  captured engine BEFORE the drive branch, so it spans the live drive AND
+ *  the re-bake lane's scripted feed (the adapter's applyStroke loop runs on
+ *  the same engine). A bake capture's census is therefore a populated object,
+ *  never null — the proof that the real gather ran on both lanes. */
+interface EndCensusRecorder {
+  /** The final 40 taps (the writer set must be measurable at size 300). */
+  readonly taps: EndTap[]
+  /** Every tap the stroke stamped, the retained window included. */
+  tapCount: number
+  gatherCalls: number
+  endCapCalls: number
 }
 
+/** Drive one LIVE end path through the real engine, then settle and fix. The
+ *  census recorder is owned by the caller and shared with the bake lane. */
 function driveBristleEnd(
   adapter: EndAdapter,
   engine: WatercolorEngine,
   drive: EndDrive,
   body: number,
   strokeSize: number,
-): EndCensus {
-  configureLiveEnd(engine, bristleLineParams(body, strokeSize), readEndMut())
-  const samples = endDriveSamples(drive)
+  setup: EndSetup,
+  census: EndCensusRecorder,
+): void {
+  configureLiveEnd(engine, bristleLineParams(body, strokeSize, setup), readEndMut())
+  const samples = endDriveSamples(drive, setup.release)
   const first = samples[0]
   if (first === undefined) throw new Error('bristle-end: the drive has no samples')
   if (!engine.scriptBegin('brush', first.x, first.y, first.p, 'Stroke')) {
@@ -4577,15 +4673,6 @@ function driveBristleEnd(
   // the smoothing weight reads `pointerType`.
   stroke.pointerId = END_LIVE_POINTER
   stroke.pointerType = drive === 'mouse' || drive === 'mouse-lift' ? 'mouse' : 'pen'
-  // The dab census: shadow the instance's stamp so every impression records
-  // its position, pressure and the catch-up flag, then call the original.
-  const taps: EndTap[] = []
-  const mutable = engine as unknown as { stampScripted: (...args: unknown[]) => void; bristleEndCap: boolean }
-  const baseStamp = mutable.stampScripted.bind(engine)
-  mutable.stampScripted = (...args: unknown[]) => {
-    taps.push({ x: Number(args[1]), y: Number(args[2]), pr: Number(args[3]), endCap: mutable.bristleEndCap })
-    baseStamp(...args)
-  }
   // The first sample is already queued by scriptBegin; one tick deposits it.
   adapter.stepTick(0)
   for (let i = 1; i < samples.length; i += 1) {
@@ -4601,11 +4688,9 @@ function driveBristleEnd(
   engine.tick(END_DT)
   for (let tick = 0; tick <= SETTLE_TICKS; tick += 1) adapter.stepTick(tick)
   adapter.fix()
-  return {
-    taps: taps.length,
-    endCaps: taps.filter((tap) => tap.endCap).length,
-    last: taps.slice(-8),
-  }
+  // The census is the proof the real path ran: a live lane that stamped no
+  // dab is a broken capture, never a quiet zero row.
+  if (census.tapCount === 0) throw new Error('bristle-end: the live drive stamped no dab')
 }
 
 /** The four shape scalars + quantiles of one measured edge. Row order is the
@@ -4661,11 +4746,25 @@ function endEdgeStats(values: readonly number[]): EndEdgeStats {
  * the mark are those whose central-half mean darkness clears END_MARK_FLOOR;
  * for each, the START boundary is the first x above threshold and the END
  * boundary the last, inside the scan window. All numbers are document pixels.
+ *
+ * quick 261125-rtc: the same body/end zones are also read on the PIGMENT and
+ * COVERAGE rasters, and every surface's zone reports `inked` — the share of
+ * zone cells at or above the surface's own threshold. The 2026-11-23 debug
+ * left the transparent and pigment readings disagreeing, so a fix chosen on
+ * one surface alone could miss the artist's block; the density block names all
+ * three and the effective sampling factor that produced them.
  */
-function bristleEndMetrics(transparent: HTMLCanvasElement): Record<string, unknown> {
+function bristleEndMetrics(
+  transparent: HTMLCanvasElement,
+  pigment: HTMLCanvasElement,
+  coverage: HTMLCanvasElement,
+  strokeSize: number,
+): Record<string, unknown> {
   const dw = transparent.width
   const dh = transparent.height
   const data = transparent.getContext('2d')!.getImageData(0, 0, dw, dh).data
+  const pigmentData = pigment.getContext('2d')!.getImageData(0, 0, dw, dh).data
+  const coverageData = coverage.getContext('2d')!.getImageData(0, 0, dw, dh).data
   const centre = Math.round(END_LANE_Y * dh)
   const scanLo = Math.max(0, Math.round((END_X0 - 0.06) * dw))
   const scanHi = Math.min(dw - 1, Math.round((END_X1 + 0.09) * dw))
@@ -4675,6 +4774,13 @@ function bristleEndMetrics(transparent: HTMLCanvasElement): Record<string, unkno
     const i4 = (cr * dw + x) * 4
     return 1 - Math.min(data[i4]!, data[i4 + 1]!, data[i4 + 2]!) / 255
   }
+  /** The pigment raster's `bandPigment` reader: (255 − mean RGB) / 255. */
+  const pigmentDark = (x: number, cr: number): number => {
+    const i4 = (cr * dw + x) * 4
+    return (255 - (pigmentData[i4]! + pigmentData[i4 + 1]! + pigmentData[i4 + 2]!) / 3) / 255
+  }
+  /** The coverage raster's own channel: alpha / 255. */
+  const coverageInk = (x: number, cr: number): number => coverageData[(cr * dw + x) * 4 + 3]! / 255
 
   const starts: number[] = []
   const ends: number[] = []
@@ -4808,6 +4914,65 @@ function bristleEndMetrics(transparent: HTMLCanvasElement): Record<string, unkno
     })
   }
 
+  /** quick 261125-rtc: the density zones. One surface's body and end zone
+   *  reads over every mark row: the mean of the surface's own reader and the
+   *  share of cells at or above the surface's threshold (the "inked" share).
+   *  The end window scales with the measured body thickness — the block's
+   *  area grows with the brush — and stops 2 px before the measured end
+   *  median so the boundary's own falloff never dilutes the block. */
+  const zoneRead = (
+    read: (x: number, cr: number) => number,
+    threshold: number,
+    x0: number,
+    x1: number,
+  ): { mean: number; inked: number } => {
+    const lo = Math.max(scanLo, Math.round(x0))
+    const hi = Math.min(scanHi, Math.round(x1))
+    if (hi <= lo) return { mean: 0, inked: 0 }
+    let sum = 0
+    let above = 0
+    let n = 0
+    for (const gy of markRows) {
+      const cr = dh - 1 - gy
+      for (let x = lo; x <= hi; x += 1) {
+        const value = read(x, cr)
+        sum += value
+        if (value >= threshold) above += 1
+        n += 1
+      }
+    }
+    return n > 0 ? { mean: round4(sum / n), inked: round4(above / n) } : { mean: 0, inked: 0 }
+  }
+
+  const bodyThicknessMean = thickness(startMedian + window(0.45), startMedian + window(0.55)).meanPx
+  const endZonePx = Math.max(END_BLOCK_PX, Math.round(0.25 * bodyThicknessMean))
+  // The visible-darkness, carried-pigment and inked-fraction readings of the
+  // SAME two zones. `COVERAGE_INKED_THRESHOLD` is the coverage raster's own
+  // 0.5 inked line; pigment reuses the transparent darkness threshold on its
+  // (255 − mean RGB) / 255 reader so "inked" means the same thing on both.
+  const COVERAGE_INKED_THRESHOLD = 0.5
+  const densityZones = {
+    transparent: {
+      body: zoneRead(dark, END_DARK_THRESHOLD, bodyLo, bodyHi),
+      end: zoneRead(dark, END_DARK_THRESHOLD, endMedian - endZonePx, endMedian - 2),
+    },
+    pigment: {
+      body: zoneRead(pigmentDark, END_DARK_THRESHOLD, bodyLo, bodyHi),
+      end: zoneRead(pigmentDark, END_DARK_THRESHOLD, endMedian - endZonePx, endMedian - 2),
+    },
+    coverage: {
+      body: zoneRead(coverageInk, COVERAGE_INKED_THRESHOLD, bodyLo, bodyHi),
+      end: zoneRead(coverageInk, COVERAGE_INKED_THRESHOLD, endMedian - endZonePx, endMedian - 2),
+    },
+  }
+  // The effective sampling factor the stroke actually ran at — the canonical
+  // Size round-trips through the engine-scale law (`toEngineParams`' own
+  // projection) so the report names the factor the dab chain used, never a
+  // nominal size that would read 1x at 50/70/80 alike.
+  const effectiveSampleScale = round4(
+    bristleSampleScale(engineScaleToSize(sizeToEngineScale(strokeSize))),
+  )
+
   return {
     bandPx: LINE_BAND_PX,
     markRows: markRows.length,
@@ -4837,6 +5002,11 @@ function bristleEndMetrics(transparent: HTMLCanvasElement): Record<string, unkno
     endAlongDark,
     startAlongDark,
     endFine,
+    density: {
+      endZonePx,
+      effectiveSampleScale,
+      zones: densityZones,
+    },
   }
 }
 
@@ -4873,15 +5043,16 @@ function endCropWindow(dw: number): { start: [number, number]; end: [number, num
 
 /** The re-bake lane's script entry — the `stop` sequence's recorded points,
  *  fed through the adapter's scripted path. Live drives contribute no entry. */
-function bristleEndScript(drive: EndDrive, body: number, strokeSize: number): readonly ScriptEntry[] {
+function bristleEndScript(drive: EndDrive, body: number, strokeSize: number, setup: EndSetup): readonly ScriptEntry[] {
   if (drive !== 'bake') return []
   return [
     {
       color: END_COLOR,
-      points: endBakePoints(),
+      points: endBakePoints(setup),
       mutationId: readEndMut(),
-      params: bristleLineParams(body, strokeSize),
-      brushId: 'bristle-flat',
+      params: bristleLineParams(body, strokeSize, setup),
+      // quick 261125-rtc: the same artist brush the live lane drives.
+      brushId: 'bristle-round',
     },
   ]
 }
@@ -5105,15 +5276,29 @@ function run(
 ): void {
   if (!COLD) throw new Error("paper preset 'cold' is not in PAPERS")
   // 64-16: the resolved brush — the operand when given, `chalk` as the
-  // textured-tip scenario's documented default, `bristle-flat` for the
-  // 2026-11-22 pale-line reproduction and 64-29's texture-tip A/B, otherwise
-  // nothing. The report echoes THIS value, so a run that passed `--brush`
-  // can never print null.
-  const resolvedBrush = brush ?? (scenario === 'cover-textured' ? 'chalk' : scenario === 'bristle-line' || scenario === 'bristle-tip' ? 'bristle-flat' : undefined)
+  // textured-tip scenario's documented default, `bristle-flat` for 64-29's
+  // texture-tip A/B, otherwise nothing. The report echoes THIS value, so a
+  // run that passed `--brush` can never print null.
+  // quick 261125-rtc: `bristle-line` and `bristle-end` resolve to
+  // `bristle-round` — the artist's acrylic brush. `bristle-flat` was retired
+  // by 261124-iq9 and silently resolved to the watercolor `round`, so those
+  // two scenarios were photographing the classic path, never the bristle one.
+  const resolvedBrush =
+    brush ??
+    (scenario === 'cover-textured'
+      ? 'chalk'
+      : scenario === 'bristle-tip'
+        ? 'bristle-flat'
+        : scenario === 'bristle-line' || scenario === 'bristle-end'
+          ? 'bristle-round'
+          : undefined)
   // bristle-end: which end path this capture drives. Read before any stroke
   // runs, so an operand the probe refuses can never leave a half-painted
   // sheet behind.
   const endDrive = scenario === 'bristle-end' ? readEndDrive() : undefined
+  // bristle-end: the dry / feather / release operands, validated in one place
+  // (dry and feather 0..100, release 0..1 and stop/bake only).
+  const endSetup: EndSetup = scenario === 'bristle-end' ? readEndSetup(endDrive) : NO_END_SETUP
   const script =
     scenario === 'cover'
       ? coverScript(emboss, body)
@@ -5140,7 +5325,7 @@ function run(
                           : scenario === 'bristle-tip'
                             ? bristleTipScript()
                             : scenario === 'bristle-end'
-                              ? bristleEndScript(endDrive ?? 'stop', body ?? 100, strokeSize)
+                              ? bristleEndScript(endDrive ?? 'stop', body ?? 100, strokeSize, endSetup)
                               : scenario === 'emboss-smooth'
                                 ? embossSmoothScript(emboss ?? -15, resolvedBrush)
                                 : scenario === 'edge-layer'
@@ -5215,9 +5400,44 @@ function run(
     // adapter has no live pointer seam); the re-bake drive rides the normal
     // script loop below. Written after the bakeStart mark so the drive's wall
     // clock is part of bakeMs, like every other scenario's script.
-    let endCensus: EndCensus | undefined
-    if (scenario === 'bristle-end' && endDrive !== undefined && endDrive !== 'bake') {
-      endCensus = driveBristleEnd(adapter, engine, endDrive, body ?? 100, strokeSize)
+    //
+    // quick 261125-rtc: ONE shared tap + gather census, installed BEFORE the
+    // drive branch, so it spans the live drive AND the re-bake lane's scripted
+    // feed (the adapter's applyStroke loop runs the same engine). Both lanes
+    // emit a populated census — a bake capture can no longer print null and
+    // pretend the gather never ran.
+    let endCensus: EndCensusRecorder | undefined
+    if (scenario === 'bristle-end') {
+      const census: EndCensusRecorder = { taps: [], tapCount: 0, gatherCalls: 0, endCapCalls: 0 }
+      const censusEngine = engine as unknown as {
+        stampScripted: (s: unknown, x: number, y: number, pr: number, ...rest: unknown[]) => unknown
+        bristleInk: (...args: unknown[]) => void
+      }
+      const liveFlags = engine as unknown as { bristleEndCap: boolean }
+      const stampOriginal = censusEngine.stampScripted
+      censusEngine.stampScripted = function (
+        this: unknown,
+        s: unknown,
+        x: number,
+        y: number,
+        pr: number,
+        ...rest: unknown[]
+      ) {
+        census.tapCount += 1
+        census.taps.push({ x: round4(x), y: round4(y), pr: round4(pr), endCap: liveFlags.bristleEndCap })
+        if (census.taps.length > 40) census.taps.shift()
+        return stampOriginal.apply(this, [s, x, y, pr, ...rest])
+      }
+      const inkOriginal = censusEngine.bristleInk
+      censusEngine.bristleInk = function (this: unknown, ...args: unknown[]) {
+        census.gatherCalls += 1
+        if (args[8] === true) census.endCapCalls += 1
+        return inkOriginal.apply(this, args)
+      }
+      endCensus = census
+      if (endDrive !== undefined && endDrive !== 'bake') {
+        driveBristleEnd(adapter, engine, endDrive, body ?? 100, strokeSize, endSetup, census)
+      }
     }
     // Spec 10: the edge-layer visit's own drive. Each stroke is fed to
     // EDGE_LAYER_PARTIAL, read while it is still OPEN (the layer, the sheet it
@@ -5519,12 +5739,31 @@ function run(
 
     // bristle-end (2026-11-23): the end-region census and its two 2x crops.
     // Only this scenario emits them, so every other report shape is unchanged.
+    // quick 261125-rtc: the census is the ONE shared install, so a bake capture
+    // prints populated taps and its own drive name exactly like a live one —
+    // and the gather block is the proof the real bristle path ran on both.
     const bristleEndReport =
       scenario === 'bristle-end'
         ? {
             endDrive: endDrive ?? 'stop',
-            endCensus: endCensus ?? null,
-            endMetrics: bristleEndMetrics(transparentCanvas),
+            endSetup: {
+              dry: endSetup.dry,
+              feather: endSetup.feather,
+              release: endSetup.release,
+              strokeSize,
+              brush: resolvedBrush ?? null,
+            },
+            endCensus: {
+              drive: endDrive ?? 'stop',
+              taps: endCensus?.tapCount ?? 0,
+              endCaps: endCensus?.endCapCalls ?? 0,
+              last40: endCensus?.taps ?? [],
+            },
+            gather: {
+              calls: endCensus?.gatherCalls ?? 0,
+              endCapCalls: endCensus?.endCapCalls ?? 0,
+            },
+            endMetrics: bristleEndMetrics(transparentCanvas, pigmentCanvas, coverageCanvas, strokeSize),
             pngTransparent: transparentCanvas.toDataURL('image/png'),
             pngCoverage: coverageCanvas.toDataURL('image/png'),
             pngPigment: pigmentCanvas.toDataURL('image/png'),

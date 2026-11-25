@@ -574,11 +574,15 @@ describe('the textured-tip gate (64-16 task 1)', () => {
       // 2026-11-22 (acrylic pale-line): the bristle-line scenario extended the
       // default chain with its own brush; the intent is unchanged — the report
       // echoes the brush the run actually used. 64-29 extends the same chain
-      // with `bristle-tip` (the A/B's flat response tip).
-      expectContains(
-        PROBE,
-        "const resolvedBrush = brush ?? (scenario === 'cover-textured' ? 'chalk' : scenario === 'bristle-line' || scenario === 'bristle-tip' ? 'bristle-flat' : undefined)",
-      )
+      // with `bristle-tip` (the A/B's flat response tip). quick 261125-rtc:
+      // `bristle-flat` was retired by 261124-iq9 (it silently resolved to the
+      // watercolor `round`), so the artist-facing pale-line and end scenarios
+      // now echo `bristle-round` — the real acrylic response — while the
+      // texture-tip A/B keeps its flat tip.
+      expectContains(PROBE, "scenario === 'bristle-tip'")
+      expectContains(PROBE, "? 'bristle-flat'")
+      expectContains(PROBE, "scenario === 'bristle-line' || scenario === 'bristle-end'")
+      expectContains(PROBE, "? 'bristle-round'")
       expectContains(PROBE, 'brush: resolvedBrush ?? null,')
     })
   })
