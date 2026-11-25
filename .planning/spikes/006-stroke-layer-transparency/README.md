@@ -214,7 +214,7 @@ and the between-law intact** — but only with three corrections to the design:
 3. The alpha must be **gated** by the layer's own coverage: `A_eff = A · cover_L`. Bare
    `A` washes the under-stroke by up to 157/255 — the pale band, again.
 
-## Q2, Q3 and Q3b — measured later, same harness
+## Q2, Q3, Q3b and Q3c — measured later, same harness
 
 Full detail and tables in `SPIKE-stroke-layer-FINDINGS.md`; the one-liners:
 
@@ -223,7 +223,8 @@ Full detail and tables in `SPIKE-stroke-layer-FINDINGS.md`; the one-liners:
 | **Q2** — does the shipped committed-base law already glaze? | **No.** `t_sheet × t_base^(1−cover)` multiplies instead of mixing; its transition is the coverage ramp (125 px where the ideal fade is 268 px). The layer is required. |
 | **Q3** — merge cost on the real GPU (GLSL LM pass) | **Residual + memory GO, frame budget NO-GO.** ~40–50 ms per stroke rect at 2K; 4K is unallocatable (the engine clamps to 2048²). |
 | **Q3b** — the serialized stroke-end path | **FAIL on the felt first-dab wait.** A single draw after an idle GPU: **36 ms median** for the stroke rect (size ladder 1×1 0.5 ms, 512² 0.6, 1024² 17.5, full 31.9) — real fragment work. An immediate next stroke waits **36–44 ms** (bar 20 ms); a 50 ms or 200 ms pause waits 0.1/0.0 ms. Painting is unaffected (**+0.4 ms** display, zero dropped frames) and the in-place merge into the engine's existing `ink`/`cover` doubles costs **+80 MiB** (ceiling 160). The two sanctioned variants do not close it: half resolution is 11.9 ms but the band cannot be upsampled (**max 216/255**, 21 % over); the rank-one Jacobian is exact (max 3, identical) but barely faster (latency 36.0 → 33.2 ms, inside the run-to-run spread). |
-| **Q4** — parity | **not run** — halted on Q3b, per the brief. |
+| **Q3c** — the reduced-band-set fit | **FAIL, by 0.6–1.8 ms.** Fitting the 8 D-optimal bands (`[1,3,5,7,9,10,11,13]`, maximising `log det` of the weighted sensitivity Gram over all 12,870 subsets) and re-rendering through all 16 meets the residual bar **exactly** — max 2/255, p95 1, **0 texels over** of 1,454,826 — at 8 bands + 4 iterations + rank-one J + the `mix(base, layer, aEff)` seed, for **20.6–21.0 ms felt** (bar 20; interleaved 4× A/B reads 21.8 vs 19.8 for the same shader without the seed mix). The brief's 2-iteration combination is **9.4–9.7 ms** but misses the residual (max 13, p95 3, 75,463 over). Each LM iteration costs ~5.5 ms over the stroke rect and the bar needs four. The 8-band fit still beats Q3b's baseline on both axes (29.3–30.3 ms, max 3/62 over). Hard stop (>25 ms) not tripped. |
+| **Q4** — parity | **not run** — Q3b and Q3c both failed their gates, per the brief. |
 
 ## Investigation Trail
 
@@ -247,10 +248,15 @@ Full detail and tables in `SPIKE-stroke-layer-FINDINGS.md`; the one-liners:
 ## Limitations
 
 - **Q4 never measured.** Parity (live vs merged, capture and bake replay, amount-0 byte
-  identity) is unmeasured: Q3b failed first, and the brief said stop there.
-- **The Q3b timings are one machine, one scene.** Apple M3 Max through ANGLE Metal,
-  headless Chrome, a straight Gouache stroke at 2K, 4 LM iterations. Different scenes
-  change the band's area, and that is what the merge cost is proportional to.
+  identity) is unmeasured: Q3b and Q3c both failed their gates, and the brief said stop.
+- **The Q3b/Q3c timings are one machine, one scene.** Apple M3 Max through ANGLE Metal,
+  headless Chrome, a straight Gouache stroke at 2K, 8 bands / 4 LM iterations. Different
+  scenes change the band's area, and that is what the merge cost is proportional to.
+  Run-to-run drift is ±10 %, which is the same size as Q3c's 1 ms miss — the interleaved
+  A/B in `q3c.ts` is the only comparison that survives it.
+- **Q3c's band selection is state-independent** (a property of the display basis, not of
+  the scene). It was not cross-checked against the alternative sets on the real scene: the
+  chosen set met the residual bar, so the alternatives were ranked by `log det` only.
 - The lateral field is **analytic** (`u = |x − centre| / halfWidth` on a straight
   vertical stroke). The MIN-of-`|across|` field the implementation needs is not
   prototyped; it only differs on a non-straight stroke, and this probe never paints one.

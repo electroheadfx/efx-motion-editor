@@ -1,0 +1,2015 @@
+{
+  "spike": "006",
+  "scenario": "q3c",
+  "query": {
+    "requested": 2048,
+    "sheet": 2048,
+    "paperSeed": 12648430,
+    "start": 0.3,
+    "amount": 1,
+    "falloff": 0.5
+  },
+  "threshold": {
+    "immediateStartMs": 20,
+    "residualMaxChannel": 2,
+    "residualP95Channel": 1,
+    "after50Ms": 0.5,
+    "after200Ms": 0.5,
+    "hardStopMs": 25
+  },
+  "renderer": "WebKit WebGL | Google Inc. (Apple) | ANGLE (Apple, ANGLE Metal Renderer: Apple M3 Max, Unspecified Version)",
+  "bakeMs": 2967,
+  "sheet": {
+    "requested": 2048,
+    "actual": 2048,
+    "pixels": 4194304
+  },
+  "geometry": {
+    "strokeRect": {
+      "x0": 514,
+      "y0": 0,
+      "x1": 1381,
+      "y1": 1678
+    },
+    "strokePixels": 1454826,
+    "centreX": 1045,
+    "halfWidth": 407
+  },
+  "selection": {
+    "n": 8,
+    "chosen": {
+      "name": "dOptimal8",
+      "indices": [
+        1,
+        3,
+        5,
+        7,
+        9,
+        10,
+        11,
+        13
+      ],
+      "mask": 11946,
+      "logDet": -28.399,
+      "weights": [
+        0.121,
+        0.446,
+        0.21,
+        0.446,
+        0.193,
+        0.527,
+        0.39,
+        0.597
+      ]
+    },
+    "alternatives": [
+      {
+        "name": "topWeight8",
+        "indices": [
+          2,
+          3,
+          7,
+          10,
+          11,
+          12,
+          13,
+          15
+        ],
+        "mask": 48268,
+        "logDet": -46.346,
+        "weights": [
+          0.325,
+          0.446,
+          0.446,
+          0.527,
+          0.39,
+          0.259,
+          0.597,
+          0.256
+        ]
+      },
+      {
+        "name": "spread8.0",
+        "indices": [
+          0,
+          2,
+          4,
+          6,
+          8,
+          10,
+          12,
+          14
+        ],
+        "mask": 21845,
+        "logDet": -32.857,
+        "weights": [
+          0.023,
+          0.325,
+          0.135,
+          0.221,
+          0.229,
+          0.527,
+          0.259,
+          0.198
+        ]
+      },
+      {
+        "name": "spread8.1",
+        "indices": [
+          1,
+          3,
+          5,
+          7,
+          9,
+          11,
+          13,
+          15
+        ],
+        "mask": 43690,
+        "logDet": -37.64,
+        "weights": [
+          0.121,
+          0.446,
+          0.21,
+          0.446,
+          0.193,
+          0.39,
+          0.597,
+          0.256
+        ]
+      }
+    ],
+    "n10": {
+      "name": "dOptimal10",
+      "indices": [
+        0,
+        1,
+        3,
+        5,
+        7,
+        8,
+        9,
+        10,
+        11,
+        13
+      ],
+      "mask": 12203,
+      "logDet": -26.829,
+      "weights": [
+        0.023,
+        0.121,
+        0.446,
+        0.21,
+        0.446,
+        0.229,
+        0.193,
+        0.527,
+        0.39,
+        0.597
+      ]
+    },
+    "n12": {
+      "name": "dOptimal12",
+      "indices": [
+        0,
+        1,
+        2,
+        3,
+        5,
+        7,
+        8,
+        9,
+        10,
+        11,
+        13,
+        15
+      ],
+      "mask": 44975,
+      "logDet": -25.705,
+      "weights": [
+        0.023,
+        0.121,
+        0.325,
+        0.446,
+        0.21,
+        0.446,
+        0.229,
+        0.193,
+        0.527,
+        0.39,
+        0.597,
+        0.256
+      ]
+    },
+    "chosenWavelengths": [
+      4,
+      8,
+      12,
+      16,
+      20,
+      22,
+      24,
+      28
+    ]
+  },
+  "fenceFloorMs": 0.1,
+  "timing": [
+    {
+      "name": "bands16-4it-numJ",
+      "bands": 16,
+      "latency": {
+        "min": 28.7,
+        "median": 30.3,
+        "p95": 37.7,
+        "max": 37.7,
+        "rounds": 12
+      },
+      "firstDab": {
+        "immediate": {
+          "min": 27.7,
+          "median": 29.4,
+          "p95": 31,
+          "max": 31,
+          "rounds": 10
+        },
+        "after50": {
+          "min": 0.1,
+          "median": 0.1,
+          "p95": 0.2,
+          "max": 0.2,
+          "rounds": 6
+        },
+        "after200": {
+          "min": 0.1,
+          "median": 0.1,
+          "p95": 0.2,
+          "max": 0.2,
+          "rounds": 6
+        }
+      },
+      "feltMs": {
+        "immediate": 29.3,
+        "after50": 0,
+        "after200": 0
+      },
+      "derivedMs": {
+        "immediate": 30.3,
+        "after50": 0,
+        "after200": 0
+      }
+    },
+    {
+      "name": "bands16-4it-numJ-seedMix",
+      "bands": 16,
+      "latency": {
+        "min": 32.1,
+        "median": 33.7,
+        "p95": 42.5,
+        "max": 42.5,
+        "rounds": 12
+      },
+      "firstDab": {
+        "immediate": {
+          "min": 32,
+          "median": 33.9,
+          "p95": 37.6,
+          "max": 37.6,
+          "rounds": 10
+        },
+        "after50": {
+          "min": 0,
+          "median": 0.1,
+          "p95": 0.2,
+          "max": 0.2,
+          "rounds": 6
+        },
+        "after200": {
+          "min": 0.1,
+          "median": 0.1,
+          "p95": 0.2,
+          "max": 0.2,
+          "rounds": 6
+        }
+      },
+      "feltMs": {
+        "immediate": 33.8,
+        "after50": 0,
+        "after200": 0
+      },
+      "derivedMs": {
+        "immediate": 33.7,
+        "after50": 0,
+        "after200": 0
+      }
+    },
+    {
+      "name": "bands8-4it-numJ",
+      "bands": 8,
+      "latency": {
+        "min": 18.7,
+        "median": 19.1,
+        "p95": 20.9,
+        "max": 20.9,
+        "rounds": 12
+      },
+      "firstDab": {
+        "immediate": {
+          "min": 18.8,
+          "median": 19.2,
+          "p95": 21.4,
+          "max": 21.4,
+          "rounds": 10
+        },
+        "after50": {
+          "min": 0,
+          "median": 0.1,
+          "p95": 0.1,
+          "max": 0.1,
+          "rounds": 6
+        },
+        "after200": {
+          "min": 0.1,
+          "median": 0.1,
+          "p95": 0.3,
+          "max": 0.3,
+          "rounds": 6
+        }
+      },
+      "feltMs": {
+        "immediate": 19.1,
+        "after50": 0,
+        "after200": 0
+      },
+      "derivedMs": {
+        "immediate": 19.1,
+        "after50": 0,
+        "after200": 0
+      }
+    },
+    {
+      "name": "bands8-4it-rank1",
+      "bands": 8,
+      "latency": {
+        "min": 18.8,
+        "median": 19.6,
+        "p95": 22.1,
+        "max": 22.1,
+        "rounds": 12
+      },
+      "firstDab": {
+        "immediate": {
+          "min": 18.8,
+          "median": 19.4,
+          "p95": 22.1,
+          "max": 22.1,
+          "rounds": 10
+        },
+        "after50": {
+          "min": 0.1,
+          "median": 0.1,
+          "p95": 0.2,
+          "max": 0.2,
+          "rounds": 6
+        },
+        "after200": {
+          "min": 0,
+          "median": 0.1,
+          "p95": 0.2,
+          "max": 0.2,
+          "rounds": 6
+        }
+      },
+      "feltMs": {
+        "immediate": 19.3,
+        "after50": 0,
+        "after200": 0
+      },
+      "derivedMs": {
+        "immediate": 19.6,
+        "after50": 0,
+        "after200": 0
+      }
+    },
+    {
+      "name": "bands8-4it-rank1-seedMix",
+      "bands": 8,
+      "latency": {
+        "min": 20,
+        "median": 20.7,
+        "p95": 25.9,
+        "max": 25.9,
+        "rounds": 12
+      },
+      "firstDab": {
+        "immediate": {
+          "min": 20.3,
+          "median": 21,
+          "p95": 22.6,
+          "max": 22.6,
+          "rounds": 10
+        },
+        "after50": {
+          "min": 0.1,
+          "median": 0.2,
+          "p95": 0.2,
+          "max": 0.2,
+          "rounds": 6
+        },
+        "after200": {
+          "min": 0.1,
+          "median": 0.2,
+          "p95": 0.3,
+          "max": 0.3,
+          "rounds": 6
+        }
+      },
+      "feltMs": {
+        "immediate": 20.9,
+        "after50": 0.1,
+        "after200": 0.1
+      },
+      "derivedMs": {
+        "immediate": 20.7,
+        "after50": 0,
+        "after200": 0
+      }
+    },
+    {
+      "name": "bands8-4it-rank1-seedMix-coreSkip",
+      "bands": 8,
+      "latency": {
+        "min": 20.4,
+        "median": 20.8,
+        "p95": 27.7,
+        "max": 27.7,
+        "rounds": 12
+      },
+      "firstDab": {
+        "immediate": {
+          "min": 19.9,
+          "median": 20.7,
+          "p95": 21.3,
+          "max": 21.3,
+          "rounds": 10
+        },
+        "after50": {
+          "min": 0.1,
+          "median": 0.2,
+          "p95": 0.2,
+          "max": 0.2,
+          "rounds": 6
+        },
+        "after200": {
+          "min": 0,
+          "median": 0.1,
+          "p95": 0.1,
+          "max": 0.1,
+          "rounds": 6
+        }
+      },
+      "feltMs": {
+        "immediate": 20.6,
+        "after50": 0.1,
+        "after200": 0
+      },
+      "derivedMs": {
+        "immediate": 20.8,
+        "after50": 0,
+        "after200": 0
+      }
+    },
+    {
+      "name": "bands8-3it-rank1-seedMix",
+      "bands": 8,
+      "latency": {
+        "min": 14.4,
+        "median": 15.2,
+        "p95": 16,
+        "max": 16,
+        "rounds": 12
+      },
+      "firstDab": {
+        "immediate": {
+          "min": 14.3,
+          "median": 15.1,
+          "p95": 15.8,
+          "max": 15.8,
+          "rounds": 10
+        },
+        "after50": {
+          "min": 0,
+          "median": 0.1,
+          "p95": 0.1,
+          "max": 0.1,
+          "rounds": 6
+        },
+        "after200": {
+          "min": 0.1,
+          "median": 0.1,
+          "p95": 0.2,
+          "max": 0.2,
+          "rounds": 6
+        }
+      },
+      "feltMs": {
+        "immediate": 15,
+        "after50": 0,
+        "after200": 0
+      },
+      "derivedMs": {
+        "immediate": 15.2,
+        "after50": 0,
+        "after200": 0
+      }
+    },
+    {
+      "name": "bands8-2it-rank1",
+      "bands": 8,
+      "latency": {
+        "min": 9.3,
+        "median": 9.8,
+        "p95": 10.4,
+        "max": 10.4,
+        "rounds": 12
+      },
+      "firstDab": {
+        "immediate": {
+          "min": 9.1,
+          "median": 9.7,
+          "p95": 9.9,
+          "max": 9.9,
+          "rounds": 10
+        },
+        "after50": {
+          "min": 0.1,
+          "median": 0.1,
+          "p95": 0.1,
+          "max": 0.1,
+          "rounds": 6
+        },
+        "after200": {
+          "min": 0.1,
+          "median": 0.2,
+          "p95": 0.2,
+          "max": 0.2,
+          "rounds": 6
+        }
+      },
+      "feltMs": {
+        "immediate": 9.6,
+        "after50": 0,
+        "after200": 0.1
+      },
+      "derivedMs": {
+        "immediate": 9.8,
+        "after50": 0,
+        "after200": 0
+      }
+    },
+    {
+      "name": "bands8-2it-rank1-seedMix",
+      "bands": 8,
+      "latency": {
+        "min": 9.2,
+        "median": 10.3,
+        "p95": 13.5,
+        "max": 13.5,
+        "rounds": 12
+      },
+      "firstDab": {
+        "immediate": {
+          "min": 9.2,
+          "median": 9.5,
+          "p95": 9.9,
+          "max": 9.9,
+          "rounds": 10
+        },
+        "after50": {
+          "min": 0,
+          "median": 0.1,
+          "p95": 0.2,
+          "max": 0.2,
+          "rounds": 6
+        },
+        "after200": {
+          "min": 0.1,
+          "median": 0.2,
+          "p95": 0.2,
+          "max": 0.2,
+          "rounds": 6
+        }
+      },
+      "feltMs": {
+        "immediate": 9.4,
+        "after50": 0,
+        "after200": 0.1
+      },
+      "derivedMs": {
+        "immediate": 10.3,
+        "after50": 0,
+        "after200": 0
+      }
+    },
+    {
+      "name": "bands10-2it-rank1-seedMix",
+      "bands": 10,
+      "latency": {
+        "min": 10.2,
+        "median": 10.8,
+        "p95": 12.8,
+        "max": 12.8,
+        "rounds": 12
+      },
+      "firstDab": {
+        "immediate": {
+          "min": 10.3,
+          "median": 10.8,
+          "p95": 11.4,
+          "max": 11.4,
+          "rounds": 10
+        },
+        "after50": {
+          "min": 0.1,
+          "median": 0.1,
+          "p95": 0.2,
+          "max": 0.2,
+          "rounds": 6
+        },
+        "after200": {
+          "min": 0.1,
+          "median": 0.2,
+          "p95": 0.2,
+          "max": 0.2,
+          "rounds": 6
+        }
+      },
+      "feltMs": {
+        "immediate": 10.7,
+        "after50": 0,
+        "after200": 0.1
+      },
+      "derivedMs": {
+        "immediate": 10.8,
+        "after50": 0,
+        "after200": 0
+      }
+    },
+    {
+      "name": "bands12-2it-rank1-seedMix",
+      "bands": 12,
+      "latency": {
+        "min": 11.5,
+        "median": 12,
+        "p95": 13.1,
+        "max": 13.1,
+        "rounds": 12
+      },
+      "firstDab": {
+        "immediate": {
+          "min": 11.7,
+          "median": 12.2,
+          "p95": 13.2,
+          "max": 13.2,
+          "rounds": 10
+        },
+        "after50": {
+          "min": 0,
+          "median": 0.1,
+          "p95": 0.2,
+          "max": 0.2,
+          "rounds": 6
+        },
+        "after200": {
+          "min": 0.1,
+          "median": 0.1,
+          "p95": 0.2,
+          "max": 0.2,
+          "rounds": 6
+        }
+      },
+      "feltMs": {
+        "immediate": 12.1,
+        "after50": 0,
+        "after200": 0
+      },
+      "derivedMs": {
+        "immediate": 12,
+        "after50": 0,
+        "after200": 0
+      }
+    },
+    {
+      "name": "bands8-4it-rank1-seedMix#2",
+      "bands": 8,
+      "latency": {
+        "min": 19.6,
+        "median": 20.5,
+        "p95": 26.2,
+        "max": 26.2,
+        "rounds": 12
+      },
+      "firstDab": {
+        "immediate": {
+          "min": 20,
+          "median": 21.1,
+          "p95": 23.8,
+          "max": 23.8,
+          "rounds": 10
+        },
+        "after50": {
+          "min": 0,
+          "median": 0.1,
+          "p95": 0.1,
+          "max": 0.1,
+          "rounds": 6
+        },
+        "after200": {
+          "min": 0.1,
+          "median": 0.1,
+          "p95": 0.2,
+          "max": 0.2,
+          "rounds": 6
+        }
+      },
+      "feltMs": {
+        "immediate": 21,
+        "after50": 0,
+        "after200": 0
+      },
+      "derivedMs": {
+        "immediate": 20.5,
+        "after50": 0,
+        "after200": 0
+      }
+    }
+  ],
+  "abab": {
+    "plain": {
+      "samples": [
+        20,
+        19.2,
+        19.8,
+        19.3
+      ],
+      "median": 19.8
+    },
+    "seedMix": {
+      "samples": [
+        21.8,
+        21.1,
+        20.7,
+        22
+      ],
+      "median": 21.8
+    },
+    "deltaMs": 2
+  },
+  "residuals": [
+    {
+      "name": "bands16-4it-numJ",
+      "bands": 16,
+      "feltMs": 29.3,
+      "latencyMs": 30.3,
+      "iterationsUsed": {
+        "mean": 1.68,
+        "max": 4,
+        "cap": 4,
+        "atCapShare": 0.365
+      },
+      "samples": 1454826,
+      "maxChannel": 3,
+      "meanChannel": 0.12,
+      "p95Channel": 1,
+      "overThreshold": 62,
+      "worst": {
+        "at": [
+          764,
+          753
+        ],
+        "aEff": 0.436,
+        "got": [
+          138,
+          65,
+          90
+        ],
+        "want": [
+          138,
+          62,
+          91
+        ]
+      },
+      "bins": [
+        {
+          "aEff": "0-0.01",
+          "n": 632821,
+          "max": 1,
+          "mean": 0,
+          "over": 0
+        },
+        {
+          "aEff": "0.01-0.1",
+          "n": 47724,
+          "max": 1,
+          "mean": 0.08,
+          "over": 0
+        },
+        {
+          "aEff": "0.1-0.25",
+          "n": 64274,
+          "max": 2,
+          "mean": 0.18,
+          "over": 0
+        },
+        {
+          "aEff": "0.25-0.5",
+          "n": 106478,
+          "max": 3,
+          "mean": 0.44,
+          "over": 62
+        },
+        {
+          "aEff": "0.5-0.75",
+          "n": 142234,
+          "max": 1,
+          "mean": 0.37,
+          "over": 0
+        },
+        {
+          "aEff": "0.75-0.9",
+          "n": 94476,
+          "max": 1,
+          "mean": 0.31,
+          "over": 0
+        },
+        {
+          "aEff": "0.9-0.99",
+          "n": 74711,
+          "max": 1,
+          "mean": 0.16,
+          "over": 0
+        },
+        {
+          "aEff": "0.99-0.9999",
+          "n": 125262,
+          "max": 1,
+          "mean": 0.1,
+          "over": 0
+        },
+        {
+          "aEff": "0.9999-1.0001",
+          "n": 166846,
+          "max": 0,
+          "mean": 0,
+          "over": 0
+        }
+      ]
+    },
+    {
+      "name": "bands16-4it-numJ-seedMix",
+      "bands": 16,
+      "feltMs": 33.8,
+      "latencyMs": 33.7,
+      "iterationsUsed": {
+        "mean": 1.67,
+        "max": 4,
+        "cap": 4,
+        "atCapShare": 0.359
+      },
+      "samples": 1454826,
+      "maxChannel": 1,
+      "meanChannel": 0.1,
+      "p95Channel": 1,
+      "overThreshold": 0,
+      "worst": {
+        "at": [
+          744,
+          0
+        ],
+        "aEff": 0.278,
+        "got": [
+          244,
+          225,
+          223
+        ],
+        "want": [
+          243,
+          225,
+          223
+        ]
+      },
+      "bins": [
+        {
+          "aEff": "0-0.01",
+          "n": 632821,
+          "max": 1,
+          "mean": 0,
+          "over": 0
+        },
+        {
+          "aEff": "0.01-0.1",
+          "n": 47724,
+          "max": 1,
+          "mean": 0.07,
+          "over": 0
+        },
+        {
+          "aEff": "0.1-0.25",
+          "n": 64274,
+          "max": 1,
+          "mean": 0.15,
+          "over": 0
+        },
+        {
+          "aEff": "0.25-0.5",
+          "n": 106478,
+          "max": 1,
+          "mean": 0.31,
+          "over": 0
+        },
+        {
+          "aEff": "0.5-0.75",
+          "n": 142234,
+          "max": 1,
+          "mean": 0.37,
+          "over": 0
+        },
+        {
+          "aEff": "0.75-0.9",
+          "n": 94476,
+          "max": 1,
+          "mean": 0.32,
+          "over": 0
+        },
+        {
+          "aEff": "0.9-0.99",
+          "n": 74711,
+          "max": 1,
+          "mean": 0.17,
+          "over": 0
+        },
+        {
+          "aEff": "0.99-0.9999",
+          "n": 125262,
+          "max": 1,
+          "mean": 0.07,
+          "over": 0
+        },
+        {
+          "aEff": "0.9999-1.0001",
+          "n": 166846,
+          "max": 0,
+          "mean": 0,
+          "over": 0
+        }
+      ]
+    },
+    {
+      "name": "bands8-4it-numJ",
+      "bands": 8,
+      "feltMs": 19.1,
+      "latencyMs": 19.1,
+      "iterationsUsed": {
+        "mean": 1.72,
+        "max": 4,
+        "cap": 4,
+        "atCapShare": 0.391
+      },
+      "samples": 1454826,
+      "maxChannel": 17,
+      "meanChannel": 0.35,
+      "p95Channel": 1,
+      "overThreshold": 47220,
+      "worst": {
+        "at": [
+          872,
+          336
+        ],
+        "aEff": 0.496,
+        "got": [
+          255,
+          202,
+          197
+        ],
+        "want": [
+          238,
+          202,
+          198
+        ]
+      },
+      "bins": [
+        {
+          "aEff": "0-0.01",
+          "n": 632821,
+          "max": 1,
+          "mean": 0,
+          "over": 0
+        },
+        {
+          "aEff": "0.01-0.1",
+          "n": 47724,
+          "max": 3,
+          "mean": 0.44,
+          "over": 578
+        },
+        {
+          "aEff": "0.1-0.25",
+          "n": 64274,
+          "max": 9,
+          "mean": 1.87,
+          "over": 21226
+        },
+        {
+          "aEff": "0.25-0.5",
+          "n": 106478,
+          "max": 17,
+          "mean": 2.11,
+          "over": 25416
+        },
+        {
+          "aEff": "0.5-0.75",
+          "n": 142234,
+          "max": 2,
+          "mean": 0.51,
+          "over": 0
+        },
+        {
+          "aEff": "0.75-0.9",
+          "n": 94476,
+          "max": 1,
+          "mean": 0.37,
+          "over": 0
+        },
+        {
+          "aEff": "0.9-0.99",
+          "n": 74711,
+          "max": 1,
+          "mean": 0.18,
+          "over": 0
+        },
+        {
+          "aEff": "0.99-0.9999",
+          "n": 125262,
+          "max": 1,
+          "mean": 0.11,
+          "over": 0
+        },
+        {
+          "aEff": "0.9999-1.0001",
+          "n": 166846,
+          "max": 0,
+          "mean": 0,
+          "over": 0
+        }
+      ]
+    },
+    {
+      "name": "bands8-4it-rank1",
+      "bands": 8,
+      "feltMs": 19.3,
+      "latencyMs": 19.6,
+      "iterationsUsed": {
+        "mean": 1.68,
+        "max": 4,
+        "cap": 4,
+        "atCapShare": 0.363
+      },
+      "samples": 1454826,
+      "maxChannel": 5,
+      "meanChannel": 0.19,
+      "p95Channel": 1,
+      "overThreshold": 14889,
+      "worst": {
+        "at": [
+          707,
+          751
+        ],
+        "aEff": 0.242,
+        "got": [
+          104,
+          65,
+          101
+        ],
+        "want": [
+          104,
+          60,
+          101
+        ]
+      },
+      "bins": [
+        {
+          "aEff": "0-0.01",
+          "n": 632821,
+          "max": 1,
+          "mean": 0,
+          "over": 0
+        },
+        {
+          "aEff": "0.01-0.1",
+          "n": 47724,
+          "max": 3,
+          "mean": 0.13,
+          "over": 26
+        },
+        {
+          "aEff": "0.1-0.25",
+          "n": 64274,
+          "max": 5,
+          "mean": 0.51,
+          "over": 3079
+        },
+        {
+          "aEff": "0.25-0.5",
+          "n": 106478,
+          "max": 5,
+          "mean": 0.99,
+          "over": 11784
+        },
+        {
+          "aEff": "0.5-0.75",
+          "n": 142234,
+          "max": 2,
+          "mean": 0.51,
+          "over": 0
+        },
+        {
+          "aEff": "0.75-0.9",
+          "n": 94476,
+          "max": 1,
+          "mean": 0.37,
+          "over": 0
+        },
+        {
+          "aEff": "0.9-0.99",
+          "n": 74711,
+          "max": 1,
+          "mean": 0.18,
+          "over": 0
+        },
+        {
+          "aEff": "0.99-0.9999",
+          "n": 125262,
+          "max": 1,
+          "mean": 0.12,
+          "over": 0
+        },
+        {
+          "aEff": "0.9999-1.0001",
+          "n": 166846,
+          "max": 0,
+          "mean": 0,
+          "over": 0
+        }
+      ]
+    },
+    {
+      "name": "bands8-4it-rank1-seedMix",
+      "bands": 8,
+      "feltMs": 20.9,
+      "latencyMs": 20.7,
+      "iterationsUsed": {
+        "mean": 1.69,
+        "max": 4,
+        "cap": 4,
+        "atCapShare": 0.368
+      },
+      "samples": 1454826,
+      "maxChannel": 2,
+      "meanChannel": 0.17,
+      "p95Channel": 1,
+      "overThreshold": 0,
+      "worst": {
+        "at": [
+          661,
+          751
+        ],
+        "aEff": 0.081,
+        "got": [
+          68,
+          61,
+          109
+        ],
+        "want": [
+          68,
+          59,
+          109
+        ]
+      },
+      "bins": [
+        {
+          "aEff": "0-0.01",
+          "n": 632821,
+          "max": 1,
+          "mean": 0,
+          "over": 0
+        },
+        {
+          "aEff": "0.01-0.1",
+          "n": 47724,
+          "max": 2,
+          "mean": 0.12,
+          "over": 0
+        },
+        {
+          "aEff": "0.1-0.25",
+          "n": 64274,
+          "max": 2,
+          "mean": 0.36,
+          "over": 0
+        },
+        {
+          "aEff": "0.25-0.5",
+          "n": 106478,
+          "max": 2,
+          "mean": 0.58,
+          "over": 0
+        },
+        {
+          "aEff": "0.5-0.75",
+          "n": 142234,
+          "max": 1,
+          "mean": 0.59,
+          "over": 0
+        },
+        {
+          "aEff": "0.75-0.9",
+          "n": 94476,
+          "max": 1,
+          "mean": 0.51,
+          "over": 0
+        },
+        {
+          "aEff": "0.9-0.99",
+          "n": 74711,
+          "max": 1,
+          "mean": 0.26,
+          "over": 0
+        },
+        {
+          "aEff": "0.99-0.9999",
+          "n": 125262,
+          "max": 1,
+          "mean": 0.08,
+          "over": 0
+        },
+        {
+          "aEff": "0.9999-1.0001",
+          "n": 166846,
+          "max": 0,
+          "mean": 0,
+          "over": 0
+        }
+      ]
+    },
+    {
+      "name": "bands8-4it-rank1-seedMix-coreSkip",
+      "bands": 8,
+      "feltMs": 20.6,
+      "latencyMs": 20.8,
+      "iterationsUsed": {
+        "mean": 1.69,
+        "max": 4,
+        "cap": 4,
+        "atCapShare": 0.368
+      },
+      "samples": 1454826,
+      "maxChannel": 2,
+      "meanChannel": 0.17,
+      "p95Channel": 1,
+      "overThreshold": 0,
+      "worst": {
+        "at": [
+          661,
+          751
+        ],
+        "aEff": 0.081,
+        "got": [
+          68,
+          61,
+          109
+        ],
+        "want": [
+          68,
+          59,
+          109
+        ]
+      },
+      "bins": [
+        {
+          "aEff": "0-0.01",
+          "n": 632821,
+          "max": 1,
+          "mean": 0,
+          "over": 0
+        },
+        {
+          "aEff": "0.01-0.1",
+          "n": 47724,
+          "max": 2,
+          "mean": 0.12,
+          "over": 0
+        },
+        {
+          "aEff": "0.1-0.25",
+          "n": 64274,
+          "max": 2,
+          "mean": 0.36,
+          "over": 0
+        },
+        {
+          "aEff": "0.25-0.5",
+          "n": 106478,
+          "max": 2,
+          "mean": 0.58,
+          "over": 0
+        },
+        {
+          "aEff": "0.5-0.75",
+          "n": 142234,
+          "max": 1,
+          "mean": 0.59,
+          "over": 0
+        },
+        {
+          "aEff": "0.75-0.9",
+          "n": 94476,
+          "max": 1,
+          "mean": 0.51,
+          "over": 0
+        },
+        {
+          "aEff": "0.9-0.99",
+          "n": 74711,
+          "max": 1,
+          "mean": 0.26,
+          "over": 0
+        },
+        {
+          "aEff": "0.99-0.9999",
+          "n": 125262,
+          "max": 1,
+          "mean": 0.08,
+          "over": 0
+        },
+        {
+          "aEff": "0.9999-1.0001",
+          "n": 166846,
+          "max": 0,
+          "mean": 0,
+          "over": 0
+        }
+      ]
+    },
+    {
+      "name": "bands8-3it-rank1-seedMix",
+      "bands": 8,
+      "feltMs": 15,
+      "latencyMs": 15.2,
+      "iterationsUsed": {
+        "mean": 1.32,
+        "max": 3,
+        "cap": 3,
+        "atCapShare": 0.413
+      },
+      "samples": 1454826,
+      "maxChannel": 6,
+      "meanChannel": 0.2,
+      "p95Channel": 1,
+      "overThreshold": 8060,
+      "worst": {
+        "at": [
+          685,
+          752
+        ],
+        "aEff": 0.165,
+        "got": [
+          89,
+          65,
+          104
+        ],
+        "want": [
+          90,
+          59,
+          104
+        ]
+      },
+      "bins": [
+        {
+          "aEff": "0-0.01",
+          "n": 632821,
+          "max": 1,
+          "mean": 0,
+          "over": 0
+        },
+        {
+          "aEff": "0.01-0.1",
+          "n": 47724,
+          "max": 4,
+          "mean": 0.18,
+          "over": 331
+        },
+        {
+          "aEff": "0.1-0.25",
+          "n": 64274,
+          "max": 6,
+          "mean": 0.59,
+          "over": 4618
+        },
+        {
+          "aEff": "0.25-0.5",
+          "n": 106478,
+          "max": 5,
+          "mean": 0.72,
+          "over": 3111
+        },
+        {
+          "aEff": "0.5-0.75",
+          "n": 142234,
+          "max": 2,
+          "mean": 0.61,
+          "over": 0
+        },
+        {
+          "aEff": "0.75-0.9",
+          "n": 94476,
+          "max": 1,
+          "mean": 0.51,
+          "over": 0
+        },
+        {
+          "aEff": "0.9-0.99",
+          "n": 74711,
+          "max": 1,
+          "mean": 0.25,
+          "over": 0
+        },
+        {
+          "aEff": "0.99-0.9999",
+          "n": 125262,
+          "max": 1,
+          "mean": 0.08,
+          "over": 0
+        },
+        {
+          "aEff": "0.9999-1.0001",
+          "n": 166846,
+          "max": 0,
+          "mean": 0,
+          "over": 0
+        }
+      ]
+    },
+    {
+      "name": "bands8-2it-rank1",
+      "bands": 8,
+      "feltMs": 9.6,
+      "latencyMs": 9.8,
+      "iterationsUsed": {
+        "mean": 0.91,
+        "max": 2,
+        "cap": 2,
+        "atCapShare": 0.454
+      },
+      "samples": 1454826,
+      "maxChannel": 30,
+      "meanChannel": 1.06,
+      "p95Channel": 6,
+      "overThreshold": 169928,
+      "worst": {
+        "at": [
+          776,
+          826
+        ],
+        "aEff": 0.484,
+        "got": [
+          143,
+          92,
+          103
+        ],
+        "want": [
+          143,
+          62,
+          88
+        ]
+      },
+      "bins": [
+        {
+          "aEff": "0-0.01",
+          "n": 632821,
+          "max": 2,
+          "mean": 0,
+          "over": 0
+        },
+        {
+          "aEff": "0.01-0.1",
+          "n": 47724,
+          "max": 10,
+          "mean": 0.43,
+          "over": 2379
+        },
+        {
+          "aEff": "0.1-0.25",
+          "n": 64274,
+          "max": 21,
+          "mean": 1.62,
+          "over": 9366
+        },
+        {
+          "aEff": "0.25-0.5",
+          "n": 106478,
+          "max": 30,
+          "mean": 4.53,
+          "over": 21653
+        },
+        {
+          "aEff": "0.5-0.75",
+          "n": 142234,
+          "max": 21,
+          "mean": 5.31,
+          "over": 126095
+        },
+        {
+          "aEff": "0.75-0.9",
+          "n": 94476,
+          "max": 5,
+          "mean": 1.35,
+          "over": 10400
+        },
+        {
+          "aEff": "0.9-0.99",
+          "n": 74711,
+          "max": 3,
+          "mean": 0.45,
+          "over": 35
+        },
+        {
+          "aEff": "0.99-0.9999",
+          "n": 125262,
+          "max": 1,
+          "mean": 0.12,
+          "over": 0
+        },
+        {
+          "aEff": "0.9999-1.0001",
+          "n": 166846,
+          "max": 0,
+          "mean": 0,
+          "over": 0
+        }
+      ]
+    },
+    {
+      "name": "bands8-2it-rank1-seedMix",
+      "bands": 8,
+      "feltMs": 9.4,
+      "latencyMs": 10.3,
+      "iterationsUsed": {
+        "mean": 0.91,
+        "max": 2,
+        "cap": 2,
+        "atCapShare": 0.451
+      },
+      "samples": 1454826,
+      "maxChannel": 13,
+      "meanChannel": 0.47,
+      "p95Channel": 3,
+      "overThreshold": 75463,
+      "worst": {
+        "at": [
+          715,
+          752
+        ],
+        "aEff": 0.27,
+        "got": [
+          109,
+          73,
+          100
+        ],
+        "want": [
+          112,
+          60,
+          99
+        ]
+      },
+      "bins": [
+        {
+          "aEff": "0-0.01",
+          "n": 632821,
+          "max": 2,
+          "mean": 0,
+          "over": 0
+        },
+        {
+          "aEff": "0.01-0.1",
+          "n": 47724,
+          "max": 8,
+          "mean": 0.39,
+          "over": 1955
+        },
+        {
+          "aEff": "0.1-0.25",
+          "n": 64274,
+          "max": 13,
+          "mean": 1.17,
+          "over": 8643
+        },
+        {
+          "aEff": "0.25-0.5",
+          "n": 106478,
+          "max": 13,
+          "mean": 2.22,
+          "over": 34305
+        },
+        {
+          "aEff": "0.5-0.75",
+          "n": 142234,
+          "max": 6,
+          "mean": 1.79,
+          "over": 30551
+        },
+        {
+          "aEff": "0.75-0.9",
+          "n": 94476,
+          "max": 3,
+          "mean": 0.72,
+          "over": 9
+        },
+        {
+          "aEff": "0.9-0.99",
+          "n": 74711,
+          "max": 2,
+          "mean": 0.35,
+          "over": 0
+        },
+        {
+          "aEff": "0.99-0.9999",
+          "n": 125262,
+          "max": 1,
+          "mean": 0.08,
+          "over": 0
+        },
+        {
+          "aEff": "0.9999-1.0001",
+          "n": 166846,
+          "max": 0,
+          "mean": 0,
+          "over": 0
+        }
+      ]
+    },
+    {
+      "name": "bands10-2it-rank1-seedMix",
+      "bands": 10,
+      "feltMs": 10.7,
+      "latencyMs": 10.8,
+      "iterationsUsed": {
+        "mean": 0.91,
+        "max": 2,
+        "cap": 2,
+        "atCapShare": 0.451
+      },
+      "samples": 1454826,
+      "maxChannel": 11,
+      "meanChannel": 0.43,
+      "p95Channel": 2,
+      "overThreshold": 71331,
+      "worst": {
+        "at": [
+          715,
+          752
+        ],
+        "aEff": 0.27,
+        "got": [
+          109,
+          71,
+          100
+        ],
+        "want": [
+          112,
+          60,
+          99
+        ]
+      },
+      "bins": [
+        {
+          "aEff": "0-0.01",
+          "n": 632821,
+          "max": 2,
+          "mean": 0,
+          "over": 0
+        },
+        {
+          "aEff": "0.01-0.1",
+          "n": 47724,
+          "max": 7,
+          "mean": 0.34,
+          "over": 1664
+        },
+        {
+          "aEff": "0.1-0.25",
+          "n": 64274,
+          "max": 11,
+          "mean": 0.95,
+          "over": 8030
+        },
+        {
+          "aEff": "0.25-0.5",
+          "n": 106478,
+          "max": 11,
+          "mean": 1.88,
+          "over": 33273
+        },
+        {
+          "aEff": "0.5-0.75",
+          "n": 142234,
+          "max": 4,
+          "mean": 1.73,
+          "over": 28364
+        },
+        {
+          "aEff": "0.75-0.9",
+          "n": 94476,
+          "max": 2,
+          "mean": 0.72,
+          "over": 0
+        },
+        {
+          "aEff": "0.9-0.99",
+          "n": 74711,
+          "max": 2,
+          "mean": 0.32,
+          "over": 0
+        },
+        {
+          "aEff": "0.99-0.9999",
+          "n": 125262,
+          "max": 1,
+          "mean": 0.08,
+          "over": 0
+        },
+        {
+          "aEff": "0.9999-1.0001",
+          "n": 166846,
+          "max": 0,
+          "mean": 0,
+          "over": 0
+        }
+      ]
+    },
+    {
+      "name": "bands12-2it-rank1-seedMix",
+      "bands": 12,
+      "feltMs": 12.1,
+      "latencyMs": 12,
+      "iterationsUsed": {
+        "mean": 0.91,
+        "max": 2,
+        "cap": 2,
+        "atCapShare": 0.451
+      },
+      "samples": 1454826,
+      "maxChannel": 12,
+      "meanChannel": 0.41,
+      "p95Channel": 2,
+      "overThreshold": 66672,
+      "worst": {
+        "at": [
+          703,
+          752
+        ],
+        "aEff": 0.228,
+        "got": [
+          98,
+          71,
+          102
+        ],
+        "want": [
+          101,
+          59,
+          101
+        ]
+      },
+      "bins": [
+        {
+          "aEff": "0-0.01",
+          "n": 632821,
+          "max": 1,
+          "mean": 0,
+          "over": 0
+        },
+        {
+          "aEff": "0.01-0.1",
+          "n": 47724,
+          "max": 8,
+          "mean": 0.32,
+          "over": 1609
+        },
+        {
+          "aEff": "0.1-0.25",
+          "n": 64274,
+          "max": 12,
+          "mean": 0.99,
+          "over": 8065
+        },
+        {
+          "aEff": "0.25-0.5",
+          "n": 106478,
+          "max": 12,
+          "mean": 1.75,
+          "over": 30683
+        },
+        {
+          "aEff": "0.5-0.75",
+          "n": 142234,
+          "max": 4,
+          "mean": 1.69,
+          "over": 26315
+        },
+        {
+          "aEff": "0.75-0.9",
+          "n": 94476,
+          "max": 2,
+          "mean": 0.7,
+          "over": 0
+        },
+        {
+          "aEff": "0.9-0.99",
+          "n": 74711,
+          "max": 2,
+          "mean": 0.28,
+          "over": 0
+        },
+        {
+          "aEff": "0.99-0.9999",
+          "n": 125262,
+          "max": 1,
+          "mean": 0.07,
+          "over": 0
+        },
+        {
+          "aEff": "0.9999-1.0001",
+          "n": 166846,
+          "max": 0,
+          "mean": 0,
+          "over": 0
+        }
+      ]
+    },
+    {
+      "name": "bands8-4it-rank1-seedMix#2",
+      "bands": 8,
+      "feltMs": 21,
+      "latencyMs": 20.5,
+      "iterationsUsed": {
+        "mean": 1.69,
+        "max": 4,
+        "cap": 4,
+        "atCapShare": 0.368
+      },
+      "samples": 1454826,
+      "maxChannel": 2,
+      "meanChannel": 0.17,
+      "p95Channel": 1,
+      "overThreshold": 0,
+      "worst": {
+        "at": [
+          661,
+          751
+        ],
+        "aEff": 0.081,
+        "got": [
+          68,
+          61,
+          109
+        ],
+        "want": [
+          68,
+          59,
+          109
+        ]
+      },
+      "bins": [
+        {
+          "aEff": "0-0.01",
+          "n": 632821,
+          "max": 1,
+          "mean": 0,
+          "over": 0
+        },
+        {
+          "aEff": "0.01-0.1",
+          "n": 47724,
+          "max": 2,
+          "mean": 0.12,
+          "over": 0
+        },
+        {
+          "aEff": "0.1-0.25",
+          "n": 64274,
+          "max": 2,
+          "mean": 0.36,
+          "over": 0
+        },
+        {
+          "aEff": "0.25-0.5",
+          "n": 106478,
+          "max": 2,
+          "mean": 0.58,
+          "over": 0
+        },
+        {
+          "aEff": "0.5-0.75",
+          "n": 142234,
+          "max": 1,
+          "mean": 0.59,
+          "over": 0
+        },
+        {
+          "aEff": "0.75-0.9",
+          "n": 94476,
+          "max": 1,
+          "mean": 0.51,
+          "over": 0
+        },
+        {
+          "aEff": "0.9-0.99",
+          "n": 74711,
+          "max": 1,
+          "mean": 0.26,
+          "over": 0
+        },
+        {
+          "aEff": "0.99-0.9999",
+          "n": 125262,
+          "max": 1,
+          "mean": 0.08,
+          "over": 0
+        },
+        {
+          "aEff": "0.9999-1.0001",
+          "n": 166846,
+          "max": 0,
+          "mean": 0,
+          "over": 0
+        }
+      ]
+    }
+  ],
+  "sizeLadder": {
+    "r1": {
+      "min": 0.7,
+      "median": 0.8,
+      "p95": 3.4,
+      "max": 3.4,
+      "rounds": 8
+    },
+    "r512": {
+      "min": 0.7,
+      "median": 0.8,
+      "p95": 1,
+      "max": 1,
+      "rounds": 8
+    },
+    "r1024": {
+      "min": 9.7,
+      "median": 10.9,
+      "p95": 16.2,
+      "max": 16.2,
+      "rounds": 8
+    },
+    "full": {
+      "min": 20,
+      "median": 21,
+      "p95": 25.8,
+      "max": 25.8,
+      "rounds": 8
+    }
+  },
+  "verdict": {
+    "q3cPass": false,
+    "immediateBarMs": 20,
+    "residualBar": {
+      "maxChannel": 2,
+      "p95Channel": 1
+    },
+    "hardStopMs": 25,
+    "hardStop": false,
+    "combinedVariant": {
+      "bands8_2it_rank1": {
+        "feltMs": 9.6,
+        "maxChannel": 30,
+        "p95Channel": 6
+      },
+      "bands8_2it_rank1_seedMix": {
+        "feltMs": 9.4,
+        "maxChannel": 13,
+        "p95Channel": 3
+      }
+    },
+    "bestCandidate": "bands8-4it-rank1-seedMix-coreSkip",
+    "bestFeltMs": 20.6,
+    "bestMaxChannel": 2,
+    "bestP95Channel": 1,
+    "q4Pass": null
+  },
+  "q4": null
+}

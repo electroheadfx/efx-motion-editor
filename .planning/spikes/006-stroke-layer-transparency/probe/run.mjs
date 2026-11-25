@@ -28,14 +28,17 @@ const readFlag = (name, fallback) => {
 }
 
 const scenario = readFlag('scenario', 'composite')
-const size = Number(readFlag('size', scenario === 'q3b' ? 2048 : 540))
+const size = Number(readFlag('size', scenario === 'q3b' || scenario === 'q3c' ? 2048 : 540))
 const start = Number(readFlag('start', 0.30))
 const amount = Number(readFlag('amount', 100))
 const stride = Number(readFlag('stride', 2))
 const fitSamples = Number(readFlag('fitSamples', 420))
 const seed = Number(readFlag('seed', 0xc0ffee))
 const falloff = Number(readFlag('falloff', 50))
-const entry = scenario === 'cost' ? 'cost.ts' : scenario === 'q3b' ? 'q3b.ts' : 'probe.ts'
+const entry = scenario === 'cost' ? 'cost.ts'
+  : scenario === 'q3b' ? 'q3b.ts'
+    : scenario === 'q3c' ? 'q3c.ts'
+      : 'probe.ts'
 const gate = readFlag('gate', `${scenario}-${size}-s${start}-a${amount}`)
 
 const pageQuery =
@@ -214,6 +217,54 @@ if (scenario === "q3b") {
     console.log(`     amount 0     : reference ${q.amountZeroBypass.referenceDigest} repeat ${q.amountZeroBypass.repeatDigest} — deterministic ${q.amountZeroBypass.deterministic}`)
     console.log(`     capture      : digest ${q.captureParity.digestEqual ? "equal" : "DIFFERS"}, render vs restored max ${q.captureParity.renderVsRestoredMaxChannel}/255`)
     console.log(`     bake replay  : ${q.bakeReplay.pass ? "equal" : "DIFFERS"} (stroke max ${q.bakeReplay.sameStrokeMax})`)
+  }
+} else if (scenario === "q3c") {
+  const r = result
+  const lat = (l) => `${fmt(l.median)} ms (min ${fmt(l.min)} / p95 ${fmt(l.p95)} / max ${fmt(l.max)}, n ${l.rounds})`
+  console.log(`  renderer      : ${r.renderer}`)
+  console.log(`  sheet         : requested ${r.sheet.requested}, allocated ${r.sheet.actual} (${r.sheet.pixels} texels)${r.sheet.actual !== r.sheet.requested ? "  <-- CLAMPED" : ""}`)
+  console.log(`  stroke rect   : ${JSON.stringify(r.geometry.strokeRect)} = ${r.geometry.strokePixels} texels`)
+  console.log(`  bars          : first-dab felt <= ${r.threshold.immediateStartMs} ms, residual max <= ${r.threshold.residualMaxChannel}/255 p95 <= ${r.threshold.residualP95Channel}/255, hard stop > ${r.threshold.hardStopMs} ms`)
+  console.log("")
+  const s = r.selection
+  console.log(`  bands chosen  : ${s.chosen.name} [${s.chosen.indices.join(",")}] λ ${s.chosenWavelengths.join(",")}  logdet ${s.chosen.logDet}`)
+  for (const a of s.alternatives) console.log(`    alternative : ${a.name} [${a.indices.join(",")}]  logdet ${a.logDet}`)
+  console.log(`    n=10        : ${s.n10.name} [${s.n10.indices.join(",")}]  logdet ${s.n10.logDet}`)
+  console.log(`    n=12        : ${s.n12.name} [${s.n12.indices.join(",")}]  logdet ${s.n12.logDet}`)
+  console.log("")
+  console.log(`  fence floor   : ${fmt(r.fenceFloorMs)} ms`)
+  console.log("  candidate                   bands  latency ms   felt imm  felt +50  felt +200")
+  for (const t of r.timing) {
+    console.log(`  ${t.name.padEnd(27)} ${String(t.bands).padStart(5)}  ${pad(fmt(t.latency.median), 10)}  ${pad(fmt(t.feltMs.immediate), 8)}  ${pad(fmt(t.feltMs.after50), 9)}  ${pad(fmt(t.feltMs.after200), 9)}`)
+  }
+  console.log(`  interleaved A/B (4x, same process): rank1 ${fmt(r.abab.plain.median)} ms, +seedMix ${fmt(r.abab.seedMix.median)} ms, delta ${fmt(r.abab.deltaMs)} ms`)
+  console.log("")
+  console.log("  residual (re-rendered through ALL 16 bands)        max  mean  p95      over   iterations mean/max/cap@share")
+  for (const c of r.residuals) {
+    const mark = c.name === r.verdict.bestCandidate ? " <-- reported" : ""
+    console.log(`  ${c.name.padEnd(27)} felt ${pad(fmt(c.feltMs), 6)}  ${String(c.maxChannel).padStart(3)}  ${fmt(c.meanChannel).padStart(5)}  ${String(c.p95Channel).padStart(3)}  ${String(c.overThreshold).padStart(8)}   ${c.iterationsUsed.mean}/${c.iterationsUsed.max} @${(c.iterationsUsed.atCapShare * 100).toFixed(0)}%${mark}`)
+  }
+  const rb = r.residuals.find((c) => c.name === r.verdict.bestCandidate)
+  if (rb && rb.bins) {
+    for (const b of rb.bins) {
+      console.log(`     aEff ${b.aEff.padEnd(11)} n ${String(b.n).padStart(8)}  max ${String(b.max).padStart(3)}  mean ${fmt(b.mean).padStart(5)}  over ${b.over}`)
+    }
+  }
+  const lad = r.sizeLadder
+  console.log(`  size ladder   : 1x1 ${fmt(lad.r1.median)} ms, 512² ${fmt(lad.r512.median)} ms, 1024² ${fmt(lad.r1024.median)} ms, full ${fmt(lad.full.median)} ms`)
+  console.log("")
+  const v = r.verdict
+  console.log(`  VERDICT       : Q3c ${v.q3cPass ? "PASS" : "FAIL"} — best ${v.bestCandidate} at ${fmt(v.bestFeltMs)} ms felt, residual max ${v.bestMaxChannel} p95 ${v.bestP95Channel}`)
+  console.log(`                  combined 8b/2it/rank1 ${fmt(v.combinedVariant.bands8_2it_rank1.feltMs)} ms (max ${v.combinedVariant.bands8_2it_rank1.maxChannel}), +seedMix ${fmt(v.combinedVariant.bands8_2it_rank1_seedMix.feltMs)} ms (max ${v.combinedVariant.bands8_2it_rank1_seedMix.maxChannel}) — hard stop ${v.hardStop ? "TRIPPED" : "not tripped"}`)
+  console.log(`                  Q4 ${v.q4Pass === null ? "(not run)" : v.q4Pass ? "PASS" : "FAIL"}`)
+  if (r.q4) {
+    const q = r.q4
+    console.log(`     Q4 encoder      : ${q.encoder}`)
+    console.log(`     live vs merged  : max ${q.liveVsMerged.maxChannel}/255, mean ${q.liveVsMerged.meanChannel}, p95 ${q.liveVsMerged.p95Channel}, ${q.liveVsMerged.overThreshold} over ${q.liveVsMerged.bar} (${q.liveVsMerged.coveredTexels} covered texels)`)
+    console.log(`     betweenness     : ${q.betweenness.outside} of ${q.betweenness.samples} band texels outside the interval`)
+    console.log(`     amount 0        : reference ${q.amountZeroBypass.referenceDigest} repeat ${q.amountZeroBypass.repeatDigest} — deterministic ${q.amountZeroBypass.deterministic}`)
+    console.log(`     capture         : digest ${q.captureParity.digestEqual ? "equal" : "DIFFERS"}, render vs restored max ${q.captureParity.renderVsRestoredMaxChannel}/255`)
+    console.log(`     bake replay     : ${q.bakeReplay.pass ? "equal" : "DIFFERS"} (stroke max ${q.bakeReplay.sameStrokeMax})`)
   }
 } else if (scenario === "cost") {
   const r = result

@@ -34,15 +34,25 @@ const EPS = SCATTER_EPSILON
 
 const f = (v: number) => (Number.isInteger(v) ? v.toFixed(1) : v.toPrecision(7))
 
-export function bandConsts(): string {
+/** The full display band list, in display order. */
+export const ALL_BANDS = Array.from({ length: BANDS }, (_, i) => i)
+
+/**
+ * The band constants, for the FIT's band list. The fit is compiled against a
+ * REDUCED list (Q3c): every array in the shader (tgt, r0, J, the normal
+ * equations) then shrinks with it, which is the point — a uniform mask would
+ * leave the arrays at 16 and only skip work.
+ */
+export function bandConsts(bandList: readonly number[] = ALL_BANDS): string {
   const b4: string[] = []
   const b3: string[] = []
-  for (const band of DISPLAY_BANDS) {
+  for (const i of bandList) {
+    const band = DISPLAY_BANDS[i]!
     b4.push(`vec4(${BASIS.slice(0, 4).map((k) => f(k[band]!)).join(',')})`)
     b3.push(`vec3(${BASIS.slice(4, 7).map((k) => f(k[band]!)).join(',')})`)
   }
   return [
-    `const int BANDS = ${BANDS};`,
+    `const int BANDS = ${bandList.length};`,
     `const float SCATTER_EPS = ${f(EPS)};`,
     `const vec4 B4[BANDS] = vec4[BANDS](${b4.join(',')});`,
     `const vec3 B3[BANDS] = vec3[BANDS](${b3.join(',')});`,
@@ -81,10 +91,22 @@ export interface MergeOptions {
   /**
    * Assemble the Jacobian from TWO directional derivatives instead of eight
    * perturbed evaluations. `bandOf` depends on the 7 coefficients only through
-   * the scalar A = dot(a,B4)+dot(b,B3), so the 8x16 Jacobian is rank-1 in that
+   * the scalar A = dot(a,B4)+dot(b,B3), so the 8xN Jacobian is rank-1 in that
    * direction and the eight columns are the same derivative times the basis.
    */
   rankOneJ?: boolean
+  /**
+   * The display bands the FIT runs against (indices into DISPLAY_BANDS, NOT
+   * wavelengths). Default: all 16. A reduced list re-renders through all 16 on
+   * readback — the acceptance check is unchanged.
+   */
+  bandList?: readonly number[]
+  /**
+   * Seed from mix(base, layer, aEff) in coefficient space. The default picks
+   * the nearer input, which leaves a kink at aEff 0.5 (where Q3b's outliers
+   * lived).
+   */
+  seedMix?: boolean
 }
 
 export function mergeFragmentShader(opts: MergeOptions): string {
@@ -95,13 +117,19 @@ precision highp int;
 uniform sampler2D uBaseA, uBaseB, uLayerA, uLayerB, uCover, uLateral, uSeedA, uSeedB;
 uniform vec2 uOutSize;
 uniform float uAmount, uStart, uFalloff;
-uniform int uMaxIter, uSeedOn, uCoreSkip, uDebug, uRankOneJ;
+uniform int uMaxIter, uSeedOn, uCoreSkip, uDebug;
+
+// Design constants, folded at compile time. A uniform would keep BOTH paths
+// live and cost ~1.4 ms of register pressure (measured: the seed mix was
+// +1.4 ms at 4 iterations while doing the same number of LM steps).
+const bool RANK_ONE_J = ${opts.rankOneJ ? 'true' : 'false'};
+const bool SEED_MIX = ${opts.seedMix ? 'true' : 'false'};
 
 layout(location=0) out vec4 oA;
 layout(location=1) out vec4 oB;
 layout(location=2) out vec4 oIter;
 
-${bandConsts()}
+${bandConsts(opts.bandList)}
 ${BAND_FN}
 
 // GLSL ES 3.00 has no arrays of arrays: the 8x9 augmented system is FLAT,
@@ -179,6 +207,11 @@ void main(){
     vec4 sA = texture(uSeedA, uv);
     vec4 sB = texture(uSeedB, uv);
     seedA = sA; seedB = sB.rgb; seedS = sB.a;
+  } else if (SEED_MIX){
+    // continuous seed: the nearer input at the ends, the average in between
+    seedA = mix(baseA, layerA, aEff);
+    seedB = mix(baseB.rgb, layerB.rgb, aEff);
+    seedS = mix(baseB.a, layerB.a, aEff);
   } else if (aEff < 0.5){
     seedA = baseA; seedB = baseB.rgb; seedS = baseB.a;
   }
@@ -207,7 +240,7 @@ void main(){
     for (int i = 0; i < BANDS; i++) r0[i] = bandOf(ca, cb, cs, i) - tgt[i];
 
     float J[BANDS * 8];
-    if (uRankOneJ == 1){
+    if (RANK_ONE_J){
       // bandOf depends on the 7 coefficients ONLY through A_i = dot(a,B4_i)+dot(b,B3_i),
       // so one perturbed evaluation in A and one in s give all eight columns:
       //   d band_i / d a_k = (d band_i / dA_i) * B4_i[k]
@@ -326,8 +359,8 @@ export class MergePass {
   private readonly gl: GL
   private readonly w: number
   private readonly h: number
-  private readonly opts: MergeOptions
-  private readonly program: ReturnType<GL['program']>
+  private opts: MergeOptions
+  private program: ReturnType<GL['program']>
   private readonly out: Target
   private readonly seedTargets: { a: Target; b: Target } | null
   private inputs: Record<string, WebGLTexture> = {}
@@ -337,24 +370,46 @@ export class MergePass {
   falloff = 0.5
   /** LM step cap — mutable so one pass can serve both budget measurements. */
   iterations: number
-  /** Two-evaluation Jacobian (see MergeOptions.rankOneJ). */
-  rankOneJ: boolean
 
-  constructor(gl: GL, w: number, h: number, opts: MergeOptions, outScale = 1, outFilter?: number) {
+  /**
+   * The two DESIGN constants are compiled INTO the shader (a uniform keeps both
+   * paths live: the seed mix measured +1.4 ms at 4 iterations while doing the
+   * same number of LM steps). Flipping one recompiles; a probe flips at most a
+   * handful of times.
+   */
+  private _rankOneJ: boolean
+  private _seedMix: boolean
+  get rankOneJ(): boolean { return this._rankOneJ }
+  set rankOneJ(v: boolean) { if (v !== this._rankOneJ) { this._rankOneJ = v; this.recompile() } }
+  get seedMix(): boolean { return this._seedMix }
+  set seedMix(v: boolean) { if (v !== this._seedMix) { this._seedMix = v; this.recompile() } }
+
+  private recompile(): void {
+    this.opts = { ...this.opts, rankOneJ: this._rankOneJ, seedMix: this._seedMix }
+    this.program = this.gl.program(mergeFragmentShader(this.opts))
+  }
+
+  constructor(gl: GL, w: number, h: number, opts: MergeOptions, outScale = 1, outFilter?: number, shareOut?: Target) {
     this.gl = gl
     this.w = w
     this.h = h
     this.opts = opts
     this.iterations = opts.iterations
-    this.rankOneJ = opts.rankOneJ ?? false
+    this._rankOneJ = opts.rankOneJ ?? false
+    this._seedMix = opts.seedMix ?? false
     this.outW = Math.max(1, Math.round(w / outScale))
     this.outH = Math.max(1, Math.round(h / outScale))
     this.program = gl.program(mergeFragmentShader(opts))
-    this.out = gl.target(this.outW, this.outH, [RGBA16F, RGBA16F, R16F], outFilter ?? gl.gl.NEAREST)
+    // A shared target lets several band-list specialisations be timed against
+    // the same 84 MB output instead of allocating one each.
+    this.out = shareOut ?? gl.target(this.outW, this.outH, [RGBA16F, RGBA16F, R16F], outFilter ?? gl.gl.NEAREST)
+    this.ownsOut = !shareOut
     this.seedTargets = opts.seeded
       ? { a: gl.target(w, h, [RGBA16F], gl.gl.LINEAR), b: gl.target(w, h, [RGBA16F], gl.gl.LINEAR) }
       : null
   }
+
+  private readonly ownsOut: boolean
 
   upload(inputs: MergeInputs): void {
     const { gl } = this
@@ -400,7 +455,6 @@ export class MergePass {
     raw.uniform1i(p.u.uCoreSkip!, this.opts.coreSkip ? 1 : 0)
     raw.uniform1i(p.u.uSeedOn!, this.opts.seeded ? 1 : 0)
     raw.uniform1i(p.u.uDebug!, 0)
-    raw.uniform1i(p.u.uRankOneJ!, this.rankOneJ ? 1 : 0)
     raw.uniform1i(p.u.uBaseA!, g.bindTex(0, this.inputs.baseA!))
     raw.uniform1i(p.u.uBaseB!, g.bindTex(1, this.inputs.baseB!))
     raw.uniform1i(p.u.uLayerA!, g.bindTex(2, this.inputs.layerA!))
@@ -533,10 +587,12 @@ void main(){ oA = vec4(0.25, 0.5, 0.75, 1.0); oB = vec4(2.0, 3.0, 4.0, 5.0); }`
   /** The output textures themselves (a downscaled pass feeds them to the resolve). */
   get outTexA(): WebGLTexture { return this.out.tex[0]! }
   get outTexB(): WebGLTexture { return this.out.tex[1]! }
+  /** The whole target, so another pass can share it instead of allocating 84 MB. */
+  get outTarget(): Target { return this.out }
 
   dispose(): void {
     const g = this.gl
-    g.disposeTarget(this.out)
+    if (this.ownsOut) g.disposeTarget(this.out)
     if (this.seedTargets) { g.disposeTarget(this.seedTargets.a); g.disposeTarget(this.seedTargets.b) }
     if (this.ownsInputs) for (const tex of Object.values(this.inputs)) g.gl.deleteTexture(tex)
   }
@@ -591,7 +647,7 @@ export class ResolvePass {
   private readonly gl: GL
   private readonly w: number
   private readonly h: number
-  private readonly program: ReturnType<GL['program']>
+  private program: ReturnType<GL['program']>
   private inputs: Record<string, WebGLTexture> = {}
   private readonly fenceBuf = new Float32Array(4)
   private up: { a: WebGLTexture; b: WebGLTexture } | null = null
@@ -713,7 +769,7 @@ export class DisplayCostPass {
   private readonly gl: GL
   private readonly w: number
   private readonly h: number
-  private readonly program: ReturnType<GL['program']>
+  private program: ReturnType<GL['program']>
   private inputs: Record<string, WebGLTexture> = {}
   private readonly fenceBuf = new Float32Array(4)
 

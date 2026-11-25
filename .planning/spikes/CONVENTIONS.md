@@ -74,6 +74,42 @@ reads as current code.
   those recorded arguments, with the GLSL twin transcribed (e.g. `noise1`/`hash21`), and
   pin bristle indices across builds (`--centre/--rim`) — a field-dependent pick can
   otherwise select different bristles per build.
+- **Measure a serialized path as ONE draw after an idle GPU — and run a size ladder.** A
+  throughput loop (N queued draws ÷ N) hides latency behind pipeline overlap and cannot
+  tell a per-draw floor from fragment work; a 1×1 / 512² / 1024² / full ladder can
+  (spike 006 Q3b: 0.5 / 0.6 / 17.5 / 31.9 ms — the cost was the stroke's band texels, not
+  the draw). When the gate is "what the artist feels", submit the operation,
+  `gl.flush()`, wait the artist's pause, then fence: that is the only sequence that
+  answers it, and the derived `work − pause` should agree with the measurement.
+- **Reduce the equations, not the parameters — and judge through all of them.** A per-texel
+  solve with N unknowns needs N well-conditioned equations, not every band the display
+  samples. Spike 006 Q3c: fitting the 8 D-optimal bands (maximising the weighted `log det`
+  of the sensitivity Gram over all 12,870 subsets) and **re-rendering through all 16** met
+  the acceptance bar exactly (max 2/255, p95 ≤ 1, 0 texels over of 1.45 M) and halved the
+  merge cost (30.3 → 19.1 ms). The fit's band list must never enter the acceptance check;
+  pick it on a property of the display basis (state-independent, reproducible), not on the
+  scene.
+- **Compile design constants into the shader; keep uniforms for scene parameters.** A
+  reduced band LIST only shrinks the arrays (`tgt`, `r0`, `J`, the normal equations) when
+  it is a compile-time constant — a uniform mask skips work but leaves the state at 16.
+  Spike 006 Q3c also measured the converse: the seed law as a `uniform bool` cost
+  +1.6–2.0 ms and exactly the same as a `const`, so that one was algorithmic (rejected LM
+  attempts), not codegen. Measure before attributing a delta to either.
+- **The GPU pays for the slowest lane, not the mean.** Iteration counts read back from the
+  merge showed a mean of 1.7 accepted steps, yet the pass cost what 4 iterations cost:
+  within a wavefront every lane runs until the last one stops. Budget
+  `iterations × rect`, never `mean(iterations) × rect`.
+- **When the gate is inside the run-to-run drift, interleave the contenders.** A ~1 ms bar
+  against ±10 % drift cannot be resolved by a table of sequentially measured candidates
+  (spike 006 Q3c: the same shader read 21.0 ms mid-run and 23.6 ms at the end of one run,
+  20.5–21.0 in another). Alternate A and B in one process, 3–4 rounds each, and compare the
+  medians — a linear drift then applies to both.
+- **Do not decimate a per-texel solve of a nonlinear law over textured inputs.** A
+  half-resolution fit plus an upsample is only valid if the fitted quantity is smooth in
+  the *output* space. Spike 006 Q3b: the band's target is a pointwise mix of two
+  full-resolution textured states, so a half-res fit was 11.9 ms and **216/255** wrong
+  while the exact-copy branches (core and outside) were provably perfect — a cheap
+  variant that fails the law, not the code.
 - **Earn a CPU mirror of a shader law; then use it.** When a measurement needs the display
   law over hundreds of thousands of states, a CPU mirror is the only affordable route —
   but it is evidence only after a **mirror gate**: upload a grid of independent random
