@@ -1,4 +1,4 @@
-import { displayBasisGLSL, strokeLayerBandsGLSL } from './spectral';
+import { displayBasisFnGLSL, displayBasisGLSL, strokeLayerBandsGLSL } from './spectral';
 
 // Texture layout
 //   velocity  RG16F  (sim grid)       water flow, in sim texels / second
@@ -2212,8 +2212,86 @@ void main(){
  * shade is 1.0 at any intensity (D-09: never a flat multiply). uFlat gates the
  * lit delta only, so a region pick reads the unshaded sheet. The light angles
  * arrive in radians; only Engine.drawDisplay converts degrees.
+ *
+ * TWO VARIANTS, ONE SOURCE (261125-kvl, SPIKE 006). `displayFS` is the shipped
+ * compositor — every export and the entire amount-0 path — and stays
+ * byte-identical to the pre-change source. `displayLayerFS` is the LIVE
+ * variant drawn only while an Edge stroke's layer is open: it adds the layer's
+ * five samplers and shows the frozen band mix the stroke-end merge will
+ * commit. The layer text is injected as empty strings into the shipped
+ * variant, so the two can never drift structurally.
  */
-export const displayFS = `${HEADER}
+function displaySource(layer: boolean): string {
+  // The layer-only samplers/uniforms. Column-aligned to the shared block.
+  const layerUniforms = layer
+    ? `
+uniform sampler2D uLayerA, uLayerB;   // the open stroke's ink pair (absorbs, rgb+S)
+uniform sampler2D uLayerCover;        // layerFilm attachment 0: cover_L
+uniform sampler2D uLayerLateral;      // layerFilm attachment 1: the MIN lateral field
+uniform sampler2D uLayerRelief;       // the open stroke's thickness
+uniform float uEdgeFade, uEdgeStart, uEdgeFalloff; // the frozen lateral law`
+    : '';
+  // The band reconstruction as a function — emitted only by the layer variant
+  // (the shipped variant's single inline block stays exactly as shipped).
+  const layerBasis = layer ? `\n${displayBasisFnGLSL()}` : '';
+  // The live layer block, inserted after the sheet's own reconstruction.
+  const layerMix = layer
+    ? `
+  // THE LIVE STROKE LAYER (261125-kvl, SPIKE 006). While an Edge stroke is
+  // open its dabs live in layerInk / layerFilm / layerRelief instead of the
+  // sheet, and this block shows the composite the stroke-end merge will
+  // commit: the frozen per-band law band_out = aEff·band_L + (1−aEff)·band_S
+  // on the SAME display-domain states (the 5-tap film soften, then k). The
+  // band→rgb map is linear (rgb += band_i·w_i with shared weights), so mixing
+  // the two reconstructions below IS the exact per-band mix — an identity,
+  // not an approximation. The film soften is a spatial pre-filter that cannot
+  // be inverted pointwise: after the merge the display applies it once more
+  // on the stored field, and that settle is measured (probe edgePolishDelta),
+  // never hidden. The merge's other two committed fields are lit here the
+  // same way: relief_out = relief_S + aEff·relief_L, and the underlay's
+  // cover = 1 − (1 − cover_S)(1 − aEff).
+  float layerAeff = 0.0;
+  {
+    float layerCover = clamp(texture(uLayerCover, uv).x, 0.0, 1.0);
+    if (layerCover > 1e-4){
+      vec4 layerInk = texture(uLayerA, uv);
+      vec4 layerB4 = texture(uLayerB, uv);
+      vec3 layerBands = layerB4.rgb;
+      float layerScatter = layerB4.a;
+      if (uFilmBlur > 0.0){
+        vec2 dx = vec2(uTexel.x, 0.0), dy = vec2(0.0, uTexel.y);
+        layerInk = mix(layerInk, (layerInk + texture(uLayerA, uv - dx) + texture(uLayerA, uv + dx)
+          + texture(uLayerA, uv - dy) + texture(uLayerA, uv + dy)) * 0.2, uFilmBlur);
+        vec4 lb1 = texture(uLayerB, uv - dx), lb2 = texture(uLayerB, uv + dx);
+        vec4 lb3 = texture(uLayerB, uv - dy), lb4 = texture(uLayerB, uv + dy);
+        layerBands = mix(layerBands, (layerBands + lb1.rgb + lb2.rgb + lb3.rgb + lb4.rgb) * 0.2, uFilmBlur);
+        layerScatter = mix(layerScatter, (layerScatter + lb1.a + lb2.a + lb3.a + lb4.a) * 0.2, uFilmBlur);
+      }
+      layerInk *= k;
+      layerBands *= k;
+      layerScatter *= k;
+      float layerU = clamp(texture(uLayerLateral, uv).x, 0.0, 1.0);
+      float layerT = clamp((layerU - uEdgeStart) / max(1.0 - uEdgeStart, 1e-4), 0.0, 1.0);
+      float layerE = exp2(2.0 * uEdgeFalloff - 1.0);
+      layerAeff = clamp((1.0 - uEdgeFade * pow(layerT, layerE)) * layerCover, 0.0, 1.0);
+      rgb = mix(rgb, displayBasisBands(layerInk, layerBands, layerScatter), layerAeff);
+    }
+  }`
+    : '';
+  // The relief taps: the layer variant lights the union thickness the merge
+  // commits (relief_S + aEff·relief_L). aEff is the fragment's own weight —
+  // the union field is a one-texel gradient, and the within-texel change at
+  // the rim is a lighting term, never part of the band law.
+  const reliefAt = (uv: string) =>
+    layer
+      ? `texture(uRelief, ${uv}).x + layerAeff * texture(uLayerRelief, ${uv}).x`
+      : `texture(uRelief, ${uv}).x`;
+  // The underlay's attenuation reads the committed coverage UNIONED with the
+  // live layer's own cover (the merge's pass-2 law).
+  const coverRead = layer
+    ? 'clamp(1.0 - (1.0 - texture(uCover, uv).x) * (1.0 - layerAeff), 0.0, 1.0)'
+    : 'clamp(texture(uCover, uv).x, 0.0, 1.0)';
+  return `${HEADER}
 out vec4 o;
 uniform sampler2D uInkA, uInkB, uFixedA, uFixedB, uWet, uPaper;
 uniform sampler2D uRelief; // Phase 64: paint thickness field (one channel)
@@ -2236,7 +2314,7 @@ uniform vec4 uRefRect;    // its placement in document uv: xy origin, zw size
 uniform float uRefOpacity;
 uniform float uShadow;    // screen only: size of the sheet's shadow on the desk (canvas px), 0 for exports
 uniform float uDpr;
-uniform float uLightAzimuth, uLightElevation, uLightIntensity, uReliefBump; // Phase 64: radians, radians, 0..4, fixed bump
+uniform float uLightAzimuth, uLightElevation, uLightIntensity, uReliefBump; // Phase 64: radians, radians, 0..4, fixed bump${layerUniforms}
 const float EMBOSS_GAIN = 2.3;
 const float EMBOSS_SHADE_MAX = 1.5;
 ${PAPER_COLOUR}
@@ -2269,7 +2347,7 @@ vec3 desk(vec2 p){
   vec3 lin = pow(uDesk, vec3(2.2)) * (1.0 - 0.45 * contact) * (1.0 - 0.32 * ambient);
   return toSRGB(lin);
 }
-
+${layerBasis}
 void main(){
   vec2 uv = (gl_FragCoord.xy - uView.xy) / uView.zw;
   if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0){
@@ -2313,7 +2391,7 @@ void main(){
 
   vec3 rgb = vec3(0.0);
   float tr;
-${displayBasisGLSL()}
+${displayBasisGLSL()}${layerMix}
 
   // Phase 64 (MED-15): light the paint thickness field. One document texel of
   // central difference — the same law paperLightFS uses — so the gradient is
@@ -2323,10 +2401,10 @@ ${displayBasisGLSL()}
   // gradient term, never a flat multiply.
   float shade = 1.0;
   {
-    float c = texture(uRelief, uv).x;
+    float c = ${reliefAt('uv')};
     if (c > 0.0){
-      float l = texture(uRelief, uv - vec2(uTexel.x, 0.0)).x, r = texture(uRelief, uv + vec2(uTexel.x, 0.0)).x;
-      float b = texture(uRelief, uv - vec2(0.0, uTexel.y)).x, t = texture(uRelief, uv + vec2(0.0, uTexel.y)).x;
+      float l = ${reliefAt('uv - vec2(uTexel.x, 0.0)')}, r = ${reliefAt('uv + vec2(uTexel.x, 0.0)')};
+      float b = ${reliefAt('uv - vec2(0.0, uTexel.y)')}, t = ${reliefAt('uv + vec2(0.0, uTexel.y)')};
       vec3 n = normalize(vec3((l - r) * uReliefBump, (b - t) * uReliefBump, 1.0));
       vec3 L = normalize(vec3(
         cos(uLightElevation) * cos(uLightAzimuth),
@@ -2383,7 +2461,7 @@ ${displayBasisGLSL()}
     if (uUnderlayOn > 0.5){
       vec3 tNew = fromSRGB(lit);
       vec3 tBase = fromSRGB(texture(uUnderlay, uv).rgb);
-      float cov = clamp(texture(uCover, uv).x, 0.0, 1.0);
+      float cov = ${coverRead};
       vec3 all = min(toSRGB(tNew * pow(tBase, vec3(1.0 - cov))), vec3(1.0));
       float m = min(min(all.r, all.g), all.b);
       float ua = clamp(1.0 - m, 0.0, 1.0);
@@ -2436,3 +2514,19 @@ ${displayBasisGLSL()}
 
   o = vec4(toSRGB(col), 1.0);
 }`;
+}
+
+/**
+ * The shipped compositor — every export, the amount-0 path and every draw
+ * whose target is a texture. Byte-identical to the pre-change source: the
+ * layer-only insertions above all emit the empty string.
+ */
+export const displayFS = displaySource(false);
+
+/**
+ * The LIVE compositor while an Edge stroke's layer is open (bound by
+ * Engine.drawDisplay only when the render target is null AND `layerOpen` is
+ * true). Shows the frozen band mix the stroke-end merge will commit; never
+ * bound by an export.
+ */
+export const displayLayerFS = displaySource(true);

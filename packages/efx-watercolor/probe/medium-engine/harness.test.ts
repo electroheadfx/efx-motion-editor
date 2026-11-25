@@ -2138,6 +2138,12 @@ describe('the edge-layer gate (Spec 10)', () => {
       edgeEncodeMax: layer ? 2 : null,
       edgeEncodeP95: layer ? 1 : null,
       edgeEncodeOver: layer ? 0 : null,
+      // edgePolishDelta is REPORTED, never barred (UAT row 6 judges the
+      // settle); the fixture carries real readings so the required-by-name
+      // check passes and a test can still move one to prove the report.
+      edgePolishMax: layer ? 2 : null,
+      edgePolishP95: layer ? 1 : null,
+      edgePolishOver: layer ? 0 : null,
       linearHalfOnWhite: layer ? 0.08 : null,
       layerAllocated: layer,
       mergeDraws: layer ? 1 : 0,

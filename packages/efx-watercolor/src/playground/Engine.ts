@@ -799,6 +799,10 @@ export class WatercolorEngine {
     this.programs.strokeLayerMerge = this.g.program(S.strokeLayerMergeFS);
     this.programs.strokeLayerCover = this.g.program(S.strokeLayerCoverFS);
     this.programs.strokeLayerRelief = this.g.program(S.strokeLayerReliefFS);
+    // The LIVE compositor variant, same rule (twenty-three stays). Bound by
+    // drawDisplay only while a stroke's layer is open; every export binds the
+    // shipped `display` program.
+    this.programs.displayLayer = this.g.program(S.displayLayerFS);
     this.fitCanvas();
     this.createDocument(size ?? this.screenSize);
     this.attachInput();
@@ -1142,7 +1146,8 @@ export class WatercolorEngine {
     gl.uniform1f(m.u.uGranulation!, this.params.granulation * 0.55);
     // The SAME polish displayFS applies: T is a display-domain band value
     // (`band(mix(blur(S), blur(L), aEff))`), so the merge must read the film
-    // the compositor renders, not the raw store.
+    // the compositor renders, not the raw store. The raw-state fallback was
+    // measured (Task 4) and did not shrink edgePolishDelta — see the SUMMARY.
     gl.uniform1f(m.u.uFilmBlur!, this.bristleContent ? BRISTLE_FILM_BLUR : 0);
     gl.uniform1i(m.u.uMaxIter!, 4);
     this.bindLayerAlpha(m);
@@ -4620,7 +4625,13 @@ export class WatercolorEngine {
 
   private drawDisplay(target: Target | null, view: { x: number; y: number; w: number; h: number }, scissor: Rect | null, flat = false, mode: number = MODE.screen, texture = true) {
     const { gl, g } = this;
-    const p = this.programs.display;
+    // 261125-kvl (SPIKE 006): while an Edge stroke's layer is OPEN the live
+    // compositor shows the layer's band mix (displayLayerFS). `target === null`
+    // is the on-screen render only — every export passes its own target, so an
+    // export structurally binds the shipped program and never the layer.
+    const layerLive = target === null && this.layerOpen && this.layerInk !== null
+      && this.layerFilm !== null && this.layerRelief !== null;
+    const p = layerLive ? this.programs.displayLayer : this.programs.display;
     p.bind();
     gl.uniform1i(p.u.uInkA, g.bindTex(0, this.ink.read.tex[0]));
     gl.uniform1i(p.u.uInkB, g.bindTex(1, this.ink.read.tex[1]));
@@ -4674,6 +4685,19 @@ export class WatercolorEngine {
     const shadow = mode === MODE.screen && !target ? clamp(Math.min(view.w, view.h) / this.dpr * 0.05, 14, 48) * this.dpr : 0;
     gl.uniform1f(p.u.uShadow, shadow);
     gl.uniform1f(p.u.uDpr, this.dpr);
+    if (layerLive) {
+      // The open stroke's own film, units 10-14 (0-9 are taken). The lateral
+      // law's three uniforms ride here too — the shared bindGather push never
+      // reaches a display program, and the merge binds them through
+      // bindLayerAlpha at the same values, so the display and the commit read
+      // ONE law.
+      gl.uniform1i(p.u.uLayerA, g.bindTex(10, this.layerInk!.read.tex[0]));
+      gl.uniform1i(p.u.uLayerB, g.bindTex(11, this.layerInk!.read.tex[1]));
+      gl.uniform1i(p.u.uLayerCover, g.bindTex(12, this.layerFilm!.tex[0]));
+      gl.uniform1i(p.u.uLayerLateral, g.bindTex(13, this.layerFilm!.tex[1]));
+      gl.uniform1i(p.u.uLayerRelief, g.bindTex(14, this.layerRelief!.tex[0]));
+      this.bindLayerAlpha(p);
+    }
     g.draw(target, scissor, this.canvasSize);
   }
 

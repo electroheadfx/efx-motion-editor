@@ -47,6 +47,7 @@ import {
   bodyCurve,
   scatteringDeposit,
 } from './scattering'
+import { displayFS } from './shaders'
 import { COEFFS, LEVEL_COEFFS, coeffsToLinear, pigmentFromHex } from './spectral'
 import { BASIS, DISPLAY_BANDS } from './spectralData'
 
@@ -269,7 +270,9 @@ describe('the scattering transport and the white-channel retirement (MED-32 / ME
   })
 
   it('has no gouache coverage term left in the composite or the layout comment', () => {
-    const display = SHADERS_SOURCE.slice(SHADERS_SOURCE.indexOf('export const displayFS'))
+    // displayFS is emitted by displaySource(false) (261125-kvl Task 4); the
+    // export is the shipped compositor's exact shader text.
+    const display = displayFS
     expect(display.length, 'displayFS is present').toBeGreaterThan(0)
     // 2026-11-21: the mode-4 alpha is darkness-only, and the coverage channel
     // returns ONLY as the live-underlay composite weight (a dab attenuates the

@@ -9,9 +9,9 @@
 // ============================================================
 
 import { describe, expect, it } from 'vitest'
-import { displayFS, liftFS, stampFS } from './shaders'
+import { displayFS, displayLayerFS, liftFS, stampFS } from './shaders'
 import * as shaderModule from './shaders'
-import { STROKE_LAYER_BANDS } from './spectral'
+import { displayBasisFnGLSL, displayBasisGLSL, STROKE_LAYER_BANDS } from './spectral'
 
 const ROTATION_FORMULA = 'vec2 tq = vec2(q.x * cos(a) - q.y * sin(a), q.x * sin(a) + q.y * cos(a));'
 
@@ -181,6 +181,34 @@ describe('stroke layer shaders (261125-kvl, SPIKE 006)', () => {
     // The clear pass starts the lateral field at 1 (empty), never 0 (core).
     expect(clear.includes('o0 = vec4(0.0);')).toBe(true)
     expect(clear.includes('o1 = vec4(1.0);')).toBe(true)
+  })
+
+  it('emits displayLayerFS from the same band tuples, with the shipped displayFS untouched', () => {
+    // The two basis emitters read the same tables through one generator; the
+    // numeric tuple list must be identical per band (16 bands × the vec4 +
+    // vec3 basis + vec3 weights each band emits).
+    const tuples = (src: string) =>
+      [...src.matchAll(/vec([34])\(([^)]*)\)/g)].map((match) => match[2]!.trim())
+    const shipped = tuples(displayBasisGLSL())
+    // Six tuples per band: the scattered and the legacy branch each carry the
+    // vec4 basis, the vec3 basis and the vec3 RGB weight (16 x 6).
+    expect(shipped.length, 'sixteen bands x six tuples').toBe(96)
+    expect(tuples(displayBasisFnGLSL()).filter((tuple) => tuple !== '0.0')).toEqual(shipped)
+    const pin = (needle: string) =>
+      expect(displayLayerFS.includes(needle), `displayLayerFS is missing shader text: ${needle}`).toBe(true)
+    pin('uniform sampler2D uLayerA, uLayerB;')
+    pin('uniform sampler2D uLayerCover;')
+    pin('uniform sampler2D uLayerLateral;')
+    pin('uniform sampler2D uLayerRelief;')
+    pin('uniform float uEdgeFade, uEdgeStart, uEdgeFalloff;')
+    // The frozen lateral law, the exact band mix and the two union fields.
+    pin('float layerT = clamp((layerU - uEdgeStart) / max(1.0 - uEdgeStart, 1e-4), 0.0, 1.0);')
+    pin('layerAeff = clamp((1.0 - uEdgeFade * pow(layerT, layerE)) * layerCover, 0.0, 1.0);')
+    pin('rgb = mix(rgb, displayBasisBands(layerInk, layerBands, layerScatter), layerAeff);')
+    pin('float cov = clamp(1.0 - (1.0 - texture(uCover, uv).x) * (1.0 - layerAeff), 0.0, 1.0);')
+    pin('texture(uRelief, uv).x + layerAeff * texture(uLayerRelief, uv).x')
+    // The skip guard: no layer reconstruction where the layer never covered.
+    pin('if (layerCover > 1e-4){')
   })
 
   it('leaves the shipped displayFS and gather programs free of the layer', () => {

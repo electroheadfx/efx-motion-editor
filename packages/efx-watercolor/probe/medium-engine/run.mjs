@@ -733,6 +733,9 @@ if (typeof result.edgeAmount === 'number') {
     `edge      : encode max ${result.edgeEncodeMax ?? 'absent'} | p95 ${result.edgeEncodeP95 ?? 'absent'} | over ${result.edgeEncodeOver ?? 'absent'} (1/255) | linearHalfOnWhite ${result.linearHalfOnWhite ?? 'absent'}`,
   )
   console.log(
+    `edge      : polish max ${result.edgePolishMax ?? 'absent'} | p95 ${result.edgePolishP95 ?? 'absent'} | over ${result.edgePolishOver ?? 'absent'} (2/255, REPORTED — UAT row 6 judges the settle)`,
+  )
+  console.log(
     `edge      : capture round trip ${result.edgeCaptureRoundTrip ?? 'absent'} | replay identical ${result.edgeReplayIdentical ?? 'absent'} | print ${result.edgePrintRetentionPaper ?? 'absent'} / ${result.edgePrintRetentionUnder ?? 'absent'}`,
   )
 }

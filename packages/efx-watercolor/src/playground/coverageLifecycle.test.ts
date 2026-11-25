@@ -62,6 +62,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { displayFS } from './shaders'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const RAW_ENGINE = readFileSync(resolve(HERE, 'Engine.ts'), 'utf8')
@@ -109,7 +110,9 @@ function countOccurrences(source: string, needle: string): number {
 
 const ADVECT_COVER = () => sliceBetween(SHADERS, 'export const advectCoverFS', '`;')
 const ADVECT_INK = () => sliceBetween(SHADERS, 'export const advectInkFS', '`;')
-const DISPLAY = () => sliceBetween(SHADERS, 'export const displayFS', '`;')
+// displayFS is emitted by displaySource(false) (261125-kvl Task 4); the export
+// is the shipped compositor's exact shader text.
+const DISPLAY = () => displayFS
 const FILM_PRESENCE = () => sliceBetween(SHADERS, 'const FILM_PRESENCE =', '`;')
 const COVER_MASK = () => sliceBetween(SHADERS, 'export const coverMaskFS', '`;')
 const COVER_CLEAR = () => sliceBetween(SHADERS, 'export const coverClearFS', '`;')

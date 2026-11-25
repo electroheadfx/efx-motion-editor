@@ -31,6 +31,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { displayFS } from './shaders'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const ENGINE_SOURCE = readFileSync(resolve(HERE, 'Engine.ts'), 'utf8')
@@ -46,8 +47,11 @@ function sliceBetween(source: string, startAnchor: string, endAnchor: string): s
   return source.slice(start, end)
 }
 
-/** The template-literal body of one exported shader in shaders.ts. */
+/** The template-literal body of one exported shader in shaders.ts. displayFS
+ *  is emitted by displaySource(false) (261125-kvl Task 4), so it is read from
+ *  the export itself — byte-identical to the pre-change template body. */
 function shaderSource(name: string): string {
+  if (name === 'displayFS') return displayFS
   const decl = SHADERS_SOURCE.indexOf(`export const ${name} = `)
   expect(decl, `shader ${name} not declared`).toBeGreaterThanOrEqual(0)
   const open = SHADERS_SOURCE.indexOf('`', decl)
@@ -276,11 +280,13 @@ describe('engine light state (MED-15)', () => {
     for (const name of ['uLightAzimuth', 'uLightElevation', 'uLightIntensity', 'uReliefBump']) {
       expectContains(body, `p.u.${name}`)
     }
-    // Units 0..9, no collision: ink 0-1, fixed 2-3, wet 4, paper 5, ref 6,
-    // relief 7, coverage 8 (SPIKE 001 — an addition, never a replacement),
-    // underlay 9 (2026-11-21 — live compositor only, unbound on exports).
+    // No collision: ink 0-1, fixed 2-3, wet 4, paper 5, ref 6, relief 7,
+    // coverage 8 (SPIKE 001 — an addition, never a replacement), underlay 9
+    // (2026-11-21 — live compositor only, unbound on exports), and the layer
+    // variant's five samplers 10-14 (261125-kvl — bound only while an Edge
+    // stroke's layer is open; exports structurally bind the shipped program).
     const binds = [...body.matchAll(/g\.bindTex\((\d+),/g)].map((match) => Number(match[1]))
-    expect(binds).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
+    expect(binds).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14])
     // Degrees become radians once, at this boundary.
     expect(body.match(/Math\.PI\) \/ 180/g) ?? []).toHaveLength(2)
     // The bump is a fixed document-space scale, never a zoom-dependent value.

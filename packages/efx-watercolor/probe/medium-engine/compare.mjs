@@ -1267,6 +1267,12 @@ const EDGE_MID_U = (EDGE_START + 1) / 2
 const EDGE_ENCODE_MAX = 2
 const EDGE_ENCODE_P95 = 1
 const EDGE_ENCODE_OVER = 0
+/** The display's second film-blur on the stored field (`edgePolishDelta`):
+ *  REPORTED as max / p95 / count over this 2/255 line, never barred. The plan
+ *  (261125-kvl Task 4 / gate 5) delegates the settle to UAT row 6, and the
+ *  raw-state fallback was measured — it did not shrink the delta, so the
+ *  display-domain target stands. A p95 over this line prints a report note. */
+const EDGE_POLISH_P95 = 2
 /** The 50 %-over-white reading in LINEAR light (DESIGN 6.5; spike 0.08/255). */
 const EDGE_LINEAR_HALF_MAX = 1
 /** The printed-share reading at the band edge is REPORTED, not barred: the
@@ -1301,6 +1307,9 @@ const EDGE_LAYER_READINGS = [
   'edgeEncodeMax',
   'edgeEncodeP95',
   'edgeEncodeOver',
+  'edgePolishMax',
+  'edgePolishP95',
+  'edgePolishOver',
   'linearHalfOnWhite',
 ]
 
@@ -1405,6 +1414,11 @@ function edgeIdentityFailures(data, reference) {
  *  - `edgeContinuity*` = 0: no station leaves the [band_S, band_L] envelope,
  *    so the band cannot show a pale fringe or a washed-out mark;
  *  - the encoder residual max <= 2, p95 <= 1, zero over (1/255);
+ *  - `edgePolishDelta` (max / p95 / count over 2/255) is REPORTED, never
+ *    barred: the display's second film-blur on the stored field is a spatial
+ *    pre-filter that cannot be inverted pointwise, and UAT row 6 judges the
+ *    settle. The readings must be real numbers; a p95 over the attention line
+ *    prints a report note instead of failing the capture;
  *  - `linearHalfOnWhite` <= 1/255 in LINEAR light;
  *  - `edgePrintRetention*` is a measured share in [0, 1] (reported, not
  *    barred — the film law's EDGE_PRINT_* floors do not transfer to the layer
@@ -1544,6 +1558,21 @@ function edgeLayerFailures(data, reference) {
       `edgeEncodeOver ${data.edgeEncodeOver} is not ${EDGE_ENCODE_OVER} — no texel may sit ` +
         `over ${EDGE_ENCODE_MAX}/255`,
     )
+  }
+  // The display's second film-blur (edgePolishDelta): REPORTED, not barred
+  // (261125-kvl task 4 / gate 5: UAT row 6 judges the settle). The readings
+  // must be real numbers, but a p95 over the 2/255 attention line never fails
+  // the capture — it prints a note beside the numbers instead. The blur is a
+  // spatial pre-filter, never a pointwise error, so the gate must not ask for
+  // byte equality.
+  if (typeof data.edgePolishMax !== 'number' || !Number.isFinite(data.edgePolishMax) || data.edgePolishMax < 0) {
+    failures.push(`edgePolishMax ${data.edgePolishMax} is not a non-negative 1/255 reading`)
+  }
+  if (typeof data.edgePolishP95 !== 'number' || !Number.isFinite(data.edgePolishP95) || data.edgePolishP95 < 0) {
+    failures.push(`edgePolishP95 ${data.edgePolishP95} is not a non-negative 1/255 reading`)
+  }
+  if (!Number.isInteger(data.edgePolishOver) || data.edgePolishOver < 0) {
+    failures.push(`edgePolishOver ${data.edgePolishOver} is not a non-negative texel count`)
   }
   if (!(data.linearHalfOnWhite <= EDGE_LINEAR_HALF_MAX)) {
     failures.push(
@@ -1786,6 +1815,14 @@ function printDurations(label, data) {
   if (typeof data.bakeMs === 'number') parts.push(`bake ${data.bakeMs} ms`)
   if (typeof data.renderMs === 'number') parts.push(`render ${data.renderMs} ms`)
   console.log(`${label.padEnd(9)} : ${parts.length > 0 ? parts.join(' | ') : '(none recorded)'}`)
+  // 261125-kvl: edgePolishDelta is REPORTED here (max / p95 / count over the
+  // 2/255 attention line) — UAT row 6 judges the settle, so it never fails.
+  if (typeof data.edgePolishP95 === 'number') {
+    const over = data.edgePolishP95 > EDGE_POLISH_P95 ? ` — over the ${EDGE_POLISH_P95}/255 attention line (reported; UAT row 6 judges the settle)` : ''
+    console.log(
+      `${label.padEnd(9)} : polish max ${data.edgePolishMax} | p95 ${data.edgePolishP95} | over ${data.edgePolishOver} (2/255)${over}`,
+    )
+  }
 }
 
 /** Resolve the reference path per the three documented modes. */

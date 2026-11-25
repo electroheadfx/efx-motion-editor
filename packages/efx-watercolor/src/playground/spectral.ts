@@ -207,8 +207,14 @@ export function strokeLayerBandsGLSL(
   ].join('\n');
 }
 
-export function displayBasisGLSL(): string {
-  const f = (v: number) => (Number.isInteger(v) ? v.toFixed(1) : v.toPrecision(7));
+/**
+ * The per-band statement pair both basis emitters are built from: for each
+ * display band, the scattered lines (Kubelka-Munk over white, above the
+ * epsilon) and the legacy exponential lines (at or below it). Shared so the
+ * two emitters can never disagree on a numeric tuple; each appends to a local
+ * `rgb` from locals named `a`, `b`, `scatter` and `tr`.
+ */
+function displayBandStatementsGLSL(f: (v: number) => string): { scattered: string[]; legacy: string[] } {
   const scattered: string[] = [];
   const legacy: string[] = [];
   DISPLAY_BANDS.forEach((band, i) => {
@@ -236,6 +242,12 @@ export function displayBasisGLSL(): string {
       `    }\n` +
       `    rgb += kmBand${i} * vec3(${w.map(f).join(',')});`);
   });
+  return { scattered, legacy };
+}
+
+export function displayBasisGLSL(): string {
+  const f = (v: number) => (Number.isInteger(v) ? v.toFixed(1) : v.toPrecision(7));
+  const { scattered, legacy } = displayBandStatementsGLSL(f);
   return [
     '  // Kubelka-Munk layer over white (64-10, MED-34 / MED-35): each band is the',
     "  // layer's reflectance over black plus its squared transmittance over one",
@@ -250,5 +262,34 @@ export function displayBasisGLSL(): string {
     '  } else {',
     legacy.join('\n'),
     '  }',
+  ].join('\n');
+}
+
+/**
+ * The SAME per-band block as `displayBasisGLSL()`, wrapped as a function so the
+ * live stroke-layer display can reconstruct the layer's own band array:
+ *
+ *   vec3 displayBasisBands(vec4 a, vec3 b, float scatter)
+ *
+ * Both emitters read DISPLAY_BANDS / BASIS / DISPLAY_RGB_WEIGHTS through the
+ * one statement generator, so a band value can never drift between the shipped
+ * compositor and the layer variant (shaders.test.ts pins the tuple identity).
+ */
+export function displayBasisFnGLSL(): string {
+  const f = (v: number) => (Number.isInteger(v) ? v.toFixed(1) : v.toPrecision(7));
+  const { scattered, legacy } = displayBandStatementsGLSL(f);
+  return [
+    '// The display band reconstruction as a function — the layer variant\'s',
+    '// own band array (same tables, same lines as the shipped block).',
+    'vec3 displayBasisBands(vec4 a, vec3 b, float scatter){',
+    '  vec3 rgb = vec3(0.0);',
+    '  float tr;',
+    `  if (scatter > ${f(SCATTER_EPSILON)}){`,
+    scattered.join('\n'),
+    '  } else {',
+    legacy.join('\n'),
+    '  }',
+    '  return rgb;',
+    '}',
   ].join('\n');
 }

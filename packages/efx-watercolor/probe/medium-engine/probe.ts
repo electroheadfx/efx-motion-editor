@@ -2042,6 +2042,12 @@ const EDGE_LAYER_FIT_OVER = 0
  *  that second pass is a spatial pre-filter that cannot be inverted pointwise
  *  and is reported separately (edgePolishDelta, Task 4), never hidden here. */
 const EDGE_LAYER_FILM_BLUR = 0.35
+/** The display's SECOND film-blur reading (`edgePolishDelta`, Task 4): the
+ *  live frame shows the polished states mixed; after the merge the same
+ *  display polishes the STORED field once more, so the committed sheet's
+ *  on-screen band moves by a pointwise-uninvertible 5-tap. Reported as
+ *  max / p95 / count over this 2/255 line, in the display's own RGB8 space. */
+const EDGE_POLISH_MAX = 2
 
 /** Spec 10: the two edge operands. Valid ONLY on `edge-layer` — a value on any
  *  other scenario is refused, never silently ignored. Absent keeps the
@@ -2820,9 +2826,9 @@ function edgeEncodeResidual(
   granulation: number,
   profile: EdgeProfile,
   axis: 'x' | 'y',
-): { residual: number[]; halfOnWhite: number | null; debug: Record<string, number> } {
+): { residual: number[]; halfOnWhite: number | null; polish: number[]; debug: Record<string, number> } {
   const layer = capture.merge ? capture.merge.preLayer : capture.layer
-  if (layer === null || profile.cover === null) return { residual: [], halfOnWhite: null, debug: {} }
+  if (layer === null || profile.cover === null) return { residual: [], halfOnWhite: null, polish: [], debug: {} }
   const sheetFields = capture.merge ? capture.merge.preSheet : capture.sheet
   const { width, height, rect } = sheetFields
   const paperG = readEdgePaperG(engine, sheetFields)
@@ -2937,7 +2943,26 @@ function edgeEncodeResidual(
     }
     if (rowHalfCount > 0) bestHalf = rowHalf
   }
-  return { residual, halfOnWhite: bestHalf === null ? null : round4(bestHalf), debug: decodeDebug }
+  // The display's SECOND film-blur on the stored field (edgePolishDelta): the
+  // live frame mixes the polished PRE-merge states; after the merge the same
+  // display polishes the STORED field once more, and that 5-tap is a spatial
+  // pre-filter that cannot be inverted pointwise. Measured here on the merged
+  // storage itself, in the display's own order (blur the storage, then k,
+  // then bands) and its own RGB8 bytes — the settle's magnitude, never hidden.
+  const mergedBlur = edgeBlurFilm(merged.a, merged.b, width, height, EDGE_LAYER_FILM_BLUR)
+  const polish: number[] = []
+  for (let i = 0; i < width * height; i += 1) {
+    const rawRgb = edgeBandsRgb8(edgeTexelBands(merged.a, merged.b, i, k[i]!))
+    const softRgb = edgeBandsRgb8(edgeTexelBands(mergedBlur.a, mergedBlur.b, i, k[i]!))
+    polish.push(
+      Math.max(
+        Math.abs(rawRgb[0] - softRgb[0]),
+        Math.abs(rawRgb[1] - softRgb[1]),
+        Math.abs(rawRgb[2] - softRgb[2]),
+      ),
+    )
+  }
+  return { residual, halfOnWhite: bestHalf === null ? null : round4(bestHalf), polish, debug: decodeDebug }
 }
 
 /** The layer report — every field the comparator names, present or ABSENT. */
@@ -2981,11 +3006,11 @@ function edgeLayerReport(
       : edgeSideReadings(engine, captures.b, mergedUnder, granulation, underProfile, 'x')
   const paperResidual =
     captures.a === null
-      ? { residual: [], halfOnWhite: null, debug: {} }
+      ? { residual: [], halfOnWhite: null, polish: [], debug: {} }
       : edgeEncodeResidual(engine, captures.a, mergedPaper, granulation, paperProfile, 'y')
   const underResidual =
     captures.b === null
-      ? { residual: [], halfOnWhite: null, debug: {} }
+      ? { residual: [], halfOnWhite: null, polish: [], debug: {} }
       : edgeEncodeResidual(engine, captures.b, mergedUnder, granulation, underProfile, 'x')
   const residual = [...paperResidual.residual, ...underResidual.residual].sort((a, b) => a - b)
   const encodeMax = residual.length > 0 ? round4(residual[residual.length - 1]!) : null
@@ -2994,6 +3019,16 @@ function edgeLayerReport(
       ? round4(residual[Math.min(residual.length - 1, Math.floor(residual.length * 0.95))]!)
       : null
   const encodeOver = residual.length > 0 ? residual.filter((v) => v > EDGE_LAYER_FIT_MAX).length : null
+  // Task 4's edgePolishDelta, pooled over both sides' rects: the display's
+  // second film-blur on the merged storage. p95 is the bar (2/255); the count
+  // over 2/255 is reported beside it.
+  const polish = [...paperResidual.polish, ...underResidual.polish].sort((a, b) => a - b)
+  const polishMax = polish.length > 0 ? round4(polish[polish.length - 1]!) : null
+  const polishP95 =
+    polish.length > 0
+      ? round4(polish[Math.min(polish.length - 1, Math.floor(polish.length * 0.95))]!)
+      : null
+  const polishOver = polish.length > 0 ? polish.filter((v) => v > EDGE_POLISH_MAX).length : null
   const counters = captures.b ?? captures.a
   return {
     strokeBrush: script[0]?.brushId ?? null,
@@ -3027,6 +3062,9 @@ function edgeLayerReport(
     edgeEncodeMax: encodeMax,
     edgeEncodeP95: encodeP95,
     edgeEncodeOver: encodeOver,
+    edgePolishMax: polishMax,
+    edgePolishP95: polishP95,
+    edgePolishOver: polishOver,
     linearHalfOnWhite: paperResidual.halfOnWhite,
     debugEncodePaper: paperResidual.debug,
     debugEncodeUnder: underResidual.debug,
