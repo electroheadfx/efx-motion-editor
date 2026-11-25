@@ -74,6 +74,28 @@ reads as current code.
   those recorded arguments, with the GLSL twin transcribed (e.g. `noise1`/`hash21`), and
   pin bristle indices across builds (`--centre/--rim`) — a field-dependent pick can
   otherwise select different bristles per build.
+- **Earn a CPU mirror of a shader law; then use it.** When a measurement needs the display
+  law over hundreds of thousands of states, a CPU mirror is the only affordable route —
+  but it is evidence only after a **mirror gate**: upload a grid of independent random
+  states into the real engine, export them through the real shader, and require the
+  mirror to reproduce the export within 1/255 (spike 006: 291,600 states, 55 % in the
+  Kubelka-Munk branch, max 1/255). Keep a second, end-to-end check on a real scene, and
+  report both. The old rule still holds for a *substitute*: a mirror that has not passed
+  its gate is not evidence.
+- **Sweep a law over its own independent variable, not over the scene.** A composite
+  parameterised by an alpha should be measured by sweeping alpha over real sampled
+  states (spike 006: stations `t` of `A = 1 − amount·t^e`); geometry then only *selects*
+  texels. Tying the sweep to a stroke's pixel geometry entangles the law with the drive
+  and produces station noise that has nothing to do with the law.
+- **Read geometry off the capture, never off the authored coordinates.** A stroke's
+  authored points do not survive the adapter's drive — spike 006 asked for
+  `x 25…230` on a 256 sheet and the engine placed the ink at `x 0…177`. Derive the
+  centreline, the silhouette and the under-stroke's rows from the captured ink.
+- **Judge a law in the space it lives in.** Alpha compositing is linear-light; sRGB
+  "darkness" (`1 − min(rgb)`) is companded and does **not** halve under a 50 % linear
+  mix (spike 006: a correct law reads 0.255 where a naive check expects 0.413). State the
+  space in the acceptance criterion, and disqualify hue comparisons on near-grey
+  composites — hue is ill-conditioned there, so qualify it by chroma.
 
 ## Tools & Libraries
 
