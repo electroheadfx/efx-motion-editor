@@ -1055,27 +1055,40 @@ function bristleLineFailures(data) {
   return failures
 }
 
-// Spec 10: the edge-transparency station bars. `gatherBristle` scales the
-// whole carried film through ONE lateral `edgeFilm`, and the coverage channel
-// is the channel it scales — so the asserted film is the ratio of this
-// capture's coverage to the REFERENCE capture's coverage at the SAME row (the
-// neutral baseline). That ratio is exactly the factor the gather applied: 1 by
-// identity at amount 0, and `1 - amount` at the rim when the film executes.
-// Normalising by the capture's own peak cannot work — the base profile is not
-// flat (the neutral baseline peaks off-centre at +15 px, 0.8188 vs 0.7493 on
-// row 0), so core-at-0 would read 0.915 and the identity could never pass.
+// Spec 10: the edge-transparency station bars. `gatherBristle` hands every
+// consumer ONE lateral PIGMENT SHARE (`g.film`); the coverage channel carries
+// the base-replacement share it scales and the ink channel carries the
+// delivered absorbance it dilutes — so BOTH are normalised against the
+// REFERENCE capture at the SAME row (the neutral baseline), and both ratios
+// equal the share the law applied: 1 by identity at amount 0, `1 - amount` at
+// the rim when the film executes. Normalising by the capture's own peak cannot
+// work — the base profile is not flat (the neutral baseline peaks off-centre
+// at +15 px, 0.8188 vs 0.7493 on row 0), so core-at-0 would read 0.915 and the
+// identity could never pass.
 // Three stations, in SILHOUETTE units (`u = lateral / uFeatherEdge` — the same
 // denominator gatherBristle uses). UAT 2026-11-25: the amount fades the WHOLE
-// mark — the profile keeps EDGE_CORE of the amount at the core (65% film at
+// mark — the profile keeps EDGE_CORE of the amount at the core (65% pigment at
 // amount 100) and reaches 1 at the silhouette:
-//   core (offset 0)     film 1 - amount · EDGE_CORE                    ± 0.06
-//   mid  (0.775·rim)    film 1 - amount · (EDGE_CORE + (1 - EDGE_CORE)·0.5^e) ± 0.12
-//   rim  (the rim)      film 1 - amount                                ± 0.12
+//   core (offset 0)     share 1 - amount · EDGE_CORE                    ± 0.06
+//   mid  (0.775·rim)    share 1 - amount · (EDGE_CORE + (1 - EDGE_CORE)·0.5^e) ± 0.12
+//   rim  (the rim)      share 1 - amount                                ± 0.12
 // e = 2^(2b - 1) is the falloff exponent (0.5 / 1 / 2 at bias 0 / 50 / 100):
-// at amount 1 the mid reads 0.19 / 0.325 / 0.49 for falloff 0 / 50 / 100,
-// separated at the law level by more than the tolerance; the coverage
-// channel's convergence lag narrows the measured separation (see the gate
-// report), so the sweep is also checked visually side by side.
+// at amount 1 the mid reads 0.19 / 0.325 / 0.49 for falloff 0 / 50 / 100.
+//
+// THE INK BARS ARE THE LAW'S TEETH. The coverage channel's target is
+// `a · uCoverTarget · g.alpha · film` — the deposit-weight law scaled that
+// too (through g.alpha), so the coverage bars alone passed a stroke whose BODY
+// stayed full pigment and whose fringe was cut away (UAT 2026-11-25 #3, the
+// artist's "it's just a cut off"). The ink channel is the delivered
+// absorbance: once the share rides the carried coefficients the deposit lerp
+// is linear in them, so the capture's ink is EXACTLY `film` times the
+// reference's row for row (same script, same seed) — a weighted film
+// converges to the full cA instead and reads ~1 at the core. The ink is
+// therefore judged on the same table: the CORE at the tight, discriminating
+// tolerance (EDGE_INK_CORE_TOLERANCE — a pigment dilution lands on it exactly)
+// and the ramp stations at the coverage bar's tolerance
+// (EDGE_INK_STATION_TOLERANCE — the calibrated silhouette's ±1 px 8-bit floor
+// noise moves the steep mid by ~0.08 per pixel).
 //
 // THE SILHOUETTE MUST BE THE FILM'S OWN DOMAIN, not the reference's visible
 // rim. On the engine `uFeatherEdge` is BRISTLE_FEATHER_EDGE (0.66) of the
@@ -1092,16 +1105,25 @@ function bristleLineFailures(data) {
 // Both branches are guarded to at least 8 px — a degenerate profile fails
 // rather than silently judging a 1 px station.
 //
-// `ink` (the delivered absorbance) is supporting evidence only: it is a
-// seven-channel pigment sum that mixes colour coefficients, so it carries a
-// direction check (rim below core when amount > 0), never the ratio bars.
 // The enclosed lane scan reuses the bristle-line gate's three bars.
-// The core bar is looser than the old ±0.02: the coverage channel is written
-// by a many-dab lerp, so a film-weighted stroke converges a few percent behind
-// its own target (measured 2026-11-25: 0.693 where the law reads 0.650). The
-// bar still proves the core fades at amount > 0 and stays well above the rim.
+// The coverage core bar stays looser than the ink's: the coverage channel is
+// written by a many-dab lerp whose target lags a few percent behind its own
+// value near the core (measured 2026-11-25: 0.693 where the law reads 0.650).
 const EDGE_CORE_TOLERANCE = 0.06
 const EDGE_STATION_TOLERANCE = 0.12
+/** The ink ratio is linear in the share and the capture/reference streams are
+ *  the same script and seed, so the CORE lands on the law's table exactly
+ *  (measured 2026-11-25: 0.6500 against the law's 0.6500) — the bar only
+ *  absorbs the half-float readback and the JSON rounding. This is the bar a
+ *  deposit-weight film cannot pass: its ink converges to the full pigment and
+ *  reads ~1.0 at the core. */
+const EDGE_INK_CORE_TOLERANCE = 0.06
+/** The mid/rim stations sit on the steep part of the ramp: the calibrated
+ *  silhouette carries ±1 px of 8-bit floor noise and the dab scatter, and one
+ *  pixel moves the share by ~0.08 there (measured 2026-11-25: the mid reads
+ *  0.2435 at 14 px where the ideal 0.775·rim lands at 0.3250). They carry the
+ *  shape check at the coverage bar's tolerance, not the law's tight one. */
+const EDGE_INK_STATION_TOLERANCE = 0.12
 /** Mirrors BRISTLE_EDGE_CORE: the amount's share at the core (0.35). */
 const EDGE_CORE = 0.35
 const EDGE_SILHOUETTE_FRACTION = 0.02
@@ -1246,11 +1268,25 @@ function edgeTransparencyFailures(data, reference) {
     ]
   }
   const referenceCover = referenceProfile.cover
+  const referenceInk = Array.isArray(referenceProfile.ink) ? referenceProfile.ink : null
+  if (referenceInk === null || referenceInk.length !== offsets.length) {
+    return [
+      ...failures,
+      'the reference carries no aligned edgeAcross ink profile — the pigment share cannot be ' +
+        'measured without the neutral baseline\'s own absorbance; re-run the amount-0 baseline',
+    ]
+  }
   const filmAt = (station) => {
     const index = offsets.indexOf(station)
     if (index < 0) return null
     const baseline = referenceCover[index]
     return baseline > 0 ? cover[index] / baseline : undefined
+  }
+  const pigmentAt = (station) => {
+    const index = offsets.indexOf(station)
+    if (index < 0) return null
+    const baseline = referenceInk[index]
+    return baseline > 0 ? ink[index] / baseline : undefined
   }
   const inkAt = (station) => {
     const index = offsets.indexOf(station)
@@ -1327,6 +1363,39 @@ function edgeTransparencyFailures(data, reference) {
       failures.push(
         `edge film ${label} at ${station} px reads ${measured.toFixed(4)} ` +
           `(expected ${expected.toFixed(4)} ± ${tolerance} at amount ${data.edgeAmount} / falloff ${data.edgeFalloff})${hint}`,
+      )
+    }
+  }
+  // The same law table on the INK channel: the delivered absorbance is linear
+  // in the carried coefficients, so the capture/reference ratio is exactly the
+  // pigment share the gather applied. A deposit-weight film leaves this at ~1
+  // in the body and cuts the fringe instead — the bar the artist's "cut off"
+  // report fails.
+  for (const [label, station, expected] of stations) {
+    const measured = pigmentAt(station)
+    if (measured === null) {
+      failures.push(`the ink profile carries no row at the ${label} station ${station} px`)
+      continue
+    }
+    if (measured === undefined) {
+      failures.push(
+        `the reference carries no ink at the ${label} station ${station} px; ` +
+          'the pigment share cannot be normalised there (the neutral baseline must reach every station)',
+      )
+      continue
+    }
+    const tolerance = label === 'core' ? EDGE_INK_CORE_TOLERANCE : EDGE_INK_STATION_TOLERANCE
+    if (Math.abs(measured - expected) > tolerance) {
+      const hint =
+        label === 'mid'
+          ? ` — the falloff exponent ${exponent} is not distributing the pigment as requested`
+          : label === 'core'
+            ? ' — the core pigment must read 1 - amount · EDGE_CORE at every falloff'
+            : ' — the rim pigment must read exactly 1 - amount'
+      failures.push(
+        `edge pigment ${label} at ${station} px reads ${measured.toFixed(4)} ` +
+          `(expected ${expected.toFixed(4)} ± ${tolerance} at amount ${data.edgeAmount} / falloff ${data.edgeFalloff})${hint} — ` +
+          'the film must dilute the carried absorbance, never the deposit weight (a weighted film converges to the full pigment: solid body, cut fringe)',
       )
     }
   }

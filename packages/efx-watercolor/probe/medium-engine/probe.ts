@@ -3210,13 +3210,15 @@ function readTipTexture(): string | undefined {
 // --- Spec 10: edge transparency and falloff ---------------------------------
 //
 // Two bristle-only sliders — Edge transparency (amount A) and Edge falloff
-// (shape bias b) — drive ONE lateral film in `gatherBristle` that scales the
-// DEPOSIT WEIGHT (coverage and the cover alpha) across the whole mark: the
-// core keeps 65% film at amount 100 and the rim reaches 0, with the falloff
-// shaping the ramp. The carried colour stays full strength and the scatter S
-// rides the film through `a`. Neutral at amount 0 by construction, so the two
-// amount-0 baselines are identity gates captured from the PRE-change engine
-// (UAT row 1's automated proxy).
+// (shape bias b) — drive ONE lateral PIGMENT SHARE in `gatherBristle` that
+// dilutes the carried absorbance, the scatter S, the base-replacement target
+// and the relief across the whole mark: the core keeps 65% of its pigment at
+// amount 100 and the rim reaches 0, with the falloff shaping the ramp. The
+// deposit WEIGHT stays the full gather coverage, so the mark keeps its
+// geometry and its feather (UAT 2026-11-25 #3: a weighted film reads as a
+// solid body with a cut-off fringe, not as transparency). Neutral at amount 0
+// by construction, so the two amount-0 baselines are identity gates captured
+// from the PRE-change engine (UAT row 1's automated proxy).
 //
 // The script entry MUST stamp `brushId: 'bristle-round'` literally:
 // `toStudioStroke` defaults to `BRUSH_ID` (`round`), a NON-bristle preset whose
@@ -3266,10 +3268,11 @@ function readEdgeKnob(name: 'edge' | 'falloff', scenario: string, fallback: numb
   return value
 }
 
-/** Spec 10: the lateral film profile, read once after the script settles. The
- *  coverage channel carries the film `gatherBristle` scales; `ink` is the
- *  delivered absorbance (supporting evidence), and `edgeTiling.enclosed` is
- *  the same lane scan the bristle-line gate uses. */
+/** Spec 10: the lateral profile, read once after the script settles. The
+ *  coverage channel carries the base-replacement share and `ink` the delivered
+ *  absorbance — both scaled by the same pigment share, and both judged against
+ *  the neutral reference (the ink bar is the one a weight-film cannot pass);
+ *  `edgeTiling.enclosed` is the same lane scan the bristle-line gate uses. */
 function edgeTransparencyMetrics(engine: WatercolorEngine, strokeBrush: string): Record<string, unknown> {
   const profile = lineProfileSet(engine)
   // `lineProfileSet` keeps the row offsets at the profile's top level and the
@@ -3277,14 +3280,17 @@ function edgeTransparencyMetrics(engine: WatercolorEngine, strokeBrush: string):
   // report carries the offsets beside the cover/ink arrays they index.
   const across = {
     offsets: profile['offsets'] as number[],
-    ...(profile['across'] as { cover: number[]; ink: number[] }),
+    ...(profile['across'] as { cover: number[]; ink: number[]; dark: number[] }),
   }
   const tiling = profile['tiling'] as { enclosed: unknown }
   return {
     strokeBrush,
     edgeAmount: EDGE_AMOUNT,
     edgeFalloff: EDGE_FALLOFF,
-    edgeAcross: { offsets: across.offsets, cover: across.cover, ink: across.ink },
+    // `dark` is the artist-facing channel (the transparent export's darkness):
+    // evidence only — the committed amount-0 baselines predate it, so no bar
+    // can normalise against them.
+    edgeAcross: { offsets: across.offsets, cover: across.cover, ink: across.ink, dark: across.dark },
     edgeTiling: { enclosed: tiling.enclosed },
   }
 }
