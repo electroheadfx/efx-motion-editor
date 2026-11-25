@@ -378,15 +378,12 @@ const TRACES = bristleModule as unknown as {
   bristleEdgeBias?: (across: number) => number
   bristleBody?: (wide: number, local: number, presence: number, hairs: number) => number
   bristleCoverage?: (body: number, pressure: number, edgeBias: number) => number
-  // Spec 10: the uniform pigment share, the lateral dissolve and the shape
-  // bias's exponent.
+  // Spec 10: the lateral dissolve and the shape bias's exponent.
   BRISTLE_EDGE_START?: number
   BRISTLE_EDGE_EXP_MIN?: number
   BRISTLE_EDGE_EXP_MAX?: number
-  BRISTLE_EDGE_CORE?: number
   BRISTLE_EDGE_SHIFT?: number
   edgeFalloffExponent?: (bias: number) => number
-  bristleEdgeFilm?: (amount: number) => number
   bristleEdgeShift?: (lateral: number, amount: number, falloff: number) => number
 }
 
@@ -720,52 +717,22 @@ describe('bristleCoverage — §4.5 / §5.5', () => {
 // ============================================================
 //  Spec 10 — Edge transparency and Edge falloff.
 //
-//  TWO shares, and neither is a lateral depth film (UAT 2026-11-25 #1-#5
-//  rejected every depth form: its lerp target is a paler pigment, so each
-//  fringe dab replaces the same-sheet stroke beneath it and the paper reads
-//  as a smooth opaque white veil).
+//  ONE mechanism. UAT 2026-11-25 rejected every film in every form: a lateral
+//  DEPTH film sets each fringe cell's lerp target to a paler pigment, so each
+//  dab replaces the same-sheet stroke beneath it and the paper reads as a
+//  smooth opaque white veil (#1/#3/#4); a UNIFORM share washes the whole mark
+//  and leaves the falloff invisible — "always full transparence" (#5).
+//  Uniform opacity is the spec's own non-goal.
 //
-//  `bristleEdgeFilm` is the amount's UNIFORM pigment share: the whole mark
-//  keeps `1 - amount · BRISTLE_EDGE_CORE` (45% pigment at amount 100 — about
-//  65% of the original opacity), the same at every lateral position.
 //  `bristleEdgeShift` is the LATERAL DISSOLVE, in SILHOUETTE units (1 = the
 //  visible rim): the amount raises the gather's paper-tooth threshold across
 //  the band from BRISTLE_EDGE_START, so the fringe opens into full-depth
 //  specks of the mark's own pigment and every opened cell is INERT — it never
-//  reaches the deposit, so the underlayer survives untouched. The shape bias
-//  chooses how early the dissolve begins through `edgeFalloffExponent`, and
-//  amount 0 is inert for both. The constants are bound as uniforms, so the
-//  fragments cannot re-type them.
+//  reaches the deposit, so the underlayer survives untouched and the core
+//  keeps its paint. The shape bias chooses how early the dissolve begins
+//  through `edgeFalloffExponent`, and amount 0 is inert. The constants are
+//  bound as uniforms, so the fragments cannot re-type them.
 // ============================================================
-
-describe('bristleEdgeFilm — the amount\'s uniform pigment share', () => {
-  it('is inert at amount 0 and reads 1 - amount · BRISTLE_EDGE_CORE otherwise', () => {
-    const core = TRACES.BRISTLE_EDGE_CORE ?? Number.NaN
-    expect(TRACES.bristleEdgeFilm?.(0), 'amount 0 must not move the film').toBe(1)
-    for (const amount of [0.25, 0.5, 1]) {
-      expect(
-        TRACES.bristleEdgeFilm?.(amount),
-        `the share thins uniformly with the amount (${amount})`,
-      ).toBeCloseTo(1 - amount * core, 12)
-    }
-    expect(TRACES.bristleEdgeFilm?.(1), 'amount 100 keeps 45% of the pigment').toBeCloseTo(0.45, 12)
-  })
-
-  it('never depends on a lateral position — the dissolve is the threshold\'s law', () => {
-    // The twin has NO lateral argument: a lateral depth film was rejected in
-    // every form (the white veil). Its signature is the pin.
-    expect(TRACES.bristleEdgeFilm?.length, 'the share takes only the amount').toBe(1)
-  })
-
-  it('never returns NaN', () => {
-    for (const amount of [Number.NaN, Number.POSITIVE_INFINITY]) {
-      expect(
-        TRACES.bristleEdgeFilm?.(amount),
-        `a non-finite amount reads as the neutral share (${amount})`,
-      ).toBe(1)
-    }
-  })
-})
 
 describe('bristleEdgeShift — the lateral dissolve in silhouette units', () => {
   it('is inert at amount 0 for every falloff and lateral position', () => {
@@ -796,19 +763,23 @@ describe('bristleEdgeShift — the lateral dissolve in silhouette units', () => 
   })
 
   it('reads the landmark table at the dissolve midpoint (t = 0.5)', () => {
-    // u = (0.775 - 0.55) / 0.45 = 0.5 → shift = amount · SHIFT · 0.5^e.
+    // The band runs from the start anchor to the silhouette, so its midpoint
+    // sits at u = START + (1 - START) / 2 = 0.65 → shift = amount · SHIFT ·
+    // 0.5^e.
+    const start = TRACES.BRISTLE_EDGE_START ?? Number.NaN
+    const midU = start + (1 - start) / 2
     const shift = TRACES.BRISTLE_EDGE_SHIFT ?? Number.NaN
     const mid = (e: number): number => shift * 0.5 ** e
     expect(
-      TRACES.bristleEdgeShift?.(0.775, 1, 0.5),
+      TRACES.bristleEdgeShift?.(midU, 1, 0.5),
       'falloff 50 (e = 1) reads half the rim rise',
     ).toBeCloseTo(mid(1), 9)
     expect(
-      TRACES.bristleEdgeShift?.(0.775, 1, 0),
+      TRACES.bristleEdgeShift?.(midU, 1, 0),
       'falloff 0 (e = 0.5) reaches deeper — the broad dissolve',
     ).toBeCloseTo(mid(0.5), 9)
     expect(
-      TRACES.bristleEdgeShift?.(0.775, 1, 1),
+      TRACES.bristleEdgeShift?.(midU, 1, 1),
       'falloff 100 (e = 2) hugs the rim',
     ).toBeCloseTo(mid(2), 9)
     expect(mid(0.5), 'broad opens more than linear').toBeGreaterThan(mid(1))
@@ -887,16 +858,15 @@ describe('edgeFalloffExponent — the Spec 10 shape bias', () => {
 })
 
 describe('the Spec 10 edge constants', () => {
-  it('pins the start anchor, the core share, the dissolve rise and the exponent bounds', () => {
-    expect(TRACES.BRISTLE_EDGE_START, 'the dissolve starts at 0.55 of the silhouette').toBe(0.55)
-    expect(TRACES.BRISTLE_EDGE_CORE, 'amount 100 keeps 45% of the pigment everywhere').toBe(0.55)
+  it('pins the start anchor, the dissolve rise and the exponent bounds', () => {
+    expect(TRACES.BRISTLE_EDGE_START, 'the dissolve starts at 0.30 of the silhouette').toBe(0.3)
     expect(TRACES.BRISTLE_EDGE_SHIFT, 'the rim threshold rises by 1.1 at amount 100').toBe(1.1)
     expect(TRACES.BRISTLE_EDGE_EXP_MIN, 'falloff 0 is the square-root shape').toBe(0.5)
     expect(TRACES.BRISTLE_EDGE_EXP_MAX, 'falloff 100 is the squared shape').toBe(2)
   })
 
   it('declares each constant once in the package — a second copy fails the build', () => {
-    for (const name of ['BRISTLE_EDGE_START', 'BRISTLE_EDGE_CORE', 'BRISTLE_EDGE_SHIFT', 'BRISTLE_EDGE_EXP_MIN', 'BRISTLE_EDGE_EXP_MAX']) {
+    for (const name of ['BRISTLE_EDGE_START', 'BRISTLE_EDGE_SHIFT', 'BRISTLE_EDGE_EXP_MIN', 'BRISTLE_EDGE_EXP_MAX']) {
       const declarations = PACKAGE_SOURCES.filter(({ text }) =>
         new RegExp(`export const ${name}\\b`).test(text),
       ).map(({ file }) => file)

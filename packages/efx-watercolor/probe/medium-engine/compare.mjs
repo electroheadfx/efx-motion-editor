@@ -1055,22 +1055,30 @@ function bristleLineFailures(data) {
   return failures
 }
 
-// Spec 10: the edge-transparency station bars. The shipped law has TWO parts
-// and NEITHER is a lateral depth film (UAT 2026-11-25 #1-#5 rejected every
-// depth form: its lerp target is a paler pigment, so every fringe cell
-// replaces the same-sheet stroke beneath it and the paper reads as a smooth
-// opaque white veil):
+// Spec 10: the edge-transparency station bars. The law is ONE mechanism — the
+// LATERAL THRESHOLD DISSOLVE — and never a film. UAT 2026-11-25 rejected every
+// film in every form: a lateral DEPTH film sets each fringe cell's lerp target
+// to a paler pigment, so every fringe cell REPLACES the same-sheet stroke
+// beneath it and the paper reads as a smooth opaque white veil (#1/#3/#4); a
+// UNIFORM share washes the whole mark and leaves the falloff invisible — the
+// artist's "always full transparence" (#5). Uniform opacity is the spec's own
+// non-goal.
 //
-//   - a UNIFORM pigment share `1 - amount·EDGE_CORE` — the artist's "core 65%
-//     film" — scaling the carried absorbance, the scatter S and the cover
-//     target. The ink channel's CORE bar is its witness: a weight-only film
-//     converges to the full pigment and reads ~1.0 there;
-//   - a LATERAL THRESHOLD DISSOLVE `amount·SHIFT·t^e`: the amount raises the
-//     paper-tooth threshold across the band, so the fringe prints at the full
-//     pigment share in fewer cells and every opened cell is INERT (the
-//     underlayer survives untouched). The `print` profile is its witness: a
-//     depth film prints EVERY texel; the dissolve prints `1 - amount·t^e`
-//     across the band and 0 at the silhouette at amount 100.
+//   threshold += amount · SHIFT · t^e, banded from EDGE_START (0.30) to the
+//   silhouette, with e = 2^(2b - 1) at falloff bias b. A cell under the
+//   raised threshold never reaches the deposit, so it is INERT — the
+//   underlayer survives untouched — while a surviving cell prints the mark's
+//   OWN pigment at full depth.
+//
+// The witnesses:
+//   - the CORE keeps the reference's cover AND ink (ratio 1 / 1): a uniform
+//     share reads below 1 on both and the ink bar is its teeth;
+//   - the RIM's cover share (base replacement) falls to 1 - amount;
+//   - the `print` profile — the coverage raster's fraction of texels at or
+//     above half the core peak — stays ~1 at the core, falls to
+//     `1 - amount·t^e` across the band (modulo the paper tooth's CDF) and to
+//     `1 - amount` at the silhouette. A depth film prints EVERY texel and
+//     reads 1 at every station; it cannot pass.
 //
 // The cover and ink channels are normalised against the REFERENCE capture at
 // the SAME row (the neutral baseline). Normalising by the capture's own peak
@@ -1079,57 +1087,35 @@ function bristleLineFailures(data) {
 // 0.915 and the identity could never pass. `print` is an ABSOLUTE fraction: a
 // fully opened row's reference mean is near zero, so a ratio would be noise.
 // Three stations, in SILHOUETTE units (`u = lateral / uFeatherEdge` — the same
-// denominator gatherBristle uses), with film = 1 - amount·EDGE_CORE:
-//   core (offset 0)     cover share film · 1                             ± 0.06
-//   mid  (0.775·rim)    cover share film · (1 - amount·0.5^e)            ± 0.12
-//   rim  (the rim)      cover share film · (1 - amount) — 0 at amount 100 ± 0.12
-// e = 2^(2b - 1) is the falloff exponent (0.5 / 1 / 2 at bias 0 / 50 / 100).
-// At amount 1 the mid reads 0.132 / 0.225 / 0.3375 for falloff 0 / 50 / 100.
+// denominator gatherBristle uses), with t = (u - EDGE_START) / (1 - EDGE_START):
+//   core (offset 0)     cover and ink both unchanged from the reference
+//   mid  (0.65·rim)     the band's midpoint (t = 0.5) — judged on `print`
+//   rim  (the rim)      cover share 1 - amount (0 at amount 100)
 //
 // THE CORE INK BAR IS THE LAW'S TEETH. The ink channel is the delivered
-// absorbance. At the CORE every stroke converges to the lerp's fixed point, so
-// the capture's ink is the uniform share times the reference's. A film that
-// leaves the pigment full (the weight-only cut fringe, UAT #2) reads ~1.0
-// there — the bar it cannot pass. The RAMP stations get no ink bar (the
-// printed cells converge to the same pigment, so their mean ink is the cover's
-// shape at the placement tolerance); the print bars carry the sparsity, and
-// the cover bars the base-replacement shape. Measured 2026-11-25 at amount
-// 100: the core ink reads 0.4950 against the law's 0.4500; the few-percent
-// excess is the capture's own wet transport, and the ± 0.06 band absorbs it.
+// absorbance. At the CORE every stroke converges to the carried pigment, so
+// the capture's ink equals the reference's; a UNIFORM share converges to a
+// fraction of it and reads below the bar (the v5 failure, #5). The RAMP
+// stations get no ink bar (the printed cells converge to the same pigment, so
+// their mean ink is the cover's shape at the placement tolerance); the print
+// bars carry the sparsity, and the cover bars the base-replacement shape.
 //
-// THE SILHOUETTE MUST BE THE FILM'S OWN DOMAIN, not the reference's visible
-// rim. On the engine `uFeatherEdge` is BRISTLE_FEATHER_EDGE (0.66) of the
-// nominal footprint, which sits INSIDE the 2 %-of-peak rim the paper carries
-// (measured 2026-11-24: reference rim 22 px, film floor boundary 16-17 px) —
-// calibrating from the reference put the mid station BEYOND the band and all
-// three sweeps read a blank row. At amount > 0 the film reaches exactly its
-// rim floor (1 - amount) at u = 1, so the contiguous tail at that floor
-// locates the silhouette directly; the two side boundaries are averaged
-// (their difference is the profile grid's sub-pixel offset from the dab
-// axis). At amount 0 the film is 1 everywhere and the identity capture is
-// calibrated from the REFERENCE's rim as before (the widest row at 2 % of
-// its peak, the MIN of both sides so a one-sided fringe cannot inflate it).
-// Both branches are guarded to at least 8 px — a degenerate profile fails
-// rather than silently judging a 1 px station.
+// THE SILHOUETTE IS THE REFERENCE'S GEOMETRIC RIM: the outermost coverage row
+// within 1 % of the peak (measured 2026-11-25: 15 px on the 1080 neutral).
+// The threshold dissolve moves the VISIBLE edge inward by a falloff-dependent
+// amount, so calibrating from the dissolve itself would put the same station
+// at a different u for every falloff; the stroke's silhouette never moves.
+// The anchor is guarded to at least 8 px — a degenerate profile fails rather
+// than silently judging a 1 px station.
 //
 // The enclosed lane scan reuses the bristle-line gate's three bars.
-// The coverage core bar stays looser than the ink's: the coverage channel is
-// written by a many-dab lerp whose target lags a few percent behind its own
-// value near the core (measured 2026-11-25: 0.693 where the law reads 0.650).
 const EDGE_CORE_TOLERANCE = 0.06
 const EDGE_STATION_TOLERANCE = 0.12
-/** The core is the stroke's converged region and the capture/reference
- *  streams are the same script and seed, so the ink ratio lands on the law's
- *  shared value exactly (measured 2026-11-25: 0.5500 against 0.5500) — the
- *  bar only absorbs the half-float readback and the JSON rounding. This is
- *  the bar a deposit-weight film cannot pass: its ink converges to the full
- *  pigment and reads ~1.0 at the core. */
+/** The core's ink bar: the core is the stroke's converged region and the
+ *  capture/reference streams are the same script and seed, so the ink ratio
+ *  lands on 1 exactly — the bar only absorbs the half-float readback and the
+ *  JSON rounding. A uniform pigment share reads below it (the v5 failure). */
 const EDGE_INK_CORE_TOLERANCE = 0.06
-/** Mirrors BRISTLE_EDGE_CORE: the amount's UNIFORM pigment share at amount
- *  100 (0.55; the mark keeps 45% of its pigment — about 65% of the original
- *  opacity, the display's transmittance law being what maps one to the
- *  other). */
-const EDGE_CORE = 0.55
 /** The printed-fraction bars' tolerance: the core prints 1, the rim 0 at
  *  amount 100, and the paper tooth's own distribution moves the measured
  *  fraction by a few percent at the calibration's parameters. */
@@ -1137,19 +1123,20 @@ const EDGE_PRINT_TOLERANCE = 0.12
 /** The amount-0 identity's row tolerance: the profile arrays are recorded at
  *  four decimals, so a row may move by one rounding step under GPU ULP drift
  *  (measured 2026-11-25: every row identical to 4 dp). A real amount-0 change
- *  — any film, any threshold nibble — moves whole rows far past this. */
+ *  — any threshold nibble — moves whole rows far past this. */
 const EDGE_IDENTITY_TOLERANCE = 2e-4
 const EDGE_SILHOUETTE_MIN_PX = 8
 /** Mirrors BRISTLE_EDGE_START: where the dissolve begins, in silhouette units. */
-const EDGE_START = 0.55
-/** The dissolve band's midpoint in silhouette units: (0.775 - 0.55) / 0.45 = 0.5. */
-const EDGE_MID_U = 0.775
+const EDGE_START = 0.3
+/** The dissolve band's midpoint in silhouette units: (START + 1) / 2. */
+const EDGE_MID_U = (EDGE_START + 1) / 2
 /** The printed fraction at the mid station is the law's shift mapped through
- *  the PAPER TOOTH's own height CDF, which is steeper than a linear ramp
- *  (measured 2026-11-25 at the 12 px station: 0.08 / 0.67 / 0.89 against the
- *  law's 0.25 / 0.44 / 0.69 for falloff 0 / 50 / 100). The band below only
- *  orders the falloffs and rejects a continuous film; the paper's CDF shape is
- *  not a law constant. */
+ *  the PAPER TOOTH's own height CDF, which is steeper than a linear ramp (the
+ *  direction and the falloff ordering hold; the amplitude is the paper's, not
+ *  a law constant — measured 2026-11-25 at the 10 px mid station (t = 0.5):
+ *  0.16 / 0.71 / 0.90 against the law's 0.29 / 0.50 / 0.75 for falloff 0 /
+ *  50 / 100). The band below only orders the falloffs and rejects a
+ *  continuous film. */
 const EDGE_PRINT_MID_TOLERANCE = 0.25
 /** The core prints at least this share of its texels at every amount (the
  *  load/streak variation keeps a few cells open; measured 0.89). */
@@ -1294,11 +1281,11 @@ function edgeTransparencyFailures(data, reference) {
       failures.push(
         `amount-0 identity: the profile differs from the pre-change baseline by up to ` +
           `${worst.toFixed(6)} at ${worstAt} px (tolerance ${EDGE_IDENTITY_TOLERANCE}) — ` +
-          'the edge law must be INERT at amount 0 (no film, no threshold shift)',
+          'the edge law must be INERT at amount 0 (no threshold shift)',
       )
     }
   }
-  const filmAt = (station) => {
+  const coverShareAt = (station) => {
     const index = offsets.indexOf(station)
     if (index < 0) return null
     const baseline = referenceCover[index]
@@ -1336,20 +1323,19 @@ function edgeTransparencyFailures(data, reference) {
     const t = (u - EDGE_START) / (1 - EDGE_START)
     return Math.max(0, Math.min(1, t))
   }
-  // The cover (base-replacement) share at a station: the uniform pigment
-  // share times the printed fraction the dissolve leaves there. The CORE and
-  // RIM bars only: the printed fractions at the mid are the paper tooth's own
-  // height CDF (steeper than the shift's ramp — see EDGE_PRINT_MID_TOLERANCE),
-  // so the mid is judged on the PRINT bar, which is the same law's product
-  // without the mean-vs-fraction ambiguity of the cover channel.
-  const film = 1 - amount * EDGE_CORE
+  // The cover (base-replacement) share at a station: the printed fraction the
+  // dissolve leaves there (the survivors keep the full target). The CORE and
+  // RIM bars only: the mid's printed fraction is the paper tooth's own height
+  // CDF (steeper than the shift's ramp — see EDGE_PRINT_MID_TOLERANCE), so the
+  // mid is judged on the PRINT bar, the same law's product without the
+  // mean-vs-fraction ambiguity of the cover channel.
   const printedAt = (station) => 1 - amount * stationT(station) ** exponent
   const stations = [
-    ['core', 0, film, EDGE_CORE_TOLERANCE],
-    ['rim', rimStation, film * (1 - amount), EDGE_STATION_TOLERANCE],
+    ['core', 0, 1, EDGE_CORE_TOLERANCE],
+    ['rim', rimStation, 1 - amount, EDGE_STATION_TOLERANCE],
   ]
   for (const [label, station, expected, tolerance] of stations) {
-    const measured = filmAt(station)
+    const measured = coverShareAt(station)
     if (measured === null) {
       failures.push(`the coverage profile carries no row at the ${label} station ${station} px`)
       continue
@@ -1357,26 +1343,26 @@ function edgeTransparencyFailures(data, reference) {
     if (measured === undefined) {
       failures.push(
         `the reference carries no coverage at the ${label} station ${station} px; ` +
-          'the film cannot be normalised there (the neutral baseline must reach every station)',
+          'the cover share cannot be normalised there (the neutral baseline must reach every station)',
       )
       continue
     }
     if (Math.abs(measured - expected) > tolerance) {
       const hint =
-        label === 'mid'
-          ? ` — the falloff exponent ${exponent} is not distributing the fade as requested`
-          : label === 'core'
-            ? ' — the core must read 1 - amount · EDGE_CORE at every falloff'
-            : ' — the rim must read exactly 1 - amount'
+        label === 'core'
+          ? ' — the core must keep the reference\'s own replacement share at every falloff ' +
+            '(the edge is a dissolve, never a uniform film)'
+          : ' — the rim must read exactly 1 - amount'
       failures.push(
-        `edge film ${label} at ${station} px reads ${measured.toFixed(4)} ` +
+        `edge cover ${label} at ${station} px reads ${measured.toFixed(4)} ` +
           `(expected ${expected.toFixed(4)} ± ${tolerance} at amount ${data.edgeAmount} / falloff ${data.edgeFalloff})${hint}`,
       )
     }
   }
   // The CORE ink bar (see the block comment): the stroke's converged region
-  // reads exactly `film` × the neutral reference, which no incoherent film
-  // satisfies — a weight-only film converges to the full pigment (~1.0).
+  // must keep the neutral reference's own pigment — the edge transparency may
+  // open the fringe, never thin the whole mark (uniform opacity is the spec's
+  // non-goal; UAT 2026-11-25 #5).
   {
     const [label, station, expected] = stations[0]
     const measured = pigmentAt(station)
@@ -1391,18 +1377,17 @@ function edgeTransparencyFailures(data, reference) {
       failures.push(
         `edge pigment core at ${station} px reads ${measured.toFixed(4)} ` +
           `(expected ${expected.toFixed(4)} ± ${EDGE_INK_CORE_TOLERANCE} at amount ${data.edgeAmount} / falloff ${data.edgeFalloff}) — ` +
-          'the amount is a UNIFORM pigment share: every stroke converges to cA·film at its core, so a ' +
-          'law that leaves the body pigment full (a weight-only film: solid body, cut fringe) reads ~1.0 ' +
-          'here; the edge transparency itself must be the threshold dissolve, never a paler fringe ' +
-          'pigment that replaces the underlayer (the white veil)',
+          'the core must keep the full pigment: a UNIFORM share washes the whole mark (UAT 2026-11-25 #5, ' +
+          '"always full transparence") and a depth film sets a paler fringe pigment that replaces the ' +
+          'underlayer (the white veil); the edge transparency is the threshold dissolve alone',
       )
     }
   }
   // Spec 10 — THE SPARSE EDGE'S OWN WITNESS. A lateral depth film prints every
   // texel at every station (the white veil); the shipped threshold dissolve
-  // prints the full pigment share in a SHARE of the cells and opens the rest
-  // completely, leaving the underlayer untouched. At amount 100 the printed
-  // fraction is ~1 at the core, 1 - t^e at the mid and 0 at the rim.
+  // prints the mark's own full-depth pigment in a SHARE of the cells and opens
+  // the rest completely, leaving the underlayer untouched. At amount 100 the
+  // printed fraction is ~1 at the core, 1 - t^e at the mid and 0 at the rim.
   if (amount > 0) {
     const printProfile = Array.isArray(profile.print) ? profile.print : null
     if (printProfile === null || printProfile.length !== offsets.length) {
