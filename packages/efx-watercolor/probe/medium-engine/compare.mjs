@@ -1443,7 +1443,11 @@ function edgeLayerFailures(data, reference) {
   }
   if (failures.length > 0) return failures
 
-  if (data.edgeAmount === 0) return [...failures, ...edgeIdentityFailures(data, reference)]
+  // At amount 0 the identity block AND the Studio rows both run: the bypass
+  // must reproduce the baseline pixel for pixel AND leave no layer behind.
+  if (data.edgeAmount === 0) {
+    return [...failures, ...edgeIdentityFailures(data, reference), ...edgeStudioFailures(data)]
+  }
 
   const amount = data.edgeAmount / 100
   const missing = EDGE_LAYER_READINGS.filter((field) => !(field in data))
@@ -1580,6 +1584,281 @@ function edgeLayerFailures(data, reference) {
         '50 % station must read the 0.5·layer + 0.5 mix in LINEAR light (DESIGN 6.5)',
     )
   }
+  failures.push(...edgeStudioFailures(data))
+  return failures
+}
+
+/**
+ * 261125-kvl task 5: every row the probe's `edgeStudioRows` reports. The
+ * wall-clock readings (`edgeMergeMs*`) are deliberately NOT in this list —
+ * they are reported in the capture and printed by `printEdgeStudio`, never
+ * compared field for field.
+ */
+const EDGE_STUDIO_FIELDS = [
+  // the memory row
+  'edgeMemoryDim',
+  'edgeMemoryLayerAllocated',
+  'edgeMemoryTargets',
+  'edgeMemoryLayerBytes',
+  'edgeMemoryPerTexel',
+  'edgeMemoryMiB',
+  'edgeMemoryClampDim',
+  'edgeMemoryClampedMiB',
+  'edgeMemory4KRawMiB',
+  // G1 — the live pointer stroke
+  'edgeG1DrawsBefore',
+  'edgeG1DrawsAtCallback',
+  'edgeG1MergeDraws',
+  'edgeG1CallbackCount',
+  'edgeG1LayerOpenAtCallback',
+  'edgeG1SheetPeakAtCallback',
+  'edgeG1SheetPeak',
+  'edgeG1LayerClosed',
+  // G2 — the adapter's applyStroke
+  'edgeG2MergeDraws',
+  'edgeG2LayerClosed',
+  'edgeG2SheetPeak',
+  // undo / redo of a committed stroke
+  'edgeUndoRestoreMax',
+  'edgeUndoRestoreTexels',
+  'edgeRedoRestoreMax',
+  'edgeRedoRestoreTexels',
+  'edgeMergeOutsideMax',
+  'edgeMergeOutsideTexels',
+  'edgeUndoOutsideMax',
+  'edgeUndoOutsideTexels',
+  'edgeRedoOutsideMax',
+  'edgeRedoOutsideTexels',
+  'edgeUndoLayerClosed',
+  // I1 — abortStroke
+  'edgeAbortWasOpen',
+  'edgeAbortClosed',
+  'edgeAbortSheetMax',
+  'edgeAbortSheetTexels',
+  'edgeAbortNextMerge',
+  // I2 — undo with a layer open
+  'edgeUndoOpenWasOpen',
+  'edgeUndoOpenClosed',
+  'edgeUndoOpenNextMerge',
+  // I3 — restore with a layer open
+  'edgeRestoreWasOpen',
+  'edgeRestoreLayerAllocated',
+  'edgeRestoreLayerFieldsNull',
+  'edgeRestoreNextMerge',
+  'edgeRestoreReallocated',
+  // I4 — resizeDocument with a layer open
+  'edgeResizeWasOpen',
+  'edgeResizeDim',
+  'edgeResizeLayerAllocated',
+  'edgeResizeLayerFieldsNull',
+  'edgeResizeNextMerge',
+  'edgeResizeReallocated',
+  // I5 — createDocument with a layer open
+  'edgeCreateWasOpen',
+  'edgeCreateLayerFieldsNull',
+  'edgeCreateLayerAllocated',
+  'edgeCreateDiscardIdempotent',
+  'edgeCreateNextMerge',
+  'edgeCreateReallocated',
+]
+
+/**
+ * The Studio lifecycle bars (261125-kvl task 5). Every row is amount-keyed
+ * where the bypass branch changes the count: at amount 0 no target exists, no
+ * layer opens and no merge draws; at amount > 0 each live stroke merges
+ * exactly once, BEFORE `onStrokeEnd` fires. Undo restores the pre-merge sheet
+ * byte for byte over the merge rect, redo re-applies it, and neither moves a
+ * texel outside — the interrupt rows prove each abandon path leaves no layer
+ * behind and the NEXT Edge stroke re-allocates and merges once. A missing row
+ * fails by name; `undefined` is never read as a satisfied bar.
+ */
+function edgeStudioFailures(data) {
+  const failures = []
+  const amountOn = data.edgeAmount > 0
+  const key = amountOn ? 1 : 0
+  const missing = EDGE_STUDIO_FIELDS.filter((field) => !(field in data))
+  if (missing.length > 0) {
+    return [
+      `capture is missing ${missing.join(', ')} — re-run --scenario edge-layer ` +
+        '(the Studio lifecycle rows run at the end of every edge-layer visit)',
+    ]
+  }
+  const isNum = (value) => typeof value === 'number' && Number.isFinite(value)
+  const expectEqual = (field, want, why) => {
+    if (data[field] !== want) {
+      failures.push(`${field} ${JSON.stringify(data[field])} is not ${JSON.stringify(want)} at amount ${data.edgeAmount} — ${why}`)
+    }
+  }
+
+  // --- the memory row -------------------------------------------------------
+  expectEqual(
+    'edgeMemoryLayerAllocated',
+    amountOn,
+    amountOn
+      ? 'an Edge stroke allocates the layer set'
+      : 'amount 0 is the structural bypass: no layer target may exist',
+  )
+  const dim = data.edgeMemoryDim
+  if (!Array.isArray(dim) || dim.length !== 2 || !dim.every((v) => Number.isInteger(v) && v > 0)) {
+    failures.push(`edgeMemoryDim ${JSON.stringify(dim)} is not a positive [w, h] pair`)
+  }
+  const targets = data.edgeMemoryTargets
+  const targetNames = ['layerInkRead', 'layerInkWrite', 'layerFilm', 'layerRelief', 'mergeRelief']
+  const targetsOk =
+    targets !== null &&
+    typeof targets === 'object' &&
+    targetNames.every((name) => isNum(targets[name]) && targets[name] >= 0)
+  if (!targetsOk) {
+    failures.push(`edgeMemoryTargets ${JSON.stringify(targets)} is not the five per-target byte counts`)
+  } else {
+    const sum = targetNames.reduce((total, name) => total + targets[name], 0)
+    if (!isNum(data.edgeMemoryLayerBytes) || sum !== data.edgeMemoryLayerBytes) {
+      failures.push(
+        `edgeMemoryLayerBytes ${data.edgeMemoryLayerBytes} is not the sum of edgeMemoryTargets (${sum}) — ` +
+          'the measured set is the five targets and nothing else',
+      )
+    }
+    if (amountOn) {
+      if (!(data.edgeMemoryLayerBytes > 0)) {
+        failures.push(`edgeMemoryLayerBytes ${data.edgeMemoryLayerBytes} is not positive at amount > 0`)
+      }
+      if (!(isNum(data.edgeMemoryPerTexel) && data.edgeMemoryPerTexel > 0)) {
+        failures.push(`edgeMemoryPerTexel ${data.edgeMemoryPerTexel} is not a positive bytes/texel reading`)
+      }
+      if (Array.isArray(dim) && data.edgeMemoryLayerBytes > 0 && isNum(data.edgeMemoryPerTexel)) {
+        const area = dim[0] * dim[1]
+        // 4-dp rounding of the per-texel ratio, never an equality on the quotient.
+        if (Math.abs(data.edgeMemoryPerTexel * area - data.edgeMemoryLayerBytes) > area * 1e-4 + 1) {
+          failures.push(
+            `edgeMemoryPerTexel ${data.edgeMemoryPerTexel} does not match ` +
+              `${data.edgeMemoryLayerBytes} bytes over ${area} texels`,
+          )
+        }
+      }
+      for (const field of ['edgeMemoryMiB', 'edgeMemoryClampedMiB', 'edgeMemory4KRawMiB']) {
+        if (!(isNum(data[field]) && data[field] > 0)) {
+          failures.push(`${field} ${data[field]} is not a positive MiB reading`)
+        }
+      }
+    } else if (data.edgeMemoryLayerBytes !== 0) {
+      failures.push(`edgeMemoryLayerBytes ${data.edgeMemoryLayerBytes} is not 0 at amount 0 — no layer target may exist`)
+    }
+  }
+  const clamp = data.edgeMemoryClampDim
+  if (!Array.isArray(clamp) || clamp.length !== 2 || !clamp.every((v) => Number.isInteger(v) && v > 0)) {
+    failures.push(`edgeMemoryClampDim ${JSON.stringify(clamp)} is not a positive [w, h] pair`)
+  }
+
+  // --- G1: the live pointer stroke -----------------------------------------
+  expectEqual('edgeG1MergeDraws', key, 'the live pointer stroke merges exactly once at its own end (never mid-stroke, never at amount 0)')
+  expectEqual('edgeG1CallbackCount', 1, 'the release fires onStrokeEnd exactly once')
+  expectEqual('edgeG1LayerOpenAtCallback', false, 'the merge runs BEFORE onStrokeEnd, so no layer may still be open at the callback')
+  expectEqual('edgeG1LayerClosed', true, 'no layer may survive the stroke end')
+  if (isNum(data.edgeG1DrawsBefore) && data.edgeG1DrawsAtCallback !== data.edgeG1DrawsBefore + key) {
+    failures.push(
+      `edgeG1DrawsAtCallback ${data.edgeG1DrawsAtCallback} is not edgeG1DrawsBefore + ${key} — ` +
+        'the merge counter must have advanced before the callback reads it',
+    )
+  }
+  for (const field of ['edgeG1SheetPeak', 'edgeG1SheetPeakAtCallback']) {
+    if (!(isNum(data[field]) && data[field] > 0)) {
+      failures.push(`${field} ${data[field]} is not a positive cover peak — the stroke's bytes must be down at the callback`)
+    }
+  }
+
+  // --- G2: the adapter's applyStroke ---------------------------------------
+  expectEqual('edgeG2MergeDraws', key, "the adapter's applyStroke drive merges exactly once at its own end (never at amount 0)")
+  expectEqual('edgeG2LayerClosed', true, 'no layer may survive the adapter-driven stroke end')
+  if (!(isNum(data.edgeG2SheetPeak) && data.edgeG2SheetPeak > 0)) {
+    failures.push(`edgeG2SheetPeak ${data.edgeG2SheetPeak} is not a positive cover peak — the adapter drive must paint the sheet`)
+  }
+
+  // --- G3/G4: the replays ---------------------------------------------------
+  expectEqual('edgeReplaySelfIdentical', true, 'the split drive and the one-shot replay must export identically')
+  expectEqual('edgeReplayIdentical', true, 'the reset replay must reproduce the visit (the scene is pinned by pinStrokeStart)')
+  const replayBar = amountOn ? 2 : 0
+  if (!(isNum(data.edgeReplayMaxDelta) && data.edgeReplayMaxDelta <= replayBar)) {
+    failures.push(
+      `edgeReplayMaxDelta ${data.edgeReplayMaxDelta} exceeds ${replayBar}/255 at amount ${data.edgeAmount} — ` +
+        (amountOn
+          ? 'the seeded replay must reproduce the visit within the encoder bar'
+          : 'amount 0 must reproduce the visit BYTE for byte'),
+    )
+  }
+
+  // --- undo / redo of a committed stroke -----------------------------------
+  for (const field of ['edgeUndoRestoreMax', 'edgeRedoRestoreMax', 'edgeMergeOutsideMax', 'edgeUndoOutsideMax', 'edgeRedoOutsideMax']) {
+    if (data[field] !== 0) {
+      failures.push(
+        `${field} ${data[field]} is not 0 — undo must restore the pre-merge sheet byte for byte over ` +
+          'the merge rect, redo must re-apply it, and neither may move a texel outside it',
+      )
+    }
+  }
+  for (const field of ['edgeUndoRestoreTexels', 'edgeRedoRestoreTexels', 'edgeMergeOutsideTexels', 'edgeUndoOutsideTexels', 'edgeRedoOutsideTexels']) {
+    if (data[field] !== 0) {
+      failures.push(`${field} ${data[field]} is not 0 — the undo/redo round trip must be exact (no tile left behind)`)
+    }
+  }
+  expectEqual('edgeUndoLayerClosed', true, 'undo/redo must travel the sheet with no layer film left open')
+
+  // --- the abandon paths ----------------------------------------------------
+  const interruptRows = [
+    ['edgeAbortWasOpen', 'edgeAbortClosed', 'edgeAbortNextMerge'],
+    ['edgeUndoOpenWasOpen', 'edgeUndoOpenClosed', 'edgeUndoOpenNextMerge'],
+    ['edgeRestoreWasOpen', null, 'edgeRestoreNextMerge'],
+    ['edgeResizeWasOpen', null, 'edgeResizeNextMerge'],
+    ['edgeCreateWasOpen', null, 'edgeCreateNextMerge'],
+  ]
+  for (const [wasField, closedField, nextField] of interruptRows) {
+    expectEqual(wasField, amountOn, 'a layer-bearing stroke must be OPEN at this seam or the row proves nothing')
+    if (closedField !== null) {
+      expectEqual(closedField, true, 'the abandon path must close the layer')
+    }
+    expectEqual(
+      nextField,
+      key,
+      'the next Edge stroke after the abandon path must merge exactly once (never anything at amount 0)',
+    )
+  }
+  for (const field of ['edgeRestoreLayerFieldsNull', 'edgeResizeLayerFieldsNull', 'edgeCreateLayerFieldsNull']) {
+    expectEqual(field, true, 'a recreate path with a layer open must leave no layer field behind')
+  }
+  for (const field of ['edgeRestoreLayerAllocated', 'edgeResizeLayerAllocated', 'edgeCreateLayerAllocated']) {
+    expectEqual(field, false, 'the recreated document starts with no layer target (lazy allocation)')
+  }
+  for (const field of ['edgeRestoreReallocated', 'edgeResizeReallocated', 'edgeCreateReallocated']) {
+    expectEqual(
+      field,
+      amountOn,
+      amountOn ? 'the next Edge stroke must re-allocate the layer set' : 'amount 0 never allocates a layer target',
+    )
+  }
+  expectEqual('edgeCreateDiscardIdempotent', true, 'discardLayer() must stay idempotent on an already-nulled layer')
+  if (!Number.isInteger(data.edgeResizeDim) || data.edgeResizeDim <= 0) {
+    failures.push(`edgeResizeDim ${JSON.stringify(data.edgeResizeDim)} is not the resized document side`)
+  }
+  if (data.edgeAbortSheetMax !== 0 || data.edgeAbortSheetTexels !== 0) {
+    failures.push(
+      `the aborted stroke moved the sheet (max ${data.edgeAbortSheetMax} over ` +
+        `${data.edgeAbortSheetTexels} texel(s)) — abortStroke takes back its step, never repaints`,
+    )
+  }
+
+  // --- the merge's own cost (reported here, judged by the artist) ----------
+  if (amountOn) {
+    for (const field of ['edgeMergeMsFirst', 'edgeMergeMsSecond', 'edgeMergeMsMax']) {
+      if (!(isNum(data[field]) && data[field] >= 0)) {
+        failures.push(`${field} ${JSON.stringify(data[field])} is not a measured merge time at amount > 0`)
+      }
+    }
+  } else {
+    for (const field of ['edgeMergeMsFirst', 'edgeMergeMsSecond', 'edgeMergeMsMax']) {
+      if (data[field] !== null) {
+        failures.push(`${field} ${JSON.stringify(data[field])} is not null at amount 0 — no merge runs`)
+      }
+    }
+  }
   return failures
 }
 
@@ -1691,6 +1970,32 @@ function printBristleEdge(data) {
   if (Array.isArray(data.edgeSkippedStations) && data.edgeSkippedStations.length > 0) {
     console.log(`edge skips: ${data.edgeSkippedStations.length} station(s) in dash gaps`)
   }
+  console.log('')
+}
+
+/** 261125-kvl task 5: print the Studio lifecycle readings a capture recorded. */
+function printEdgeStudio(data) {
+  if (data.scenario !== 'edge-layer') return
+  const isNum = (value) => typeof value === 'number' && Number.isFinite(value)
+  const dims = Array.isArray(data.edgeMemoryDim) ? data.edgeMemoryDim.join('x') : '(none)'
+  const memory = data.edgeMemoryLayerAllocated
+    ? `${data.edgeMemoryMiB} MiB @ ${data.edgeMemoryPerTexel} B/px (${dims}); ` +
+      `4K clamp ${data.edgeMemoryClampedMiB} MiB, raw 4096² ${data.edgeMemory4KRawMiB} MiB`
+    : 'none (structural bypass)'
+  const parts = [`amount ${data.edgeAmount}`, `layer ${memory}`]
+  if (isNum(data.edgeMergeMsFirst)) {
+    parts.push(`merge ${data.edgeMergeMsFirst} / ${data.edgeMergeMsSecond} ms (max ${data.edgeMergeMsMax})`)
+  }
+  parts.push(
+    `G1 merges ${data.edgeG1MergeDraws}, callback x${data.edgeG1CallbackCount}, ` +
+      `peak ${data.edgeG1SheetPeak}`,
+    `undo ${data.edgeUndoRestoreMax}/${data.edgeUndoRestoreTexels} texel(s), ` +
+      `outside ${data.edgeUndoOutsideMax}/${data.edgeUndoOutsideTexels}`,
+    `interrupt abort ${data.edgeAbortClosed}, undo ${data.edgeUndoOpenClosed}, ` +
+      `restore ${data.edgeRestoreReallocated}, resize ${data.edgeResizeReallocated}, ` +
+      `create ${data.edgeCreateReallocated}`,
+  )
+  console.log(`studio    : ${parts.join(' | ')}`)
   console.log('')
 }
 
@@ -2277,6 +2582,24 @@ if (
   }
 }
 
+// 261125-kvl task 5: a re-capture of the same edge-layer scene must replay the
+// Studio rows field for field too — the same merge counts, sheet windows,
+// undo deltas and lifecycle booleans, not only the same digests. The wall
+// clock (edgeMergeMs*) is deliberately excluded. Compared only when BOTH
+// captures carry the rows, so every other scenario's shape is unchanged.
+if (mode === 'other' && EDGE_STUDIO_FIELDS.every((field) => field in actual && field in refData)) {
+  for (const field of EDGE_STUDIO_FIELDS) {
+    const a = JSON.stringify(actual[field])
+    const b = JSON.stringify(refData[field])
+    if (a !== b) {
+      differing += 1
+      console.log(`DIFFER    ${field.padEnd(18)} capture=${a} reference=${b}`)
+    } else {
+      console.log(`equal     ${field.padEnd(18)} ${a}`)
+    }
+  }
+}
+
 // WR-01: the standing gate (capture vs its own baseline, or a same-session
 // pair) asserts the same self-contained outcome invariants in every mode.
 const regionFailures = coverRegionFailures(actual)
@@ -2285,6 +2608,7 @@ printBristleEdge(actual)
 printBristleWet(actual)
 printBristleTip(actual)
 printCoverLifecycle(actual)
+printEdgeStudio(actual)
 // 64-31: the alpha-law blocks run in committed-baseline and same-session mode
 // too — every mode, before every verdict.
 const lawFailures = alphaLawFailures(actual)

@@ -56,6 +56,25 @@
 //      RGB is never re-derived). It is scoped to texels that actually carry
 //      coverage (cov > 0), so a Body-0 export — whose alpha is the pigment's
 //      own darkness — stays byte-identical.
+//
+//   261125-kvl — the per-stroke layer's lifecycle (Task 5)
+//   12. `openLayer` runs at BOTH stroke-creation sites (scriptBegin and the
+//      pointerdown handler), and nowhere else — a stroke opened on one seam
+//      and not the other merges on one drive and leaks on the other.
+//   13. `commitLayer(s)` runs in the ending branch BEFORE the stroke is
+//      dropped and before the end callbacks, merges only the stroke it owns,
+//      and is a no-op when no layer is open. The merge itself draws once.
+//   14. Every abandon path discards (never merges): clear, resetSheet,
+//      abortStroke and travel. `discardLayer` is guarded by `layerOpen` and
+//      never touches a nulled field, so a recreate path that nulls first can
+//      still call it.
+//   15. Every recreate path forgets the layer BEFORE disposing/allocating its
+//      targets (createDocument, resizeDocument, applyWhole, restore), because
+//      `ensureLayer` skips re-allocation while any field survives; the lazy
+//      set joins `docTargets()`, so disposal and the sheet wipe reach it.
+//   16. `layerStrokeActive` reads `params.edgeFade` live and requires the
+//      bristle Brush with a bristle response — the SAME predicate at stroke
+//      start, every dab and the merge.
 // ============================================================
 
 import { readFileSync } from 'node:fs'
@@ -500,5 +519,213 @@ describe('the capture-time clearance closes the census (64-20 decision A)', () =
     const display = DISPLAY()
     expectNotContains(display, 'coverClear')
     expectContains(display, 'o = vec4(pigment * alpha * shade, alpha);')
+  })
+})
+
+const SCRIPT_BEGIN = () =>
+  sliceBetween(ENGINE, 'scriptBegin(tool: Tool, x: number, y: number, pressure: number,', 'this.queue.push({ x, y, p: scriptPressure')
+const POINTERDOWN = () =>
+  sliceBetween(ENGINE, 'this.stroke = {\n        pointerId: e.pointerId', 'this.pushSample(e);')
+const COMMIT_LAYER = () => sliceBetween(ENGINE, 'private commitLayer(s: Stroke) {', 'private bindLayerAlpha(')
+const DISCARD_LAYER = () => sliceBetween(ENGINE, 'private discardLayer() {', 'private forgetLayer() {')
+const FORGET_LAYER = () => sliceBetween(ENGINE, 'private forgetLayer() {', 'private commitLayer(s: Stroke) {')
+const ENSURE_LAYER = () => sliceBetween(ENGINE, 'private ensureLayer() {', 'private openLayer(')
+const LAYER_STROKE_ACTIVE = () =>
+  sliceBetween(ENGINE, 'private layerStrokeActive(s: Stroke): boolean {', 'private ensureLayer()')
+const DOC_TARGETS = () => sliceBetween(ENGINE, 'private docTargets(): Target[] {', 'private layerTargets()')
+
+describe('the stroke layer opens at both stroke-creation sites (261125-kvl task 5)', () => {
+  it('calls openLayer exactly twice — once per creation seam, nowhere else', () => {
+    expect(countOccurrences(ENGINE, 'this.openLayer(this.stroke);')).toBe(2)
+    // scriptBegin: the scripted stroke is created, then the layer decision runs
+    // right after the history step and before the first sample is queued.
+    const script = SCRIPT_BEGIN()
+    expectContains(script, "this.beginStep('script', step);")
+    expectContains(script, 'this.openLayer(this.stroke);')
+    expect(script.indexOf('this.openLayer(this.stroke);')).toBeGreaterThan(
+      script.indexOf("this.beginStep('script', step);"),
+    )
+    // pointerdown: the live stroke is created and the layer decision runs BEFORE
+    // the history step opens (the dabs land in the step the stroke just began).
+    const pointer = POINTERDOWN()
+    expectContains(pointer, 'this.openLayer(this.stroke);')
+    expect(pointer.indexOf('this.openLayer(this.stroke);')).toBeGreaterThan(pointer.indexOf('pointerId: e.pointerId'))
+    expect(pointer.indexOf('this.openLayer(this.stroke);')).toBeLessThan(
+      pointer.indexOf("this.beginStep('stroke', STROKE_LABEL[tool]);"),
+    )
+  })
+
+  it('gates the decision on the live Edge amount, the bristle Brush and a bristle response', () => {
+    const predicate = LAYER_STROKE_ACTIVE()
+    expectContains(
+      predicate,
+      'return this.params.edgeFade > 0 && s.tool === \'brush\' && isBristleResponse(this.brush);',
+    )
+    // Read live, never captured at open: a mid-stroke amount change moves the
+    // display and the merge together.
+    expectNotContains(predicate, 'bristleContent')
+  })
+
+  it('allocates each of the five targets once and skips while every field survives', () => {
+    const ensure = ENSURE_LAYER()
+    expectContains(ensure, 'if (this.layerAllocated && this.layerInk !== null && this.layerFilm !== null')
+    expectContains(ensure, '&& this.layerRelief !== null && this.mergeRelief !== null) return;')
+    expectContains(ensure, 'this.layerInk = g.double(this.dw, this.dh, [HALF_FLOAT_RGBA, HALF_FLOAT_RGBA], gl.LINEAR);')
+    expectContains(ensure, 'this.layerFilm = g.target(this.dw, this.dh, [HALF_FLOAT_R, HALF_FLOAT_R], gl.NEAREST);')
+    expectContains(ensure, 'this.layerRelief = g.target(this.dw, this.dh, [HALF_FLOAT_R], gl.LINEAR);')
+    expectContains(ensure, 'this.mergeRelief = g.target(this.dw, this.dh, [HALF_FLOAT_R], gl.LINEAR);')
+    expectContains(ensure, 'this.layerAllocated = true;')
+  })
+})
+
+describe('the stroke end commits the layer exactly once (261125-kvl task 5)', () => {
+  it('runs in the ending branch before the stroke is dropped and before the callbacks', () => {
+    expect(countOccurrences(ENGINE, 'this.commitLayer(s);')).toBe(1)
+    const ending = firstIndexAfter(ENGINE, 'if (s.ending) {')
+    const commit = firstIndexAfter(ENGINE, 'this.commitLayer(s);', ending)
+    const dropped = firstIndexAfter(ENGINE, 'this.stroke = null;', commit)
+    const endTool = firstIndexAfter(ENGINE, 'this.callbacks.onStrokeTool?.(null);', dropped)
+    const endStroke = firstIndexAfter(ENGINE, 'this.callbacks.onStrokeEnd?.(s.tool);', endTool)
+    // The end callbacks only fire for a live pointer — a scripted drive settles
+    // through the tick, never through the pointer's callback pair.
+    expectContains(ENGINE.slice(commit, endStroke), 'if (s.pointerId !== SCRIPT_POINTER) {')
+    expect(commit).toBeGreaterThan(ending)
+    expect(dropped).toBeGreaterThan(commit)
+    expect(endTool).toBeGreaterThan(dropped)
+    expect(endStroke).toBeGreaterThan(endTool)
+  })
+
+  it('merges only the stroke it owns, once, and is inert with no layer open', () => {
+    const body = COMMIT_LAYER()
+    expectContains(body, 'if (!this.layerOpen) return;')
+    // A foreign stroke's layer is discarded, never merged.
+    expectContains(body, 'if (this.layerStroke !== s) {')
+    expectContains(body, 'this.discardLayer();')
+    expectContains(body, 'if (rect) this.mergeStrokeLayer(rect);')
+    // ONE merge call site in the commit — the counter advances by exactly one.
+    expect(countOccurrences(body, 'this.mergeStrokeLayer(rect);')).toBe(1)
+  })
+})
+
+describe('every abandon path discards the layer (261125-kvl task 5)', () => {
+  it('discards in clear, resetSheet, abortStroke and travel', () => {
+    const clear = sliceBetween(ENGINE, 'clear() {', 'resetSheet() {')
+    expectContains(clear, 'this.discardLayer();')
+    const reset = sliceBetween(ENGINE, 'resetSheet() {', 'abortStroke() {')
+    expectContains(reset, 'this.discardLayer();')
+    const abort = sliceBetween(ENGINE, 'abortStroke() {', 'undo() {')
+    expectContains(abort, 'this.discardLayer();')
+    const travel = sliceBetween(ENGINE, "private travel(dir: 'undo' | 'redo'", 'const res = dir ===')
+    expectContains(travel, 'this.discardLayer();')
+    // Each is a discard BEFORE the state move that would strand the film:
+    // clear and resetSheet drop the stroke first, then discard; abort and
+    // travel do the same.
+    expect(clear.indexOf('this.discardLayer();')).toBeGreaterThan(clear.indexOf('this.stroke = null;'))
+    expect(reset.indexOf('this.discardLayer();')).toBeGreaterThan(reset.indexOf('this.stroke = null;'))
+    expect(abort.indexOf('this.discardLayer();')).toBeGreaterThan(abort.indexOf('this.stroke = null;'))
+    expect(travel.indexOf('this.discardLayer();')).toBeGreaterThan(travel.indexOf('this.stroke = null;'))
+  })
+
+  it('is idempotent and never clears a nulled target', () => {
+    const body = DISCARD_LAYER()
+    const guard = body.indexOf('if (this.layerOpen) {')
+    expect(guard).toBeGreaterThanOrEqual(0)
+    // The guard's closing brace at the method's own indent (the earlier `}`
+    // in `const { g } = this;` is destructuring, not the block's end).
+    const close = body.indexOf('\n    }', guard)
+    expect(close).toBeGreaterThan(guard)
+    // Every clear sits INSIDE the guard, on the non-null assertion the guard
+    // proves; nothing after the guard touches a target.
+    for (const clear of [
+      'g.clearTarget(this.layerInk!.read);',
+      'g.clearTarget(this.layerInk!.write);',
+      'g.clearTarget(this.layerFilm!);',
+      'g.clearTarget(this.layerRelief!);',
+    ]) {
+      const at = body.indexOf(clear)
+      expect(at, clear).toBeGreaterThan(guard)
+      expect(at, clear).toBeLessThan(close)
+    }
+    // The bookkeeping resets run unconditionally, after the guard — a second
+    // call finds layerOpen false and only re-nulls.
+    for (const reset of ['this.layerOpen = false;', 'this.layerStroke = null;', 'this.layerRect = null;']) {
+      expect(body.indexOf(reset), reset).toBeGreaterThan(close)
+    }
+    // Exactly the two ink halves are asserted non-null, both inside the guard —
+    // no third use can reach a nulled field.
+    expect(countOccurrences(body, 'this.layerInk!')).toBe(2)
+  })
+})
+
+describe('every recreate path forgets the layer first (261125-kvl task 5)', () => {
+  it('forgets before disposing/allocating in createDocument', () => {
+    const body = sliceBetween(ENGINE, 'private createDocument([w, h]: [number, number]) {', 'this.paperSeed =')
+    const forget = body.indexOf('this.forgetLayer();')
+    expect(forget).toBeGreaterThanOrEqual(0)
+    expect(forget).toBeLessThan(body.indexOf('this.g.disposeTargets();'))
+    expect(forget).toBeLessThan(body.indexOf('this.allocateTargets();'))
+    expect(forget).toBeLessThan(body.indexOf('this.allocateHistory();'))
+  })
+
+  it('forgets before allocating in resizeDocument, and captures the old set first', () => {
+    const body = sliceBetween(ENGINE, 'resizeDocument(w: number, h: number) {', 'const sx = Math.max(0, -ox)')
+    const forget = body.indexOf('this.forgetLayer();')
+    expect(forget).toBeGreaterThanOrEqual(0)
+    // The old set is captured BEFORE the fields are nulled, so the layer
+    // targets ride `docTargets()` into the disposal at the method's end.
+    expect(body.indexOf('const old = { targets: this.docTargets(),')).toBeGreaterThanOrEqual(0)
+    expect(body.indexOf('const old = { targets: this.docTargets(),')).toBeLessThan(forget)
+    expect(forget).toBeLessThan(body.indexOf('this.allocateTargets();'))
+    expect(forget).toBeLessThan(body.indexOf('this.history.beginBoundary({ kind: \'resize\''))
+  })
+
+  it('forgets before allocating and disposing in applyWhole', () => {
+    const body = sliceBetween(ENGINE, 'private applyWhole(whole: WholeDoc, paperOrigin: [number, number]) {', 'this.history.resize(')
+    const forget = body.indexOf('this.forgetLayer();')
+    expect(forget).toBeGreaterThanOrEqual(0)
+    expect(forget).toBeLessThan(body.indexOf('this.allocateTargets();'))
+    expect(forget).toBeLessThan(body.indexOf('old.forEach(t => this.g.disposeTarget(t));'))
+  })
+
+  it('forgets before disposing/allocating in restore, and nulls the stroke', () => {
+    const body = sliceBetween(ENGINE, 'restore(s: DocumentSnapshot) {', 'this.resetPaintState();')
+    const forget = body.indexOf('this.forgetLayer();')
+    expect(forget).toBeGreaterThanOrEqual(0)
+    expect(body.indexOf('this.stroke = null;')).toBeGreaterThanOrEqual(0)
+    expect(forget).toBeLessThan(body.indexOf('this.g.disposeTargets();'))
+    expect(forget).toBeLessThan(body.indexOf('this.allocateTargets();'))
+    expect(forget).toBeLessThan(body.indexOf('this.allocateHistory();'))
+  })
+
+  it('joins docTargets() through layerTargets(), before the pinned cover tail', () => {
+    const targets = DOC_TARGETS()
+    expectContains(targets, '...this.layerTargets(),')
+    // Coverage must stay LAST: the sheet-wipe and disposal order pins it.
+    expect(targets.indexOf('...this.layerTargets(),')).toBeLessThan(targets.indexOf('this.cover.read, this.cover.write]'))
+    const layerTargets = sliceBetween(ENGINE, 'private layerTargets(): Target[] {', 'private ensureLayer()')
+    for (const entry of ['this.layerInk.read', 'this.layerInk.write', 'this.layerFilm', 'this.layerRelief', 'this.mergeRelief']) {
+      expectContains(layerTargets, entry)
+    }
+    // Empty while unallocated — docTargets() must never carry a null.
+    expectContains(layerTargets, 'if (this.layerInk === null || this.layerFilm === null || this.layerRelief === null || this.mergeRelief === null) return [];')
+  })
+
+  it('forgetLayer() nulls every field and clears the allocation latch', () => {
+    const body = FORGET_LAYER()
+    for (const reset of [
+      'this.layerInk = null;',
+      'this.layerFilm = null;',
+      'this.layerRelief = null;',
+      'this.mergeRelief = null;',
+      'this.layerOpen = false;',
+      'this.layerStroke = null;',
+      'this.layerRect = null;',
+      'this.layerAllocated = false;',
+    ]) {
+      expectContains(body, reset)
+    }
+    // Forget never frees: disposal belongs to the caller's target walk.
+    expectNotContains(body, 'deleteTexture')
+    expectNotContains(body, 'disposeTarget')
   })
 })

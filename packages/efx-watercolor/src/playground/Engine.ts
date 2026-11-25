@@ -649,8 +649,9 @@ export class WatercolorEngine {
    * encoder. Amount 0 never allocates a target and never draws a merge, so
    * the shipped path stays byte-identical.
    *
-   * The targets persist for the engine's life (4K ≈ 200 MB, measured in the
-   * quick's Task 5) so a stroke never pays an allocation.
+   * The targets persist for the engine's life so a stroke never pays an
+   * allocation. 40 B/px measured over the live formats (Task 5): 44.5 MiB at
+   * 1080², 160 MiB at the 4K clamp (2049²), 640 MiB if 4096² were reachable.
    */
   private layerInk: DoubleTarget | null = null;
   private layerFilm: Target | null = null;
@@ -980,7 +981,8 @@ export class WatercolorEngine {
     return this.params.edgeFade > 0 && s.tool === 'brush' && isBristleResponse(this.brush);
   }
 
-  /** Allocate the lazy layer targets (once per engine life, ~24 B/px). */
+  /** Allocate the lazy layer targets (once per engine life, 40 B/px: the two
+   *  RGBA16F ink halves 32, the film 4, the two R16F reliefs 2 + 2). */
   private ensureLayer() {
     if (this.layerAllocated && this.layerInk !== null && this.layerFilm !== null
       && this.layerRelief !== null && this.mergeRelief !== null) return;

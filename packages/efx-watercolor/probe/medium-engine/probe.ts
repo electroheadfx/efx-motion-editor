@@ -210,7 +210,7 @@ import {
   visibleAlphaCheck,
   visibleAlphaSkipped,
 } from './alphaLaw'
-import { WatercolorEngine } from '../../src/playground/Engine'
+import { WatercolorEngine, clampDocSize } from '../../src/playground/Engine'
 import { BRUSH_PRESETS } from '../../src/playground/brushes'
 import { PAPERS, type PaperPreset } from '../../src/playground/papers'
 import { MEDIUMS } from '../../src/playground/mediums'
@@ -2049,6 +2049,21 @@ const EDGE_LAYER_FILM_BLUR = 0.35
  *  max / p95 / count over this 2/255 line, in the display's own RGB8 space. */
 const EDGE_POLISH_MAX = 2
 
+/** Spec 10 Task 5: the live-pointer row's stroke — a vertical drag at x = 0.5
+ *  from y 0.14 to 0.30, clear of stroke A's band (y 0.43..0.57), on paper the
+ *  row just reset. Same 60 Hz cadence as `driveBristleEnd` (one sample per
+ *  host tick), so the live seam and the scripted seam are the same stroke in
+ *  every input the engine reads. */
+const EDGE_POINTER_X = 0.5
+const EDGE_POINTER_Y0 = 0.14
+const EDGE_POINTER_Y1 = 0.3
+const EDGE_POINTER_STEPS = 12
+const EDGE_POINTER_PRESS = 0.7
+
+/** The Studio's own 4K request, clamped by the engine's law: the ONE sheet
+ *  size a "4K" capture can actually reach on this GPU budget. */
+const EDGE_4K_REQUEST = 4096
+
 /** Spec 10: the two edge operands. Valid ONLY on `edge-layer` — a value on any
  *  other scenario is refused, never silently ignored. Absent keeps the
  *  canonical defaults 0 / 50. */
@@ -2136,9 +2151,19 @@ interface EdgeLayerInternals {
   relief: { views: WebGLFramebuffer[] }
   paper: { views: WebGLFramebuffer[] }
   gl: WebGL2RenderingContext
-  layerInk?: { read: { views: WebGLFramebuffer[] } }
-  layerFilm?: { views: WebGLFramebuffer[] }
-  layerRelief?: { views: WebGLFramebuffer[] }
+  /** The document size — the Studio rows read it after a resize/create. */
+  dw: number
+  dh: number
+  /** The lazy targets' full shape, so the memory row can measure the REAL
+   *  allocation (size, texture count and internal format) instead of assuming
+   *  the format constants we passed in. */
+  layerInk?: {
+    readonly read: { w: number; h: number; views: WebGLFramebuffer[]; tex: WebGLTexture[] }
+    readonly write: { w: number; h: number; views: WebGLFramebuffer[]; tex: WebGLTexture[] }
+  }
+  layerFilm?: { w: number; h: number; views: WebGLFramebuffer[]; tex: WebGLTexture[] }
+  layerRelief?: { w: number; h: number; views: WebGLFramebuffer[]; tex: WebGLTexture[] }
+  mergeRelief?: { w: number; h: number; views: WebGLFramebuffer[]; tex: WebGLTexture[] }
   layerAllocated?: boolean
   layerOpen?: boolean
   mergeDraws?: number
@@ -2972,6 +2997,7 @@ function edgeLayerReport(
   script: readonly ScriptEntry[],
   captures: { a: EdgeStrokeCapture | null; b: EdgeStrokeCapture | null },
   mergeDeltas: readonly number[],
+  mergeTimes: readonly number[],
   transparent: HTMLCanvasElement,
   roundTrip: boolean | null,
   granulation: number,
@@ -3020,8 +3046,9 @@ function edgeLayerReport(
       : null
   const encodeOver = residual.length > 0 ? residual.filter((v) => v > EDGE_LAYER_FIT_MAX).length : null
   // Task 4's edgePolishDelta, pooled over both sides' rects: the display's
-  // second film-blur on the merged storage. p95 is the bar (2/255); the count
-  // over 2/255 is reported beside it.
+  // second film-blur on the merged storage. REPORTED, never barred — the
+  // count over 2/255 is reported beside the p95, and UAT row 6 judges the
+  // settle (the raw-state merge fallback was measured and did not shrink it).
   const polish = [...paperResidual.polish, ...underResidual.polish].sort((a, b) => a - b)
   const polishMax = polish.length > 0 ? round4(polish[polish.length - 1]!) : null
   const polishP95 =
@@ -3084,6 +3111,14 @@ function edgeLayerReport(
     // mid-stroke) cannot pass.
     mergeDraws: mergeDeltas.length > 0 ? mergeDeltas[mergeDeltas.length - 1]! : null,
     mergeDrawsFirst: mergeDeltas.length > 0 ? mergeDeltas[0]! : null,
+    // Task 5: the merge's own wall clock (the instrument times only
+    // `baseMerge`). The visit's two strokes merge first, so entries 0 and 1
+    // are stroke A's and B's — measured BEFORE the replay and the Studio rows
+    // merge again. Compared against spike 006's frozen ~21 ms at 2K.
+    edgeMergeMsFirst: mergeTimes.length > 0 ? round2(mergeTimes[0]!) : null,
+    edgeMergeMsSecond: mergeTimes.length > 1 ? round2(mergeTimes[1]!) : null,
+    edgeMergeMsMax:
+      mergeTimes.length > 0 ? round2(Math.max(...mergeTimes.slice(0, Math.min(2, mergeTimes.length)))) : null,
   }
 }
 
@@ -3117,6 +3152,7 @@ function edgeLayerVisitReport(
   script: readonly ScriptEntry[],
   captures: { a: EdgeStrokeCapture | null; b: EdgeStrokeCapture | null },
   mergeDeltas: readonly number[],
+  mergeTimes: readonly number[],
   transparent: HTMLCanvasElement,
   visitDigest: string,
   visitPixels: Uint8ClampedArray,
@@ -3125,6 +3161,26 @@ function edgeLayerVisitReport(
   // never re-derived from the record's 0..100 value (the mapping is the
   // engine's, and `toEngineParams` returns a Partial).
   const granulation = (engine as unknown as EdgeLayerInternals).params.granulation
+  // The capture round trip FIRST: it restores the visit's sheet byte for byte
+  // (digest-equal, pinned below), so the report reads the VISIT's own state —
+  // never a state a replay left behind.
+  const snapshot = engine.captureSheet()
+  const before = digestSheetSnapshot(snapshot.whole)
+  const restored = engine.restoreSheet(snapshot)
+  const after = restored ? digestSheetSnapshot(engine.captureSheet().whole) : null
+  // The visit's readings, taken BEFORE any replay or Studio row moves state —
+  // `mergeTimes` still holds only the visit's own merges here.
+  const report = edgeLayerReport(
+    engine,
+    sheet,
+    script,
+    captures,
+    mergeDeltas,
+    mergeTimes,
+    transparent,
+    restored ? before === after : false,
+    granulation,
+  )
   const replay = (split: boolean): Digest => {
     adapter.resetSheet()
     // `resetSheet()` keeps `lastDir`/`lastAngle` (pre-existing fact), so the
@@ -3149,13 +3205,14 @@ function edgeLayerVisitReport(
   }
   const oneShot = replay(false)
   const split = replay(true)
-  const snapshot = engine.captureSheet()
-  const before = digestSheetSnapshot(snapshot.whole)
-  const restored = engine.restoreSheet(snapshot)
-  const after = restored ? digestSheetSnapshot(engine.captureSheet().whole) : null
   const delta = edgePixelDelta(visitPixels, oneShot.pixels)
+  // The Studio-facing rows LAST: they reset the sheet, undo/redo committed
+  // strokes, abort open ones and finish by resizing/creating the document —
+  // nothing after them may read at the visit's `sheet`.
+  const studio = edgeStudioRows(adapter, engine, sheet, script)
   return {
-    ...edgeLayerReport(engine, sheet, script, captures, mergeDeltas, transparent, restored ? before === after : false, granulation),
+    ...report,
+    ...studio,
     // The same-script-twice comparison: the two replay flavours must agree
     // with each other (that is the split-drive-equals-bake-drive question).
     edgeReplaySelfIdentical: oneShot.digest === split.digest,
@@ -3185,6 +3242,386 @@ function edgePixelDelta(a: Uint8ClampedArray, b: Uint8ClampedArray): { max: numb
     if (differing) texels += 1
   }
   return { max, texels: texels + Math.abs(a.length - b.length) / 4 }
+}
+
+// ---------------------------------------------------------------------------
+// Spec 10 Task 5: the Studio-facing lifecycle rows
+// ---------------------------------------------------------------------------
+
+/** The layer set's declared formats (Engine.ensureLayer — the five allocations
+ *  are pinned against the source by coverageLifecycle.test.ts): RGBA16F is
+ *  8 B/texel, R16F is 2. WebGL2 exposes no per-level format query
+ *  (`getTexLevelParameter` is not in the API — `lib.dom.d.ts` is right to omit
+ *  it), so the texture COUNT and dimensions are read from the live targets and
+ *  the stride comes from the engine's own declaration. */
+const EDGE_LAYER_INK_STRIDE = 8
+const EDGE_LAYER_FILM_STRIDE = 2
+const EDGE_LAYER_RELIEF_STRIDE = 2
+
+/** The exact bytes one target's textures hold, from its LIVE shape. */
+function edgeTargetBytes(
+  target: { readonly w: number; readonly h: number; readonly tex: WebGLTexture[] },
+  stride: number,
+): number {
+  return target.tex.length * target.w * target.h * stride
+}
+
+/** The largest per-channel difference and the differing texel count between
+ *  two sheet read-backs of the same rect: both pools' four absorbance lanes
+ *  plus the cover and relief channels — the exact bytes the merge writes and
+ *  the undo tiles save. */
+function edgeFieldDelta(a: EdgeDocFields, b: EdgeDocFields): { max: number; texels: number } {
+  const texels = Math.min(a.a.length, b.a.length) / 4
+  let max = 0
+  let differing = 0
+  for (let i = 0; i < texels; i += 1) {
+    let d = 0
+    for (let c = 0; c < 4; c += 1) {
+      d = Math.max(d, Math.abs(a.a[i * 4 + c]! - b.a[i * 4 + c]!))
+      d = Math.max(d, Math.abs(a.b[i * 4 + c]! - b.b[i * 4 + c]!))
+    }
+    d = Math.max(d, Math.abs(a.cover[i]! - b.cover[i]!))
+    d = Math.max(d, Math.abs(a.relief[i]! - b.relief[i]!))
+    if (d > max) max = d
+    if (d !== 0) differing += 1
+  }
+  return { max: round4(max), texels: differing }
+}
+
+/** The largest cover value over a rect — the "the stroke reached the sheet"
+ *  witness the merge rows read after their own commit. */
+function edgeCoverPeak(fields: EdgeDocFields): number {
+  let peak = 0
+  for (let i = 0; i < fields.cover.length; i += 1) peak = Math.max(peak, fields.cover[i]!)
+  return round4(peak)
+}
+
+/** The live-pointer row's samples (doc uv, one per host tick). */
+function edgePointerSamples(): readonly { x: number; y: number; p: number }[] {
+  const out: { x: number; y: number; p: number }[] = []
+  for (let i = 0; i < EDGE_POINTER_STEPS; i += 1) {
+    out.push({
+      x: EDGE_POINTER_X,
+      y: EDGE_POINTER_Y0 + ((EDGE_POINTER_Y1 - EDGE_POINTER_Y0) * i) / (EDGE_POINTER_STEPS - 1),
+      p: EDGE_POINTER_PRESS,
+    })
+  }
+  return out
+}
+
+/** The window the live row reads: the pointer stroke's band with paper either
+ *  side. Disjoint from stroke A's band on the fresh sheet the row resets to. */
+function edgePointerRect(sheet: number): EdgeRect {
+  const centre = Math.round(0.5 * sheet)
+  const margin = Math.round(0.03 * sheet)
+  return {
+    x0: Math.max(0, centre - LINE_BAND_PX),
+    x1: Math.min(sheet, centre + LINE_BAND_PX + 1),
+    y0: Math.max(0, Math.round(EDGE_POINTER_Y0 * sheet) - margin),
+    y1: Math.min(sheet, Math.round(EDGE_POINTER_Y1 * sheet) + margin),
+  }
+}
+
+/** The Studio rows' engine seams beyond `EdgeLayerInternals`: the private
+ *  lifecycle methods and the callback bag. */
+interface EdgeStudioInternals {
+  callbacks: { onStrokeEnd?: (tool: string) => void }
+  createDocument(size: [number, number]): void
+  discardLayer(): void
+}
+
+/**
+ * Spec 10 Task 5: the Studio-facing lifecycle rows. Runs AFTER
+ * `edgeLayerReport` has read the visit (see `edgeLayerVisitReport`), so every
+ * state move below is invisible to the visit's readings. Order is law:
+ *
+ *  1. the memory row FIRST — it measures the visit's own layer set before
+ *     anything resizes;
+ *  2. G1 (live pointer), G2 (the adapter's applyStroke), the undo/redo round
+ *     trip of a committed stroke;
+ *  3. the abandon paths — abort, undo-with-a-layer-open, restore;
+ *  4. resize and createDocument LAST: both change the document size, so
+ *     nothing after them may read at the visit's `sheet`.
+ *
+ * Every row drives the REAL path: the live pointer stroke goes through
+ * scriptBegin + the queue + tick, exactly like `driveBristleEnd`; the scripted
+ * rows go through the adapter's applyStroke (the Studio's apply seam); the
+ * abandonment rows call the same engine methods a key leave, a tool switch, an
+ * undo and a project open call. Nothing here merges a stroke by hand.
+ */
+function edgeStudioRows(
+  adapter: ReturnType<typeof createAquarelleEngineAdapter>,
+  engine: WatercolorEngine,
+  sheet: number,
+  script: readonly ScriptEntry[],
+): Record<string, unknown> {
+  const it = engine as unknown as EdgeLayerInternals
+  const host = engine as unknown as EdgeStudioInternals
+  const live = engine as unknown as EndLiveEngine
+  const draws = (): number | null => (typeof it.mergeDraws === 'number' ? it.mergeDraws : null)
+  const stepDelta = (before: number | null, after: number | null): number | null =>
+    before === null || after === null ? null : after - before
+  const closed = (): boolean | null => (typeof it.layerOpen === 'boolean' ? !it.layerOpen : null)
+  const fieldsNull = (): boolean =>
+    it.layerInk == null && it.layerFilm == null && it.layerRelief == null && it.mergeRelief == null
+  const allocated = (): boolean | null => (typeof it.layerAllocated === 'boolean' ? it.layerAllocated : null)
+  const out: Record<string, unknown> = {}
+  const entryA = script[0]!
+  const entryB = script[script.length - 1]!
+  const edgeBag: Record<string, number> = { ...(entryA.params ?? {}) }
+  const paperRect = edgeLayerRect(sheet, 'paper')
+  const underRect = edgeLayerRect(sheet, 'under')
+
+  // --- 1. The layer set's measured size (the visit's own sheet) ------------
+  const layerInk = it.layerInk ?? null
+  const inkReadBytes = layerInk ? edgeTargetBytes(layerInk.read, EDGE_LAYER_INK_STRIDE) : 0
+  const inkWriteBytes = layerInk ? edgeTargetBytes(layerInk.write, EDGE_LAYER_INK_STRIDE) : 0
+  const filmBytes = it.layerFilm ? edgeTargetBytes(it.layerFilm, EDGE_LAYER_FILM_STRIDE) : 0
+  const reliefBytes = it.layerRelief ? edgeTargetBytes(it.layerRelief, EDGE_LAYER_RELIEF_STRIDE) : 0
+  const mergeReliefBytes = it.mergeRelief ? edgeTargetBytes(it.mergeRelief, EDGE_LAYER_RELIEF_STRIDE) : 0
+  const layerBytes = inkReadBytes + inkWriteBytes + filmBytes + reliefBytes + mergeReliefBytes
+  const docTexels = it.dw * it.dh
+  const perTexel = docTexels > 0 ? layerBytes / docTexels : 0
+  // The Studio's "4K" request through the engine's own clamp — never a guess:
+  // a 4096² sheet is not reachable on this budget, so both numbers are shown.
+  const clamp4k = clampDocSize(EDGE_4K_REQUEST, EDGE_4K_REQUEST)
+  out['edgeMemoryDim'] = [it.dw, it.dh]
+  out['edgeMemoryLayerAllocated'] = allocated()
+  out['edgeMemoryTargets'] = {
+    layerInkRead: inkReadBytes,
+    layerInkWrite: inkWriteBytes,
+    layerFilm: filmBytes,
+    layerRelief: reliefBytes,
+    mergeRelief: mergeReliefBytes,
+  }
+  out['edgeMemoryLayerBytes'] = layerBytes
+  out['edgeMemoryPerTexel'] = round4(perTexel)
+  out['edgeMemoryMiB'] = round2(layerBytes / (1024 * 1024))
+  out['edgeMemoryClampDim'] = clamp4k
+  out['edgeMemoryClampedMiB'] = round2((perTexel * clamp4k[0] * clamp4k[1]) / (1024 * 1024))
+  out['edgeMemory4KRawMiB'] = round2((perTexel * EDGE_4K_REQUEST * EDGE_4K_REQUEST) / (1024 * 1024))
+
+  // --- 2. G1: a LIVE pointer stroke (the driveBristleEnd seam) -------------
+  adapter.resetSheet()
+  pinStrokeStart(engine)
+  configureLiveEnd(engine, edgeBag, entryA.mutationId, 'bristle-round', entryA.color)
+  const samples = edgePointerSamples()
+  const first = samples[0]!
+  const g1Rect = edgePointerRect(sheet)
+  const g1Before = draws()
+  if (!engine.scriptBegin('brush', first.x, first.y, first.p)) {
+    throw new Error('edge-layer G1: the engine refused the live stroke')
+  }
+  const g1Stroke = live.stroke
+  if (g1Stroke === null) throw new Error('edge-layer G1: scriptBegin left no stroke')
+  // Re-label the scripted stroke as a live pointer: the processing branch is
+  // `pointerId !== SCRIPT_POINTER`, exactly as `driveBristleEnd` does it.
+  g1Stroke.pointerId = END_LIVE_POINTER
+  g1Stroke.pointerType = 'pen'
+  const baseEnd = host.callbacks.onStrokeEnd
+  let g1Callbacks = 0
+  let g1AtCallback: number | null = null
+  let g1OpenAtCallback: boolean | null = null
+  let g1PeakAtCallback: number | null = null
+  host.callbacks.onStrokeEnd = (tool: string) => {
+    g1Callbacks += 1
+    // The callback is the earliest "next read": the commit must already be
+    // behind it — the counter moved, the layer is closed, the bytes are down.
+    g1AtCallback = draws()
+    g1OpenAtCallback = typeof it.layerOpen === 'boolean' ? it.layerOpen : null
+    g1PeakAtCallback = edgeCoverPeak(readEdgeDocFields(engine, sheet, g1Rect))
+    baseEnd?.(tool)
+  }
+  try {
+    // The first sample is already queued by scriptBegin; one tick deposits it.
+    adapter.stepTick(0)
+    for (let i = 1; i < samples.length; i += 1) {
+      adapter.advanceClock(END_TICK_MS)
+      const sample = samples[i]!
+      live.queue.push({ x: sample.x, y: sample.y, p: sample.p, t: live.clock(), tx: 0, ty: 0, w: 1 })
+      engine.tick(END_DT)
+    }
+    // The release: pointerup arrives with no new sample, and the ending tick
+    // is where the catch-up dab and the stroke's ONE commit run.
+    g1Stroke.ending = true
+    engine.tick(END_DT)
+  } finally {
+    host.callbacks.onStrokeEnd = baseEnd
+  }
+  // The plan's 1x1 readPixels fence on this engine's legal read path: the GPU
+  // must have finished the ending tick before the sheet is read back.
+  it.g.readHalf(it.fixed.views[0]!, sheet, sheet, 4, { x0: 0, y0: 0, x1: 1, y1: 1 })
+  const g1After = draws()
+  out['edgeG1DrawsBefore'] = g1Before
+  out['edgeG1DrawsAtCallback'] = g1AtCallback
+  out['edgeG1MergeDraws'] = stepDelta(g1Before, g1After)
+  out['edgeG1CallbackCount'] = g1Callbacks
+  out['edgeG1LayerOpenAtCallback'] = g1OpenAtCallback
+  out['edgeG1SheetPeakAtCallback'] = g1PeakAtCallback
+  out['edgeG1SheetPeak'] = edgeCoverPeak(readEdgeDocFields(engine, sheet, g1Rect))
+  out['edgeG1LayerClosed'] = closed()
+
+  // --- 3. G2: the adapter's applyStroke (the Studio's apply seam) ---------
+  adapter.resetSheet()
+  pinStrokeStart(engine)
+  const g2Before = draws()
+  adapter.applyStroke(makeStroke(entryA))
+  out['edgeG2MergeDraws'] = stepDelta(g2Before, draws())
+  out['edgeG2LayerClosed'] = closed()
+  out['edgeG2SheetPeak'] = edgeCoverPeak(readEdgeDocFields(engine, sheet, paperRect))
+
+  // --- 4. Undo / redo of a committed stroke --------------------------------
+  // Stroke A's band (the paper rect) is disjoint from stroke B's merge rect at
+  // every Studio size, so it is the "outside the merge" witness: the merge and
+  // its undo must never move it.
+  adapter.resetSheet()
+  pinStrokeStart(engine)
+  adapter.applyStroke(makeStroke(entryA))
+  const preA = {
+    paper: readEdgeDocFields(engine, sheet, paperRect),
+    under: readEdgeDocFields(engine, sheet, underRect),
+  }
+  adapter.applyStroke(makeStroke(entryB))
+  const postB = {
+    paper: readEdgeDocFields(engine, sheet, paperRect),
+    under: readEdgeDocFields(engine, sheet, underRect),
+  }
+  engine.undo()
+  const undoB = {
+    paper: readEdgeDocFields(engine, sheet, paperRect),
+    under: readEdgeDocFields(engine, sheet, underRect),
+  }
+  const undoClosed = closed()
+  engine.redo()
+  const redoB = {
+    paper: readEdgeDocFields(engine, sheet, paperRect),
+    under: readEdgeDocFields(engine, sheet, underRect),
+  }
+  const redoClosed = closed()
+  const undoRestore = edgeFieldDelta(undoB.under, preA.under)
+  const redoRestore = edgeFieldDelta(redoB.under, postB.under)
+  const mergeOutside = edgeFieldDelta(preA.paper, postB.paper)
+  const undoOutside = edgeFieldDelta(undoB.paper, postB.paper)
+  const redoOutside = edgeFieldDelta(redoB.paper, postB.paper)
+  out['edgeUndoRestoreMax'] = undoRestore.max
+  out['edgeUndoRestoreTexels'] = undoRestore.texels
+  out['edgeRedoRestoreMax'] = redoRestore.max
+  out['edgeRedoRestoreTexels'] = redoRestore.texels
+  out['edgeMergeOutsideMax'] = mergeOutside.max
+  out['edgeMergeOutsideTexels'] = mergeOutside.texels
+  out['edgeUndoOutsideMax'] = undoOutside.max
+  out['edgeUndoOutsideTexels'] = undoOutside.texels
+  out['edgeRedoOutsideMax'] = redoOutside.max
+  out['edgeRedoOutsideTexels'] = redoOutside.texels
+  out['edgeUndoLayerClosed'] = undoClosed === true && redoClosed === true
+
+  // --- 5. The abandon paths ------------------------------------------------
+  const strokeFirst = entryB.points[0]!
+  // I1 — abortStroke (a key leave / a tool switch). The aborted stroke's own
+  // step is taken back, so the sheet must be byte-identical to before it.
+  adapter.resetSheet()
+  pinStrokeStart(engine)
+  adapter.applyStroke(makeStroke(entryA))
+  const abortPre = {
+    paper: readEdgeDocFields(engine, sheet, paperRect),
+    under: readEdgeDocFields(engine, sheet, underRect),
+  }
+  if (!engine.scriptBegin('brush', strokeFirst.x, strokeFirst.y, strokeFirst.p)) {
+    throw new Error('edge-layer I1: the engine refused the stroke')
+  }
+  adapter.stepTick(0)
+  out['edgeAbortWasOpen'] = typeof it.layerOpen === 'boolean' ? it.layerOpen : null
+  engine.abortStroke()
+  out['edgeAbortClosed'] = closed()
+  const abortPaper = edgeFieldDelta(readEdgeDocFields(engine, sheet, paperRect), abortPre.paper)
+  const abortUnder = edgeFieldDelta(readEdgeDocFields(engine, sheet, underRect), abortPre.under)
+  out['edgeAbortSheetMax'] = Math.max(abortPaper.max, abortUnder.max)
+  out['edgeAbortSheetTexels'] = abortPaper.texels + abortUnder.texels
+  const abortNext = draws()
+  adapter.applyStroke(makeStroke(entryA))
+  out['edgeAbortNextMerge'] = stepDelta(abortNext, draws())
+
+  // I2 — undo with a layer open (travel discards it before the swap).
+  adapter.resetSheet()
+  pinStrokeStart(engine)
+  adapter.applyStroke(makeStroke(entryA))
+  if (!engine.scriptBegin('brush', strokeFirst.x, strokeFirst.y, strokeFirst.p)) {
+    throw new Error('edge-layer I2: the engine refused the stroke')
+  }
+  adapter.stepTick(0)
+  out['edgeUndoOpenWasOpen'] = typeof it.layerOpen === 'boolean' ? it.layerOpen : null
+  engine.undo()
+  out['edgeUndoOpenClosed'] = closed()
+  const undoOpenNext = draws()
+  adapter.applyStroke(makeStroke(entryA))
+  out['edgeUndoOpenNextMerge'] = stepDelta(undoOpenNext, draws())
+
+  // I3 — restore (a project open) with a layer open: no layer field may
+  // survive, and the next Edge stroke re-allocates and merges once.
+  adapter.resetSheet()
+  pinStrokeStart(engine)
+  adapter.applyStroke(makeStroke(entryA))
+  if (!engine.scriptBegin('brush', strokeFirst.x, strokeFirst.y, strokeFirst.p)) {
+    throw new Error('edge-layer I3: the engine refused the stroke')
+  }
+  adapter.stepTick(0)
+  out['edgeRestoreWasOpen'] = typeof it.layerOpen === 'boolean' ? it.layerOpen : null
+  engine.restore(engine.snapshot())
+  out['edgeRestoreLayerAllocated'] = allocated()
+  out['edgeRestoreLayerFieldsNull'] = fieldsNull()
+  const restoreNext = draws()
+  adapter.applyStroke(makeStroke(entryA))
+  out['edgeRestoreNextMerge'] = stepDelta(restoreNext, draws())
+  out['edgeRestoreReallocated'] = allocated()
+
+  // I4 — resizeDocument with a layer open: the old target set (layer included)
+  // is disposed and the fields are nulled; the next stroke re-allocates at the
+  // NEW size. This is the last row that may read at the visit's `sheet`.
+  adapter.resetSheet()
+  pinStrokeStart(engine)
+  if (!engine.scriptBegin('brush', strokeFirst.x, strokeFirst.y, strokeFirst.p)) {
+    throw new Error('edge-layer I4: the engine refused the stroke')
+  }
+  adapter.stepTick(0)
+  out['edgeResizeWasOpen'] = typeof it.layerOpen === 'boolean' ? it.layerOpen : null
+  const resized = Math.round(sheet * 0.75)
+  engine.resizeDocument(resized, resized)
+  out['edgeResizeDim'] = it.dw
+  out['edgeResizeLayerAllocated'] = allocated()
+  out['edgeResizeLayerFieldsNull'] = fieldsNull()
+  const resizeNext = draws()
+  adapter.applyStroke(makeStroke(entryA))
+  out['edgeResizeNextMerge'] = stepDelta(resizeNext, draws())
+  out['edgeResizeReallocated'] = allocated()
+
+  // I5 — createDocument (a new sheet) with a layer open. createDocument nulls
+  // neither `stroke` nor `queue`, so the Studio's new-document path abandons
+  // the stale stroke first; the discard is idempotent by contract.
+  const currentSheet = it.dw
+  adapter.resetSheet()
+  if (!engine.scriptBegin('brush', strokeFirst.x, strokeFirst.y, strokeFirst.p)) {
+    throw new Error('edge-layer I5: the engine refused the stroke')
+  }
+  adapter.stepTick(0)
+  out['edgeCreateWasOpen'] = typeof it.layerOpen === 'boolean' ? it.layerOpen : null
+  host.createDocument([currentSheet, currentSheet])
+  out['edgeCreateLayerFieldsNull'] = fieldsNull()
+  out['edgeCreateLayerAllocated'] = allocated()
+  engine.abortStroke()
+  let discardIdempotent = true
+  try {
+    host.discardLayer()
+    host.discardLayer()
+  } catch {
+    discardIdempotent = false
+  }
+  out['edgeCreateDiscardIdempotent'] = discardIdempotent
+  const createNext = draws()
+  adapter.applyStroke(makeStroke(entryA))
+  out['edgeCreateNextMerge'] = stepDelta(createNext, draws())
+  out['edgeCreateReallocated'] = allocated()
+
+  return out
 }
 
 /** The private engine seams the absorbance profile reads. Read-only. */
@@ -3991,16 +4428,22 @@ function endBakePoints(): readonly AquarellePoint[] {
  *  LIVE drives (the adapter has no live pointer seam). Same bag, same brush
  *  projection, same colour resolution, same seed derivation — one stroke in
  *  every input the engine reads. */
-function configureLiveEnd(engine: WatercolorEngine, bag: Record<string, number>, mut: number): void {
+function configureLiveEnd(
+  engine: WatercolorEngine,
+  bag: Record<string, number>,
+  mut: number,
+  brushId = 'bristle-flat',
+  color = END_COLOR,
+): void {
   engine.setParams(toEngineParams(bag))
   engine.setBrush(
-    buildBrushForStroke('bristle-flat', {
+    buildBrushForStroke(brushId, {
       textureId: null,
       textureRotation: null,
       overrides: undefined,
     }),
   )
-  engine.setPigment(pigmentFromHex(END_COLOR))
+  engine.setPigment(pigmentFromHex(color))
   engine.setTool('brush')
   engine.setRandom(seededRandom(hashMutationId(mut) || 1))
 }
@@ -4716,6 +5159,10 @@ function run(
     // each stroke's own completion (with the capture taken mid-stroke, before
     // its merge, inside the same loop iteration).
     const edgeMergeDeltas: number[] = []
+    // Task 5: the merge's own wall clock. Every merge is timed (only the
+    // `baseMerge` call itself — never the probe's own read-backs); the visit's
+    // first two entries are reported as the per-stroke cost.
+    const mergeTimes: number[] = []
     if (scenario === 'edge-layer') {
       pinStrokeStart(engine)
       // Spec 10: the merge-time instrument (EdgeMergeSide). Installed before
@@ -4728,9 +5175,23 @@ function run(
         preLayer: { paper: EdgeLayerFields | null; under: EdgeLayerFields | null }
         postSheet: { paper: EdgeDocFields; under: EdgeDocFields }
       }> = []
-      const mergeHost = engine as unknown as { mergeStrokeLayer: (rect: EdgeRect) => void }
+      const mergeHost = engine as unknown as {
+        mergeStrokeLayer: (rect: EdgeRect) => void
+        dw: number
+        dh: number
+      }
       const baseMerge = mergeHost.mergeStrokeLayer.bind(engine)
       mergeHost.mergeStrokeLayer = (rect: EdgeRect) => {
+        // The Studio rows resize/create the document AFTER the visit, and a
+        // merge there lands outside the visit's read rects (`gl.readHalf`
+        // throws on an out-of-bounds read). Time it, skip the read-backs.
+        const inBounds = mergeHost.dw === sheet && mergeHost.dh === sheet
+        if (!inBounds) {
+          const start = performance.now()
+          baseMerge(rect)
+          mergeTimes.push(performance.now() - start)
+          return
+        }
         const preSheet = {
           paper: readEdgeDocFields(engine, sheet, mergePaperRect),
           under: readEdgeDocFields(engine, sheet, mergeUnderRect),
@@ -4739,7 +5200,9 @@ function run(
           paper: readEdgeLayerFields(engine, sheet, mergePaperRect),
           under: readEdgeLayerFields(engine, sheet, mergeUnderRect),
         }
+        const start = performance.now()
         baseMerge(rect)
+        mergeTimes.push(performance.now() - start)
         const postSheet = {
           paper: readEdgeDocFields(engine, sheet, mergePaperRect),
           under: readEdgeDocFields(engine, sheet, mergeUnderRect),
@@ -5021,6 +5484,7 @@ function run(
             script,
             edgeCaptures,
             edgeMergeDeltas,
+            mergeTimes,
             transparentCanvas,
             transparent.digest,
             transparent.pixels,
