@@ -168,33 +168,6 @@ export const BRISTLE_DRY_CAP_FULL = 0.7;
  */
 export const BRISTLE_TAKEOFF_SHIFT = 1.1;
 /**
- * 2026-11-25 (the acrylic end-density block, quick 261125-rtc): the TERMINAL
- * NORMALIZATION's C1 reach behind the last dab, in dab radii. The trail trim
- * (`trailSupport`) suppresses every running dab's trailing rim; the body
- * accumulates that suppression from the dabs AHEAD of it, while the stroke's
- * end has no future dabs and keeps the untrimmed accumulation, so the terminal
- * ~1.15 radii read denser than the body (measured on the probe: body cover
- * 0.69 vs end 0.82; removing the trim evens both at 0.90 but darkens the body
- * by 0.08). At stroke end the engine measures the stroke's own body film and
- * terminal film from the sheet and scales the terminal band back to the body
- * with `smoothstep(0, reach, q.y)` — zero at the reach, full at the tip. The
- * body is the reference and never moves; the leading frontier keeps the
- * 2026-11-23 takeoff's specks.
- */
-export const BRISTLE_END_NORMALIZE_REACH = 1.15;
-/** The terminal normalization's BODY sample point: this many radii behind the
- *  last dab (outside the reach, so the reference is never the block itself). */
-export const BRISTLE_END_NORMALIZE_BODY_RADII = 2.8;
-/** The terminal normalization's END sample point: this many radii behind the
- *  last dab (inside the block's densest band). */
-export const BRISTLE_END_NORMALIZE_END_RADII = 0.35;
-/** The measurement patch's half-extent, in dab radii. */
-export const BRISTLE_END_NORMALIZE_PATCH_RADII = 0.2;
-/** Below this travel (in radii) a stroke is all cap and gets no normalization. */
-export const BRISTLE_END_NORMALIZE_MIN_TRAVEL = 3.5;
-/** The normalization's floor: a band is never scaled below this share. */
-export const BRISTLE_END_NORMALIZE_MIN_FACTOR = 0.35;
-/**
  * 2026-11-20 (the artist's large-brush steps; "samples should be proportional
  * to the size of the brush, to not slow down normal size brush"): the dab
  * chain is SUPERSAMPLED with the brush's canonical Size — the 3D motion

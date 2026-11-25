@@ -8,12 +8,6 @@ import {
   BRISTLE_EDGE_START,
   BRISTLE_FEATHER_CAP,
   BRISTLE_FEATHER_EDGE,
-  BRISTLE_END_NORMALIZE_BODY_RADII,
-  BRISTLE_END_NORMALIZE_END_RADII,
-  BRISTLE_END_NORMALIZE_MIN_FACTOR,
-  BRISTLE_END_NORMALIZE_MIN_TRAVEL,
-  BRISTLE_END_NORMALIZE_PATCH_RADII,
-  BRISTLE_END_NORMALIZE_REACH,
   BRISTLE_FEATHER_MIN,
   BRISTLE_FEATHER_REACH,
   BRISTLE_FEATHER_SHIFT,
@@ -646,12 +640,6 @@ export class WatercolorEngine {
   private bristleContent = false;
   private bristlePrev: { x: number; y: number; along: number } | null = null;
   /**
-   * 261125-rtc: the LAST bristle dab the stroke stamped — the terminal
-   * normalization's frame (its point, axis and radius). Reset when a new
-   * stroke seeds its bristle set, consumed once at the stroke-end seam.
-   */
-  private bristleTail: { x: number; y: number; r: number; angle: number } | null = null;
-  /**
    * 261125-kvl (SPIKE 006, Spec 10) — the per-stroke stroke layer.
    *
    * Edge transparency is a LAYER, not a dab law: while the flag is on and the
@@ -794,10 +782,6 @@ export class WatercolorEngine {
     // is the film's opacity on the bristle path, not a second film's erode.
     this.programs.bristleDeposit = this.g.program(S.bristleDepositFS);
     this.programs.bristleCover = this.g.program(S.bristleCoverFS);
-    // 261125-rtc: the terminal normalization's scale pass, same rule — outside
-    // the pinned literal. Writes only the scale; the caller blends ZERO,
-    // SRC_COLOR over the ink pair and the cover.
-    this.programs.bristleEndNormalize = this.g.program(S.bristleEndNormalizeFS);
     // Post-UAT (2026-11-21): the bristle thickness deposit, same rule —
     // outside the pinned literal. The gather's coverage IS its mask.
     this.programs.bristleRelief = this.g.program(S.bristleReliefFS);
@@ -3102,10 +3086,6 @@ export class WatercolorEngine {
       this.stampScripted(s, s.x, s.y, this.pressureOf(s, -1), 0, 0, 0, dt, this.widthFactorAt(s, 1), 1);
     }
     if (s.ending) {
-      // 261125-rtc: the terminal normalization runs BEFORE the stroke is
-      // dropped, on the live pointer and the scripted bake alike. The layer
-      // path is out of scope (its paint is in the layer; the sheet is empty).
-      if (!this.layerOpen && this.bristleStroke === s) this.normalizeBristleTail();
       // 261125-kvl: commit BEFORE the stroke is dropped — one merge inside the
       // stroke's own undo step, after the end-cap dab above.
       this.commitLayer(s);
@@ -3353,9 +3333,6 @@ export class WatercolorEngine {
           if (bristle) {
             const t = this.bristleTravel(dx, dy, dr);
             alongPx = t.alongPx;
-            // 261125-rtc: the terminal normalization's frame — the LAST dab
-            // the stroke stamps. Consumed once at the stroke-end seam.
-            this.bristleTail = { x: dx, y: dy, r: dr, angle };
             this.carrierPass(dx, dy, dr, angle, t.travel, t.travelPx, t.alongPx, contactPr);
           }
           // spec 06: the cover pass draws here, before this dab's deposit.
@@ -3763,8 +3740,6 @@ export class WatercolorEngine {
     // FIX 2c: the sheet now carries bristle content — the display's
     // edge-darkening crispener steps aside (see drawDisplay).
     this.bristleContent = true;
-    // 261125-rtc: a new stroke seeds a new terminal frame.
-    this.bristleTail = null;
     // §4.1 half-width in document texels (the radius is in doc heights), floor 1.
     const halfWidthPx = Math.max(1, radiusValue * this.dh);
     const count = bristleCount(halfWidthPx);
@@ -4173,98 +4148,6 @@ export class WatercolorEngine {
     gl.uniform1i(p.u.uFixedB!, g.bindTex(3, this.fixed.tex[1]!));
     gl.uniform1i(p.u.uCover!, g.bindTex(4, this.cover.read.tex[0]!));
     g.draw(this.smearCanvas, rect);
-  }
-
-  /**
-   * 2026-11-25 (quick 261125-rtc, the acrylic end-density block) — the
-   * TERMINAL NORMALIZATION. See `BRISTLE_END_NORMALIZE_REACH`.
-   *
-   * The trail trim suppresses every running dab's trailing rim; the body
-   * accumulates that suppression from the dabs AHEAD of it, but the stroke's
-   * end has no future dabs and keeps the untrimmed accumulation — the
-   * terminal band reads denser than the body. At the stroke-end seam (the LIVE
-   * pointer and the scripted bake both pass through it) the engine reads the
-   * stroke's OWN body film and its terminal film from the sheet and scales the
-   * terminal band back to the body with a C1 ramp. The body never moves; the
-   * leading frontier keeps the 2026-11-23 takeoff's specks.
-   *
-   * The edge-transparency layer path is deliberately out of scope: its paint
-   * is in the layer, not the sheet, and the Spec 10 surfaces are frozen. The
-   * readback is two small patches (the body reference and the terminal
-   * sample) and is deterministic, so live and bake agree by construction.
-   */
-  private normalizeBristleTail(): void {
-    const tail = this.bristleTail;
-    this.bristleTail = null;
-    if (tail === null) return;
-    const rPx = tail.r * this.dh;
-    if (!(rPx >= 1)) return;
-    const alongPx = (this.bristlePrev?.along ?? 0) * this.dh;
-    if (alongPx < BRISTLE_END_NORMALIZE_MIN_TRAVEL * rPx) return;   // all cap
-    const lastX = tail.x * this.dw;
-    const lastY = tail.y * this.dh;
-    /** One tall strip's mean film ink (K + S over the patch). */
-    const readPatch = (cxPx: number): number | null => {
-      const half = Math.max(2, Math.round(BRISTLE_END_NORMALIZE_PATCH_RADII * rPx));
-      // TALL: the strip averages the lateral profile — the mark's rim reads
-      // lighter than the centreline, and the reference must match the body.
-      const tall = Math.max(half, Math.round(0.7 * rPx));
-      const x0 = clamp(Math.round(cxPx) - half, 0, this.dw);
-      const x1 = clamp(Math.round(cxPx) + half, 0, this.dw);
-      const y0 = clamp(Math.round(lastY) - tall, 0, this.dh);
-      const y1 = clamp(Math.round(lastY) + tall, 0, this.dh);
-      if (x1 - x0 < 2 || y1 - y0 < 2) return null;
-      const rect = { x0, y0, x1, y1 };
-      const a = this.g.readHalf(this.ink.read.views[0]!, this.dw, this.dh, 4, rect);
-      const b = this.g.readHalf(this.ink.read.views[1]!, this.dw, this.dh, 4, rect);
-      const n = (x1 - x0) * (y1 - y0);
-      let ink = 0;
-      for (let i = 0; i < n; i += 1) {
-        // The film's K + S is the deposit's own pair; the terminal correction
-        // scales the whole pair so the KM display density follows.
-        ink += fromHalf(a[i * 4]!) + fromHalf(a[i * 4 + 1]!) + fromHalf(a[i * 4 + 2]!) + fromHalf(a[i * 4 + 3]!)
-          + fromHalf(b[i * 4]!) + fromHalf(b[i * 4 + 1]!) + fromHalf(b[i * 4 + 2]!) + fromHalf(b[i * 4 + 3]!);
-      }
-      return ink / n;
-    };
-    /** Three strips per band: one sample is noisy on the paper tooth. */
-    const avg = (xs: readonly number[]): number | null => {
-      let ink = 0;
-      let n = 0;
-      for (const x of xs) {
-        const v = readPatch(x);
-        if (v === null) continue;
-        ink += v;
-        n += 1;
-      }
-      return n > 0 ? ink / n : null;
-    };
-    const body = avg([lastX - 3.2 * rPx, lastX - 2.8 * rPx, lastX - 2.4 * rPx]);
-    const end = avg([lastX - 0.9 * rPx, lastX - 0.5 * rPx, lastX - 0.1 * rPx]);
-    if (body === null || end === null) return;
-    // The body is the reference: scale the terminal band's film to ITS ink.
-    // A band already at or below the body stays untouched. The cover channel
-    // is deliberately not scaled — it is not display opacity (2026-11-21 law)
-    // and scaling it pushes inked cells under the 0.5 line.
-    const inkFactor = end > 1e-4 ? clamp(body / end, BRISTLE_END_NORMALIZE_MIN_FACTOR, 1) : 1;
-    if (inkFactor >= 0.999) return;
-    const rect = this.stampRect(tail.x, tail.y, tail.r, this.dw, this.dh, 1.5);
-    this.touch(rect);
-    const p = this.programs.bristleEndNormalize!;
-    p.bind();
-    const { gl } = this;
-    gl.enable(gl.BLEND);
-    gl.blendEquation(gl.FUNC_ADD);
-    // dst <- dst * scale; the fragment writes the scale in every channel.
-    gl.blendFunc(gl.ZERO, gl.SRC_COLOR);
-    gl.uniform2f(p.u.uPoint!, tail.x, tail.y);
-    gl.uniform2f(p.u.uAxis!, -Math.sin(tail.angle), Math.cos(tail.angle));
-    gl.uniform1f(p.u.uRadius!, tail.r);
-    gl.uniform1f(p.u.uSheetAspect!, this.dw / this.dh);
-    gl.uniform1f(p.u.uReach!, BRISTLE_END_NORMALIZE_REACH);
-    gl.uniform1f(p.u.uFactor!, inkFactor);
-    this.g.draw(this.ink.read, rect);
-    gl.disable(gl.BLEND);
   }
 
   /**

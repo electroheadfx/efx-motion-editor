@@ -1439,47 +1439,6 @@ void main(){
   o0 = vec4(target, 0.0, 0.0, a);
 }`;
 
-// ============================================================
-//  2026-11-25 (quick 261125-rtc) — THE TERMINAL NORMALIZATION.
-//
-//  The trail trim suppresses every running dab's trailing rim; the body
-//  accumulates that suppression from the dabs AHEAD of it, while the stroke's
-//  end has no future dabs and keeps the untrimmed accumulation — the terminal
-//  ~1.15 radii of the film read denser than the body (the artist's dark end
-//  block at Edge transparency 0). At stroke end the engine measures the
-//  stroke's OWN body film and terminal film from the sheet (two tiny
-//  readbacks) and scales the terminal band back to the body with a C1 ramp.
-//
-//  The fragment writes the SCALE only; the caller blends it `ZERO, SRC_COLOR`
-//  so `dst <- dst * scale` over the ink pair and the cover — the deposit's own
-//  replacement law is untouched, and the leading frontier (q.y < 0) keeps the
-//  2026-11-23 takeoff's specks. `uFactor` is per-channel-group: the ink pass
-//  carries the body/end absorbance ratio, the cover pass the cover ratio.
-// ============================================================
-export const bristleEndNormalizeFS = `${HEADER}
-layout(location=0) out vec4 oA;
-layout(location=1) out vec4 oB;
-uniform vec2 uPoint;
-uniform vec2 uAxis;          // across axis (unit, doc frame)
-uniform float uRadius;       // half-width in doc heights
-uniform float uSheetAspect;  // document width / height
-uniform float uReach;        // the C1 ramp's along reach, in dab radii
-uniform float uFactor;       // the per-stroke scale at the tip (<= 1)
-void main(){
-  vec2 p = vUv - uPoint;
-  p.x *= uSheetAspect;
-  // q.y > 0 is BEHIND the last dab: the band its missing future dabs would
-  // have trimmed. The leading frontier is never touched.
-  vec2 q = vec2(dot(p, uAxis), dot(p, vec2(-uAxis.y, uAxis.x))) / uRadius;
-  // FULL at the tip (q.y = 0), fading to 1 by the reach behind it — the
-  // band the missing future dabs would have trimmed.
-  float t = clamp(1.0 - q.y / max(uReach, 1e-3), 0.0, 1.0);
-  float ramp = t * t * (3.0 - 2.0 * t);   // C1, zero at the reach, one at the tip
-  float f = mix(1.0, uFactor, ramp);
-  oA = vec4(f);
-  oB = vec4(f);
-}`;
-
 // Post-UAT (2026-11-21, the artist's emboss-vs-real-border report) — the
 // thickness deposit for a BRISTLE response. The gather's coverage is the ONLY
 // mask the emboss may light: reliefFS deposits the solid base footprint, whose

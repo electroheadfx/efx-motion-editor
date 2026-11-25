@@ -1398,30 +1398,6 @@ describe('261119-pod — the §3.3 smear, the snapshot and the four-side Feather
     expectNotContains(g, 'g.cB *= takeoff')
     expectNotContains(g, 'g.alpha *= takeoff')
     expectNotContains(g, 'coverage * takeoff')
-    // 2026-11-25 (quick 261125-rtc, the end-density block): the TERMINAL
-    // NORMALIZATION. The trail trim suppresses every running dab's trailing
-    // rim; the body accumulates that suppression from the dabs ahead, the
-    // stroke's end cannot — the terminal ~1.15 radii read denser. At stroke
-    // end the engine measures its own body/terminal film and scales the
-    // terminal band's ink with a C1 ramp: FULL at the tip (q.y = 0), zero by
-    // BRISTLE_END_NORMALIZE_REACH behind it. The leading frontier keeps the
-    // takeoff's specks; the cover is never scaled (it is not display density).
-    expectContains(SHADERS_SOURCE, 'export const bristleEndNormalizeFS')
-    expectContains(SHADERS_SOURCE, 'float t = clamp(1.0 - q.y / max(uReach, 1e-3), 0.0, 1.0);')
-    expectContains(SHADERS_SOURCE, 'float ramp = t * t * (3.0 - 2.0 * t);   // C1, zero at the reach, one at the tip')
-    expectContains(SHADERS_SOURCE, 'float f = mix(1.0, uFactor, ramp);')
-    expectContains(ENGINE_SOURCE, 'this.programs.bristleEndNormalize = this.g.program(S.bristleEndNormalizeFS);')
-    expectContains(ENGINE_SOURCE, 'private normalizeBristleTail(): void {')
-    expectContains(ENGINE_SOURCE, 'if (!this.layerOpen && this.bristleStroke === s) this.normalizeBristleTail();')
-    expectContains(ENGINE_SOURCE, 'gl.uniform1f(p.u.uReach!, BRISTLE_END_NORMALIZE_REACH);')
-    expectContains(ENGINE_SOURCE, 'gl.blendFunc(gl.ZERO, gl.SRC_COLOR);')
-    // The pass scales the ink pair ONLY — the cover channel is not display
-    // opacity (2026-11-21 law), and scaling it pushes inked cells under the
-    // 0.5 line.
-    expectNotContains(
-      sliceBetween(ENGINE_SOURCE, 'private normalizeBristleTail(', 'private bristleTouch('),
-      'this.g.draw(this.cover.read',
-    )
     // The cap's stagger still reads the streak noise (slow along it); the
     // across · hairFreq term survives ONLY for that cap.
     expectContains(g, 'float hairFreq = clamp(uHalfWidthPx / 5.0, 6.0, 40.0);')
