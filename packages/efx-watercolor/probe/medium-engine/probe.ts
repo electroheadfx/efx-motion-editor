@@ -230,6 +230,14 @@ import { buildBrushForStroke } from '../../src/playground/brushBridge'
 // stroke in every input the engine sees.
 import { toEngineParams } from '../../src/playground/params'
 import { pigmentFromHex } from '../../src/playground/spectral'
+// Spec 10: the CPU band mirror (`displayBasisGLSL`'s own tables and epsilon)
+// — the probe decodes the committed sheet through the display's exact law.
+import {
+  BASIS,
+  DISPLAY_BANDS,
+  DISPLAY_RGB_WEIGHTS,
+} from '../../src/playground/spectralData'
+import { SCATTER_EPSILON } from '../../src/playground/scattering'
 import { hashMutationId } from '@efxlab/efx-paint-host'
 import {
   toStudioStroke,
@@ -758,6 +766,11 @@ interface ScriptEntry {
    *  after this entry's own fix (the impasto); 'after' records it again after
    *  the smoothing entry's fix. Undefined entries capture nothing. */
   readonly captureRelief?: 'before' | 'after'
+  /** Spec 10 (261125-kvl): read the OPEN stroke's layer + untouched sheet at
+   *  3/4 of the stroke, before the stroke-end merge clears the layer. 'a' is
+   *  the horizontal stroke (profiled on the paper side), 'b' the vertical one
+   *  (profiled on the crossing side). Omitted entries capture nothing. */
+  readonly captureEdge?: 'a' | 'b'
 }
 
 /** The canonical bag as the app records it (0..100). A knob adds its key;
@@ -1927,6 +1940,962 @@ function readStrokeSize(): number {
     throw new Error(`invalid strokeSize "${raw}" (expected 1..200)`)
   }
   return value
+}
+
+// --- Spec 10: the per-stroke translucent stroke layer (spike 006) -----------
+//
+// Edge transparency is a LATERAL alpha that lets the underlayer through in
+// proportion. It cannot be expressed as a per-dab deposit into the same sheet:
+// after N dabs the one lerp's fixed point is always the pigment target,
+// independent of the underlayer. So the stroke is composited ONCE, as a layer,
+// over the sheet at stroke end (DESIGN 3.1-3.4):
+//
+//   u     = clamp(MIN over covering dabs of |across| / uFeatherEdge, 0, 1)
+//   t     = clamp((u - 0.30) / 0.70, 0, 1)
+//   e     = 2^(2b - 1)                                  b = edgeFalloff 0..1
+//   A     = 1 - amount * t^e                            amount = edgeFade 0..1
+//   A_eff = A * cover_L
+//   band_out,i = A_eff * band_L,i + (1 - A_eff) * band_S,i      (S_out likewise)
+//
+// `band_*` is the DISPLAY band value — Kubelka-Munk reflectance over white when
+// S > SCATTER_EPSILON, the legacy exp(-k) otherwise. Never a transmittance: the
+// exp/ln round trip fails the design's own 50 %-over-white test on Gouache by
+// 28.95/255 (spike 006, Q1).
+//
+// The commit encodes (band_out, S_out) back into the sheet's seven
+// coefficients with the frozen encoder: 8 compiled bands [1,3,5,7,9,10,11,13],
+// a rank-one Jacobian, 4 LM iterations, a seed mix(base, layer, aEff), the
+// residual judged through all 16 bands, and the in-place write-back
+// `ink = fit/k - fixed` (k is the display's own granulation step — the storage
+// domain form of the frozen `fit - fixed`).
+//
+// Amount 0 is a BRANCH, not a value: no layer target is allocated, no merge
+// draw is submitted, the shipped deposit path renders byte-identically
+// (measured 203/255 divergence if the layer path ran at amount 0).
+//
+// This capture is the layer's instrument. It drives spike 006's two straight
+// strokes (`probe/q4.ts`: A horizontal, then B vertical over A) and reports,
+// per side — A's band over bare paper, B's band over the same-visit stroke —
+// the lateral profile and the layer-domain bars. The layer exists only while
+// its stroke is open, so each stroke is driven through the adapter's
+// PROGRESSIVE seam (`renderPartialStrokes` with a partial count leaves the
+// stroke open), the layer targets and the untouched sheet are read at 3/4 of
+// the stroke, and the stroke then completes and merges. On a pre-change engine
+// every layer member is missing: the capture reports those readings ABSENT
+// (never a fabricated zero) and the comparator fails by name — the documented
+// RED the tracer closes.
+const EDGE_LAYER_DEFAULT_AMOUNT = 0
+const EDGE_LAYER_DEFAULT_FALLOFF = 50
+/** The knobs, read once by `main()` before any stroke — module state like
+ *  `LINE_BAND_PX`, so a refused operand can never leave a painted sheet. */
+let EDGE_LAYER_AMOUNT = EDGE_LAYER_DEFAULT_AMOUNT
+let EDGE_LAYER_FALLOFF = EDGE_LAYER_DEFAULT_FALLOFF
+/** Mirrors BRISTLE_EDGE_START (DESIGN 3.3 pins 0.30) and the comparator's
+ *  EDGE_START: where the lateral band begins, in silhouette units. */
+const EDGE_LAYER_START = 0.3
+/** The band's midpoint in silhouette units: (START + 1) / 2. */
+const EDGE_LAYER_MID_U = (EDGE_LAYER_START + 1) / 2
+/** Spike 006's two strokes: A horizontal (`#1d3f7a`), B vertical (`#c2402a`),
+ *  so they cross and B's outboard band sits over A's paint. */
+const EDGE_LAYER_A_COLOR = '#1d3f7a'
+const EDGE_LAYER_B_COLOR = '#c2402a'
+const EDGE_LAYER_A_MUTATION = 0x5a0001
+const EDGE_LAYER_B_MUTATION = 0x5b0001
+/** The along-stroke window each side's profile averages, as doc uv. A is read
+ *  away from the crossing (over bare paper); B is read ON the crossing, so its
+ *  outboard band lies over A's paint. */
+const EDGE_LAYER_PAPER_X0 = 0.2
+const EDGE_LAYER_PAPER_X1 = 0.36
+const EDGE_LAYER_UNDER_Y0 = 0.47
+const EDGE_LAYER_UNDER_Y1 = 0.53
+/** The fraction of the stroke fed before the layer is read: late enough that
+ *  the lateral field is populated, early enough that the end-cap dab and the
+ *  merge have not run. */
+const EDGE_LAYER_PARTIAL = 0.75
+/** The encoder's exact-endpoint set: a station whose layer cover_L reaches
+ *  this is an identity (aEff = 1), not a fit. */
+const EDGE_LAYER_CORE_COVER = 0.999
+const EDGE_LAYER_SILHOUETTE_MIN_PX = 8
+/** The encoder bar, in 1/255 units (spike 006 Q4: max 2, p95 1, zero over). */
+const EDGE_LAYER_FIT_MAX = 2
+const EDGE_LAYER_FIT_P95 = 1
+const EDGE_LAYER_FIT_OVER = 0
+
+/** Spec 10: the two edge operands. Valid ONLY on `edge-layer` — a value on any
+ *  other scenario is refused, never silently ignored. Absent keeps the
+ *  canonical defaults 0 / 50. */
+function readEdgeKnob(name: 'edge' | 'falloff', scenario: string, fallback: number): number {
+  const raw = new URLSearchParams(location.search).get(name)
+  if (raw === null || raw === '') return fallback
+  if (scenario !== 'edge-layer') {
+    throw new Error(`--${name} is only valid with --scenario edge-layer`)
+  }
+  const value = Number(raw)
+  if (!Number.isInteger(value) || value < 0 || value > 100) {
+    throw new Error(`invalid ${name} "${raw}" (expected an integer 0..100)`)
+  }
+  return value
+}
+
+/** Spec 10: spike 006's stroke A — a horizontal drag across the sheet. */
+function edgeLayerPointsA(): readonly AquarellePoint[] {
+  return [
+    { x: 0.1, y: 0.5, p: 0.85, tx: 0, ty: 0, tw: 0 },
+    { x: 0.5, y: 0.501, p: 0.85, tx: 0, ty: 0, tw: 0 },
+    { x: 0.9, y: 0.5, p: 0.85, tx: 0, ty: 0, tw: 0 },
+  ]
+}
+
+/** Spec 10: spike 006's stroke B — a vertical drag over A, crossing at the
+ *  centre. Its own lateral direction is x, so its fade band lies over A. */
+function edgeLayerPointsB(): readonly AquarellePoint[] {
+  return [
+    { x: 0.5, y: 0.12, p: 0.85, tx: 0, ty: 0, tw: 0 },
+    { x: 0.501, y: 0.5, p: 0.85, tx: 0, ty: 0, tw: 0 },
+    { x: 0.5, y: 0.88, p: 0.85, tx: 0, ty: 0, tw: 0 },
+  ]
+}
+
+/** Spec 10: the two-stroke layer scene at the acrylic record's bag, Body 100
+ *  (so the scattering S term is exercised), with the two canonical edge keys
+ *  folded into the entry's params bag. The entries MUST stamp
+ *  `brushId: 'bristle-round'` literally — `toStudioStroke` defaults to
+ *  `round`, a non-bristle preset whose path never runs `gatherBristle`. */
+function edgeLayerScript(): readonly ScriptEntry[] {
+  const params = bristleLineParams(100, STROKE_PARAMS['size']!)
+  params['edgeFade'] = EDGE_LAYER_AMOUNT
+  params['edgeFalloff'] = EDGE_LAYER_FALLOFF
+  return [
+    {
+      color: EDGE_LAYER_A_COLOR,
+      points: edgeLayerPointsA(),
+      mutationId: EDGE_LAYER_A_MUTATION,
+      brushId: 'bristle-round',
+      params,
+      captureEdge: 'a',
+    },
+    {
+      color: EDGE_LAYER_B_COLOR,
+      points: edgeLayerPointsB(),
+      mutationId: EDGE_LAYER_B_MUTATION,
+      brushId: 'bristle-round',
+      params,
+      captureEdge: 'b',
+    },
+  ]
+}
+
+/** A document-pixel rect, y-up (the engine's readback convention). */
+interface EdgeRect {
+  x0: number
+  y0: number
+  x1: number
+  y1: number
+}
+
+/** The private engine seams the layer capture taps. Every layer member is
+ *  OPTIONAL: a pre-change engine exposes none of them, and every layer-domain
+ *  reading is then reported absent rather than fabricated. Read-only. */
+interface EdgeLayerInternals {
+  g: LineEngineInternals['g']
+  /** The engine's LIVE `Params` — the display's own granulation feed
+   *  (`uGranulation = params.granulation * 0.55`), never a probe re-derivation
+   *  of the record's 0..100 value. */
+  readonly params: { readonly granulation: number }
+  ink: { read: { views: WebGLFramebuffer[] } }
+  fixed: { views: WebGLFramebuffer[] }
+  cover: { read: { views: WebGLFramebuffer[] } }
+  relief: { views: WebGLFramebuffer[] }
+  paper: { views: WebGLFramebuffer[] }
+  gl: WebGL2RenderingContext
+  layerInk?: { read: { views: WebGLFramebuffer[] } }
+  layerFilm?: { views: WebGLFramebuffer[] }
+  layerRelief?: { views: WebGLFramebuffer[] }
+  layerAllocated?: boolean
+  mergeDraws?: number
+  /** Pre-existing engine fact (reuse rule, NOT fixed here): the first dab's
+   *  direction is inherited from the previous stroke, and `resetSheet()` does
+   *  not clear it. The probe pins it so the visit and its replay are the SAME
+   *  scene — the plan's `lastDir [1,0]` / `lastAngle 0` definition. */
+  lastDir: [number, number]
+  lastAngle: number
+}
+
+/** Pin the stroke-start direction the amount-0 digest is defined on. Probe
+ *  scene setup only: the inheritance itself is a documented pre-existing
+ *  engine fact and stays exactly as shipped. */
+function pinStrokeStart(engine: WatercolorEngine): void {
+  const internals = engine as unknown as EdgeLayerInternals
+  internals.lastDir = [1, 0]
+  internals.lastAngle = 0
+}
+
+/** The sheet's display-domain state over one rect: the two pools summed, the
+ *  cover channel and the relief — exactly what `displayFS` reads. */
+interface EdgeDocFields {
+  readonly rect: EdgeRect
+  readonly width: number
+  readonly height: number
+  /** ink.read + fixed, A: four absorbance coefficients. */
+  readonly a: Float32Array
+  /** ink.read + fixed, B: three coefficients + the scatter S in .w. */
+  readonly b: Float32Array
+  readonly cover: Float32Array
+  readonly relief: Float32Array
+}
+
+/** The open stroke's own layer over one rect. */
+interface EdgeLayerFields {
+  /** layerFilm attachment 0 — cover_L (the alpha gate). */
+  readonly cover: Float32Array
+  /** layerFilm attachment 1 — the MIN-blended |across| / uFeatherEdge field. */
+  readonly lateral: Float32Array
+  readonly a: Float32Array
+  readonly b: Float32Array
+  readonly relief: Float32Array
+}
+
+/** Spec 10: the two rects the scenario profiles. The paper side reads A's
+ *  band away from the crossing; the under side reads B's band ON it. */
+function edgeLayerRect(sheet: number, side: 'paper' | 'under'): EdgeRect {
+  const centre = Math.round(0.5 * sheet)
+  if (side === 'paper') {
+    return {
+      x0: Math.round(EDGE_LAYER_PAPER_X0 * sheet),
+      x1: Math.round(EDGE_LAYER_PAPER_X1 * sheet),
+      y0: Math.max(0, centre - LINE_BAND_PX),
+      y1: Math.min(sheet, centre + LINE_BAND_PX + 1),
+    }
+  }
+  return {
+    x0: Math.max(0, centre - LINE_BAND_PX),
+    x1: Math.min(sheet, centre + LINE_BAND_PX + 1),
+    y0: Math.round(EDGE_LAYER_UNDER_Y0 * sheet),
+    y1: Math.round(EDGE_LAYER_UNDER_Y1 * sheet),
+  }
+}
+
+/** Decode one half-float readback into floats. */
+function edgeDecodeHalf(raw: Uint16Array): Float32Array {
+  const out = new Float32Array(raw.length)
+  for (let i = 0; i < raw.length; i += 1) out[i] = fromHalf(raw[i]!)
+  return out
+}
+
+/** Spec 10: the sheet's live state over `rect` — the two pools summed exactly
+ *  as the display sums them (G5: the merge's base is `ink.read + fixed`, never
+ *  the mobile pool alone). */
+function readEdgeDocFields(engine: WatercolorEngine, sheet: number, rect: EdgeRect): EdgeDocFields {
+  const it = engine as unknown as EdgeLayerInternals
+  const read = (fb: WebGLFramebuffer, channels: 1 | 4) =>
+    edgeDecodeHalf(it.g.readHalf(fb, sheet, sheet, channels, rect))
+  const inkA = read(it.ink.read.views[0]!, 4)
+  const inkB = read(it.ink.read.views[1]!, 4)
+  const fixA = read(it.fixed.views[0]!, 4)
+  const fixB = read(it.fixed.views[1]!, 4)
+  const a = new Float32Array(inkA.length)
+  const b = new Float32Array(inkB.length)
+  for (let i = 0; i < a.length; i += 1) {
+    a[i] = inkA[i]! + fixA[i]!
+    b[i] = inkB[i]! + fixB[i]!
+  }
+  return {
+    rect,
+    width: rect.x1 - rect.x0,
+    height: rect.y1 - rect.y0,
+    a,
+    b,
+    cover: read(it.cover.read.views[0]!, 1),
+    relief: read(it.relief.views[0]!, 1),
+  }
+}
+
+/** Spec 10: the OPEN stroke's layer over `rect`, or null when the engine has
+ *  no layer yet (the pre-change tree — every reading is then absent). */
+function readEdgeLayerFields(
+  engine: WatercolorEngine,
+  sheet: number,
+  rect: EdgeRect,
+): EdgeLayerFields | null {
+  const it = engine as unknown as EdgeLayerInternals
+  const film = it.layerFilm
+  const ink = it.layerInk
+  const relief = it.layerRelief
+  if (!film || !ink || !relief) return null
+  const read = (fb: WebGLFramebuffer, channels: 1 | 4) =>
+    edgeDecodeHalf(it.g.readHalf(fb, sheet, sheet, channels, rect))
+  return {
+    cover: read(film.views[0]!, 1),
+    lateral: read(film.views[1]!, 1),
+    a: read(ink.read.views[0]!, 4),
+    b: read(ink.read.views[1]!, 4),
+    relief: read(relief.views[0]!, 1),
+  }
+}
+
+/** Spec 10: the raw paper texel's `g` channel over `rect` (0..1) — the display
+ *  feed of the granulation step `k`, which the merge's write-back divides out.
+ *  Read straight from the engine's RGBA8 paper target: the display's
+ *  `texture(uPaper, uv).g` is this byte over 255. */
+function readEdgePaperG(engine: WatercolorEngine, fields: EdgeDocFields): Float32Array {
+  const it = engine as unknown as EdgeLayerInternals
+  const { rect, width, height } = fields
+  const bytes = new Uint8Array(width * height * 4)
+  it.gl.bindFramebuffer(it.gl.FRAMEBUFFER, it.paper.views[0]!)
+  it.gl.readPixels(rect.x0, rect.y0, width, height, it.gl.RGBA, it.gl.UNSIGNED_BYTE, bytes)
+  it.gl.bindFramebuffer(it.gl.FRAMEBUFFER, null)
+  const out = new Float32Array(width * height)
+  for (let i = 0; i < out.length; i += 1) out[i] = bytes[i * 4 + 1]! / 255
+  return out
+}
+
+/**
+ * Spec 10: the display's granulation step `k` (`shaders.ts:1932`:
+ * `gran = 1 + uGranulation * (0.5 - paper.g) * 2.2`) at the LIVE compositor
+ * (`uFlat = 0`) with `uEdgeDarken = 0` (the stroke's first dab set
+ * `bristleContent`, so the density edge term is inert). `uGranulation` is
+ * `params.granulation * 0.55` (`Engine.drawDisplay`). The merge writes
+ * `ink = fit / k - fixed`, so `k * (ink + fixed) = fit` — the frozen
+ * display-band identity — and the probe decodes the committed sheet through
+ * this same scalar.
+ */
+function edgeGranulationK(paperG: number, granulation: number): number {
+  return Math.max(1e-3, 1 + granulation * 0.55 * (0.5 - paperG) * 2.2)
+}
+
+/** One display band's value from a coefficient getter and a scatter term —
+ *  the CPU mirror of `displayBasisGLSL` (KM over white above the epsilon, the
+ *  legacy `exp(-k)` otherwise; `k = 0` returns 1, the continuous limit). */
+function edgeBandValue(
+  coeff: (index: number) => number,
+  scatter: number,
+  band: number,
+): number {
+  let absorbance = 0
+  for (let k = 0; k < 7; k += 1) absorbance += coeff(k) * BASIS[k]![band]!
+  if (!(scatter > SCATTER_EPSILON)) return Math.exp(-Math.max(absorbance, 0))
+  const kk = 0.5 * Math.max(absorbance, 0)
+  if (!(kk > 0)) return 1
+  const arg = Math.sqrt(kk * (2 * scatter + kk))
+  const e = Math.exp(-2 * arg)
+  const sh = 0.5 * (1 - e)
+  const ch = 0.5 * (1 + e)
+  const den = (kk + scatter) * sh + arg * ch
+  const r = (scatter * sh) / den
+  const t = (arg * Math.sqrt(e)) / den
+  const om = (kk * sh + arg * ch) / den
+  return r + (t * t) / om
+}
+
+/** The 16 display bands' values for texel `i` of `a`/`b`, under the display's
+ *  own `k` multiplier (pass `k = 1` for a storage-domain read). */
+function edgeTexelBands(
+  a: Float32Array,
+  b: Float32Array,
+  i: number,
+  k: number,
+): Float64Array {
+  const o = i * 4
+  const coeff = (index: number) =>
+    index < 4 ? a[o + index]! * k : b[o + index - 4]! * k
+  const scatter = b[o + 3]! * k
+  const out = new Float64Array(DISPLAY_BANDS.length)
+  for (let bi = 0; bi < DISPLAY_BANDS.length; bi += 1) {
+    out[bi] = edgeBandValue(coeff, scatter, DISPLAY_BANDS[bi]!)
+  }
+  return out
+}
+
+/** The linear sRGB of a band array — the display's own weight sum. */
+function edgeBandsLinear(bands: Float64Array): [number, number, number] {
+  const out: [number, number, number] = [0, 0, 0]
+  for (let i = 0; i < bands.length; i += 1) {
+    const w = DISPLAY_RGB_WEIGHTS[i]!
+    out[0] += bands[i]! * w[0]!
+    out[1] += bands[i]! * w[1]!
+    out[2] += bands[i]! * w[2]!
+  }
+  return out
+}
+
+/** One lateral profile: `offsets` are document-pixel distances from the
+ *  profiled stroke's centreline (GL axis), and `cover`/`print` are the LAYER's
+ *  own readings — null when the engine has no layer yet. */
+interface EdgeProfile {
+  readonly offsets: number[]
+  readonly cover: number[] | null
+  readonly dark: number[]
+  readonly ink: number[]
+  readonly print: number[] | null
+}
+
+/**
+ * Spec 10: one side's lateral profile. `axis === 'y'` profiles stroke A (a
+ * horizontal drag: lateral is y, averaged over the paper window); `axis ===
+ * 'x'` profiles stroke B (vertical: lateral is x, averaged over the crossing
+ * window). `dark`/`ink` are the shipped display channels (the artist-facing
+ * darkness and the delivered absorbance); `cover`/`print` are the layer's own
+ * cover_L rows and sparse print share — absent without a layer.
+ */
+function edgeLayerProfile(
+  fields: EdgeDocFields,
+  layer: EdgeLayerFields | null,
+  transparent: HTMLCanvasElement,
+  sheet: number,
+  axis: 'x' | 'y',
+): EdgeProfile {
+  const dw = transparent.width
+  const dh = transparent.height
+  const tData = transparent.getContext('2d')!.getImageData(0, 0, dw, dh).data
+  const centre = Math.round(0.5 * sheet)
+  const { rect, width, height } = fields
+  const offsets: number[] = []
+  const dark: number[] = []
+  const ink: number[] = []
+  const cover: number[] = []
+  const print: number[] = []
+  // The print share: each row's fraction of texels at or above half the
+  // profile's peak, read from the SHEET's coverage raster — the merge writes
+  // `cover = 1 - (1-cover_S)(1 - A·cover_L)`, so this raster is where the
+  // dissolve is visible (the layer's own cover_L is the deposit and does not
+  // read the falloff).
+  let peak = 0
+  for (let i = 0; i < fields.cover.length; i += 1) peak = Math.max(peak, fields.cover[i]!)
+  const printFloor = peak > 0 ? peak * 0.5 : Number.POSITIVE_INFINITY
+  for (let o = -LINE_BAND_PX; o <= LINE_BAND_PX; o += 1) {
+    // The station's row/column inside the rect, or skip when the rect clips it.
+    let index = -1
+    let count = 0
+    if (axis === 'y') {
+      const y = centre + o
+      if (y < 0 || y >= sheet) continue
+      const local = y - rect.y0
+      if (local < 0 || local >= height) continue
+      index = local
+      count = width
+    } else {
+      const x = centre + o
+      if (x < 0 || x >= sheet) continue
+      const local = x - rect.x0
+      if (local < 0 || local >= width) continue
+      index = local
+      count = height
+    }
+    let cSum = 0
+    let dSum = 0
+    let iSum = 0
+    let printed = 0
+    for (let j = 0; j < count; j += 1) {
+      const fi = axis === 'y' ? index * width + j : j * width + index
+      const x = axis === 'y' ? rect.x0 + j : rect.x0 + index
+      const y = axis === 'y' ? rect.y0 + index : rect.y0 + j
+      const cr = dh - 1 - y
+      const i4 = (cr * dw + x) * 4
+      dSum += 1 - Math.min(tData[i4]!, tData[i4 + 1]!, tData[i4 + 2]!) / 255
+      iSum +=
+        (fields.a[fi * 4]! +
+          fields.a[fi * 4 + 1]! +
+          fields.a[fi * 4 + 2]! +
+          fields.a[fi * 4 + 3]! +
+          fields.b[fi * 4]! +
+          fields.b[fi * 4 + 1]! +
+          fields.b[fi * 4 + 2]!) /
+        7
+      if (layer !== null) {
+        cSum += layer.cover[fi]!
+        if (fields.cover[fi]! >= printFloor) printed += 1
+      }
+    }
+    offsets.push(o)
+    dark.push(round4(dSum / count))
+    ink.push(round4(iSum / count))
+    if (layer !== null) {
+      cover.push(round4(cSum / count))
+      print.push(round4(printed / count))
+    }
+  }
+  return {
+    offsets,
+    cover: layer === null ? null : cover,
+    dark,
+    ink,
+    print: layer === null ? null : print,
+  }
+}
+
+/** Spec 10: one stroke's mid-stroke capture — the layer, the untouched sheet
+ *  and the engine's structural counters. */
+interface EdgeStrokeCapture {
+  readonly layer: EdgeLayerFields | null
+  readonly sheet: EdgeDocFields
+  readonly layerAllocated: boolean | null
+  readonly mergeDraws: number | null
+}
+
+/** Spec 10: read one side's capture at the partial point of its stroke. */
+function captureEdgeStroke(
+  engine: WatercolorEngine,
+  sheet: number,
+  side: 'a' | 'b',
+): EdgeStrokeCapture {
+  const rect = edgeLayerRect(sheet, side === 'a' ? 'paper' : 'under')
+  const it = engine as unknown as EdgeLayerInternals
+  return {
+    layer: readEdgeLayerFields(engine, sheet, rect),
+    sheet: readEdgeDocFields(engine, sheet, rect),
+    layerAllocated: typeof it.layerAllocated === 'boolean' ? it.layerAllocated : null,
+    mergeDraws: typeof it.mergeDraws === 'number' ? it.mergeDraws : null,
+  }
+}
+
+/** A stable digest of a sheet snapshot — the capture round trip's witness. */
+function digestSheetSnapshot(snapshot: unknown): string {
+  const text = JSON.stringify(snapshot, (_key, value) => {
+    if (ArrayBuffer.isView(value)) {
+      const view = value as unknown as { length: number; [index: number]: number }
+      const parts: number[] = []
+      for (let i = 0; i < view.length; i += 1) parts.push(view[i]!)
+      return parts
+    }
+    return value
+  })
+  let hash = 0x811c9dc5
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i)
+    hash = Math.imul(hash, 0x01000193) >>> 0
+  }
+  return hash.toString(16)
+}
+
+/** The layer-side scalar readings, per side. `null` means ABSENT (the engine
+ *  has no layer yet) — never a fabricated zero. */
+interface EdgeSideReadings {
+  readonly midAlpha: number | null
+  readonly midCover: number | null
+  readonly coreExact: number | null
+  readonly continuity: number | null
+  readonly printRetention: number | null
+}
+
+const EDGE_SIDE_ABSENT: EdgeSideReadings = {
+  midAlpha: null,
+  midCover: null,
+  coreExact: null,
+  continuity: null,
+  printRetention: null,
+}
+
+/**
+ * Spec 10: one side's layer-domain bars, over the profile's stations.
+ *
+ * At the band's midpoint station (`u = (START + 1) / 2 = 0.65`) it recovers
+ * the band alpha `aEff` the merge actually applied — `band_out` decoded from
+ * the COMMITTED sheet (through the display's own `k`), `band_S` from the
+ * untouched pre-merge sheet and `band_L` from the layer — as the per-band
+ * least-squares `(band_out - band_S) / (band_L - band_S)`, averaged over the
+ * bands whose denominator is resolvable. That is a measurement of the
+ * composite, not a re-evaluation of the law.
+ *
+ * `coreExact` is the encoder's identity at its exact-endpoint set: over the
+ * stations whose layer cover_L reaches `EDGE_LAYER_CORE_COVER`, the largest
+ * per-band deviation (1/255) between the committed sheet's decoded band and
+ * the layer's own band. `continuity` counts in-band stations whose committed
+ * band leaves the closed envelope `[min(band_S, band_L), max(...)]` by more
+ * than 1/255 — a pale fringe or a washed-out mark. `printRetention` is the
+ * layer's print share at the silhouette station (the design's 95-96 %).
+ */
+function edgeSideReadings(
+  engine: WatercolorEngine,
+  capture: EdgeStrokeCapture,
+  merged: EdgeDocFields,
+  granulation: number,
+  profile: EdgeProfile,
+  axis: 'x' | 'y',
+): EdgeSideReadings {
+  const layer = capture.layer
+  if (layer === null || profile.cover === null || profile.print === null) return EDGE_SIDE_ABSENT
+  const { width, height } = capture.sheet
+  const sheetFields = capture.sheet
+  const paperG = readEdgePaperG(engine, sheetFields)
+  // The layer's geometric silhouette: its outermost station within 1 % of the
+  // cover_L peak. Guarded — a degenerate profile has no station to judge.
+  let peak = 0
+  for (const value of profile.cover) peak = Math.max(peak, value)
+  if (!(peak > 0)) return EDGE_SIDE_ABSENT
+  const flat = peak * 0.99
+  let silhouette = 0
+  for (let i = profile.cover.length - 1; i >= 0; i -= 1) {
+    if (profile.cover[i]! >= flat) {
+      silhouette = Math.abs(profile.offsets[i]!)
+      break
+    }
+  }
+  if (silhouette < EDGE_LAYER_SILHOUETTE_MIN_PX) return EDGE_SIDE_ABSENT
+  // The rects are built symmetric about the profiled stroke's centreline, so
+  // the centre row/column is the rect's middle.
+  const sheetRect = sheetFields.rect
+  const docCentre = Math.round((sheetRect.y0 + sheetRect.y1 - 1) / 2)
+  const docCentreX = Math.round((sheetRect.x0 + sheetRect.x1 - 1) / 2)
+  const k = new Float32Array(width * height)
+  for (let i = 0; i < k.length; i += 1) k[i] = edgeGranulationK(paperG[i]!, granulation)
+  const layerCover = layer.cover
+  // Per-station aggregation, over the same rows the profile averages.
+  let alphaSum = 0
+  let alphaCount = 0
+  let coreMax = 0
+  let coreSeen = false
+  let outside = 0
+  for (let oi = 0; oi < profile.offsets.length; oi += 1) {
+    const o = profile.offsets[oi]!
+    let rowIndex = -1
+    let rowCount = 0
+    if (axis === 'y') {
+      const local = docCentre + o - sheetRect.y0
+      if (local < 0 || local >= height) continue
+      rowIndex = local
+      rowCount = width
+    } else {
+      const local = docCentreX + o - sheetRect.x0
+      if (local < 0 || local >= width) continue
+      rowIndex = local
+      rowCount = height
+    }
+    const isMid = Math.abs(o - Math.round(EDGE_LAYER_MID_U * silhouette)) <= 1
+    let rowAlpha = 0
+    let rowAlphaCount = 0
+    let rowCore = 0
+    let rowOutside = 0
+    for (let j = 0; j < rowCount; j += 1) {
+      const fi = axis === 'y' ? rowIndex * width + j : j * width + rowIndex
+      const bands_s = edgeTexelBands(sheetFields.a, sheetFields.b, fi, k[fi]!)
+      const bands_l = edgeTexelBands(layer.a, layer.b, fi, 1)
+      const bands_o = edgeTexelBands(merged.a, merged.b, fi, k[fi]!)
+      const c = layerCover[fi]!
+      let inside = true
+      for (let bi = 0; bi < bands_o.length; bi += 1) {
+        const lo = Math.min(bands_s[bi]!, bands_l[bi]!) - 1 / 255
+        const hi = Math.max(bands_s[bi]!, bands_l[bi]!) + 1 / 255
+        if (bands_o[bi]! < lo || bands_o[bi]! > hi) {
+          inside = false
+          break
+        }
+      }
+      if (!inside) rowOutside += 1
+      if (c >= EDGE_LAYER_CORE_COVER) {
+        for (let bi = 0; bi < bands_o.length; bi += 1) {
+          rowCore = Math.max(rowCore, Math.abs(bands_o[bi]! - bands_l[bi]!) * 255)
+        }
+      }
+      if (isMid) {
+        for (let bi = 0; bi < bands_o.length; bi += 1) {
+          const den = bands_l[bi]! - bands_s[bi]!
+          if (Math.abs(den) < 1e-4) continue
+          const alpha = (bands_o[bi]! - bands_s[bi]!) / den
+          rowAlpha += Math.min(1, Math.max(0, alpha))
+          rowAlphaCount += 1
+        }
+      }
+    }
+    if (rowOutside > 0) outside += 1
+    if (rowCore > 0) {
+      coreSeen = true
+      coreMax = Math.max(coreMax, rowCore)
+    }
+    if (isMid && rowAlphaCount > 0) {
+      alphaSum += rowAlpha / rowAlphaCount
+      alphaCount += 1
+    }
+  }
+  const midIndex = profile.offsets.findIndex(
+    (o) => Math.abs(o - Math.round(EDGE_LAYER_MID_U * silhouette)) <= 1,
+  )
+  const rimIndex = profile.offsets.findIndex((o) => Math.abs(o) === silhouette)
+  return {
+    midAlpha: alphaCount > 0 ? round4(alphaSum / alphaCount) : null,
+    midCover: midIndex >= 0 ? round4(profile.cover[midIndex]!) : null,
+    coreExact: coreSeen ? round4(coreMax) : null,
+    continuity: outside,
+    printRetention: rimIndex >= 0 ? round4(profile.print[rimIndex]!) : null,
+  }
+}
+
+/**
+ * Spec 10: the encoder-residual readings — the committed sheet's decoded band
+ * values against the LIVE band mix computed from the read-back layer + sheet,
+ * in 1/255. Reported per side's rect (the paper side is the bare-paper scene,
+ * the under side the same-visit one) and pooled for the report's
+ * `edgeEncodeMax` / `edgeEncodeP95` / `edgeEncodeOver`. Also the
+ * 50 %-over-white reading (DESIGN 6.5): over bare paper, at the station whose
+ * recovered aEff is nearest 0.5, the max per-channel |displayed linear RGB −
+ * (0.5 · layerLinear + 0.5)| in 1/255, in LINEAR light.
+ */
+function edgeEncodeResidual(
+  engine: WatercolorEngine,
+  capture: EdgeStrokeCapture,
+  merged: EdgeDocFields,
+  granulation: number,
+  profile: EdgeProfile,
+  axis: 'x' | 'y',
+): { residual: number[]; halfOnWhite: number | null } {
+  const layer = capture.layer
+  if (layer === null || profile.cover === null) return { residual: [], halfOnWhite: null }
+  const sheetFields = capture.sheet
+  const { width, height, rect } = sheetFields
+  const paperG = readEdgePaperG(engine, sheetFields)
+  const k = new Float32Array(width * height)
+  for (let i = 0; i < k.length; i += 1) k[i] = edgeGranulationK(paperG[i]!, granulation)
+  const residual: number[] = []
+  // The half-on-white scan needs the station whose aEff is nearest 0.5; the
+  // value is recovered per texel and averaged over the station row.
+  let bestDistance = Number.POSITIVE_INFINITY
+  let bestHalf: number | null = null
+  const docCentre = Math.round((rect.y0 + rect.y1 - 1) / 2)
+  const docCentreX = Math.round((rect.x0 + rect.x1 - 1) / 2)
+  for (let oi = 0; oi < profile.offsets.length; oi += 1) {
+    const o = profile.offsets[oi]!
+    let rowIndex = -1
+    let rowCount = 0
+    if (axis === 'y') {
+      const local = docCentre + o - rect.y0
+      if (local < 0 || local >= height) continue
+      rowIndex = local
+      rowCount = width
+    } else {
+      const local = docCentreX + o - rect.x0
+      if (local < 0 || local >= width) continue
+      rowIndex = local
+      rowCount = height
+    }
+    let rowHalf = 0
+    let rowHalfCount = 0
+    for (let j = 0; j < rowCount; j += 1) {
+      const fi = axis === 'y' ? rowIndex * width + j : j * width + rowIndex
+      const bandsS = edgeTexelBands(sheetFields.a, sheetFields.b, fi, k[fi]!)
+      const bandsL = edgeTexelBands(layer.a, layer.b, fi, 1)
+      const bandsO = edgeTexelBands(merged.a, merged.b, fi, k[fi]!)
+      const cover = layer.cover[fi]!
+      for (let bi = 0; bi < bandsO.length; bi += 1) {
+        const mix = cover * bandsL[bi]! + (1 - cover) * bandsS[bi]!
+        residual.push(Math.abs(bandsO[bi]! - mix) * 255)
+      }
+      // The recovered aEff at this texel (band-averaged, guarded).
+      let alpha = 0
+      let alphaCount = 0
+      for (let bi = 0; bi < bandsO.length; bi += 1) {
+        const den = bandsL[bi]! - bandsS[bi]!
+        if (Math.abs(den) < 1e-4) continue
+        alpha += Math.min(1, Math.max(0, (bandsO[bi]! - bandsS[bi]!) / den))
+        alphaCount += 1
+      }
+      if (alphaCount === 0) continue
+      const aEff = alpha / alphaCount
+      const distance = Math.abs(aEff - 0.5)
+      if (distance >= bestDistance) continue
+      // The expected 50 % mix of the layer and bare white, in linear light.
+      const layerLinear = edgeBandsLinear(bandsL)
+      const displayed = edgeBandsLinear(bandsO)
+      let worst = 0
+      for (let ch = 0; ch < 3; ch += 1) {
+        const expected = 0.5 * layerLinear[ch]! + 0.5
+        worst = Math.max(worst, Math.abs(displayed[ch]! - expected) * 255)
+      }
+      bestDistance = distance
+      rowHalf = worst
+      rowHalfCount = 1
+    }
+    if (rowHalfCount > 0) bestHalf = rowHalf
+  }
+  return { residual, halfOnWhite: bestHalf === null ? null : round4(bestHalf) }
+}
+
+/** The layer report — every field the comparator names, present or ABSENT. */
+function edgeLayerReport(
+  engine: WatercolorEngine,
+  sheet: number,
+  script: readonly ScriptEntry[],
+  captures: { a: EdgeStrokeCapture | null; b: EdgeStrokeCapture | null },
+  transparent: HTMLCanvasElement,
+  roundTrip: boolean | null,
+  granulation: number,
+): Record<string, unknown> {
+  const paperRect = edgeLayerRect(sheet, 'paper')
+  const underRect = edgeLayerRect(sheet, 'under')
+  const mergedPaper = readEdgeDocFields(engine, sheet, paperRect)
+  const mergedUnder = readEdgeDocFields(engine, sheet, underRect)
+  const paperProfile = edgeLayerProfile(
+    mergedPaper,
+    captures.a?.layer ?? null,
+    transparent,
+    sheet,
+    'y',
+  )
+  const underProfile = edgeLayerProfile(
+    mergedUnder,
+    captures.b?.layer ?? null,
+    transparent,
+    sheet,
+    'x',
+  )
+  const paperReadings =
+    captures.a === null
+      ? EDGE_SIDE_ABSENT
+      : edgeSideReadings(engine, captures.a, mergedPaper, granulation, paperProfile, 'y')
+  const underReadings =
+    captures.b === null
+      ? EDGE_SIDE_ABSENT
+      : edgeSideReadings(engine, captures.b, mergedUnder, granulation, underProfile, 'x')
+  const paperResidual =
+    captures.a === null
+      ? { residual: [], halfOnWhite: null }
+      : edgeEncodeResidual(engine, captures.a, mergedPaper, granulation, paperProfile, 'y')
+  const underResidual =
+    captures.b === null
+      ? { residual: [], halfOnWhite: null }
+      : edgeEncodeResidual(engine, captures.b, mergedUnder, granulation, underProfile, 'x')
+  const residual = [...paperResidual.residual, ...underResidual.residual].sort((a, b) => a - b)
+  const encodeMax = residual.length > 0 ? round4(residual[residual.length - 1]!) : null
+  const encodeP95 =
+    residual.length > 0
+      ? round4(residual[Math.min(residual.length - 1, Math.floor(residual.length * 0.95))]!)
+      : null
+  const encodeOver = residual.length > 0 ? residual.filter((v) => v > EDGE_LAYER_FIT_MAX).length : null
+  const counters = captures.b ?? captures.a
+  return {
+    strokeBrush: script[0]?.brushId ?? null,
+    edgeAmount: EDGE_LAYER_AMOUNT,
+    edgeFalloff: EDGE_LAYER_FALLOFF,
+    edgeCaptureRoundTrip: roundTrip,
+    edgeAcross: {
+      offsets: underProfile.offsets,
+      cover: underProfile.cover,
+      dark: underProfile.dark,
+      ink: underProfile.ink,
+      print: underProfile.print,
+    },
+    edgeAcrossPaper: {
+      offsets: paperProfile.offsets,
+      cover: paperProfile.cover,
+      dark: paperProfile.dark,
+      ink: paperProfile.ink,
+      print: paperProfile.print,
+    },
+    edgeMidAlphaPaper: paperReadings.midAlpha,
+    edgeMidAlphaUnder: underReadings.midAlpha,
+    edgeMidCoverPaper: paperReadings.midCover,
+    edgeMidCoverUnder: underReadings.midCover,
+    edgeCoreExactPaper: paperReadings.coreExact,
+    edgeCoreExactUnder: underReadings.coreExact,
+    edgeContinuityPaper: paperReadings.continuity,
+    edgeContinuityUnder: underReadings.continuity,
+    edgePrintRetentionPaper: paperReadings.printRetention,
+    edgePrintRetentionUnder: underReadings.printRetention,
+    edgeEncodeMax: encodeMax,
+    edgeEncodeP95: encodeP95,
+    edgeEncodeOver: encodeOver,
+    linearHalfOnWhite: paperResidual.halfOnWhite,
+    layerAllocated: counters === null ? null : counters.layerAllocated,
+    mergeDraws: counters === null ? null : counters.mergeDraws,
+    mergeDrawsFirst: captures.a === null ? null : captures.a.mergeDraws,
+  }
+}
+
+/**
+ * Spec 10: the edge-layer visit's report — `edgeLayerReport` plus the two
+ * after-the-fact determinism witnesses. Both run AFTER every export digest, so
+ * neither can perturb the visit's own capture:
+ *
+ *  - the capture round trip (`captureSheet` → `restoreSheet` → `captureSheet`).
+ *    The `whole` document — every painted byte — is digested on both sides; the
+ *    wet AGES are deliberately excluded because `restoreSheet` re-stamps them
+ *    on the engine's clock (the documented AGES law), so a byte-equal round
+ *    trip still moves them.
+ *  - the replay: the same two entries replayed one-shot through `applyStroke`
+ *    on a reset sheet must export byte-identically to the split drive. A
+ *    difference means the split drive is not the bake drive, and the whole
+ *    mid-stroke read would be measuring a scene the Studio never paints.
+ *  - the fresh-visit vs reset replay: `resetSheet()` does not clear the
+ *    stroke-start direction (the documented pre-existing inheritance fact, not
+ *    fixed here), so the first replayed dab would inherit the VISIT's final
+ *    direction — measured 187/255 over 3759 texels at 512² with no layer in
+ *    the picture. `pinStrokeStart` pins `lastDir [1,0]` / `lastAngle 0` on
+ *    both sides (the plan's scene definition), after which the two must agree
+ *    byte for byte; the residual is still reported as
+ *    `edgeReplayMaxDelta` / `edgeReplayDiffTexels`, never assumed.
+ */
+function edgeLayerVisitReport(
+  adapter: ReturnType<typeof createAquarelleEngineAdapter>,
+  engine: WatercolorEngine,
+  sheet: number,
+  script: readonly ScriptEntry[],
+  captures: { a: EdgeStrokeCapture | null; b: EdgeStrokeCapture | null },
+  transparent: HTMLCanvasElement,
+  visitDigest: string,
+  visitPixels: Uint8ClampedArray,
+): Record<string, unknown> {
+  // The display's own granulation feed, read from the live engine params —
+  // never re-derived from the record's 0..100 value (the mapping is the
+  // engine's, and `toEngineParams` returns a Partial).
+  const granulation = (engine as unknown as EdgeLayerInternals).params.granulation
+  const replay = (split: boolean): Digest => {
+    adapter.resetSheet()
+    // `resetSheet()` keeps `lastDir`/`lastAngle` (pre-existing fact), so the
+    // first dab would inherit the VISIT's final direction. Pin it to the
+    // scene definition instead: same scene, real determinism check.
+    pinStrokeStart(engine)
+    for (const entry of script) {
+      const stroke = makeStroke(entry)
+      if (split) {
+        const partial = Math.max(2, Math.floor(stroke.pts.length * EDGE_LAYER_PARTIAL))
+        adapter.renderPartialStrokes([{ stroke, pointCount: partial }])
+        adapter.renderPartialStrokes([{ stroke, pointCount: Number.MAX_SAFE_INTEGER }])
+        adapter.stepTick(0)
+      } else {
+        adapter.applyStroke(stroke)
+      }
+      const settle = entry.settle ?? SETTLE_TICKS
+      for (let tick = 0; tick <= settle; tick += 1) adapter.stepTick(tick)
+      adapter.fix()
+    }
+    return digestCanvas(engine.exportCanvas('transparent'))
+  }
+  const oneShot = replay(false)
+  const split = replay(true)
+  const snapshot = engine.captureSheet()
+  const before = digestSheetSnapshot(snapshot.whole)
+  const restored = engine.restoreSheet(snapshot)
+  const after = restored ? digestSheetSnapshot(engine.captureSheet().whole) : null
+  const delta = edgePixelDelta(visitPixels, oneShot.pixels)
+  return {
+    ...edgeLayerReport(engine, sheet, script, captures, transparent, restored ? before === after : false, granulation),
+    // The same-script-twice comparison: the two replay flavours must agree
+    // with each other (that is the split-drive-equals-bake-drive question).
+    edgeReplaySelfIdentical: oneShot.digest === split.digest,
+    edgeReplayDigest: oneShot.digest,
+    edgeReplaySplitDigest: split.digest,
+    // Fresh visit vs reset replay — a measurement, deliberately not a gate.
+    edgeReplayVisitDigest: visitDigest,
+    edgeReplayIdentical: oneShot.digest === visitDigest,
+    edgeReplayMaxDelta: delta.max,
+    edgeReplayDiffTexels: delta.texels,
+  }
+}
+
+/** The largest per-channel difference and the number of differing texels
+ *  between two exports of the same sheet size. */
+function edgePixelDelta(a: Uint8ClampedArray, b: Uint8ClampedArray): { max: number; texels: number } {
+  const n = Math.min(a.length, b.length)
+  let max = 0
+  let texels = 0
+  for (let i = 0; i + 3 < n; i += 4) {
+    let differing = false
+    for (let c = 0; c < 4; c += 1) {
+      const d = Math.abs((a[i + c] ?? 0) - (b[i + c] ?? 0))
+      if (d > max) max = d
+      if (d !== 0) differing = true
+    }
+    if (differing) texels += 1
+  }
+  return { max, texels: texels + Math.abs(a.length - b.length) / 4 }
 }
 
 /** The private engine seams the absorbance profile reads. Read-only. */
@@ -3369,7 +4338,9 @@ function run(
                               ? bristleEndScript(endDrive ?? 'stop', body ?? 100, strokeSize)
                               : scenario === 'emboss-smooth'
                                 ? embossSmoothScript(emboss ?? -15, resolvedBrush)
-                                : neutralScript(emboss, body)
+                                : scenario === 'edge-layer'
+                                  ? edgeLayerScript()
+                                  : neutralScript(emboss, body)
 
   // 261119-pod (D-F): the scene-parameter echo — `dry` appears in the report
   // only when a script pins it, so every capture records the calibration and a
@@ -3443,7 +4414,39 @@ function run(
     if (scenario === 'bristle-end' && endDrive !== undefined && endDrive !== 'bake') {
       endCensus = driveBristleEnd(adapter, engine, endDrive, body ?? 100, strokeSize)
     }
+    // Spec 10: the edge-layer visit's own drive. Each stroke is fed to
+    // EDGE_LAYER_PARTIAL, read while it is still OPEN (the layer, the sheet it
+    // has not touched yet, the structural counters), then completed so its
+    // stroke-end merge runs — the engine calls are `applyStroke`'s verbatim
+    // (feedDueSample + one trailing clock+tick), only split. The split is the
+    // single way to read a layer before the merge clears it; the replay gate
+    // below proves the split drive and the one-shot drive agree byte for byte.
+    const edgeCaptures: { a: EdgeStrokeCapture | null; b: EdgeStrokeCapture | null } = { a: null, b: null }
+    if (scenario === 'edge-layer') {
+      pinStrokeStart(engine)
+      for (const entry of script) {
+        const stroke = makeStroke(entry)
+        const partial = Math.max(2, Math.floor(stroke.pts.length * EDGE_LAYER_PARTIAL))
+        adapter.renderPartialStrokes([{ stroke, pointCount: partial }])
+        const side = entry.captureEdge
+        if (side !== undefined) {
+          const captureStart = performance.now()
+          edgeCaptures[side] = captureEdgeStroke(engine, sheet, side)
+          captureMs += performance.now() - captureStart
+        }
+        adapter.renderPartialStrokes([{ stroke, pointCount: Number.MAX_SAFE_INTEGER }])
+        // The `applyStroke` tail: one clock step + one engine tick, exactly.
+        adapter.stepTick(0)
+        const settle = entry.settle ?? SETTLE_TICKS
+        for (let tick = 0; tick <= settle; tick += 1) adapter.stepTick(tick)
+        adapter.fix()
+      }
+    }
     script.forEach((entry, index) => {
+      // Spec 10: the edge-layer visit drives its own split strokes above (the
+      // only way to read a layer before the stroke-end merge clears it), so
+      // the shared loop is a no-op here — never a second drive.
+      if (scenario === 'edge-layer') return
       // 64-24: the acceptance's clock-only age — the virtual clock moves, the
       // fluid does not, so "thirty seconds old" and "just re-wetted" are
       // independent facts. Applied BEFORE the entry, so the entry's own dabs
@@ -3556,9 +4559,13 @@ function run(
       { surface: 'white', pixels: white.pixels },
       { surface: 'transparent', pixels: transparent.pixels },
     ])
-    const visibleAlpha = scenario.startsWith('bristle-')
-      ? visibleAlphaSkipped(BRISTLE_VISIBLE_ALPHA_SKIP)
-      : visibleAlphaCheck(pigment.pixels, transparent.pixels, sheet)
+    // Spec 10: `edge-layer` is a bristle scene (bristle-round, Body 100) and
+    // carries the same film-blur exclusion. The comparator's alpha-law
+    // predicate carries the identical two-clause test; the two must agree.
+    const visibleAlpha =
+      scenario.startsWith('bristle-') || scenario === 'edge-layer'
+        ? visibleAlphaSkipped(BRISTLE_VISIBLE_ALPHA_SKIP)
+        : visibleAlphaCheck(pigment.pixels, transparent.pixels, sheet)
 
     // WR-01: the four region means that make the cover gate's PASS mean
     // something. Measured after renderMs so the cost number keeps its meaning.
@@ -3662,6 +4669,24 @@ function run(
           }
         : {}
 
+    // Spec 10: the edge-layer readings, only for this scenario, so every other
+    // report shape is unchanged. Last, because its capture round trip and its
+    // replay both move engine state — after every export digest above, nothing
+    // this capture reports can be perturbed by them.
+    const edgeReport =
+      scenario === 'edge-layer'
+        ? edgeLayerVisitReport(
+            adapter,
+            engine,
+            sheet,
+            script,
+            edgeCaptures,
+            transparentCanvas,
+            transparent.digest,
+            transparent.pixels,
+          )
+        : {}
+
     writeResult({
       gate,
       scenario,
@@ -3693,6 +4718,7 @@ function run(
       ...bristleEndReport,
       ...tipReport,
       ...embossSmoothReport,
+      ...edgeReport,
       ...coverLifecycle,
       renderer,
       verdict: 'MEDIUM-ENGINE CAPTURED',
@@ -3761,16 +4787,17 @@ function readBrush(): string | undefined {
  *  `bristle-wet`, the wetness acceptance; 2026-11-22 adds `bristle-line`,
  *  the acrylic pale-line defect's three-field across profile; 64-29 adds
  *  `bristle-tip`, the texture-tip A/B; quick 261123-hr5 adds `emboss-smooth`,
- *  the signed-emboss smoothing relation.
+ *  the signed-emboss smoothing relation; quick 261125-kvl adds `edge-layer`,
+ *  the per-stroke translucent stroke layer's two-stroke scene.
  *  The closed list here and the one in run.mjs must stay literal-identical:
  *  a name accepted by the parser but unknown to the probe fails at capture,
  *  and a name the probe knows but the parser rejects can never be requested. */
 function readScenario(): string {
   const raw = new URLSearchParams(location.search).get('scenario')
   if (raw === null || raw === '') return 'neutral'
-  if (raw !== 'cover' && raw !== 'cover-over-wet' && raw !== 'watercolor-50' && raw !== 'white-over-blue' && raw !== 'cover-advect' && raw !== 'cover-lift' && raw !== 'cover-textured' && raw !== 'red-over-blue-50' && raw !== 'bristle-edge' && raw !== 'bristle-wet' && raw !== 'bristle-line' && raw !== 'bristle-tip' && raw !== 'bristle-end' && raw !== 'emboss-smooth') {
+  if (raw !== 'cover' && raw !== 'cover-over-wet' && raw !== 'watercolor-50' && raw !== 'white-over-blue' && raw !== 'cover-advect' && raw !== 'cover-lift' && raw !== 'cover-textured' && raw !== 'red-over-blue-50' && raw !== 'bristle-edge' && raw !== 'bristle-wet' && raw !== 'bristle-line' && raw !== 'bristle-tip' && raw !== 'bristle-end' && raw !== 'emboss-smooth' && raw !== 'edge-layer') {
     throw new Error(
-      `invalid scenario "${raw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue", "cover-advect", "cover-lift", "cover-textured", "red-over-blue-50", "bristle-edge", "bristle-wet", "bristle-line", "bristle-end", "emboss-smooth" or "bristle-tip")`,
+      `invalid scenario "${raw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue", "cover-advect", "cover-lift", "cover-textured", "red-over-blue-50", "bristle-edge", "bristle-wet", "bristle-line", "bristle-end", "emboss-smooth", "edge-layer" or "bristle-tip")`,
     )
   }
   return raw
@@ -3813,6 +4840,10 @@ function main(): void {
   let strokeSize = STROKE_PARAMS['size']!
   try {
     scenario = readScenario()
+    // Spec 10: the two edge knobs are read before any stroke (module state),
+    // and refused on any other scenario — never silently ignored.
+    EDGE_LAYER_AMOUNT = readEdgeKnob('edge', scenario, EDGE_LAYER_DEFAULT_AMOUNT)
+    EDGE_LAYER_FALLOFF = readEdgeKnob('falloff', scenario, EDGE_LAYER_DEFAULT_FALLOFF)
     sheet = readSize()
     brush = readBrush()
     emboss = readEmboss()

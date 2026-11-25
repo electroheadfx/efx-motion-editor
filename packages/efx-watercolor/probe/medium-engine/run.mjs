@@ -199,6 +199,37 @@
 //                                     smoothing relation, self-contained on
 //                                     the capture's own six readings
 //
+//  quick 261125-kvl (Spec 10) adds `--scenario edge-layer`: the per-stroke
+//  translucent stroke layer's scene — spike 006's two straight `bristle-round`
+//  strokes (A horizontal then B vertical, so they cross) at the acrylic
+//  record's bag with Body 100, each split at 3/4 so the OPEN layer can be read
+//  before its stroke-end merge clears it, then completed, settled and fixed.
+//  Two knobs fold into the entries' canonical bag: `--edge` (Edge
+//  transparency, the layer alpha amount) and `--falloff` (Edge falloff, the
+//  band's shape bias), both integers 0..100, omitted keeping 0 / 50. Both are
+//  `edge-layer` only and are refused on any other scenario. The report carries
+//  `edgeAmount` / `edgeFalloff`, the two sides' lateral profile set
+//  (`edgeAcrossPaper` for A's band over paper, `edgeAcross` for B's band over
+//  the same-visit A), the per-side readings the sweep orders
+//  (`edgeMidAlpha*` / `edgeMidCover*` / `edgeCoreExact*` / `edgeContinuity*` /
+//  `edgePrintRetention*`), the encoder residual (`edgeEncodeMax` / `P95` /
+//  `Over`), `linearHalfOnWhite`, the structural counters
+//  (`layerAllocated` / `mergeDraws` / `mergeDrawsFirst`), the capture round
+//  trip and the split-vs-one-shot replay digest. Every layer-domain reading is
+//  ABSENT (null) on a tree without the layer; the comparator fails it by name.
+//             [--scenario edge-layer]
+//                                     spike 006's two-stroke layer scene
+//             [--edge <0..100>]       edge-layer only: the layer alpha amount
+//             [--falloff <0..100>]    edge-layer only: 0 broad / 50 linear /
+//                                     100 rim
+//    compare.mjs <a> --falloff-sweep <b> <c>
+//                                     the ONLY cross-capture falloff ordering
+//                                     (broad < linear < rim, strict, both
+//                                     sides), on three /tmp captures
+//    compare.mjs <gate> --edge-structural
+//                                     edge-layer only: the structural counters,
+//                                     self-contained on one capture
+//
 //  2026-11-22 adds `--scenario bristle-line` — the acrylic pale-line defect's
 //  reproduction at the ARTIST'S parameters. ONE straight bristle-flat stroke
 //  (`pressureLink 0`/`speedLink 0` are the brush preset's own fields), the
@@ -237,7 +268,7 @@ const gateFlag = args.indexOf('--gate')
 const gate = gateFlag >= 0 ? args[gateFlag + 1] : undefined
 if (!gate) {
   console.error(
-    'usage: node run.mjs --gate <name> [--scenario cover|cover-over-wet|cover-advect|cover-lift|watercolor-50|white-over-blue|cover-textured|red-over-blue-50|bristle-edge|bristle-wet|bristle-line|bristle-end|bristle-tip|emboss-smooth] [--emboss <-100..100>] [--body <0..100>] [--light <0..4>] [--size <32..4096>] [--brush <id>] [--wet-mode <0|1>] [--texture <mask id>] [--drive <stop|lift|decay|mouse|mouse-lift|bake>]   (e.g. neutral-identity)',
+    'usage: node run.mjs --gate <name> [--scenario cover|cover-over-wet|cover-advect|cover-lift|watercolor-50|white-over-blue|cover-textured|red-over-blue-50|bristle-edge|bristle-wet|bristle-line|bristle-end|bristle-tip|emboss-smooth|edge-layer] [--edge <0..100>] [--falloff <0..100>] [--emboss <-100..100>] [--body <0..100>] [--light <0..4>] [--size <32..4096>] [--brush <id>] [--wet-mode <0|1>] [--texture <mask id>] [--drive <stop|lift|decay|mouse|mouse-lift|bake>]   (e.g. neutral-identity)',
   )
   console.error(
     '       every operand except --gate is optional and additive; an omitted operand writes no key/value, so the neutral gate keeps reproducing the committed baseline',
@@ -295,19 +326,56 @@ if (bodyRaw !== undefined) {
 // (cover geometry, covering stroke left wet) and `cover-lift` (fixed cover
 // geometry, then a Lift stroke); 64-24 adds `bristle-wet` (two ages on one
 // sheet); 64-29 adds `bristle-tip` (the texture-tip A/B); quick 261123-hr5
-// adds `emboss-smooth` (the signed-emboss smoothing relation). This closed
-// list and probe.ts readScenario's must stay literal-identical.
+// adds `emboss-smooth` (the signed-emboss smoothing relation); quick
+// 261125-kvl adds `edge-layer` (the per-stroke translucent stroke layer). This
+// closed list and probe.ts readScenario's must stay literal-identical.
 const scenarioFlag = args.indexOf('--scenario')
 const scenarioRaw = scenarioFlag >= 0 ? args[scenarioFlag + 1] : undefined
 let scenario
 if (scenarioRaw !== undefined) {
-  if (scenarioRaw !== 'cover' && scenarioRaw !== 'cover-over-wet' && scenarioRaw !== 'watercolor-50' && scenarioRaw !== 'white-over-blue' && scenarioRaw !== 'cover-advect' && scenarioRaw !== 'cover-lift' && scenarioRaw !== 'cover-textured' && scenarioRaw !== 'red-over-blue-50' && scenarioRaw !== 'bristle-edge' && scenarioRaw !== 'bristle-wet' && scenarioRaw !== 'bristle-line' && scenarioRaw !== 'bristle-tip' && scenarioRaw !== 'bristle-end' && scenarioRaw !== 'emboss-smooth') {
+  if (scenarioRaw !== 'cover' && scenarioRaw !== 'cover-over-wet' && scenarioRaw !== 'watercolor-50' && scenarioRaw !== 'white-over-blue' && scenarioRaw !== 'cover-advect' && scenarioRaw !== 'cover-lift' && scenarioRaw !== 'cover-textured' && scenarioRaw !== 'red-over-blue-50' && scenarioRaw !== 'bristle-edge' && scenarioRaw !== 'bristle-wet' && scenarioRaw !== 'bristle-line' && scenarioRaw !== 'bristle-tip' && scenarioRaw !== 'bristle-end' && scenarioRaw !== 'emboss-smooth' && scenarioRaw !== 'edge-layer') {
     console.error(
-      `invalid --scenario "${scenarioRaw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue", "cover-advect", "cover-lift", "cover-textured", "red-over-blue-50", "bristle-edge", "bristle-wet", "bristle-line", "bristle-end", "emboss-smooth" or "bristle-tip")`,
+      `invalid --scenario "${scenarioRaw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue", "cover-advect", "cover-lift", "cover-textured", "red-over-blue-50", "bristle-edge", "bristle-wet", "bristle-line", "bristle-end", "emboss-smooth", "edge-layer" or "bristle-tip")`,
     )
     process.exit(1)
   }
   scenario = scenarioRaw
+}
+
+// quick 261125-kvl (Spec 10): the two edge knobs — Edge transparency (the
+// layer alpha amount) and Edge falloff (the band's shape bias). Integers
+// 0..100; omitted keeps the canonical defaults 0 / 50. `edge-layer` only:
+// any other scenario is refused here first, never silently ignored.
+const edgeFlag = args.indexOf('--edge')
+const edgeRaw = edgeFlag >= 0 ? args[edgeFlag + 1] : undefined
+let edge
+if (edgeRaw !== undefined) {
+  const value = Number(edgeRaw)
+  if (!Number.isInteger(value) || value < 0 || value > 100) {
+    console.error(`invalid --edge "${edgeRaw}" (expected an integer 0..100)`)
+    process.exit(1)
+  }
+  if (scenario !== 'edge-layer') {
+    console.error('--edge is only valid with --scenario edge-layer')
+    process.exit(1)
+  }
+  edge = value
+}
+
+const falloffFlag = args.indexOf('--falloff')
+const falloffRaw = falloffFlag >= 0 ? args[falloffFlag + 1] : undefined
+let falloff
+if (falloffRaw !== undefined) {
+  const value = Number(falloffRaw)
+  if (!Number.isInteger(value) || value < 0 || value > 100) {
+    console.error(`invalid --falloff "${falloffRaw}" (expected an integer 0..100)`)
+    process.exit(1)
+  }
+  if (scenario !== 'edge-layer') {
+    console.error('--falloff is only valid with --scenario edge-layer')
+    process.exit(1)
+  }
+  falloff = value
 }
 
 // 64-10: optional square-sheet size. Omitted keeps the phase-default sheet,
@@ -462,6 +530,8 @@ if (driveRaw !== undefined) {
 const pageQuery =
   `gate=${encodeURIComponent(gate)}` +
   (scenario === undefined ? '' : `&scenario=${scenario}`) +
+  (edge === undefined ? '' : `&edge=${edge}`) +
+  (falloff === undefined ? '' : `&falloff=${falloff}`) +
   (emboss === undefined ? '' : `&emboss=${emboss}`) +
   (body === undefined ? '' : `&body=${body}`) +
   (light === undefined ? '' : `&light=${light}`) +
@@ -650,6 +720,20 @@ if (typeof result.lumaRatio === 'number') {
 if (typeof result.pickupFreshMean === 'number') {
   console.log(
     `wetness   : mode ${result.wetMode} | fresh ${result.pickupFreshMean} | agedWet ${result.pickupAgedWetMean} (band darkness, 0..255)`,
+  )
+}
+if (typeof result.edgeAmount === 'number') {
+  console.log(
+    `edge      : amount ${result.edgeAmount} | falloff ${result.edgeFalloff} | layer ${result.layerAllocated ?? 'absent'} | merge draws ${result.mergeDraws ?? 'absent'} (first ${result.mergeDrawsFirst ?? 'absent'})`,
+  )
+  console.log(
+    `edge      : sweep midAlpha paper ${result.edgeMidAlphaPaper ?? 'absent'} / under ${result.edgeMidAlphaUnder ?? 'absent'} | core ${result.edgeCoreExactPaper ?? 'absent'} / ${result.edgeCoreExactUnder ?? 'absent'} | continuity ${result.edgeContinuityPaper ?? 'absent'} / ${result.edgeContinuityUnder ?? 'absent'}`,
+  )
+  console.log(
+    `edge      : encode max ${result.edgeEncodeMax ?? 'absent'} | p95 ${result.edgeEncodeP95 ?? 'absent'} | over ${result.edgeEncodeOver ?? 'absent'} (1/255) | linearHalfOnWhite ${result.linearHalfOnWhite ?? 'absent'}`,
+  )
+  console.log(
+    `edge      : capture round trip ${result.edgeCaptureRoundTrip ?? 'absent'} | replay identical ${result.edgeReplayIdentical ?? 'absent'} | print ${result.edgePrintRetentionPaper ?? 'absent'} / ${result.edgePrintRetentionUnder ?? 'absent'}`,
   )
 }
 if (result.lineSurfaces && typeof result.lineSurfaces === 'object') {

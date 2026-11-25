@@ -217,7 +217,12 @@ function alphaLawFailures(data) {
     )
     return failures
   }
-  const bristle = String(data.scenario).startsWith('bristle-')
+  // Spec 10 (261125-kvl): `edge-layer` is a bristle scene (bristle-round,
+  // Body 100) and carries the same film-blur exclusion. The probe's skip
+  // predicate carries the identical two-clause test; a drift between the two
+  // makes every edge-layer capture fail here by construction.
+  const bristle =
+    String(data.scenario).startsWith('bristle-') || data.scenario === 'edge-layer'
   if (bristle) {
     if (typeof data.visibleAlphaSkip !== 'string' || data.visibleAlphaSkip.length === 0) {
       failures.push(
@@ -1226,6 +1231,367 @@ function reliefSmoothFailures(data) {
   return failures
 }
 
+// ---- Spec 10 (261125-kvl): the per-stroke translucent stroke layer ---------
+//
+// The layer composites ONCE, at stroke end, and the shipped display shows the
+// result. The pre-change tree has no layer at all, so the amount-0 capture is
+// the identity witness and the amount>0 capture is the RED the tracer turns
+// green. Two relations live here:
+//
+//  - the AMOUNT-KEYED invariant (`edgeLayerFailures`), which is what
+//    SCENARIO_INVARIANTS runs: at amount 0 it runs ONLY the row-by-row
+//    profile identity against the committed pre-change baseline; at amount>0
+//    it requires every layer reading BY NAME and then applies the bars.
+//  - two operands: `--falloff-sweep` (the strict mid-alpha ordering across
+//    three same-amount captures, plus the falloff-independence of the layer's
+//    own deposit) and `--edge-structural` (the allocate/merge counters on one
+//    capture — the amount-0 bypass is a BRANCH, so its proof is structural,
+//    never a pixel comparison).
+//
+// The FROZEN law (spike 006, do not re-derive here):
+//   u = clamp(|across| / uFeatherEdge, 0, 1); t = clamp((u - 0.30)/0.70, 0, 1);
+//   e = 2^(2b - 1); A = 1 - amount·t^e; A_eff = A·cover_L;
+//   band_out = A_eff·band_L + (1 - A_eff)·band_S.
+// Every bar below names the number the law predicts at its station.
+
+/** The amount-0 identity row tolerance: the profile arrays are recorded at
+ *  four decimals, so a row may move by one rounding step under GPU ULP drift.
+ *  A real amount-0 change moves whole rows far past this. */
+const EDGE_IDENTITY_TOLERANCE = 2e-4
+const EDGE_SILHOUETTE_MIN_PX = 8
+/** Mirrors BRISTLE_EDGE_START: where the lateral dissolve begins. */
+const EDGE_START = 0.3
+/** The dissolve band's midpoint in silhouette units: (START + 1) / 2 = 0.65. */
+const EDGE_MID_U = (EDGE_START + 1) / 2
+/** The encoder residual bars, in 1/255 (spike 006 Q4). */
+const EDGE_ENCODE_MAX = 2
+const EDGE_ENCODE_P95 = 1
+const EDGE_ENCODE_OVER = 0
+/** The 50 %-over-white reading in LINEAR light (DESIGN 6.5; spike 0.08/255). */
+const EDGE_LINEAR_HALF_MAX = 1
+/** The printed-fraction bar: the paper tooth's own distribution moves the
+ *  measured fraction a few percent at the calibration's parameters. */
+const EDGE_PRINT_TOLERANCE = 0.12
+/** The layer deposit does not read the falloff, so the three sweep captures'
+ *  cover_L rows must agree to one 8-bit step (they are recorded at 4 dp). */
+const EDGE_COVER_ROW_TOLERANCE = 1 / 255
+
+/** The two profile families every amount-0 capture must carry, and the four
+ *  channels the identity compares inside each. */
+const EDGE_PROFILE_FAMILIES = ['edgeAcrossPaper', 'edgeAcross']
+const EDGE_PROFILE_CHANNELS = ['cover', 'dark', 'ink', 'print']
+
+/** The layer-only readings: ABSENT at amount 0 (no layer exists), REQUIRED at
+ *  amount > 0 — a missing one fails by name, never read as a satisfied bar. */
+const EDGE_LAYER_READINGS = [
+  'edgeMidAlphaPaper',
+  'edgeMidAlphaUnder',
+  'edgeMidCoverPaper',
+  'edgeMidCoverUnder',
+  'edgeCoreExactPaper',
+  'edgeCoreExactUnder',
+  'edgeContinuityPaper',
+  'edgeContinuityUnder',
+  'edgePrintRetentionPaper',
+  'edgePrintRetentionUnder',
+  'edgeEncodeMax',
+  'edgeEncodeP95',
+  'edgeEncodeOver',
+  'linearHalfOnWhite',
+]
+
+/** One profile's arrays, or a failure line when the shape is unusable. */
+function edgeProfileOf(data, family) {
+  const profile = data[family]
+  if (profile === null || typeof profile !== 'object') {
+    return { error: `capture is missing ${family} (re-run --scenario edge-layer)` }
+  }
+  const { offsets } = profile
+  if (!Array.isArray(offsets) || offsets.length === 0) {
+    return { error: `${family}.offsets is not a non-empty array` }
+  }
+  for (const channel of EDGE_PROFILE_CHANNELS) {
+    const values = profile[channel]
+    if (values === null) continue
+    if (!Array.isArray(values) || values.length !== offsets.length) {
+      return {
+        error: `${family}.${channel} is not an array aligned with offsets (${values?.length} vs ${offsets.length})`,
+      }
+    }
+  }
+  return { profile }
+}
+
+/**
+ * The amount-0 identity: every present profile channel must match the
+ * committed pre-change baseline row by row within EDGE_IDENTITY_TOLERANCE.
+ * The baseline was captured with NO layer machinery in the engine, so a row
+ * that moves is a change to the shipped deposit or display — exactly what the
+ * amount-0 branch is supposed to leave untouched.
+ */
+function edgeIdentityFailures(data, reference) {
+  const failures = []
+  if (reference === null || typeof reference !== 'object') {
+    return ['amount-0 identity needs a reference capture (run with the committed baseline)']
+  }
+  if (reference.width !== data.width || reference.height !== data.height) {
+    failures.push(
+      `amount-0 identity: dimensions differ (${data.width}x${data.height} vs ` +
+        `${reference.width}x${reference.height}); the identity is per-pixel`,
+    )
+    return failures
+  }
+  for (const family of EDGE_PROFILE_FAMILIES) {
+    const here = edgeProfileOf(data, family)
+    const there = edgeProfileOf(reference, family)
+    if (here.error || there.error) {
+      failures.push(here.error ?? there.error)
+      continue
+    }
+    if (
+      here.profile.offsets.length !== there.profile.offsets.length ||
+      here.profile.offsets.some((value, index) => value !== there.profile.offsets[index])
+    ) {
+      failures.push(
+        `amount-0 identity: ${family}.offsets does not match the baseline ` +
+          '(the profile geometry moved; the identity is row-by-row)',
+      )
+      continue
+    }
+    for (const channel of EDGE_PROFILE_CHANNELS) {
+      const a = here.profile[channel]
+      const b = there.profile[channel]
+      if (a === null && b === null) continue
+      if (a === null || b === null) {
+        failures.push(
+          `amount-0 identity: ${family}.${channel} is ${a === null ? 'absent here' : 'absent in the baseline'} ` +
+            '(a channel cannot appear or vanish at amount 0)',
+        )
+        continue
+      }
+      let worst = 0
+      let worstAt = 0
+      for (let i = 0; i < a.length; i += 1) {
+        const delta = Math.abs(a[i] - b[i])
+        if (delta > worst) {
+          worst = delta
+          worstAt = here.profile.offsets[i]
+        }
+      }
+      if (worst > EDGE_IDENTITY_TOLERANCE) {
+        failures.push(
+          `amount-0 identity: ${family}.${channel} differs from the baseline by up to ` +
+            `${worst.toFixed(6)} at ${worstAt} px (tolerance ${EDGE_IDENTITY_TOLERANCE}) — ` +
+            'the edge law must be INERT at amount 0 (the shipped deposit and display run)',
+        )
+      }
+    }
+  }
+  return failures
+}
+
+/**
+ * Spec 10: the amount-keyed edge-layer invariant.
+ *
+ * At `edgeAmount === 0` it runs ONLY the identity block. At `edgeAmount > 0`
+ * it requires every layer reading by name (a null at amount>0 is a capture
+ * that never ran the layer path) and then applies the law's bars:
+ *  - `edgeCoreExact*` = 0: over the stations whose layer cover_L reaches the
+ *    encoder's exact-endpoint set, the committed band IS the layer's band;
+ *  - `edgeContinuity*` = 0: no station leaves the [band_S, band_L] envelope,
+ *    so the band cannot show a pale fringe or a washed-out mark;
+ *  - the encoder residual max <= 2, p95 <= 1, zero over (1/255);
+ *  - `linearHalfOnWhite` <= 1/255 in LINEAR light;
+ *  - `edgePrintRetention*` <= (1 - amount) + the print tolerance: the merged
+ *    coverage raster's band edge cannot print more cells than the law leaves.
+ *    The bar is one-sided because the printed fraction is a binary threshold
+ *    over the merged cover: the law's survivors either cross it or do not.
+ *  - `edgeMidCover*` > 0: the mid station must sit inside the deposit at all
+ *    (a zero cover there would make the ordering vacuous);
+ *  - `edgeMidAlpha*` in [0, 1] and finite.
+ */
+function edgeLayerFailures(data, reference) {
+  const failures = []
+  if (data.strokeBrush !== 'bristle-round') {
+    failures.push(
+      `strokeBrush ${JSON.stringify(data.strokeBrush)} is not 'bristle-round' — ` +
+        'a non-bristle stroke never runs the bristle deposit the layer routes',
+    )
+  }
+  if (!Number.isFinite(data.edgeAmount) || data.edgeAmount < 0 || data.edgeAmount > 100) {
+    failures.push(`edgeAmount ${JSON.stringify(data.edgeAmount)} is not a 0..100 knob`)
+  }
+  if (!Number.isFinite(data.edgeFalloff) || data.edgeFalloff < 0 || data.edgeFalloff > 100) {
+    failures.push(`edgeFalloff ${JSON.stringify(data.edgeFalloff)} is not a 0..100 knob`)
+  }
+  if (failures.length > 0) return failures
+
+  if (data.edgeAmount === 0) return [...failures, ...edgeIdentityFailures(data, reference)]
+
+  const amount = data.edgeAmount / 100
+  const missing = EDGE_LAYER_READINGS.filter((field) => !(field in data))
+  if (missing.length > 0) {
+    return [
+      ...failures,
+      `capture is missing ${missing.join(', ')} at amount ${data.edgeAmount}; ` +
+        'every layer reading is required once the layer path runs',
+    ]
+  }
+  const absent = EDGE_LAYER_READINGS.filter((field) => data[field] === null)
+  if (absent.length > 0) {
+    return [
+      ...failures,
+      `capture reports ${absent.join(', ')} as absent at amount ${data.edgeAmount} — ` +
+        'the pre-change engine cannot measure the layer; this is the RED the tracer closes',
+    ]
+  }
+  for (const family of EDGE_PROFILE_FAMILIES) {
+    const parsed = edgeProfileOf(data, family)
+    if (parsed.error) {
+      failures.push(parsed.error)
+      continue
+    }
+    for (const channel of ['cover', 'print']) {
+      if (parsed.profile[channel] === null) {
+        failures.push(
+          `${family}.${channel} is absent at amount ${data.edgeAmount} — ` +
+            (channel === 'cover'
+              ? 'the LAYER\'s own cover_L is the profile the sweep calibrates on'
+              : 'the merged coverage raster\'s printed share is the dissolve witness'),
+        )
+      }
+    }
+  }
+  if (failures.length > 0) return failures
+
+  for (const side of ['Paper', 'Under']) {
+    const core = data[`edgeCoreExact${side}`]
+    if (core !== 0) {
+      failures.push(
+        `edgeCoreExact${side} ${core} is not 0/255 — over the stations whose layer ` +
+          'cover_L reaches the encoder\'s exact-endpoint set the committed band must BE ' +
+          'the layer\'s band (an identity, not a fit)',
+      )
+    }
+    const continuity = data[`edgeContinuity${side}`]
+    if (continuity !== 0) {
+      failures.push(
+        `edgeContinuity${side} ${continuity} station(s) leave the [band_S, band_L] envelope — ` +
+          'the band must stay a between-mix of the sheet and the layer (a pale fringe or a ' +
+          'washed-out mark fails here)',
+      )
+    }
+    const retention = data[`edgePrintRetention${side}`]
+    const retentionBar = 1 - amount + EDGE_PRINT_TOLERANCE
+    if (!(retention <= retentionBar)) {
+      failures.push(
+        `edgePrintRetention${side} ${retention} exceeds ${retentionBar.toFixed(4)} at ` +
+          `amount ${data.edgeAmount} — the merged band edge cannot print more cells than ` +
+          'the law leaves (the dissolve opens the rim; it never keeps it full)',
+      )
+    }
+    const cover = data[`edgeMidCover${side}`]
+    if (!(typeof cover === 'number' && cover > 0)) {
+      failures.push(
+        `edgeMidCover${side} ${cover} is not a positive cover_L at the u = ${EDGE_MID_U} ` +
+          'station — the deposit must reach the mid station or the ordering is vacuous',
+      )
+    }
+    const alpha = data[`edgeMidAlpha${side}`]
+    if (!(typeof alpha === 'number' && alpha >= 0 && alpha <= 1)) {
+      failures.push(`edgeMidAlpha${side} ${alpha} is not a recovered alpha in [0, 1]`)
+    }
+  }
+  if (!(data.edgeEncodeMax <= EDGE_ENCODE_MAX)) {
+    failures.push(
+      `edgeEncodeMax ${data.edgeEncodeMax} exceeds ${EDGE_ENCODE_MAX}/255 — the committed ` +
+        'sheet must reproduce the live band mix within the frozen encoder bar',
+    )
+  }
+  if (!(data.edgeEncodeP95 <= EDGE_ENCODE_P95)) {
+    failures.push(
+      `edgeEncodeP95 ${data.edgeEncodeP95} exceeds ${EDGE_ENCODE_P95}/255 (the encoder's p95 bar)`,
+    )
+  }
+  if (data.edgeEncodeOver !== EDGE_ENCODE_OVER) {
+    failures.push(
+      `edgeEncodeOver ${data.edgeEncodeOver} is not ${EDGE_ENCODE_OVER} — no texel may sit ` +
+        `over ${EDGE_ENCODE_MAX}/255`,
+    )
+  }
+  if (!(data.linearHalfOnWhite <= EDGE_LINEAR_HALF_MAX)) {
+    failures.push(
+      `linearHalfOnWhite ${data.linearHalfOnWhite} exceeds ${EDGE_LINEAR_HALF_MAX}/255 — the ` +
+        '50 % station must read the 0.5·layer + 0.5 mix in LINEAR light (DESIGN 6.5)',
+    )
+  }
+  return failures
+}
+
+/** The two counters the amount-0 bypass is proven by. */
+const EDGE_STRUCTURAL_COUNTERS = ['layerAllocated', 'mergeDraws', 'mergeDrawsFirst']
+
+/**
+ * `--edge-structural`: the amount-0 bypass is a BRANCH, not a value, so its
+ * proof is structural — no layer target allocated and no merge draw submitted
+ * at amount 0, and exactly one allocation with one merge per stroke at
+ * amount > 0. A missing counter FAILS by name; it is never read as a
+ * satisfied bar (the pre-change tree cannot measure them at all).
+ */
+function edgeStructuralFailures(data) {
+  const failures = []
+  if (typeof data.layerAllocated !== 'boolean') {
+    failures.push(
+      `layerAllocated ${JSON.stringify(data.layerAllocated)} is not a boolean — ` +
+        'the capture never read the engine\'s allocation seam',
+    )
+  }
+  for (const field of ['mergeDraws', 'mergeDrawsFirst']) {
+    if (typeof data[field] !== 'number' || !Number.isFinite(data[field])) {
+      failures.push(`${field} ${JSON.stringify(data[field])} is not a number`)
+    }
+  }
+  if (failures.length > 0) return failures
+  if (!Number.isFinite(data.edgeAmount)) {
+    return ['edgeAmount is missing — the counters cannot be keyed on the bypass']
+  }
+  if (data.edgeAmount === 0) {
+    if (data.layerAllocated) {
+      failures.push(
+        'layerAllocated is true at amount 0 — the bypass must never allocate a layer target',
+      )
+    }
+    if (data.mergeDraws !== 0) {
+      failures.push(`mergeDraws ${data.mergeDraws} is not 0 at amount 0 — no merge draw may be submitted`)
+    }
+    if (data.mergeDrawsFirst !== 0) {
+      failures.push(
+        `mergeDrawsFirst ${data.mergeDrawsFirst} is not 0 at amount 0 — not even the first stroke may merge`,
+      )
+    }
+    return failures
+  }
+  if (!data.layerAllocated) {
+    failures.push(
+      `layerAllocated is false at amount ${data.edgeAmount} — the first Edge-active stroke ` +
+        'must allocate on its own per-stroke predicate',
+    )
+  }
+  if (data.mergeDraws !== 1) {
+    failures.push(
+      `mergeDraws ${data.mergeDraws} is not 1 at amount ${data.edgeAmount} — the LAST stroke ` +
+        'must merge exactly once, at its own stroke end',
+    )
+  }
+  if (data.mergeDrawsFirst !== 1) {
+    failures.push(
+      `mergeDrawsFirst ${data.mergeDrawsFirst} is not 1 at amount ${data.edgeAmount} — the ` +
+        'FIRST Edge-active stroke on a fresh engine must merge once too',
+    )
+  }
+  return failures
+}
+
 const SCENARIO_INVARIANTS = {
   'white-over-blue': whiteOverBlueFailures,
   'cover-advect': coverAdvectFailures,
@@ -1237,6 +1603,7 @@ const SCENARIO_INVARIANTS = {
   'bristle-line': bristleLineFailures,
   'bristle-line-over': bristleLineFailures,
   'bristle-tip': bristleTipFailures,
+  'edge-layer': edgeLayerFailures,
 }
 
 /** Run the scenario's invariant function, if it has one. `reference` is the
@@ -1332,7 +1699,7 @@ function printCoverRegions(actualData, refData) {
 function usage(message) {
   console.error(`compare: ${message}`)
   console.error(
-    'usage: node compare.mjs <gate> [--other <otherGate> | --differs-from <name> | --relief-smooth]',
+    'usage: node compare.mjs <gate> [--other <otherGate> | --differs-from <name> | --relief-smooth | --edge-structural | --falloff-sweep <linear> <rim>]',
   )
   process.exit(2)
 }
@@ -1342,13 +1709,29 @@ const gate = args[0]
 if (!gate || gate.startsWith('--')) usage('missing <gate> operand')
 
 // mode: 'baseline' (mode 1), 'other' (mode 2), 'differs' (mode 3),
-// 'relief-smooth' (quick 261123-hr5, a self-contained relation on the capture).
+// 'relief-smooth' (quick 261123-hr5, a self-contained relation on the capture),
+// 'edge-structural' (Spec 10, the allocate/merge counters on one capture) and
+// 'falloff-sweep' (Spec 10, the strict mid-alpha ordering across three
+// same-amount captures — the only cross-capture ordering gate).
 let mode = 'baseline'
 let operand
+/** `--falloff-sweep`'s two extra operands, broad -> linear -> rim. */
+let sweepOperands = null
 if (args.length > 1) {
   if (args[1] === '--relief-smooth') {
     if (args.length > 2) usage(`unexpected extra argument "${args[2]}"`)
     mode = 'relief-smooth'
+  } else if (args[1] === '--edge-structural') {
+    if (args.length > 2) usage(`unexpected extra argument "${args[2]}"`)
+    mode = 'edge-structural'
+  } else if (args[1] === '--falloff-sweep') {
+    for (const extra of args.slice(2)) {
+      if (!extra || extra.startsWith('--')) usage(`--falloff-sweep needs two gate names (got "${extra}")`)
+    }
+    if (args.length < 4) usage('--falloff-sweep needs <linear> and <rim> gate names')
+    if (args.length > 4) usage(`unexpected extra argument "${args[4]}"`)
+    mode = 'falloff-sweep'
+    sweepOperands = [args[2], args[3]]
   } else {
     if (args[1] !== '--other' && args[1] !== '--differs-from') usage(`unknown argument "${args[1]}"`)
     mode = args[1] === '--other' ? 'other' : 'differs'
@@ -1451,6 +1834,190 @@ if (mode === 'relief-smooth') {
     process.exit(1)
   }
   console.log(`RESULT: PASS — the smoothing relation holds (${gate})`)
+  console.log('=========================================================')
+  process.exit(0)
+}
+
+// Spec 10: the structural relation on ONE capture — the amount-0 bypass is a
+// BRANCH, so it is proven by counters, not by a pixel comparison. No baseline
+// and no second capture is read (the --relief-smooth precedent); the alpha
+// law still runs.
+if (mode === 'edge-structural') {
+  console.log('============ medium-engine pixel-gate compare ============')
+  console.log('mode      : edge-layer structural relation (--edge-structural)')
+  console.log(`capture   : ${actualPath}`)
+  console.log('')
+  printDurations('capture', actual)
+  console.log('')
+  if (actual.scenario !== 'edge-layer') {
+    console.log(
+      `RESULT: FAIL — --edge-structural reads an edge-layer capture ` +
+        `(scenario "${actual.scenario}")`,
+    )
+    console.log('=========================================================')
+    process.exit(1)
+  }
+  console.log(
+    `structural : amount ${actual.edgeAmount} | layerAllocated ${JSON.stringify(actual.layerAllocated)} | ` +
+      `mergeDraws ${JSON.stringify(actual.mergeDraws)} | first ${JSON.stringify(actual.mergeDrawsFirst)}`,
+  )
+  console.log('')
+  const lawFailures = alphaLawFailures(actual)
+  for (const line of lawFailures) console.log(`INVARIANT ${line}`)
+  const failures = edgeStructuralFailures(actual)
+  for (const line of failures) console.log(`STRUCTURE ${line}`)
+  if (lawFailures.length > 0 || failures.length > 0) {
+    console.log(
+      `RESULT: FAIL — ${failures.length} structural failure(s), ` +
+        `${lawFailures.length} alpha law failure(s) (${gate})`,
+    )
+    console.log('=========================================================')
+    process.exit(1)
+  }
+  console.log(`RESULT: PASS — the structural relation holds (${gate})`)
+  console.log('=========================================================')
+  process.exit(0)
+}
+
+// Spec 10: the FALLOFF SWEEP — the only cross-capture ordering gate. The
+// three operands are same-session captures (never baselines/): the amount is
+// identical and the falloff differs BY DESIGN, so no committed baseline can
+// express this relation. Reads /tmp/<gate>.json for all three, in operand
+// order broad -> linear -> rim.
+if (mode === 'falloff-sweep') {
+  console.log('============ medium-engine pixel-gate compare ============')
+  console.log('mode      : falloff sweep, broad < linear < rim (--falloff-sweep)')
+  const sweepGates = [gate, ...sweepOperands]
+  const captures = sweepGates.map((name) => readJson(join(tmpDir, `${name}.json`), `capture "${name}"`))
+  for (let i = 0; i < sweepGates.length; i += 1) {
+    console.log(`capture ${i}  : ${join(tmpDir, `${sweepGates[i]}.json`)}`)
+  }
+  console.log('')
+  for (let i = 0; i < sweepGates.length; i += 1) printDurations(sweepGates[i], captures[i])
+  console.log('')
+  const failures = []
+  const expectedFalloffs = [0, 50, 100]
+  for (let i = 0; i < captures.length; i += 1) {
+    const data = captures[i]
+    if (data.scenario !== 'edge-layer') {
+      failures.push(`capture "${sweepGates[i]}" is scenario "${data.scenario}", not "edge-layer"`)
+      continue
+    }
+    if (data.edgeFalloff !== expectedFalloffs[i]) {
+      failures.push(
+        `capture "${sweepGates[i]}" records edgeFalloff ${data.edgeFalloff}, not ` +
+          `${expectedFalloffs[i]} — the operands must be broad, linear, rim in that order`,
+      )
+    }
+    if (data.width !== captures[0].width || data.height !== captures[0].height) {
+      failures.push(
+        `capture "${sweepGates[i]}" is ${data.width}x${data.height}, not ` +
+          `${captures[0].width}x${captures[0].height} — the profiles must share one geometry`,
+      )
+    }
+    if (data.edgeAmount !== captures[0].edgeAmount) {
+      failures.push(
+        `capture "${sweepGates[i]}" records amount ${data.edgeAmount}, not ` +
+          `${captures[0].edgeAmount} — the sweep isolates the falloff`,
+      )
+    }
+    // Each capture must first satisfy its own invariant (the amount-keyed
+    // bars). The reference is null: at amount > 0 the invariant needs none,
+    // and the sweep is an amount>0 relation by construction.
+    for (const line of edgeLayerFailures(data, null)) {
+      failures.push(`"${sweepGates[i]}": ${line}`)
+    }
+  }
+  if (failures.length === 0) {
+    // (a) the layer's own deposit does not read the falloff: identical
+    // offsets, and every cover_L row agreeing to one 8-bit step across all
+    // three captures. Without this the ordering could be an artefact of a
+    // different scene or a different deposit.
+    const profiles = captures.map((data) => edgeProfileOf(data, 'edgeAcross'))
+    for (let i = 0; i < profiles.length; i += 1) {
+      if (profiles[i].error) failures.push(`"${sweepGates[i]}": ${profiles[i].error}`)
+    }
+    if (failures.length === 0) {
+      const base = profiles[0].profile
+      const baseCover = base.cover
+      if (baseCover === null) {
+        failures.push('the broad capture carries no edgeAcross.cover (the layer\'s own cover_L)')
+      } else {
+        for (let i = 1; i < profiles.length; i += 1) {
+          const other = profiles[i].profile
+          if (
+            other.offsets.length !== base.offsets.length ||
+            other.offsets.some((value, index) => value !== base.offsets[index])
+          ) {
+            failures.push(
+              `"${sweepGates[i]}" edgeAcross.offsets does not match "${sweepGates[0]}" ` +
+                '(the profile geometry moved; the ordering is not comparable)',
+            )
+            continue
+          }
+          const cover = other.cover
+          if (cover === null) {
+            failures.push(`"${sweepGates[i]}" carries no edgeAcross.cover`)
+            continue
+          }
+          let worst = 0
+          let worstAt = 0
+          for (let k = 0; k < cover.length; k += 1) {
+            const delta = Math.abs(cover[k] - baseCover[k])
+            if (delta > worst) {
+              worst = delta
+              worstAt = base.offsets[k]
+            }
+          }
+          if (worst > EDGE_COVER_ROW_TOLERANCE) {
+            failures.push(
+              `"${sweepGates[i]}" edgeAcross.cover differs from "${sweepGates[0]}" by up to ` +
+                `${worst.toFixed(6)} at ${worstAt} px (tolerance ${EDGE_COVER_ROW_TOLERANCE.toFixed(6)}) — ` +
+                'the layer deposit does not read the falloff, so the cover_L rows must agree',
+            )
+          }
+        }
+      }
+      // (b) the strict ordering, per side. No tolerance: broad < linear < rim.
+      for (const side of ['Paper', 'Under']) {
+        const key = `edgeMidAlpha${side}`
+        const values = captures.map((data) => data[key])
+        const bad = values.filter((value) => typeof value !== 'number')
+        if (bad.length > 0) {
+          failures.push(
+            `${key} is missing on ${bad.length} of 3 captures — the ordering cannot be read ` +
+              '(the pre-change engine reports it absent: this is the sweep\'s RED)',
+          )
+          continue
+        }
+        const strict =
+          values[0] < values[1] && values[1] < values[2]
+        console.log(
+          `midAlpha ${side.padEnd(5)}: broad ${values[0]} | linear ${values[1]} | rim ${values[2]}`,
+        )
+        if (!strict) {
+          failures.push(
+            `${key} is not STRICTLY increasing broad < linear < rim ` +
+              `(${values[0]} / ${values[1]} / ${values[2]}) — falloff 0 / 50 / 100 must order the ` +
+              'midpoint alpha by the law `(1 - amount·0.5^e)·cover_L`',
+          )
+        }
+      }
+    }
+  }
+  console.log('')
+  for (const line of failures) console.log(`SWEEP     ${line}`)
+  if (failures.length > 0) {
+    console.log(
+      `RESULT: FAIL — ${failures.length} sweep failure(s) (${sweepGates.join(' < ')})`,
+    )
+    console.log('=========================================================')
+    process.exit(1)
+  }
+  console.log(
+    `RESULT: PASS — strict mid-alpha ordering broad < linear < rim on both sides, ` +
+      `falloff-independent cover_L (${sweepGates.join(' < ')})`,
+  )
   console.log('=========================================================')
   process.exit(0)
 }
@@ -1572,6 +2139,15 @@ if (mode === 'differs') {
 
 let differing = 0
 let missing = 0
+// Spec 10: the amount-0 digest-drift exemption. The committed baseline was
+// captured from a tree with NO layer machinery; the amount-0 branch must
+// reproduce it byte for byte, but GPU ULPs may still move an export when the
+// layer's targets and uniform pushes enter the program. A digest difference on
+// this ONE capture class is COUNTED and PRINTED as drift — never silently
+// passed — and any profile row moving still fails through edgeLayerFailures.
+const digestDriftExempt =
+  mode === 'baseline' && actual.scenario === 'edge-layer' && actual.edgeAmount === 0
+let drift = 0
 for (const field of FIELDS) {
   const a = actual[field]
   const b = refData[field]
@@ -1597,11 +2173,25 @@ for (const field of FIELDS) {
     continue
   }
   if (a !== b) {
+    if (digestDriftExempt && DIGESTS.includes(field)) {
+      drift += 1
+      console.log(
+        `drift     ${field.padEnd(18)} capture=${a} reference=${b}  ` +
+          '(amount-0 digest drift — reported, the profile identity is the gate)',
+      )
+      continue
+    }
     differing += 1
     console.log(`DIFFER    ${field.padEnd(18)} capture=${a} reference=${b}`)
   } else {
     console.log(`equal     ${field.padEnd(18)} ${a}`)
   }
+}
+if (drift > 0) {
+  console.log(
+    `drift     ${drift} digest(s) moved at amount 0 — reported, not failed ` +
+      '(the profile rows are the identity gate)',
+  )
 }
 
 // quick 261123-hr5: an a/b replay pair of the signed-emboss scenario must

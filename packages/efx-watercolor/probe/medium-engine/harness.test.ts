@@ -914,7 +914,9 @@ function baseCapture(scenario: string, gate: string): Record<string, unknown> {
   // 64-31: every compare mode now requires the alpha-law block, and a
   // bristle capture reports the visible-alpha check as skipped with its
   // reason (the display film blur makes RGB and alpha disagree at the fringe).
-  const bristle = scenario.startsWith('bristle-')
+  // Spec 10: the SAME two-clause predicate probe.ts and compare.mjs share —
+  // `edge-layer` is a bristle scene (bristle-round, Body 100).
+  const bristle = scenario.startsWith('bristle-') || scenario === 'edge-layer'
   return {
     scenario,
     gate,
@@ -2062,5 +2064,330 @@ describe('the alpha-law blocks discriminate (64-31 task 2, executed)', () => {
 
     expect(status, lawVerdict(status, output)).toBe(1)
     expect(invariantLine(output)).toContain('visibleAlphaSkip')
+  })
+})
+
+// Spec 10 (261125-kvl): the per-stroke translucent stroke layer.
+//
+// Pinned laws:
+//  34. `edge-layer` is a scenario in BOTH closed lists, and its two knobs
+//      (`--edge` / `--falloff`) are refused on every other scenario in both
+//      files — never silently ignored.
+//  35. The alpha-law bristle predicate carries the IDENTICAL two-clause test
+//      in probe.ts, compare.mjs and this file's `baseCapture`: `edge-layer` is
+//      a bristle scene and reports the film-blur skip with no delta/samples.
+//  36. `edgeLayerFailures` is AMOUNT-KEYED: at amount 0 it runs ONLY the
+//      row-by-row profile identity against the committed pre-change baseline
+//      (tolerance 2e-4); at amount > 0 it requires every layer reading by name
+//      (a null fails naming the reading) and then applies the law's bars.
+//  37. `--edge-structural` proves the amount-0 bypass is a BRANCH: no layer
+//      allocation and no merge draw at 0; one allocation and one merge per
+//      stroke above 0. A missing counter fails by name.
+//  38. `--falloff-sweep` is the only cross-capture ordering gate: strict
+//      broad < linear < rim on both sides, and the layer's own cover_L rows
+//      agree to one 8-bit step (the deposit does not read the falloff).
+describe('the edge-layer gate (Spec 10)', () => {
+  const EDGE_LAYER_OFFSETS = Array.from({ length: 41 }, (_, i) => i - 20)
+
+  /** A believable lateral profile: a flat deposit out to +/-20 px, empty
+   *  outside. `coverShift` moves one cover row so the sweep's independence bar
+   *  can be exercised. */
+  function edgeLayerProfileFixture(coverShift = 0, rowAt = 7): Record<string, unknown> {
+    const inside = (o: number) => Math.abs(o) <= 20
+    return {
+      offsets: [...EDGE_LAYER_OFFSETS],
+      cover: EDGE_LAYER_OFFSETS.map((o, i) => (inside(o) ? (i === rowAt ? 1 + coverShift : 1) : 0)),
+      dark: EDGE_LAYER_OFFSETS.map((o) => (inside(o) ? 0.45 : 0)),
+      ink: EDGE_LAYER_OFFSETS.map((o) => (inside(o) ? 2.2 : 0)),
+      print: EDGE_LAYER_OFFSETS.map((o) => (inside(o) ? 1 : 0)),
+    }
+  }
+
+  /** One synthetic edge-layer capture. At amount 0 every layer reading is
+   *  ABSENT (the pre-change engine has no layer); above 0 they are present and
+   *  satisfy the law's bars, so a test can break exactly one of them. */
+  function validEdgeLayerCapture(
+    amount: number,
+    falloff: number,
+    gate = 'nyquist',
+  ): Record<string, unknown> {
+    const layer = amount > 0
+    const midAlpha = layer ? 0.3 + (falloff / 100) * 0.5 : null
+    return {
+      ...baseCapture('edge-layer', gate),
+      strokeBrush: 'bristle-round',
+      edgeAmount: amount,
+      edgeFalloff: falloff,
+      edgeCaptureRoundTrip: true,
+      edgeReplaySelfIdentical: true,
+      edgeReplayIdentical: true,
+      edgeReplayMaxDelta: 0,
+      edgeReplayDiffTexels: 0,
+      edgeAcrossPaper: edgeLayerProfileFixture(),
+      edgeAcross: edgeLayerProfileFixture(),
+      edgeMidAlphaPaper: midAlpha,
+      edgeMidAlphaUnder: midAlpha,
+      edgeMidCoverPaper: layer ? 0.98 : null,
+      edgeMidCoverUnder: layer ? 0.7 : null,
+      edgeCoreExactPaper: layer ? 0 : null,
+      edgeCoreExactUnder: layer ? 0 : null,
+      edgeContinuityPaper: layer ? 0 : null,
+      edgeContinuityUnder: layer ? 0 : null,
+      edgePrintRetentionPaper: layer ? Math.max(0, 1 - amount / 100) : null,
+      edgePrintRetentionUnder: layer ? Math.max(0, 1 - amount / 100) : null,
+      edgeEncodeMax: layer ? 2 : null,
+      edgeEncodeP95: layer ? 1 : null,
+      edgeEncodeOver: layer ? 0 : null,
+      linearHalfOnWhite: layer ? 0.08 : null,
+      layerAllocated: layer,
+      mergeDraws: layer ? 1 : 0,
+      mergeDrawsFirst: layer ? 1 : 0,
+    }
+  }
+
+  function runCompare(args: string[]): { status: number | null; output: string } {
+    const result = spawnSync(process.execPath, [COMPARE_PATH, ...args], { encoding: 'utf8' })
+    return { status: result.status, output: `${result.stdout}${result.stderr}` }
+  }
+
+  describe('the scenario and its operands', () => {
+    it('accepts edge-layer in both closed lists', () => {
+      expectContains(PROBE, "raw !== 'emboss-smooth' && raw !== 'edge-layer'")
+      expectContains(RUN, "scenarioRaw !== 'emboss-smooth' && scenarioRaw !== 'edge-layer'")
+      expectContains(RUN, 'or "bristle-tip")')
+      expectContains(PROBE, 'or "bristle-tip")')
+    })
+
+    it('refuses the two knobs on every other scenario, in both files', () => {
+      expectContains(PROBE, '`--${name} is only valid with --scenario edge-layer`')
+      expectContains(PROBE, "EDGE_LAYER_AMOUNT = readEdgeKnob('edge', scenario, EDGE_LAYER_DEFAULT_AMOUNT)")
+      expectContains(PROBE, "EDGE_LAYER_FALLOFF = readEdgeKnob('falloff', scenario, EDGE_LAYER_DEFAULT_FALLOFF)")
+      expectContains(RUN, '--edge is only valid with --scenario edge-layer')
+      expectContains(RUN, '--falloff is only valid with --scenario edge-layer')
+      expectContains(RUN, '`&edge=${edge}`')
+      expectContains(RUN, '`&falloff=${falloff}`')
+    })
+
+    it('carries the same bristle predicate in probe.ts, compare.mjs and this file', () => {
+      expectContains(PROBE, "scenario.startsWith('bristle-') || scenario === 'edge-layer'")
+      expectContains(COMPARE, "String(data.scenario).startsWith('bristle-') || data.scenario === 'edge-layer'")
+      expectContains(
+        readFileSync(resolve(HERE, 'harness.test.ts'), 'utf8'),
+        "scenario.startsWith('bristle-') || scenario === 'edge-layer'",
+      )
+    })
+
+    it('maps the scenario to its amount-keyed invariant', () => {
+      expectContains(COMPARE, "'edge-layer': edgeLayerFailures,")
+      expectContains(COMPARE, 'function edgeLayerFailures(data, reference) {')
+      expectContains(COMPARE, 'const EDGE_IDENTITY_TOLERANCE = 2e-4')
+      expectContains(COMPARE, 'const EDGE_MID_U = (EDGE_START + 1) / 2')
+      expectContains(COMPARE, 'const EDGE_START = 0.3')
+      expectContains(COMPARE, 'function edgeIdentityFailures(data, reference) {')
+      // The stray-rejected parameter-law constants must not come back.
+      expectNotContains(COMPARE, 'const EDGE_CORE_TOLERANCE')
+      expectNotContains(COMPARE, 'const EDGE_STATION_TOLERANCE')
+      expectNotContains(COMPARE, 'const EDGE_INK_CORE_TOLERANCE')
+      expectNotContains(COMPARE, 'threshold dissolve')
+    })
+
+    it('teaches the parser both new operands and rejects unknown flags', () => {
+      expectContains(COMPARE, "args[1] === '--edge-structural'")
+      expectContains(COMPARE, "args[1] === '--falloff-sweep'")
+      expectContains(COMPARE, "--falloff-sweep needs <linear> and <rim> gate names")
+      expectContains(COMPARE, 'function edgeStructuralFailures(data) {')
+      const unknown = runCompare(['nyquist-anything', '--edge-nonsense'])
+      expect(unknown.status, lawVerdict(unknown.status, unknown.output)).toBe(2)
+      expect(unknown.output).toContain('unknown argument')
+      const short = runCompare(['nyquist-anything', '--falloff-sweep', 'only-one'])
+      expect(short.status, lawVerdict(short.status, short.output)).toBe(2)
+      expect(short.output).toContain('--falloff-sweep needs')
+    })
+  })
+
+  describe('the amount-keyed invariant (executed)', () => {
+    it('passes the amount-0 identity against an equal baseline', () => {
+      const { status, output } = compareSynthetic(
+        'nyquist-edgelayer-neutral',
+        validEdgeLayerCapture(0, 50),
+      )
+      expect(status, lawVerdict(status, output)).toBe(0)
+      expect(fieldsLine(output)).toContain('scenario invariants hold')
+    })
+
+    it('fails an amount-0 profile row that moved past 2e-4', () => {
+      // A real reference pair: `compareSynthetic` mirrors the actual into its
+      // reference, which would hide exactly the row this test moves.
+      const name = 'nyquist-edgelayer-identity'
+      const capture = validEdgeLayerCapture(0, 50)
+      const paper = capture.edgeAcrossPaper as Record<string, number[]>
+      const moved = [...paper.ink]
+      moved[5] = moved[5]! + 0.001
+      writeCapture(name, { ...capture, edgeAcrossPaper: { ...paper, ink: moved } })
+      writeCapture(`${name}-ref`, capture)
+      const { status, output } = runCompare([name, '--other', `${name}-ref`])
+      expect(status, lawVerdict(status, output)).toBe(1)
+      expect(invariantLine(output)).toContain('amount-0 identity')
+    })
+
+    it('passes a full amount-100 capture', () => {
+      const { status, output } = compareSynthetic(
+        'nyquist-edgelayer-a100',
+        validEdgeLayerCapture(100, 50),
+      )
+      expect(status, lawVerdict(status, output)).toBe(0)
+      expect(fieldsLine(output)).toContain('scenario invariants hold')
+    })
+
+    it('fails an amount-100 capture by NAME on every absent layer reading', () => {
+      // This is the pre-change tree's RED: the layer does not exist, so every
+      // layer reading is null. The comparator must say so, by name.
+      const capture = validEdgeLayerCapture(0, 50)
+      capture.edgeAmount = 100
+      const { status, output } = compareSynthetic('nyquist-edgelayer-red', capture)
+      expect(status, lawVerdict(status, output)).toBe(1)
+      expect(invariantLine(output)).toContain('edgeMidAlphaPaper')
+      expect(invariantLine(output)).toContain('linearHalfOnWhite')
+      expect(invariantLine(output)).toContain('absent')
+    })
+
+    it('fails an amount-100 capture missing a reading key entirely', () => {
+      const capture = validEdgeLayerCapture(100, 50)
+      delete capture.edgePrintRetentionUnder
+      const { status, output } = compareSynthetic('nyquist-edgelayer-missing', capture)
+      expect(status, lawVerdict(status, output)).toBe(1)
+      expect(invariantLine(output)).toContain('edgePrintRetentionUnder')
+      expect(invariantLine(output)).toContain('is missing')
+    })
+
+    it('fails a core that is not exact, a continuity break, an over-residual and a pale half', () => {
+      const cases: Array<[string, Record<string, unknown>, string]> = [
+        ['core', { edgeCoreExactPaper: 2 }, 'edgeCoreExactPaper'],
+        ['continuity', { edgeContinuityUnder: 3 }, 'edgeContinuityUnder'],
+        ['over', { edgeEncodeOver: 1 }, 'edgeEncodeOver'],
+        ['half', { linearHalfOnWhite: 3 }, 'linearHalfOnWhite'],
+        ['p95', { edgeEncodeP95: 4 }, 'edgeEncodeP95'],
+      ]
+      for (const [label, patch, needle] of cases) {
+        const { status, output } = compareSynthetic(`nyquist-edgelayer-${label}`, {
+          ...validEdgeLayerCapture(100, 50),
+          ...patch,
+        })
+        expect(status, lawVerdict(status, output)).toBe(1)
+        expect(invariantLine(output)).toContain(needle)
+      }
+    })
+  })
+
+  describe('the structural relation (--edge-structural)', () => {
+    it('passes the amount-0 bypass', () => {
+      writeCapture('nyquist-struct-neutral', validEdgeLayerCapture(0, 50))
+      const { status, output } = runCompare(['nyquist-struct-neutral', '--edge-structural'])
+      expect(status, lawVerdict(status, output)).toBe(0)
+    })
+
+    it('passes the amount-100 one-merge-per-stroke counters', () => {
+      writeCapture('nyquist-struct-a100', validEdgeLayerCapture(100, 50))
+      const { status, output } = runCompare(['nyquist-struct-a100', '--edge-structural'])
+      expect(status, lawVerdict(status, output)).toBe(0)
+    })
+
+    it('fails an amount-0 capture that allocated or merged', () => {
+      writeCapture('nyquist-struct-alloc', {
+        ...validEdgeLayerCapture(0, 50),
+        layerAllocated: true,
+      })
+      const alloc = runCompare(['nyquist-struct-alloc', '--edge-structural'])
+      expect(alloc.status, lawVerdict(alloc.status, alloc.output)).toBe(1)
+      expect(alloc.output).toContain('layerAllocated is true at amount 0')
+
+      writeCapture('nyquist-struct-merge', { ...validEdgeLayerCapture(0, 50), mergeDraws: 1 })
+      const merge = runCompare(['nyquist-struct-merge', '--edge-structural'])
+      expect(merge.status, lawVerdict(merge.status, merge.output)).toBe(1)
+      expect(merge.output).toContain('no merge draw may be submitted')
+    })
+
+    it('fails an amount-100 capture that did not merge exactly once', () => {
+      writeCapture('nyquist-struct-twice', { ...validEdgeLayerCapture(100, 50), mergeDraws: 2 })
+      const twice = runCompare(['nyquist-struct-twice', '--edge-structural'])
+      expect(twice.status, lawVerdict(twice.status, twice.output)).toBe(1)
+      expect(twice.output).toContain('must merge exactly once')
+
+      writeCapture('nyquist-struct-first', { ...validEdgeLayerCapture(100, 50), mergeDrawsFirst: 0 })
+      const first = runCompare(['nyquist-struct-first', '--edge-structural'])
+      expect(first.status, lawVerdict(first.status, first.output)).toBe(1)
+      expect(first.output).toContain('FIRST Edge-active stroke')
+    })
+
+    it('fails by name on a missing counter', () => {
+      const capture = validEdgeLayerCapture(0, 50)
+      delete capture.layerAllocated
+      writeCapture('nyquist-struct-nocounter', capture)
+      const { status, output } = runCompare(['nyquist-struct-nocounter', '--edge-structural'])
+      expect(status, lawVerdict(status, output)).toBe(1)
+      expect(output).toContain('layerAllocated')
+      expect(output).toContain('not a boolean')
+    })
+  })
+
+  describe('the falloff sweep (--falloff-sweep)', () => {
+    /** Write the three sweep captures and run the operand. */
+    function sweepTriple(
+      name: string,
+      reads: Array<Record<string, unknown>>,
+    ): { status: number | null; output: string } {
+      for (let i = 0; i < reads.length; i += 1) {
+        writeCapture(`${name}-${i}`, { ...validEdgeLayerCapture(100, [0, 50, 100][i]!), ...reads[i] })
+      }
+      return runCompare([`${name}-0`, '--falloff-sweep', `${name}-1`, `${name}-2`])
+    }
+
+    it('passes a strictly ordered triple', () => {
+      const { status, output } = sweepTriple('nyquist-sweep-ok', [{}, {}, {}])
+      expect(status, lawVerdict(status, output)).toBe(0)
+      expect(output).toContain('strict mid-alpha ordering')
+    })
+
+    it('fails an equal pair and a reversed triple', () => {
+      const equal = sweepTriple('nyquist-sweep-equal', [{}, { edgeMidAlphaPaper: 0.3 }, {}])
+      expect(equal.status, lawVerdict(equal.status, equal.output)).toBe(1)
+      expect(equal.output).toContain('not STRICTLY increasing')
+
+      const reversed = sweepTriple('nyquist-sweep-rev', [
+        { edgeMidAlphaPaper: 0.9 },
+        { edgeMidAlphaPaper: 0.6 },
+        { edgeMidAlphaPaper: 0.3 },
+      ])
+      expect(reversed.status, lawVerdict(reversed.status, reversed.output)).toBe(1)
+      expect(reversed.output).toContain('not STRICTLY increasing')
+    })
+
+    it('fails a mismatched falloff and a missing reading', () => {
+      const wrongFalloff = sweepTriple('nyquist-sweep-falloff', [
+        {},
+        { edgeFalloff: 100 },
+        {},
+      ])
+      expect(wrongFalloff.status, lawVerdict(wrongFalloff.status, wrongFalloff.output)).toBe(1)
+      expect(wrongFalloff.output).toContain('operands must be broad, linear, rim')
+
+      const missing = sweepTriple('nyquist-sweep-missing', [
+        {},
+        {},
+        { edgeMidAlphaUnder: null },
+      ])
+      expect(missing.status, lawVerdict(missing.status, missing.output)).toBe(1)
+      expect(missing.output).toContain('edgeMidAlphaUnder')
+    })
+
+    it('fails a cover_L row that moved past one 8-bit step', () => {
+      const { status, output } = sweepTriple('nyquist-sweep-cover', [
+        {},
+        {},
+        { edgeAcross: edgeLayerProfileFixture(0.02) },
+      ])
+      expect(status, lawVerdict(status, output)).toBe(1)
+      expect(output).toContain('the layer deposit does not read the falloff')
+    })
   })
 })
