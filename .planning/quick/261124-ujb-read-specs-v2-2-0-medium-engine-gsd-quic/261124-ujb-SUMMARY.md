@@ -52,13 +52,13 @@ requirements-completed: []
 
 coverage:
   - id: D1
-    description: "Spec 10 film law: one lateral edgeFilm scales the deposit weight (coverage + cover alpha) across the whole mark, core included, and rides the scatter S through a; carried cA/cB full strength; inert at amount 0"
+    description: "Spec 10 film law: one lateral pigment share (g.film) dilutes the carried absorbance (after the pickup mix), the scatter S, the base-replacement target and the relief thickness across the whole mark (core 65% at amount 100); the deposit weight and the paper threshold stay full, so the mark keeps its geometry and feather; inert at amount 0"
     verification:
       - kind: unit
-        ref: "packages/efx-watercolor/src/playground/bristles.test.ts#bristleEdgeFilm; scattering.test.ts#gather film pins"
+        ref: "packages/efx-watercolor/src/playground/bristles.test.ts#bristleEdgeFilm; scattering.test.ts#gather film pins; harness.test.ts#weighted-film must-fail"
         status: pass
       - kind: integration
-        ref: "node packages/efx-watercolor/probe/medium-engine/compare.mjs edge-transparency-neutral"
+        ref: "compare.mjs edge-transparency-neutral{,-broad} (identity) + the three amount-100 sweeps (cover + ink station bars)"
         status: pass
     human_judgment: false
   - id: D2
@@ -238,11 +238,55 @@ translucent.
   five probe gates PASS (two identity + three sweeps); app tsc clean; app
   vitest 9876 passed / 4 skipped.
 
+## UAT feedback (2026-11-25 #2) — "there's no transparency, it's just a cut off"
+
+The artist's third look, at amount 100 with falloff 0 and 100 side by side: the
+two edge-100 strokes read as SOLID bodies with clean cut edges, while the
+neutral stroke kept its textured bristle fringe — "there's none transparency
+edge, it's just a cut off".
+
+- **Root cause (measured):** the film was still the DEPOSIT WEIGHT. The
+  deposit lerp is `ink <- ink·(1-a) + cA·a`; its fixed point is the carried
+  absorbance cA whatever `a` is. Scaling `a` therefore cannot thin the body —
+  every overlapping dab still arrives at full pigment — and where the weight
+  falls under the many-dab convergence the deposit never converges at all, so
+  the fringe disappears outright (the cut). The probe's per-row ratios showed
+  it directly: the core ink ratio converged to 1.0 while only the cover
+  target faded.
+- **Fix (v3 law, `7ebc51142`):** the film is the PIGMENT SHARE. `g.film`
+  rides the gather struct and each consumer applies it AFTER its own work:
+  the deposit to the carried absorbance `cA`/`cB` (after the pickup mix, so
+  lifted paint is diluted too) and the scatter S; the cover write to the
+  base-replacement target; the thickness deposit to the relief. The deposit
+  WEIGHT, the paper threshold and the cover blend weight stay full — the
+  mark's geometry, tooth and fringe never move. The lerp's fixed point is now
+  `cA · film`: at amount 100 the whole body converges to 65 % of its pigment,
+  and the lateral ramp dilutes the fringe gradually instead of cutting it.
+- **Measured effect (1080 sheet, transparent export darkness):** core
+  0.585 → 0.477, 12 px 0.595 → 0.359, 14 px 0.604 → 0.244, 16 px 0.541 →
+  0.080, 17 px → 0.006 — a smooth graduated dissolve, no step. The ink ratio
+  reads 0.6500 flat across the body (the law's exact core share).
+- **Gate (`f748a5e00`):** the old bars only read the cover target, which BOTH
+  laws scale — that is how the cut passed. The ink channel is linear in the
+  carried absorbance, so the capture/reference ratio is exactly the pigment
+  share: the core is now asserted at ±0.06 (measured 0.6500 against the law's
+  0.6500; a weight-law film reads ~1.0 and fails) and the mid/rim stations at
+  the calibrated silhouette's ±1 px placement tolerance (±0.12). A synthetic
+  weighted-film capture is pinned as must-fail, and the capture exports the
+  visible darkness row as evidence.
+- **Unchanged:** the params, records, rows, Reset and the amount-0 identity
+  (all 12 fields byte-equal on a fresh capture against the pre-change
+  baseline).
+- **Gates after the change:** package vitest 1058 passed / 8 skipped; five
+  probe gates PASS (two identity + three sweeps); app `tsc --noEmit` clean;
+  app vitest 9875 passed (the known `physicPaintBridge` flake, green in
+  isolation) / 4 skipped.
+
 ## Next Phase Readiness
 
-- Gates green: package vitest 1057 passed / 8 skipped; app vitest 9876 passed / 4 skipped / 96 todo; `tsc --noEmit` clean; five probe gates PASS.
-- Mode-1 identity at amount 0 passes against baselines captured from `d509a886d`.
-- The artist can run rows 1-9 now, including the white-border case (Feather 100, Edge 100, falloff 0 and 100) and the whole-mark fade at amount 100 (core 65 % film); the last automated state is `e0f040f33`.
+- Gates green: package vitest 1058 passed / 8 skipped; app vitest 9875 passed / 4 skipped / 96 todo; `tsc --noEmit` clean; five probe gates PASS.
+- Mode-1 identity at amount 0 passes byte-for-byte against baselines captured from `d509a886d` (re-verified after the v3 law).
+- The artist can re-run rows 1-9 now: at amount 100 the whole mark should read translucent (core 65 % of its pigment), the edge should dissolve gradually with the falloff moving where the ramp sits, and the white-border case (Feather 100, falloff 0/100) should show no cut and no pale rail. Last automated state: `f748a5e00`.
 
 ---
 
