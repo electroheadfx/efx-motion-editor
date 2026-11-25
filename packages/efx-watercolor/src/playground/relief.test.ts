@@ -450,8 +450,11 @@ describe('bristleReliefFS — thickness follows the real bristle mark', () => {
     const relief = shaderSource('bristleReliefFS')
     expect(relief).toContain('${BRISTLE_GATHER}')
     expect(relief).toContain('uniform float uAmount;')
-    expect(relief).toContain('float a = clamp(gatherBristle(vUv).coverage, 0.0, 1.0);')
-    expect(relief).toContain('o0 = vec4(uAmount * a);')
+    expect(relief).toContain('Gathered g = gatherBristle(vUv);')
+    expect(relief).toContain('float a = clamp(g.coverage, 0.0, 1.0);')
+    // Spec 10: the thickness follows the edge film's pigment share too — a
+    // diluted film lays a thinner film.
+    expect(relief).toContain('o0 = vec4(uAmount * a * g.film);')
     expect(relief).not.toContain('layout(location=1)')
     // The deposit's own square cull, never a wider stamp rect.
     expect(relief).toContain('if (abs(q.x) > 1.15 || abs(q.y) > 1.15) discard;')

@@ -1090,6 +1090,7 @@ struct Gathered {
   vec3 cB;                   // carried absorbance 4..6
   float alpha;               // carried layer alpha
   float coverage;            // §4.4-thresholded body, 0..1
+  float film;                // Spec 10: the retained pigment share (1 = neutral)
   int nearest;               // the gathered centre bristle
 };
 
@@ -1099,6 +1100,7 @@ Gathered gatherBristle(vec2 uv){
   g.cB = vec3(0.0);
   g.alpha = 0.0;
   g.coverage = 0.0;
+  g.film = 1.0;
   g.nearest = 0;
   vec2 p = uv - uPoint;
   p.x *= uSheetAspect;
@@ -1308,21 +1310,27 @@ Gathered gatherBristle(vec2 uv){
   // 1 - amount·profile, with profile = uEdgeCore + (1 - uEdgeCore)·t^e and
   // e = 2^(2b - 1) (0.5 broad / 1 linear / 2 rim, the tested twin's
   // edgeFalloffExponent). Amount 100 therefore leaves 1 - uEdgeCore = 65% of
-  // the film in the CORE and reaches 0 at the silhouette (UAT 2026-11-25:
+  // the PIGMENT in the CORE and reaches 0 at the silhouette (UAT 2026-11-25:
   // the artist wants the whole mark translucent, not only its border).
   // Cells BEYOND the silhouette clamp to the full rim factor BY DESIGN: at
-  // amount 100 they go inert and the edge narrows — intended, not a
-  // paper-threshold change (the threshold block above is untouched).
+  // amount 100 they carry no pigment at all and the mark's visible edge moves
+  // inward — intended, not a paper-threshold change (the block above is
+  // untouched).
   //
-  // The film is the DEPOSIT WEIGHT, never a colour dilution (UAT 2026-11-24,
-  // the artist's white border): the deposit's source is cA * a, so scaling
-  // cA as well squares the film — the underlayer is attenuated once while
-  // the replacement is squared away, leaving a pale rail, worst at falloff
-  // 100. The carried coefficients stay full strength; a fades them.
-  // g.alpha DOES carry the film: the cover channel's target is
-  // a · uCoverTarget · g.alpha, and its equilibrium (target / a) is the
-  // base-replacement share, which must fade with the deposit. The scatter S
-  // needs no extra factor — uScatter · a carries the film once already.
+  // The film is the PIGMENT SHARE, never the deposit weight (UAT 2026-11-25
+  // #3 — the artist's "it's just a cut off"). The deposit lerp is
+  // ink <- ink·(1-a) + cA·a, so the ink converges to the SAME carried
+  // absorbance whatever the weight is: scaling it cannot thin the mark —
+  // every overlapping dab still arrives at full pigment (the body reads
+  // solid) and where the weight falls under the many-dab convergence the
+  // paint disappears outright (a cut). Scaling the carried absorbance makes
+  // the lerp's fixed point cA·film: the whole mark reads diluted while the
+  // weight stays the full gather coverage, so the mark keeps its
+  // geometry, its paper-tooth feather and its soft fringe. Each consumer
+  // applies the share AFTER its own work — the deposit to cA/cB and the
+  // scatter S, the cover write to the base-replacement target, the thickness
+  // deposit to the relief — so picked-up paint is diluted exactly like
+  // carried paint.
   //
   // The film is the PLAIN arithmetic form, never a ternary amount guard: at
   // amount 0 the product is exactly zero, so the film is exactly 1.0 and the
@@ -1332,16 +1340,16 @@ Gathered gatherBristle(vec2 uv){
   float edgeT = clamp((edgeU - uEdgeStart) / max(1.0 - uEdgeStart, 1e-4), 0.0, 1.0);
   float edgeExp = exp2(2.0 * uEdgeFalloff - 1.0);
   float edgeProfile = uEdgeCore + (1.0 - uEdgeCore) * pow(edgeT, edgeExp);
-  float edgeFilm = 1.0 - uEdgeFade * edgeProfile;
+  g.film = 1.0 - uEdgeFade * edgeProfile;
   featherFade *= alongFade * trailSupport;
   // The band itself is the reference's constant; its width never moves.
   float inked = uSoftness > 0.0
     ? smoothstep(threshold - uSoftness, threshold + uSoftness, coverage)
     : step(threshold, coverage);
-  g.coverage = inked * featherFade * edgeFilm;
+  g.coverage = inked * featherFade;
   g.cA *= featherFade;
   g.cB *= featherFade;
-  g.alpha *= featherFade * edgeFilm;
+  g.alpha *= featherFade;
   // GAP-4: a texture tip bounds WHERE the dab lands (uTipMix = 0 keeps the
   // untextured law byte-identical: the multiply is never executed).
   if (uTipMix > 0.0) g.coverage *= tipMask(uv);
@@ -1414,6 +1422,13 @@ void main(){
     cA = mix(cA, snapA, smear);
     cB = mix(cB, snapB.xyz, smear);
   }
+  // Spec 10: the edge film is a PIGMENT share. It lands here, after the
+  // pickup mix, so lifted paint is diluted by the edge exactly like carried
+  // paint; the weight stays the full gather coverage because it is the
+  // mark's geometry — the lerp's fixed point cA · film is what makes the
+  // whole mark translucent without cutting its fringe away.
+  cA *= g.film;
+  cB *= g.film;
   if (uMode == 1) {
     // The attenuation half: the destination becomes dst · (1 − a) through
     // ZERO, ONE_MINUS_SRC_COLOR. The fragment's own value IS the (1 − a)
@@ -1425,10 +1440,9 @@ void main(){
     // SAME weight, so the veil lands exactly where the paint does and can
     // never accumulate past uScatter.
     oA = cA * a;
-    // Spec 10 (UAT 2026-11-24): the scatter S rides the same film through
-    // a — a second film factor would square it while the colour stays full
-    // strength, leaving a milky rim.
-    oB = vec4(cB * a, uScatter * a);
+    // Spec 10: the scatter S rides the film too — a diluted pigment scatters
+    // in proportion, so the veil can never outlive the paint it belongs to.
+    oB = vec4(cB * a, uScatter * a * g.film);
   }
 }`;
 
@@ -1477,6 +1491,10 @@ void main(){
     smear *= 1.0 - smoothstep(0.975, 0.995, samePaint);
     target = mix(target, a * uCoverTarget * snapB.a, smear);
   }
+  // Spec 10: the base-replacement share rides the SAME pigment share. A
+  // diluted film must not clear the committed base — erasing the picture
+  // under a barely-visible mark is the white halo, not transparency.
+  target *= g.film;
   o0 = vec4(target, 0.0, 0.0, a);
 }`;
 
@@ -1497,9 +1515,12 @@ void main(){
   p.x *= uSheetAspect;
   vec2 q = vec2(dot(p, uAxis), dot(p, vec2(-uAxis.y, uAxis.x))) / uRadius;
   if (abs(q.x) > 1.15 || abs(q.y) > 1.15) discard;
-  float a = clamp(gatherBristle(vUv).coverage, 0.0, 1.0);
+  Gathered g = gatherBristle(vUv);
+  float a = clamp(g.coverage, 0.0, 1.0);
   if (a <= 1e-3) discard;
-  o0 = vec4(uAmount * a);
+  // Spec 10: a diluted film lays a thinner film — the emboss follows the
+  // pigment share, or it would light a ridge the paint never made.
+  o0 = vec4(uAmount * a * g.film);
 }`;
 
 // ============================================================
