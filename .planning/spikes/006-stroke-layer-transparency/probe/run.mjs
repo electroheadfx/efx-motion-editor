@@ -27,15 +27,15 @@ const readFlag = (name, fallback) => {
   return i >= 0 && args[i + 1] !== undefined ? args[i + 1] : fallback
 }
 
-const size = Number(readFlag('size', 540))
+const scenario = readFlag('scenario', 'composite')
+const size = Number(readFlag('size', scenario === 'q3b' ? 2048 : 540))
 const start = Number(readFlag('start', 0.30))
 const amount = Number(readFlag('amount', 100))
 const stride = Number(readFlag('stride', 2))
 const fitSamples = Number(readFlag('fitSamples', 420))
 const seed = Number(readFlag('seed', 0xc0ffee))
 const falloff = Number(readFlag('falloff', 50))
-const scenario = readFlag('scenario', 'composite')
-const entry = scenario === 'cost' ? 'cost.ts' : 'probe.ts'
+const entry = scenario === 'cost' ? 'cost.ts' : scenario === 'q3b' ? 'q3b.ts' : 'probe.ts'
 const gate = readFlag('gate', `${scenario}-${size}-s${start}-a${amount}`)
 
 const pageQuery =
@@ -164,7 +164,58 @@ const fmt = (v) => (typeof v === "number" ? v.toFixed(2) : String(v))
 const pad = (v, n) => String(v).padStart(n)
 
 console.log("")
-if (scenario === "cost") {
+if (scenario === "q3b") {
+  const r = result
+  const lat = (l) => `${fmt(l.median)} ms (min ${fmt(l.min)} / p95 ${fmt(l.p95)} / max ${fmt(l.max)}, n ${l.rounds})`
+  console.log(`  renderer      : ${r.renderer}`)
+  console.log(`  sheet         : requested ${r.sheet.requested}, allocated ${r.sheet.actual} (${r.sheet.pixels} texels)${r.sheet.actual !== r.sheet.requested ? "  <-- CLAMPED" : ""}`)
+  console.log(`  stroke rect   : ${JSON.stringify(r.geometry.strokeRect)} = ${r.geometry.strokePixels} texels`)
+  console.log("")
+  console.log(`  A  merge (stroke-end latency, single draw): ${lat(r.A_mergeLatency.singleDrawAfterIdle)}`)
+  console.log(`     12 iterations: ${lat(r.A_mergeLatency.budget12)}   throughput (Q3 method, ${r.A_mergeLatency.budget} it): ${fmt(r.A_mergeLatency.throughputMs)} ms/draw`)
+  console.log(`     fence floor: ${fmt(r.A_mergeLatency.fenceOnly.median)} ms`)
+  const lad = r.A_mergeLatency.sizeLadder
+  console.log(`     size ladder: 1x1 ${fmt(lad.r1.median)} ms, 512² ${fmt(lad.r512.median)} ms, 1024² ${fmt(lad.r1024.median)} ms, full ${fmt(lad.full.median)} ms`)
+  console.log("")
+  console.log(`  B  first-dab wait (artist pause excluded; floor ${fmt(r.B_firstDab.baselineFenceMs)} ms)`)
+  for (const k of ["immediate", "after50ms", "after200ms"]) {
+    console.log(`     ${k.padEnd(11)} read ${lat(r.B_firstDab[k])}  felt ${fmt(r.B_firstDab.feltDelayMs[k])} ms   (derived ${fmt(r.B_firstDab.derivedMs[k])} ms)`)
+  }
+  console.log("")
+  console.log(`  C  display    : today ${fmt(r.C_display.cost.today.median)} ms, two states ${fmt(r.C_display.cost.twoStates.median)} ms (delta ${fmt(r.C_display.marginalMs)}), branch ${fmt(r.C_display.cost.branchOnCover.median)} ms — bar ${r.C_display.barMs} ms`)
+  console.log(`  D  memory     : +${r.D_memory.addedMiB} MiB of ${r.D_memory.ceilingMiB} MiB (merge targets +${r.D_memory.mergeTargetsMiB})`)
+  for (const it of r.D_memory.items) console.log(`       ${String(it.mib).padStart(6)} MiB  ${it.item}`)
+  console.log("")
+  if (Object.keys(r.E_variants).length) {
+    for (const [name, v] of Object.entries(r.E_variants)) {
+      const note = v.halfPixels ? ` (half ${v.halfPixels} texels)` : ""
+      console.log(`  E  ${name}: latency ${lat(v.latency)}  felt immediate ${fmt(v.feltDelay.immediate)} ms, +50 ms ${fmt(v.feltDelay.after50ms)} ms${note}`)
+    }
+  } else {
+    console.log(`  E  variants   : not needed — the immediate start already meets the bar`)
+  }
+  for (const c of r.residuals) {
+    const mark = c.name === r.verdict.bestCandidate ? " <-- best" : ""
+    console.log(`  residual ${c.name.padEnd(24)} felt ${fmt(c.feltMs).padStart(6)} ms  max ${String(c.maxChannel).padStart(3)}  mean ${fmt(c.meanChannel).padStart(5)}  p95 ${String(c.p95Channel).padStart(3)}  over ${String(c.overThreshold).padStart(7)}${mark}`)
+  }
+  if (r.residual.bins) {
+    for (const b of r.residual.bins) {
+      console.log(`     aEff ${b.aEff.padEnd(11)} n ${String(b.n).padStart(8)}  max ${String(b.max).padStart(3)}  mean ${fmt(b.mean).padStart(5)}  over ${b.over}`)
+    }
+  }
+  console.log("")
+  console.log(`  VERDICT       : merge latency ${r.verdict.mergeLatencyPass ? "PASS" : "FAIL"}, immediate ${r.verdict.immediateStartPass ? "PASS" : "FAIL"}, +50 ms ${r.verdict.after50msPass ? "PASS" : "FAIL"}, +200 ms ${r.verdict.after200msPass ? "PASS" : "FAIL"}`)
+  console.log(`                  display fits frame ${r.verdict.displayFitsFrame ? "PASS" : "FAIL"}, memory ${r.verdict.memoryPass ? "PASS" : "FAIL"}, Q3b ${r.verdict.q3bPass ? "PASS" : "FAIL"}, Q4 ${r.verdict.q4Pass === null ? "(not run)" : r.verdict.q4Pass ? "PASS" : "FAIL"}`)
+  if (r.q4) {
+    const q = r.q4
+    console.log("")
+    console.log(`  Q4 live vs merged : max ${q.liveVsMerged.maxChannel}/255, mean ${q.liveVsMerged.meanChannel}, p95 ${q.liveVsMerged.p95Channel}, ${q.liveVsMerged.overThreshold} over ${q.liveVsMerged.bar} (${q.liveVsMerged.coveredTexels} covered texels)`)
+    console.log(`     betweenness  : ${q.betweenness.outside} of ${q.betweenness.samples} band texels outside the interval`)
+    console.log(`     amount 0     : reference ${q.amountZeroBypass.referenceDigest} repeat ${q.amountZeroBypass.repeatDigest} — deterministic ${q.amountZeroBypass.deterministic}`)
+    console.log(`     capture      : digest ${q.captureParity.digestEqual ? "equal" : "DIFFERS"}, render vs restored max ${q.captureParity.renderVsRestoredMaxChannel}/255`)
+    console.log(`     bake replay  : ${q.bakeReplay.pass ? "equal" : "DIFFERS"} (stroke max ${q.bakeReplay.sameStrokeMax})`)
+  }
+} else if (scenario === "cost") {
   const r = result
   console.log(`  renderer      : ${r.renderer}`)
   console.log(`  sheet         : requested ${r.sheet.requested}, allocated ${r.sheet.actual} (${r.sheet.pixels} texels)${r.sheet.actual !== r.sheet.requested ? "  <-- CLAMPED" : ""}`)

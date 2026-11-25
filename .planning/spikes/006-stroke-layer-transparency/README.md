@@ -22,8 +22,9 @@ This is the killer question of the four the artist asked. If 7 coefficients cann
 the composite, the other three (committed base, parity, cost) are moot — the storage
 format, not the architecture, would have to change.
 
-**Scope: Q1 only.** Q2 (committed base), Q3 (cost), Q4 (parity) were deliberately not
-run. See `SPECS/v2.2.0-medium-engine/SPIKE-stroke-layer-FINDINGS.md`.
+**Scope: Q1 here; Q2/Q3/Q3b were added later in the same harness, Q4 was never run.**
+See `SPECS/v2.2.0-medium-engine/SPIKE-stroke-layer-FINDINGS.md` and the summary table
+below.
 
 ## Research
 
@@ -213,6 +214,17 @@ and the between-law intact** — but only with three corrections to the design:
 3. The alpha must be **gated** by the layer's own coverage: `A_eff = A · cover_L`. Bare
    `A` washes the under-stroke by up to 157/255 — the pale band, again.
 
+## Q2, Q3 and Q3b — measured later, same harness
+
+Full detail and tables in `SPIKE-stroke-layer-FINDINGS.md`; the one-liners:
+
+| gate | verdict |
+|---|---|
+| **Q2** — does the shipped committed-base law already glaze? | **No.** `t_sheet × t_base^(1−cover)` multiplies instead of mixing; its transition is the coverage ramp (125 px where the ideal fade is 268 px). The layer is required. |
+| **Q3** — merge cost on the real GPU (GLSL LM pass) | **Residual + memory GO, frame budget NO-GO.** ~40–50 ms per stroke rect at 2K; 4K is unallocatable (the engine clamps to 2048²). |
+| **Q3b** — the serialized stroke-end path | **FAIL on the felt first-dab wait.** A single draw after an idle GPU: **36 ms median** for the stroke rect (size ladder 1×1 0.5 ms, 512² 0.6, 1024² 17.5, full 31.9) — real fragment work. An immediate next stroke waits **36–44 ms** (bar 20 ms); a 50 ms or 200 ms pause waits 0.1/0.0 ms. Painting is unaffected (**+0.4 ms** display, zero dropped frames) and the in-place merge into the engine's existing `ink`/`cover` doubles costs **+80 MiB** (ceiling 160). The two sanctioned variants do not close it: half resolution is 11.9 ms but the band cannot be upsampled (**max 216/255**, 21 % over); the rank-one Jacobian is exact (max 3, identical) but barely faster (latency 36.0 → 33.2 ms, inside the run-to-run spread). |
+| **Q4** — parity | **not run** — halted on Q3b, per the brief. |
+
 ## Investigation Trail
 
 1. First scene build read `cover = 0` everywhere and `centreX = 0`. Cause: `readHalf`
@@ -234,8 +246,11 @@ and the between-law intact** — but only with three corrections to the design:
 
 ## Limitations
 
-- **Q1 only.** The committed-base path, cost, parity and amount-0 byte identity were not
-  measured (deliberately — see the findings' costing gate).
+- **Q4 never measured.** Parity (live vs merged, capture and bake replay, amount-0 byte
+  identity) is unmeasured: Q3b failed first, and the brief said stop there.
+- **The Q3b timings are one machine, one scene.** Apple M3 Max through ANGLE Metal,
+  headless Chrome, a straight Gouache stroke at 2K, 4 LM iterations. Different scenes
+  change the band's area, and that is what the merge cost is proportional to.
 - The lateral field is **analytic** (`u = |x − centre| / halfWidth` on a straight
   vertical stroke). The MIN-of-`|across|` field the implementation needs is not
   prototyped; it only differs on a non-straight stroke, and this probe never paints one.

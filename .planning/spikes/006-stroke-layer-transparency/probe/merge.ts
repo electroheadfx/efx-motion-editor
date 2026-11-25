@@ -24,7 +24,7 @@
 //  displayBasisGLSL() is generated from, so the fit minimises the display law.
 // ============================================================
 
-import { BASIS, DISPLAY_BANDS } from '../../../../packages/efx-watercolor/src/playground/spectralData'
+import { BASIS, DISPLAY_BANDS, DISPLAY_RGB_WEIGHTS } from '../../../../packages/efx-watercolor/src/playground/spectralData'
 import { SCATTER_EPSILON } from '../../../../packages/efx-watercolor/src/playground/scattering'
 import { toHalf } from '../../../../packages/efx-watercolor/src/playground/half'
 import type { GL, Format, Rect, Target } from '../../../../packages/efx-watercolor/src/playground/gl'
@@ -34,7 +34,7 @@ const EPS = SCATTER_EPSILON
 
 const f = (v: number) => (Number.isInteger(v) ? v.toFixed(1) : v.toPrecision(7))
 
-function bandConsts(): string {
+export function bandConsts(): string {
   const b4: string[] = []
   const b3: string[] = []
   for (const band of DISPLAY_BANDS) {
@@ -49,7 +49,7 @@ function bandConsts(): string {
   ].join('\n')
 }
 
-const BAND_FN = `
+export const BAND_FN = `
 // The display band value, transcribed from displayBasisGLSL(): Kubelka-Munk
 // reflectance over white above the scatter epsilon, the legacy exponential below.
 float bandOf(vec4 a, vec3 b, float s, int i){
@@ -78,6 +78,13 @@ export interface MergeOptions {
   coreSkip: boolean
   /** Seed from uSeedA/uSeedB (a coarse pass) instead of the inputs. */
   seeded: boolean
+  /**
+   * Assemble the Jacobian from TWO directional derivatives instead of eight
+   * perturbed evaluations. `bandOf` depends on the 7 coefficients only through
+   * the scalar A = dot(a,B4)+dot(b,B3), so the 8x16 Jacobian is rank-1 in that
+   * direction and the eight columns are the same derivative times the basis.
+   */
+  rankOneJ?: boolean
 }
 
 export function mergeFragmentShader(opts: MergeOptions): string {
@@ -88,7 +95,7 @@ precision highp int;
 uniform sampler2D uBaseA, uBaseB, uLayerA, uLayerB, uCover, uLateral, uSeedA, uSeedB;
 uniform vec2 uOutSize;
 uniform float uAmount, uStart, uFalloff;
-uniform int uMaxIter, uSeedOn, uCoreSkip, uDebug;
+uniform int uMaxIter, uSeedOn, uCoreSkip, uDebug, uRankOneJ;
 
 layout(location=0) out vec4 oA;
 layout(location=1) out vec4 oB;
@@ -200,18 +207,45 @@ void main(){
     for (int i = 0; i < BANDS; i++) r0[i] = bandOf(ca, cb, cs, i) - tgt[i];
 
     float J[BANDS * 8];
-    for (int p = 0; p < 8; p++){
-      float xp[8];
-      for (int k = 0; k < 8; k++) xp[k] = x[k];
-      float h = max(1e-5, abs(x[p]) * 1e-4);
-      xp[p] += h;
-      if (p == 7) xp[7] = max(xp[7], 0.0);
-      float den = xp[p] - x[p];
-      if (abs(den) < 1e-12) den = 1.0;
-      vec4 pa = vec4(xp[0], xp[1], xp[2], xp[3]);
-      vec3 pb = vec3(xp[4], xp[5], xp[6]);
-      float ps = xp[7];
-      for (int i = 0; i < BANDS; i++) J[i * 8 + p] = (bandOf(pa, pb, ps, i) - tgt[i] - r0[i]) / den;
+    if (uRankOneJ == 1){
+      // bandOf depends on the 7 coefficients ONLY through A_i = dot(a,B4_i)+dot(b,B3_i),
+      // so one perturbed evaluation in A and one in s give all eight columns:
+      //   d band_i / d a_k = (d band_i / dA_i) * B4_i[k]
+      //   d band_i / d b_k = (d band_i / dA_i) * B3_i[k]
+      //   d band_i / d s   =  d band_i / ds
+      // Same Newton direction, 32 band evaluations instead of 128 per iteration.
+      float ha = max(1e-5, abs(x[0]) * 1e-4);
+      float hs = max(1e-5, abs(x[7]) * 1e-4);
+      vec4 pa = vec4(x[0] + ha, x[1], x[2], x[3]);
+      float ps = x[7] + hs;
+      for (int i = 0; i < BANDS; i++){
+        float base_i = r0[i] + tgt[i];
+        float denA = ha * B4[i].x;
+        float gA = abs(denA) < 1e-12 ? 0.0 : (bandOf(pa, cb, cs, i) - base_i) / denA;
+        float gS = (bandOf(ca, cb, ps, i) - base_i) / hs;
+        J[i * 8 + 0] = gA * B4[i].x;
+        J[i * 8 + 1] = gA * B4[i].y;
+        J[i * 8 + 2] = gA * B4[i].z;
+        J[i * 8 + 3] = gA * B4[i].w;
+        J[i * 8 + 4] = gA * B3[i].x;
+        J[i * 8 + 5] = gA * B3[i].y;
+        J[i * 8 + 6] = gA * B3[i].z;
+        J[i * 8 + 7] = gS;
+      }
+    } else {
+      for (int p = 0; p < 8; p++){
+        float xp[8];
+        for (int k = 0; k < 8; k++) xp[k] = x[k];
+        float h = max(1e-5, abs(x[p]) * 1e-4);
+        xp[p] += h;
+        if (p == 7) xp[7] = max(xp[7], 0.0);
+        float den = xp[p] - x[p];
+        if (abs(den) < 1e-12) den = 1.0;
+        vec4 pa = vec4(xp[0], xp[1], xp[2], xp[3]);
+        vec3 pb = vec3(xp[4], xp[5], xp[6]);
+        float ps = xp[7];
+        for (int i = 0; i < BANDS; i++) J[i * 8 + p] = (bandOf(pa, pb, ps, i) - tgt[i] - r0[i]) / den;
+      }
     }
 
     float H[64];
@@ -301,16 +335,22 @@ export class MergePass {
   amount = 1
   start = 0.3
   falloff = 0.5
+  /** LM step cap — mutable so one pass can serve both budget measurements. */
+  iterations: number
+  /** Two-evaluation Jacobian (see MergeOptions.rankOneJ). */
+  rankOneJ: boolean
 
-  constructor(gl: GL, w: number, h: number, opts: MergeOptions, outScale = 1) {
+  constructor(gl: GL, w: number, h: number, opts: MergeOptions, outScale = 1, outFilter?: number) {
     this.gl = gl
     this.w = w
     this.h = h
     this.opts = opts
+    this.iterations = opts.iterations
+    this.rankOneJ = opts.rankOneJ ?? false
     this.outW = Math.max(1, Math.round(w / outScale))
     this.outH = Math.max(1, Math.round(h / outScale))
     this.program = gl.program(mergeFragmentShader(opts))
-    this.out = gl.target(this.outW, this.outH, [RGBA16F, RGBA16F, R16F], gl.gl.NEAREST)
+    this.out = gl.target(this.outW, this.outH, [RGBA16F, RGBA16F, R16F], outFilter ?? gl.gl.NEAREST)
     this.seedTargets = opts.seeded
       ? { a: gl.target(w, h, [RGBA16F], gl.gl.LINEAR), b: gl.target(w, h, [RGBA16F], gl.gl.LINEAR) }
       : null
@@ -328,7 +368,18 @@ export class MergePass {
       cover: gl.texture(this.w, this.h, R16F, inputs.cover, g.NEAREST),
       lateral: gl.texture(this.w, this.h, R16F, inputs.lateral, g.NEAREST),
     }
+    this.ownsInputs = true
   }
+
+  /** Use a texture set owned elsewhere (a second pass must not re-upload 150 MB at 2K). */
+  adoptInputs(textures: Record<string, WebGLTexture>): void {
+    this.inputs = textures
+    this.ownsInputs = false
+  }
+
+  get inputTextures(): Record<string, WebGLTexture> { return this.inputs }
+
+  private ownsInputs = false
 
   uploadSeed(seed: MergeSeed): void {
     if (!this.seedTargets) return
@@ -337,18 +388,19 @@ export class MergePass {
     this.gl.uploadHalf(this.seedTargets.b.tex[0]!, 0, 0, seed.w, seed.h, g.RGBA, seed.b)
   }
 
-  /** Draw over `rect` (in the pass's own output resolution) and return the median wall clock. */
-  run(rect: Rect, repeats = 20): number {
+  /** Bind every uniform the pass needs (the production path binds once per merge). */
+  bindUniforms(): void {
     const g = this.gl
     const raw = g.gl
     const p = this.program
     p.bind()
     raw.disable(raw.BLEND)
     raw.uniform2f(p.u.uOutSize!, this.outW, this.outH)
-    raw.uniform1i(p.u.uMaxIter!, this.opts.iterations)
+    raw.uniform1i(p.u.uMaxIter!, this.iterations)
     raw.uniform1i(p.u.uCoreSkip!, this.opts.coreSkip ? 1 : 0)
     raw.uniform1i(p.u.uSeedOn!, this.opts.seeded ? 1 : 0)
     raw.uniform1i(p.u.uDebug!, 0)
+    raw.uniform1i(p.u.uRankOneJ!, this.rankOneJ ? 1 : 0)
     raw.uniform1i(p.u.uBaseA!, g.bindTex(0, this.inputs.baseA!))
     raw.uniform1i(p.u.uBaseB!, g.bindTex(1, this.inputs.baseB!))
     raw.uniform1i(p.u.uLayerA!, g.bindTex(2, this.inputs.layerA!))
@@ -362,21 +414,37 @@ export class MergePass {
     raw.uniform1f(p.u.uAmount!, this.amount)
     raw.uniform1f(p.u.uStart!, this.start)
     raw.uniform1f(p.u.uFalloff!, this.falloff)
+  }
 
-    // `gl.finish()` is NOT a reliable fence in WebGL — it returned before the
-    // work landed and every timing read 0.000. A 1x1 readPixels from the merge
-    // target is the fence: it cannot complete until the draw has.
-    const fence = new Float32Array(4)
-    const fenceRead = () => {
-      raw.bindFramebuffer(raw.FRAMEBUFFER, this.out.fbo)
-      raw.readPixels(0, 0, 1, 1, raw.RGBA, raw.FLOAT, fence)
-    }
+  /** Submit exactly one merge draw (no warm-up, no fence) — the production call. */
+  drawOnce(rect: Rect): void {
+    this.gl.draw(this.out, rect)
+  }
+
+  /**
+   * Wait for everything submitted so far to complete.
+   * `gl.finish()` is NOT a reliable fence in WebGL — it returned before the
+   * work landed and every timing read 0.000. A 1x1 readPixels from the merge
+   * target is the fence: it cannot complete until the draw has.
+   */
+  fence(): void {
+    const raw = this.gl.gl
+    raw.bindFramebuffer(raw.FRAMEBUFFER, this.out.fbo)
+    raw.readPixels(0, 0, 1, 1, raw.RGBA, raw.FLOAT, this.fenceBuf)
+  }
+
+  private readonly fenceBuf = new Float32Array(4)
+
+  /** Draw over `rect` (in the pass's own output resolution) and return the throughput per draw. */
+  run(rect: Rect, repeats = 20): number {
+    const g = this.gl
+    this.bindUniforms()
     g.draw(this.out, rect)
-    fenceRead()
-    this.lastError = raw.getError()
+    this.fence()
+    this.lastError = g.gl.getError()
     const t0 = performance.now()
     for (let i = 0; i < repeats; i++) g.draw(this.out, rect)
-    fenceRead()
+    this.fence()
     const total = performance.now() - t0
     return total / repeats
   }
@@ -392,7 +460,7 @@ export class MergePass {
     p.bind()
     raw.disable(raw.BLEND)
     raw.uniform2f(p.u.uOutSize!, this.outW, this.outH)
-    raw.uniform1i(p.u.uMaxIter!, this.opts.iterations)
+    raw.uniform1i(p.u.uMaxIter!, this.iterations)
     raw.uniform1i(p.u.uCoreSkip!, 0)
     raw.uniform1i(p.u.uSeedOn!, 0)
     raw.uniform1i(p.u.uDebug!, 1)
@@ -462,11 +530,243 @@ void main(){ oA = vec4(0.25, 0.5, 0.75, 1.0); oB = vec4(2.0, 3.0, 4.0, 5.0); }`
   readB(rect: Rect): Uint16Array { return this.gl.readHalf(this.out.views[1]!, this.outW, this.outH, 4, rect) }
   readIterations(rect: Rect): Uint16Array { return this.gl.readHalf(this.out.views[2]!, this.outW, this.outH, 1, rect) }
 
+  /** The output textures themselves (a downscaled pass feeds them to the resolve). */
+  get outTexA(): WebGLTexture { return this.out.tex[0]! }
+  get outTexB(): WebGLTexture { return this.out.tex[1]! }
+
   dispose(): void {
     const g = this.gl
     g.disposeTarget(this.out)
     if (this.seedTargets) { g.disposeTarget(this.seedTargets.a); g.disposeTarget(this.seedTargets.b) }
-    for (const tex of Object.values(this.inputs)) g.gl.deleteTexture(tex)
+    if (this.ownsInputs) for (const tex of Object.values(this.inputs)) g.gl.deleteTexture(tex)
+  }
+}
+
+// ---------------------------------------------------------------------------
+//  Q3b — the half-resolution variant's full-res resolve, and the display-cost
+//  proxy. Both live on the same GPU path as the merge above.
+// ---------------------------------------------------------------------------
+
+const W16 = (() => {
+  const rows = DISPLAY_RGB_WEIGHTS.map((w) => `vec3(${f(w[0]!)},${f(w[1]!)},${f(w[2]!)})`)
+  return `const vec3 W[BANDS] = vec3[BANDS](${rows.join(',')});`
+})()
+
+/**
+ * The full-res resolve for a HALF-RESOLUTION band fit: the core copies the
+ * layer exactly, the outside copies the base exactly, and only the fade band
+ * samples the (bilinearly filtered) half-res fit. This is what makes the
+ * half-res variant honest — it never invents coefficients where the law is
+ * exact.
+ */
+export function resolveFragmentShader(): string {
+  return `#version 300 es
+precision highp float;
+precision highp int;
+
+uniform sampler2D uBaseA, uBaseB, uLayerA, uLayerB, uCover, uLateral, uUpA, uUpB;
+uniform vec2 uOutSize;
+uniform float uAmount, uStart, uFalloff;
+uniform int uCoreSkip;
+
+layout(location=0) out vec4 oA;
+layout(location=1) out vec4 oB;
+
+void main(){
+  vec2 uv = gl_FragCoord.xy / uOutSize;
+  float cover = clamp(texture(uCover, uv).r, 0.0, 1.0);
+  float u = clamp(texture(uLateral, uv).r, 0.0, 1.0);
+  float t = clamp((u - uStart) / max(1.0 - uStart, 1e-4), 0.0, 1.0);
+  float e = exp2(2.0 * uFalloff - 1.0);
+  float aEff = clamp((1.0 - uAmount * pow(t, e)) * cover, 0.0, 1.0);
+  if (uCoreSkip == 1 && aEff >= 1.0 - 1e-4){ oA = texture(uLayerA, uv); oB = texture(uLayerB, uv); return; }
+  if (uCoreSkip == 1 && aEff <= 1e-4){ oA = texture(uBaseA, uv); oB = texture(uBaseB, uv); return; }
+  oA = texture(uUpA, uv);
+  oB = texture(uUpB, uv);
+}`
+}
+
+export class ResolvePass {
+  readonly out: Target
+  private readonly gl: GL
+  private readonly w: number
+  private readonly h: number
+  private readonly program: ReturnType<GL['program']>
+  private inputs: Record<string, WebGLTexture> = {}
+  private readonly fenceBuf = new Float32Array(4)
+  private up: { a: WebGLTexture; b: WebGLTexture } | null = null
+
+  amount = 1
+  start = 0.3
+  falloff = 0.5
+  coreSkip = true
+
+  constructor(gl: GL, w: number, h: number) {
+    this.gl = gl
+    this.w = w
+    this.h = h
+    this.program = gl.program(resolveFragmentShader())
+    this.out = gl.target(w, h, [RGBA16F, RGBA16F], gl.gl.NEAREST)
+  }
+
+  /** Use a texture set owned elsewhere (the merge pass's, usually). */
+  adoptInputs(textures: Record<string, WebGLTexture>): void {
+    this.inputs = textures
+    this.ownsInputs = false
+  }
+
+  private ownsInputs = false
+
+  /** Bind the half-res fit's A/B textures — they must be LINEAR-filtered. */
+  bindUpsample(a: WebGLTexture, b: WebGLTexture): void {
+    this.up = { a, b }
+  }
+
+  bindUniforms(): void {
+    const g = this.gl
+    const raw = g.gl
+    const p = this.program
+    p.bind()
+    raw.disable(raw.BLEND)
+    raw.uniform2f(p.u.uOutSize!, this.w, this.h)
+    raw.uniform1i(p.u.uCoreSkip!, this.coreSkip ? 1 : 0)
+    raw.uniform1i(p.u.uBaseA!, g.bindTex(0, this.inputs.baseA!))
+    raw.uniform1i(p.u.uBaseB!, g.bindTex(1, this.inputs.baseB!))
+    raw.uniform1i(p.u.uLayerA!, g.bindTex(2, this.inputs.layerA!))
+    raw.uniform1i(p.u.uLayerB!, g.bindTex(3, this.inputs.layerB!))
+    raw.uniform1i(p.u.uCover!, g.bindTex(4, this.inputs.cover!))
+    raw.uniform1i(p.u.uLateral!, g.bindTex(5, this.inputs.lateral!))
+    raw.uniform1i(p.u.uUpA!, g.bindTex(6, this.up!.a))
+    raw.uniform1i(p.u.uUpB!, g.bindTex(7, this.up!.b))
+    raw.uniform1f(p.u.uAmount!, this.amount)
+    raw.uniform1f(p.u.uStart!, this.start)
+    raw.uniform1f(p.u.uFalloff!, this.falloff)
+  }
+
+  drawOnce(rect: Rect): void { this.gl.draw(this.out, rect) }
+
+  fence(): void {
+    const raw = this.gl.gl
+    raw.bindFramebuffer(raw.FRAMEBUFFER, this.out.fbo)
+    raw.readPixels(0, 0, 1, 1, raw.RGBA, raw.FLOAT, this.fenceBuf)
+  }
+
+  readA(rect: Rect): Uint16Array { return this.gl.readHalf(this.out.views[0]!, this.w, this.h, 4, rect) }
+  readB(rect: Rect): Uint16Array { return this.gl.readHalf(this.out.views[1]!, this.w, this.h, 4, rect) }
+
+  dispose(): void {
+    this.gl.disposeTarget(this.out)
+    if (this.ownsInputs) for (const tex of Object.values(this.inputs)) this.gl.gl.deleteTexture(tex)
+  }
+}
+
+/**
+ * The display pass's marginal cost: the engine's display converts a sheet state
+ * to 16 band values, then those to linear RGB. With a live stroke layer it must
+ * do that for the layer TOO, then mix. Mode 0 is today's single state; mode 1
+ * is the two-state pass; mode 2 branches on an empty layer so an untouched
+ * region pays one texture read. The delta is the layer's per-frame price.
+ */
+export function displayCostShader(): string {
+  return `#version 300 es
+precision highp float;
+precision highp int;
+
+uniform sampler2D uSheetA, uSheetB, uLayerA, uLayerB, uLayerCover, uLateral;
+uniform vec2 uOutSize;
+uniform int uMode;
+uniform float uAmount, uStart, uFalloff;
+
+out vec4 oColor;
+
+${bandConsts()}
+${BAND_FN}
+${W16}
+
+vec3 rgbOf(vec4 a, vec3 b, float s){
+  vec3 c = vec3(0.0);
+  for (int i = 0; i < BANDS; i++) c += W[i] * bandOf(a, b, s, i);
+  return c;
+}
+
+void main(){
+  vec2 uv = gl_FragCoord.xy / uOutSize;
+  vec4 sa = texture(uSheetA, uv);
+  vec4 sb = texture(uSheetB, uv);
+  vec3 base = rgbOf(sa, sb.rgb, sb.a);
+  if (uMode == 0){ oColor = vec4(base, 1.0); return; }
+  float lc = clamp(texture(uLayerCover, uv).r, 0.0, 1.0);
+  if (uMode == 2 && lc <= 1.0 / 65504.0){ oColor = vec4(base, 1.0); return; }
+  vec4 la = texture(uLayerA, uv);
+  vec4 lb = texture(uLayerB, uv);
+  float u = clamp(texture(uLateral, uv).r, 0.0, 1.0);
+  float t = clamp((u - uStart) / max(1.0 - uStart, 1e-4), 0.0, 1.0);
+  float e = exp2(2.0 * uFalloff - 1.0);
+  float aEff = clamp((1.0 - uAmount * pow(t, e)) * lc, 0.0, 1.0);
+  vec3 layer = rgbOf(la, lb.rgb, lb.a);
+  oColor = vec4(mix(base, layer, aEff), 1.0);
+}`
+}
+
+export class DisplayCostPass {
+  readonly out: Target
+  private readonly gl: GL
+  private readonly w: number
+  private readonly h: number
+  private readonly program: ReturnType<GL['program']>
+  private inputs: Record<string, WebGLTexture> = {}
+  private readonly fenceBuf = new Float32Array(4)
+
+  mode = 0
+  amount = 1
+  start = 0.3
+  falloff = 0.5
+
+  constructor(gl: GL, w: number, h: number) {
+    this.gl = gl
+    this.w = w
+    this.h = h
+    this.program = gl.program(displayCostShader())
+    this.out = gl.target(w, h, [RGBA16F], gl.gl.NEAREST)
+  }
+
+  /** Use the merge pass's texture set (baseA/baseB/layerA/layerB/cover/lateral). */
+  adoptInputs(textures: Record<string, WebGLTexture>): void {
+    this.inputs = textures
+  }
+
+  private ownsInputs = false
+
+  bindUniforms(): void {
+    const g = this.gl
+    const raw = g.gl
+    const p = this.program
+    p.bind()
+    raw.disable(raw.BLEND)
+    raw.uniform2f(p.u.uOutSize!, this.w, this.h)
+    raw.uniform1i(p.u.uMode!, this.mode)
+    raw.uniform1i(p.u.uSheetA!, g.bindTex(0, this.inputs.baseA!))
+    raw.uniform1i(p.u.uSheetB!, g.bindTex(1, this.inputs.baseB!))
+    raw.uniform1i(p.u.uLayerA!, g.bindTex(2, this.inputs.layerA!))
+    raw.uniform1i(p.u.uLayerB!, g.bindTex(3, this.inputs.layerB!))
+    raw.uniform1i(p.u.uLayerCover!, g.bindTex(4, this.inputs.cover!))
+    raw.uniform1i(p.u.uLateral!, g.bindTex(5, this.inputs.lateral!))
+    raw.uniform1f(p.u.uAmount!, this.amount)
+    raw.uniform1f(p.u.uStart!, this.start)
+    raw.uniform1f(p.u.uFalloff!, this.falloff)
+  }
+
+  drawOnce(): void { this.gl.draw(this.out, { x0: 0, y0: 0, x1: this.w, y1: this.h }) }
+
+  fence(): void {
+    const raw = this.gl.gl
+    raw.bindFramebuffer(raw.FRAMEBUFFER, this.out.fbo)
+    raw.readPixels(0, 0, 1, 1, raw.RGBA, raw.FLOAT, this.fenceBuf)
+  }
+
+  dispose(): void {
+    this.gl.disposeTarget(this.out)
+    if (this.ownsInputs) for (const tex of Object.values(this.inputs)) this.gl.gl.deleteTexture(tex)
   }
 }
 

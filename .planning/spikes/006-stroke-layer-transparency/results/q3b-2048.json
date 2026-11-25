@@ -1,0 +1,600 @@
+{
+  "spike": "006",
+  "scenario": "q3b",
+  "query": {
+    "requested": 2048,
+    "sheet": 2048,
+    "paperSeed": 12648430,
+    "start": 0.3,
+    "amount": 1,
+    "falloff": 0.5
+  },
+  "threshold": {
+    "immediateStartMs": 20,
+    "after50Ms": 0.5,
+    "after200Ms": 0.5,
+    "displayWithLayerMs": 16.7,
+    "memoryAddedMb": 160,
+    "residualChannel8": 2
+  },
+  "renderer": "WebKit WebGL | Google Inc. (Apple) | ANGLE (Apple, ANGLE Metal Renderer: Apple M3 Max, Unspecified Version)",
+  "bakeMs": 3028,
+  "sheet": {
+    "requested": 2048,
+    "actual": 2048,
+    "pixels": 4194304
+  },
+  "geometry": {
+    "strokeRect": {
+      "x0": 514,
+      "y0": 0,
+      "x1": 1381,
+      "y1": 1678
+    },
+    "strokePixels": 1454826,
+    "centreX": 1045,
+    "halfWidth": 407
+  },
+  "A_mergeLatency": {
+    "budget": 4,
+    "singleDrawAfterIdle": {
+      "min": 31.8,
+      "median": 36,
+      "p95": 62.9,
+      "max": 62.9,
+      "rounds": 12
+    },
+    "throughputMs": 49.55,
+    "budget12": {
+      "min": 143.6,
+      "median": 183.2,
+      "p95": 197.3,
+      "max": 197.3,
+      "rounds": 8
+    },
+    "fenceOnly": {
+      "min": 0,
+      "median": 0.1,
+      "p95": 0.1,
+      "max": 0.1,
+      "rounds": 12
+    },
+    "sizeLadder": {
+      "r1": {
+        "min": 0.3,
+        "median": 0.5,
+        "p95": 1.3,
+        "max": 1.3,
+        "rounds": 12
+      },
+      "r512": {
+        "min": 0.5,
+        "median": 0.6,
+        "p95": 0.9,
+        "max": 0.9,
+        "rounds": 8
+      },
+      "r1024": {
+        "min": 15.1,
+        "median": 17.5,
+        "p95": 20.1,
+        "max": 20.1,
+        "rounds": 8
+      },
+      "full": {
+        "min": 31.4,
+        "median": 31.9,
+        "p95": 37.9,
+        "max": 37.9,
+        "rounds": 8
+      }
+    }
+  },
+  "B_firstDab": {
+    "baselineFenceMs": 0.1,
+    "immediate": {
+      "min": 39.6,
+      "median": 44.3,
+      "p95": 47.4,
+      "max": 47.4,
+      "rounds": 10
+    },
+    "after50ms": {
+      "min": 0.1,
+      "median": 0.2,
+      "p95": 0.3,
+      "max": 0.3,
+      "rounds": 8
+    },
+    "after200ms": {
+      "min": 0,
+      "median": 0.1,
+      "p95": 0.2,
+      "max": 0.2,
+      "rounds": 8
+    },
+    "feltDelayMs": {
+      "immediate": 44.2,
+      "after50ms": 0.1,
+      "after200ms": 0
+    },
+    "derivedMs": {
+      "immediate": 36,
+      "after50ms": 0,
+      "after200ms": 0
+    }
+  },
+  "C_display": {
+    "cost": {
+      "today": {
+        "min": 1.2,
+        "median": 1.3,
+        "p95": 1.6,
+        "max": 1.6,
+        "rounds": 10
+      },
+      "twoStates": {
+        "min": 1.3,
+        "median": 1.7,
+        "p95": 1.8,
+        "max": 1.8,
+        "rounds": 10
+      },
+      "branchOnCover": {
+        "min": 0.9,
+        "median": 1.1,
+        "p95": 1.5,
+        "max": 1.5,
+        "rounds": 10
+      }
+    },
+    "marginalMs": 0.4,
+    "barMs": 16.7
+  },
+  "D_memory": {
+    "sheetPixels": 4194304,
+    "items": [
+      {
+        "item": "layer inkA + inkB (RGBA16F MRT — the dab target)",
+        "bytes": 67108864,
+        "mib": 64
+      },
+      {
+        "item": "layer cover + lateral (R16F MRT)",
+        "bytes": 16777216,
+        "mib": 16
+      }
+    ],
+    "addedMiB": 80,
+    "mergeTargetsMiB": 0,
+    "note": "the merge samples ink.read + fixed + cover.read and writes ink.write + cover.write; both doubles already exist (Engine.ts:551 ink, :552 fixed, :557 cover), so the merge allocates nothing",
+    "ceilingMiB": 160,
+    "glError": 0
+  },
+  "E_variants": {
+    "halfResolve": {
+      "halfRect": {
+        "x0": 257,
+        "y0": 0,
+        "x1": 691,
+        "y1": 839
+      },
+      "halfPixels": 364126,
+      "iterations": 4,
+      "latency": {
+        "min": 10.4,
+        "median": 11.2,
+        "p95": 11.7,
+        "max": 11.7,
+        "rounds": 10
+      },
+      "feltDelay": {
+        "immediate": 11.9,
+        "after50ms": 0
+      },
+      "derived": {
+        "immediate": 11.2,
+        "after50ms": 0
+      }
+    },
+    "rankOneJ": {
+      "iterations": 4,
+      "latency": {
+        "min": 27.6,
+        "median": 33.2,
+        "p95": 39.2,
+        "max": 39.2,
+        "rounds": 12
+      },
+      "feltDelay": {
+        "immediate": 27.7,
+        "after50ms": 0
+      },
+      "derived": {
+        "immediate": 33.2,
+        "after50ms": 0
+      }
+    }
+  },
+  "residual": {
+    "name": "full-res-4it-numericJ",
+    "feltMs": 44.2,
+    "samples": 1454826,
+    "maxChannel": 3,
+    "meanChannel": 0.12,
+    "p95Channel": 1,
+    "overThreshold": 62,
+    "worst": {
+      "at": [
+        764,
+        753
+      ],
+      "aEff": 0.436,
+      "got": [
+        138,
+        65,
+        90
+      ],
+      "want": [
+        138,
+        62,
+        91
+      ]
+    },
+    "bins": [
+      {
+        "aEff": "0-0.01",
+        "n": 632821,
+        "max": 1,
+        "mean": 0,
+        "over": 0
+      },
+      {
+        "aEff": "0.01-0.1",
+        "n": 47724,
+        "max": 1,
+        "mean": 0.08,
+        "over": 0
+      },
+      {
+        "aEff": "0.1-0.25",
+        "n": 64274,
+        "max": 2,
+        "mean": 0.18,
+        "over": 0
+      },
+      {
+        "aEff": "0.25-0.5",
+        "n": 106478,
+        "max": 3,
+        "mean": 0.44,
+        "over": 62
+      },
+      {
+        "aEff": "0.5-0.75",
+        "n": 142234,
+        "max": 1,
+        "mean": 0.37,
+        "over": 0
+      },
+      {
+        "aEff": "0.75-0.9",
+        "n": 94476,
+        "max": 1,
+        "mean": 0.31,
+        "over": 0
+      },
+      {
+        "aEff": "0.9-0.99",
+        "n": 74711,
+        "max": 1,
+        "mean": 0.16,
+        "over": 0
+      },
+      {
+        "aEff": "0.99-0.9999",
+        "n": 125262,
+        "max": 1,
+        "mean": 0.1,
+        "over": 0
+      },
+      {
+        "aEff": "0.9999-1.0001",
+        "n": 166846,
+        "max": 0,
+        "mean": 0,
+        "over": 0
+      }
+    ]
+  },
+  "residuals": [
+    {
+      "name": "full-res-4it-numericJ",
+      "feltMs": 44.2,
+      "samples": 1454826,
+      "maxChannel": 3,
+      "meanChannel": 0.12,
+      "p95Channel": 1,
+      "overThreshold": 62,
+      "worst": {
+        "at": [
+          764,
+          753
+        ],
+        "aEff": 0.436,
+        "got": [
+          138,
+          65,
+          90
+        ],
+        "want": [
+          138,
+          62,
+          91
+        ]
+      },
+      "bins": [
+        {
+          "aEff": "0-0.01",
+          "n": 632821,
+          "max": 1,
+          "mean": 0,
+          "over": 0
+        },
+        {
+          "aEff": "0.01-0.1",
+          "n": 47724,
+          "max": 1,
+          "mean": 0.08,
+          "over": 0
+        },
+        {
+          "aEff": "0.1-0.25",
+          "n": 64274,
+          "max": 2,
+          "mean": 0.18,
+          "over": 0
+        },
+        {
+          "aEff": "0.25-0.5",
+          "n": 106478,
+          "max": 3,
+          "mean": 0.44,
+          "over": 62
+        },
+        {
+          "aEff": "0.5-0.75",
+          "n": 142234,
+          "max": 1,
+          "mean": 0.37,
+          "over": 0
+        },
+        {
+          "aEff": "0.75-0.9",
+          "n": 94476,
+          "max": 1,
+          "mean": 0.31,
+          "over": 0
+        },
+        {
+          "aEff": "0.9-0.99",
+          "n": 74711,
+          "max": 1,
+          "mean": 0.16,
+          "over": 0
+        },
+        {
+          "aEff": "0.99-0.9999",
+          "n": 125262,
+          "max": 1,
+          "mean": 0.1,
+          "over": 0
+        },
+        {
+          "aEff": "0.9999-1.0001",
+          "n": 166846,
+          "max": 0,
+          "mean": 0,
+          "over": 0
+        }
+      ]
+    },
+    {
+      "name": "half-resolve-4it",
+      "feltMs": 11.9,
+      "samples": 1454826,
+      "maxChannel": 216,
+      "meanChannel": 4.77,
+      "p95Channel": 26,
+      "overThreshold": 303872,
+      "worst": {
+        "at": [
+          1275,
+          1170
+        ],
+        "aEff": 0.005,
+        "got": [
+          255,
+          255,
+          255
+        ],
+        "want": [
+          39,
+          68,
+          125
+        ]
+      },
+      "bins": [
+        {
+          "aEff": "0-0.01",
+          "n": 632821,
+          "max": 216,
+          "mean": 0.35,
+          "over": 4935
+        },
+        {
+          "aEff": "0.01-0.1",
+          "n": 47724,
+          "max": 216,
+          "mean": 14.81,
+          "over": 17464
+        },
+        {
+          "aEff": "0.1-0.25",
+          "n": 64274,
+          "max": 208,
+          "mean": 10.99,
+          "over": 31395
+        },
+        {
+          "aEff": "0.25-0.5",
+          "n": 106478,
+          "max": 193,
+          "mean": 11.48,
+          "over": 65496
+        },
+        {
+          "aEff": "0.5-0.75",
+          "n": 142234,
+          "max": 191,
+          "mean": 9.34,
+          "over": 64805
+        },
+        {
+          "aEff": "0.75-0.9",
+          "n": 94476,
+          "max": 189,
+          "mean": 9.87,
+          "over": 41756
+        },
+        {
+          "aEff": "0.9-0.99",
+          "n": 74711,
+          "max": 205,
+          "mean": 11.74,
+          "over": 36604
+        },
+        {
+          "aEff": "0.99-0.9999",
+          "n": 125262,
+          "max": 214,
+          "mean": 7.51,
+          "over": 41417
+        },
+        {
+          "aEff": "0.9999-1.0001",
+          "n": 166846,
+          "max": 0,
+          "mean": 0,
+          "over": 0
+        }
+      ]
+    },
+    {
+      "name": "rank-one-jacobian-4it",
+      "feltMs": 27.7,
+      "samples": 1454826,
+      "maxChannel": 3,
+      "meanChannel": 0.12,
+      "p95Channel": 1,
+      "overThreshold": 67,
+      "worst": {
+        "at": [
+          764,
+          753
+        ],
+        "aEff": 0.436,
+        "got": [
+          138,
+          65,
+          90
+        ],
+        "want": [
+          138,
+          62,
+          91
+        ]
+      },
+      "bins": [
+        {
+          "aEff": "0-0.01",
+          "n": 632821,
+          "max": 1,
+          "mean": 0,
+          "over": 0
+        },
+        {
+          "aEff": "0.01-0.1",
+          "n": 47724,
+          "max": 1,
+          "mean": 0.07,
+          "over": 0
+        },
+        {
+          "aEff": "0.1-0.25",
+          "n": 64274,
+          "max": 2,
+          "mean": 0.18,
+          "over": 0
+        },
+        {
+          "aEff": "0.25-0.5",
+          "n": 106478,
+          "max": 3,
+          "mean": 0.44,
+          "over": 67
+        },
+        {
+          "aEff": "0.5-0.75",
+          "n": 142234,
+          "max": 1,
+          "mean": 0.37,
+          "over": 0
+        },
+        {
+          "aEff": "0.75-0.9",
+          "n": 94476,
+          "max": 1,
+          "mean": 0.31,
+          "over": 0
+        },
+        {
+          "aEff": "0.9-0.99",
+          "n": 74711,
+          "max": 1,
+          "mean": 0.16,
+          "over": 0
+        },
+        {
+          "aEff": "0.99-0.9999",
+          "n": 125262,
+          "max": 1,
+          "mean": 0.1,
+          "over": 0
+        },
+        {
+          "aEff": "0.9999-1.0001",
+          "n": 166846,
+          "max": 0,
+          "mean": 0,
+          "over": 0
+        }
+      ]
+    }
+  ],
+  "verdict": {
+    "mergeLatencyPass": true,
+    "immediateStartPass": false,
+    "baselineImmediateFeltMs": 44.2,
+    "after50msPass": true,
+    "after200msPass": true,
+    "displayFitsFrame": true,
+    "memoryPass": true,
+    "bestCandidate": "full-res-4it-numericJ",
+    "bestFeltMs": 44.2,
+    "bestResidualMax": 3,
+    "q3bPass": false,
+    "q4Pass": null
+  },
+  "q4": null
+}
