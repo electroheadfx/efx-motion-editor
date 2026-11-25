@@ -269,39 +269,32 @@ export const BRISTLE_LANDING = 1.6;
 // ------------------------- Spec 10: edge transparency and falloff -------------------------
 //
 //  Edge transparency (amount, 0..1) and Edge falloff (shape bias, 0..1) drive
-//  TWO shares, and neither is a lateral depth film:
+//  ONE mechanism — the LATERAL DISSOLVE (`bristleEdgeShift`), in SILHOUETTE
+//  units: 1 is the visible rim (BRISTLE_FEATHER_EDGE of the nominal
+//  footprint), not the footprint's own edge. The amount raises the gather's
+//  paper-tooth THRESHOLD across the band, so the fringe opens into full-depth
+//  specks of the mark's own pigment and every opened cell is INERT — the
+//  underlayer is left exactly as it was, and the core keeps its paint.
 //
-//   - the amount's UNIFORM pigment share (`bristleEdgeFilm`): the whole mark
-//     thins — the artist's "core 65% film" — scaling the deposit's weight and
-//     carried absorbance, its scatter S, and the cover target;
-//   - the LATERAL DISSOLVE (`bristleEdgeShift`), in SILHOUETTE units: 1 is the
-//     visible rim (BRISTLE_FEATHER_EDGE of the nominal footprint), not the
-//     footprint's own edge. The amount raises the gather's paper-tooth
-//     THRESHOLD across the band, so the fringe opens into full-depth specks of
-//     the mark's own pigment and every opened cell is INERT — the underlayer
-//     is left exactly as it was.
-//
-//  A lateral DEPTH film is what UAT 2026-11-25 #1/#3/#4/#5 rejected in every
-//  form it was tried: its lerp target is a paler pigment (cA·film), so a
-//  fringe dab replaces the same-sheet stroke beneath it with a thinner film
-//  and the paper shows as an opaque white veil. The threshold is the edge
-//  mechanism this engine already ships (Feather, the takeoff); the twins below
-//  mirror the gather's expressions and the constants are bound as uniforms in
+//  The two rejected forms (UAT 2026-11-25): a lateral DEPTH film — its lerp
+//  target is a paler pigment (cA·film), so a fringe dab replaces the
+//  same-sheet stroke beneath it with a thinner film and the paper shows as an
+//  opaque white veil (#1/#3/#4); and a UNIFORM share — the whole mark washes
+//  and the falloff is invisible (#5, "always full transparence"). Uniform
+//  opacity is the spec's own non-goal. The threshold is the edge mechanism
+//  this engine already ships (Feather, the takeoff); the twin below mirrors
+//  the gather's expression and the constants are bound as uniforms in
 //  `bindGather`, so the shader cannot re-type them.
-/** Where the dissolve starts, in silhouette units (0.55). */
-export const BRISTLE_EDGE_START = 0.55;
+/** Where the dissolve starts, in silhouette units (0.30). Was 0.55: with the
+ *  band confined to the outer 30% of the footprint the amount read as a rim
+ *  cut and falloff 0 and 100 were indistinguishable live (UAT 2026-11-25
+ *  #5). 0.30 lets the broad shape reach the middle of the mark while the rim
+ *  shape still hugs the silhouette. */
+export const BRISTLE_EDGE_START = 0.3;
 /** Falloff 0's exponent (0.5): the broad dissolve — √t rises early. */
 export const BRISTLE_EDGE_EXP_MIN = 0.5;
 /** Falloff 100's exponent (2): the rim dissolve — the band hugs the silhouette. */
 export const BRISTLE_EDGE_EXP_MAX = 2;
-/**
- * The amount's UNIFORM pigment share at amount 100 (0.55): the core keeps 45%
- * of its pigment, which the display's transmittance law reads as about 65% of
- * the mark's original opacity — the artist's "core 65% film" judged on the
- * visible density. The first cut (55% pigment) read as ~78% opacity and was
- * reported as no transparency.
- */
-export const BRISTLE_EDGE_CORE = 0.55;
 /**
  * The rim's paper-threshold rise at amount 100 (1.1): the dissolve's scale.
  * Calibrated like BRISTLE_TAKEOFF_SHIFT — a full-pressure body (1.0 · 0.97)
@@ -453,21 +446,6 @@ export function gatherSoftness(_feather: number): number {
 export function edgeFalloffExponent(bias: number): number {
   if (!Number.isFinite(bias)) return 1;
   return clamp(2 ** (2 * clamp01(bias) - 1), BRISTLE_EDGE_EXP_MIN, BRISTLE_EDGE_EXP_MAX);
-}
-
-/**
- * Spec 10: the amount's UNIFORM pigment share — the mirror of the gather's
- * `g.film`. `amount` (0..1) is Edge transparency; the share is
- * `1 - amount·BRISTLE_EDGE_CORE`, the SAME at every lateral position (the
- * edge's transparency is the threshold dissolve, not a depth law — see
- * `bristleEdgeShift`). Amount 0 (or a non-finite argument) returns the
- * neutral 1.
- */
-export function bristleEdgeFilm(amount: number): number {
-  if (!Number.isFinite(amount)) return 1;
-  const a = clamp01(amount);
-  if (a <= 0) return 1;
-  return 1 - a * BRISTLE_EDGE_CORE;
 }
 
 /**
