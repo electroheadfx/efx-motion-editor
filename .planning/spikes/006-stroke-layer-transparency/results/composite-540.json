@@ -12,8 +12,8 @@
     "hueDeg": 2,
     "mirror8": 1
   },
-  "renderer": "WebKit WebGL",
-  "bakeMs": 332,
+  "renderer": "WebKit WebGL | Google Inc. (Apple) | ANGLE (Apple, ANGLE Metal Renderer: Apple M3 Max, Unspecified Version)",
+  "bakeMs": 328,
   "paper": {
     "id": "cold"
   },

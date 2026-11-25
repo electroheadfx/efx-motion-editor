@@ -33,7 +33,10 @@ const amount = Number(readFlag('amount', 100))
 const stride = Number(readFlag('stride', 2))
 const fitSamples = Number(readFlag('fitSamples', 420))
 const seed = Number(readFlag('seed', 0xc0ffee))
-const gate = readFlag('gate', `composite-${size}-s${start}-a${amount}`)
+const falloff = Number(readFlag('falloff', 50))
+const scenario = readFlag('scenario', 'composite')
+const entry = scenario === 'cost' ? 'cost.ts' : 'probe.ts'
+const gate = readFlag('gate', `${scenario}-${size}-s${start}-a${amount}`)
 
 const pageQuery =
   `size=${size}` +
@@ -41,6 +44,7 @@ const pageQuery =
   `&amount=${amount / 100}` +
   `&stride=${stride}` +
   `&fitSamples=${fitSamples}` +
+  `&falloff=${falloff}` +
   `&seed=${seed}`
 
 const resultPath = join(outDir, `${gate}.json`)
@@ -67,11 +71,11 @@ if (!chrome) {
 
 mkdirSync(outDir, { recursive: true })
 
-console.log(`[probe] bundling probe.ts (size=${size}, start=${start}, amount=${amount}) ...`)
+console.log(`[probe] bundling ${entry} (size=${size}, start=${start}, amount=${amount}, falloff=${falloff}) ...`)
 const build = spawnSync(
   esbuild,
   [
-    join(here, 'probe.ts'),
+    join(here, entry),
     '--bundle',
     '--format=iife',
     '--platform=browser',
@@ -160,57 +164,76 @@ const fmt = (v) => (typeof v === "number" ? v.toFixed(2) : String(v))
 const pad = (v, n) => String(v).padStart(n)
 
 console.log("")
-console.log(`  mirror gate   : max ${fmt(result.mirror.maxChannel)}/255, p99 ${fmt(result.mirror.p99Channel)}/255 over ${result.mirror.n} states ` +
-  `(scatter share ${(result.mirror.scatteredShare * 100).toFixed(0)} %) — ${result.mirror.pass ? "PASS" : "FAIL"}`)
-if (result.endToEnd) {
-  console.log(`  end-to-end    : real displayFS vs the mirror on a real composite sheet — max ${fmt(result.endToEnd.maxChannel)}/255 over ${result.endToEnd.samples} texels`)
-}
-const g = result.geometry
-console.log(`  geometry      : stroke B centre x ${g.centreX}, band ${fmt(g.bandPx)} px, bbox ${JSON.stringify(g.bboxB)}`)
-console.log(`  cells         : ${result.cells.overPaper} over paper, ${result.cells.overStroke} over stroke A`)
-console.log(`  environment   : B alone ${JSON.stringify(result.environment.coreBAlone)} vs B over A ${JSON.stringify(result.environment.coreBOverA)} -> delta ${fmt(result.environment.envDeltaAtCore)}/255 at ${JSON.stringify(result.environment.at)}`)
-console.log("")
-console.log("  50 % layer over white — the law's own check, in LINEAR light")
-for (const key of Object.keys(result.whiteHalf)) {
-  const w = result.whiteHalf[key]
-  console.log(`    ${key.padEnd(7)} layer ${JSON.stringify(w.layerRgb8)} S=${w.layerScatter}  linear ${JSON.stringify(w.layerLinear)}`)
-  console.log(`             target linear ${JSON.stringify(w.targetLinear)}  vs 0.5*layer+0.5 -> err ${fmt(w.linearMixError8)}/255 (PASS if 0)`)
-  console.log(`             pinv delta ${fmt(w.pinv.delta8)}/255   fit delta ${fmt(w.fit.delta8)}/255 (${w.fit.iterations} it)`)
-}
-console.log("")
-console.log("  the law, swept over the fade band (gate = none, the pure lateral alpha)")
-console.log("    scene       law     enc   fall  " + [0, 0.25, 0.5, 0.75, 1].map((t) => `t=${t}`.padStart(7)).join(""))
-for (const r of result.reports) {
-  if (r.gate !== "none") continue
-  const stations = r.stations.map((s) => `${s.maxChannel}/${s.p95Channel}`)
-  const scene = r.scene === "overPaper" ? "paper" : "stroke"
-  console.log(`    ${scene.padEnd(11)} ${r.law.padEnd(7)} ${r.encoder.padEnd(4)} ${pad(r.falloff, 4)}  ` + stations.map((s) => s.padStart(7)).join(""))
-}
-console.log("")
-console.log("  the alpha gate (pinv, falloff 50) — station t=0.5, per scene")
-console.log("    scene       law     gate    max  mean  p95  hue    band>1  print   gapWash(max/mean over n)")
-for (const r of result.reports) {
-  if (r.encoder !== "pinv" || r.falloff !== 50) continue
-  const s = r.stations[2]
-  const scene = r.scene === "overPaper" ? "paper" : "stroke"
-  console.log(`    ${scene.padEnd(11)} ${r.law.padEnd(7)} ${r.gate.padEnd(7)} ${pad(s.maxChannel, 3)}  ${fmt(s.meanChannel).padStart(4)} ${pad(s.p95Channel, 3)} ${fmt(s.maxHueDeg).padStart(5)}  ${pad(s.bandOutsideBeyond1, 6)}  ${(s.printRetention * 100).toFixed(1)} %   ${fmt(s.gapWashMax)}/${fmt(s.gapWashMean)} (${s.gapN})`)
-}
-console.log("")
-console.log("  the alpha gate at the band midpoint, gap washing only (delta from the untouched base)")
-console.log("    scene       law     none           cover          alpha")
-for (const r of result.reports) {
-  if (r.encoder !== "pinv" || r.falloff !== 50 || r.gate !== "none") continue
-  const pick = (gate) => result.reports.find((x) => x.scene === r.scene && x.law === r.law && x.encoder === "pinv" && x.falloff === 50 && x.gate === gate)
-  const cell = (x) => x ? `${fmt(x.stations[2].gapWashMax)}/${fmt(x.stations[2].gapWashMean)}` : "-"
-  const scene = r.scene === "overPaper" ? "paper" : "stroke"
-  console.log(`    ${scene.padEnd(11)} ${r.law.padEnd(7)} ${cell(pick("none")).padEnd(14)} ${cell(pick("cover")).padEnd(14)} ${cell(pick("alpha"))}`)
-}
-console.log("")
-console.log("  between-law violations beyond 1/255 (all stations, both scenes)")
-for (const r of result.reports) {
-  const tot = r.stations.reduce((n, s) => n + s.bandOutsideBeyond1, 0)
-  if (tot === 0) continue
-  const scene = r.scene === "overPaper" ? "paper" : "stroke"
-  console.log(`    ${scene}/ ${r.law}/${r.encoder}/${r.gate} falloff ${r.falloff}: ${tot} of ${r.samples * 5 * 16} band comparisons`)
+if (scenario === "cost") {
+  const r = result
+  console.log(`  renderer      : ${r.renderer}`)
+  console.log(`  sheet         : requested ${r.sheet.requested}, allocated ${r.sheet.actual} (${r.sheet.pixels} texels)${r.sheet.actual !== r.sheet.requested ? "  <-- CLAMPED" : ""}`)
+  console.log(`  thresholds    : realistic rect <= ${r.threshold.realisticRectMs} ms, full sheet <= ${r.threshold.fullSheetMs} ms, residual <= ${r.threshold.residualChannel8}/255`)
+  console.log(`  stroke rect   : ${JSON.stringify(r.geometry.strokeRect)} = ${r.geometry.strokeRectPixels} texels (band ${fmt(r.geometry.bandPx)} px)`)
+  console.log(`  memory        : layer ${r.memory.layerDoubleMb} MB (double) / ${r.memory.layerPreviewMb} MB (single), merge out ${r.memory.mergeOutputMb} MB, combined ${r.memory.combinedMb} MB vs ${r.memory.budgetMb} MB`)
+  console.log("")
+  console.log("  budget   rect ms   rect us/texel   full ms   full us/texel   residual(max/mean, iters)")
+  for (const b of r.budgets) {
+    const res = b.residual ? `${b.residual.maxChannel}/255 ${b.residual.meanChannel} it ${b.residual.iterationsUsedMean}/${b.residual.iterationsUsedMax}` : ""
+    console.log(`  ${pad(b.iterations, 6)}  ${pad(fmt(b.rectMs), 7)}  ${pad(b.rectPerTexelUs, 13)}  ${pad(fmt(b.fullMs), 7)}  ${pad(b.fullPerTexelUs, 14)}   ${res}`)
+  }
+  console.log("")
+  for (const [name, m] of Object.entries(r.mitigations)) {
+    const res = m.residual ? `${m.residual.maxChannel}/255 ${m.residual.meanChannel} it ${m.residual.iterationsUsedMean}/${m.residual.iterationsUsedMax}` : ""
+    console.log(`  ${name.padEnd(14)} rect ${pad(fmt(m.rectMs), 7)} ms   full ${pad(fmt(m.fullMs), 7)} ms   ${res}`)
+  }
+  console.log("")
+  console.log(`  Q2 committed base: band ${r.q2.bandPx} px, between-interval width ${r.q2.betweenWidthPx} px (${(r.q2.betweenShare * 100).toFixed(0)} %), shipped vs ideal max ${fmt(r.q2.shippedVsIdeal.maxChannel8)}/255 mean ${fmt(r.q2.shippedVsIdeal.meanChannel8)}`)
+  for (const p of r.q2.profile) {
+    console.log(`    x ${pad(p.x, 5)} u ${pad(p.u, 5)} cover ${pad(p.cover, 5)}  t_sheet ${pad(p.tSheet8, 4)} t_base ${pad(p.tBase8, 4)}  shipped ${pad(p.shipped8, 4)} ideal ${pad(p.ideal8, 4)}  alpha ${pad(p.idealAlpha, 5)} implied ${pad(p.impliedAlpha, 6)}`)
+  }
+  console.log("")
+  console.log(`  RIDER  display pool-blind ${r.rider.poolBlind.display}  capture pool-blind ${r.rider.poolBlind.capture}  pickup pool-blind ${r.rider.poolBlind.pickup}`)
+  console.log(`         wet movement (fraction of ink moved): ${JSON.stringify(r.rider.wetMovement)}`)
+  console.log(`         pickup shift at the crossing:        ${JSON.stringify(r.rider.pickupShift)}`)
+} else {
+  console.log(`  mirror gate   : max ${fmt(result.mirror.maxChannel)}/255, p99 ${fmt(result.mirror.p99Channel)}/255 over ${result.mirror.n} states ` +
+    `(scatter share ${(result.mirror.scatteredShare * 100).toFixed(0)} %) — ${result.mirror.pass ? "PASS" : "FAIL"}`)
+  if (result.endToEnd) {
+    console.log(`  end-to-end    : real displayFS vs the mirror on a real composite sheet — max ${fmt(result.endToEnd.maxChannel)}/255 over ${result.endToEnd.samples} texels`)
+  }
+  const g = result.geometry
+  console.log(`  geometry      : stroke B centre x ${g.centreX}, band ${fmt(g.bandPx)} px, bbox ${JSON.stringify(g.bboxB)}`)
+  console.log(`  cells         : ${result.cells.overPaper} over paper, ${result.cells.overStroke} over stroke A`)
+  console.log(`  environment   : B alone ${JSON.stringify(result.environment.coreBAlone)} vs B over A ${JSON.stringify(result.environment.coreBOverA)} -> delta ${fmt(result.environment.envDeltaAtCore)}/255 at ${JSON.stringify(result.environment.at)}`)
+  console.log("")
+  console.log("  50 % layer over white — the law's own check, in LINEAR light")
+  for (const key of Object.keys(result.whiteHalf)) {
+    const wv = result.whiteHalf[key]
+    console.log(`    ${key.padEnd(7)} layer ${JSON.stringify(wv.layerRgb8)} S=${wv.layerScatter}  linear ${JSON.stringify(wv.layerLinear)}`)
+    console.log(`             target linear ${JSON.stringify(wv.targetLinear)}  vs 0.5*layer+0.5 -> err ${fmt(wv.linearMixError8)}/255 (PASS if 0)`)
+    console.log(`             pinv delta ${fmt(wv.pinv.delta8)}/255   fit delta ${fmt(wv.fit.delta8)}/255 (${wv.fit.iterations} it)`)
+  }
+  console.log("")
+  console.log("  the law, swept over the fade band (gate = none, the pure lateral alpha)")
+  console.log("    scene       law     enc   fall      t=0 t=0.25  t=0.5 t=0.75    t=1")
+  for (const r of result.reports) {
+    if (r.gate !== "none") continue
+    const stations = r.stations.map((st) => `${st.maxChannel}/${st.p95Channel}`)
+    const scene = r.scene === "overPaper" ? "paper" : "stroke"
+    console.log(`    ${scene.padEnd(11)} ${r.law.padEnd(7)} ${r.encoder.padEnd(4)} ${pad(r.falloff, 4)}  ` + stations.map((st) => st.padStart(7)).join(""))
+  }
+  console.log("")
+  console.log("  the alpha gate (pinv, falloff 50) — station t=0.5, per scene")
+  console.log("    scene       law     gate    max  mean  p95  hue    band>1  print   gapWash(max/mean over n)")
+  for (const r of result.reports) {
+    if (r.encoder !== "pinv" || r.falloff !== 50) continue
+    const st = r.stations[2]
+    const scene = r.scene === "overPaper" ? "paper" : "stroke"
+    console.log(`    ${scene.padEnd(11)} ${r.law.padEnd(7)} ${r.gate.padEnd(7)} ${pad(st.maxChannel, 3)}  ${fmt(st.meanChannel).padStart(4)} ${pad(st.p95Channel, 3)} ${fmt(st.maxHueDeg).padStart(5)}  ${pad(st.bandOutsideBeyond1, 6)}  ${(st.printRetention * 100).toFixed(1)} %   ${fmt(st.gapWashMax)}/${fmt(st.gapWashMean)} (${st.gapN})`)
+  }
+  console.log("")
+  console.log("  between-law violations beyond 1/255 (all stations, both scenes)")
+  for (const r of result.reports) {
+    const tot = r.stations.reduce((n, st) => n + st.bandOutsideBeyond1, 0)
+    if (tot === 0) continue
+    const scene = r.scene === "overPaper" ? "paper" : "stroke"
+    console.log(`    ${scene}/ ${r.law}/${r.encoder}/${r.gate} falloff ${r.falloff}: ${tot} of ${r.samples * 5 * 16} band comparisons`)
+  }
 }
 console.log("")
