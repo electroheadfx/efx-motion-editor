@@ -451,8 +451,6 @@ describe('bristleReliefFS — thickness follows the real bristle mark', () => {
     expect(relief).toContain('${BRISTLE_GATHER}')
     expect(relief).toContain('uniform float uAmount;')
     expect(relief).toContain('float a = clamp(gatherBristle(vUv).coverage, 0.0, 1.0);')
-    // Spec 10: the gather's coverage already carries the edge film, so a
-    // diluted mark lays a thinner film without a second factor here.
     expect(relief).toContain('o0 = vec4(uAmount * a);')
     expect(relief).not.toContain('layout(location=1)')
     // The deposit's own square cull, never a wider stamp rect.

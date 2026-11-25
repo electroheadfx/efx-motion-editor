@@ -116,7 +116,7 @@ describe('the medium keys in the live bag', () => {
     expect(AQUARELLE_GLOBAL_KEYS).toContain('pickup');
     expect(AQUARELLE_GLOBAL_KEYS).toContain('refill');
     expect(AQUARELLE_GLOBAL_KEYS).toContain('wetSeconds');
-    expect(AQUARELLE_GLOBAL_KEYS).toHaveLength(18);
+    expect(AQUARELLE_GLOBAL_KEYS).toHaveLength(16);
     expect(DEFAULT_AQUARELLE_PARAMS.feather).toBe(0);
     // 261119-pod (D-A): Pickup opens at 100 — the reference's §6 default.
     expect(DEFAULT_AQUARELLE_PARAMS.pickup).toBe(100);
@@ -138,34 +138,12 @@ describe('the medium keys in the live bag', () => {
     expect(snapshotAquarelleRecord().params.pickup).toBe(100);
   });
 
-  // Spec 10 (Edge transparency / Edge falloff): both are canonical globals on
-  // the SAME key list, so the record loop and the selection write allowlist
-  // carry them like every other medium key.
-  it('carries edgeFade and edgeFalloff in the key list, the defaults and the snapshot', () => {
-    expect(AQUARELLE_GLOBAL_KEYS).toContain('edgeFade');
-    expect(AQUARELLE_GLOBAL_KEYS).toContain('edgeFalloff');
-    expect(DEFAULT_AQUARELLE_PARAMS.edgeFade).toBe(0);
-    expect(DEFAULT_AQUARELLE_PARAMS.edgeFalloff).toBe(50);
-    expect(aquarelleParams.value.edgeFade).toBe(0);
-    expect(aquarelleParams.value.edgeFalloff).toBe(50);
-    const fresh = snapshotAquarelleRecord();
-    expect(fresh.params.edgeFade).toBe(0);
-    expect(fresh.params.edgeFalloff).toBe(50);
-    setAquarelleParam('edgeFade', 35);
-    setAquarelleParam('edgeFalloff', 90);
-    const snapped = snapshotAquarelleRecord();
-    expect(snapped.params.edgeFade).toBe(35);
-    expect(snapped.params.edgeFalloff).toBe(90);
-  });
-
-  it('keeps the bag at exactly the eighteen canonical keys', () => {
+  it('keeps the bag at exactly the sixteen canonical keys', () => {
     expect(Object.keys(aquarelleParams.value).sort()).toEqual([
       'bleed',
       'body',
       'dry',
       'edge',
-      'edgeFade',
-      'edgeFalloff',
       'emboss',
       'feather',
       'flow',
@@ -235,9 +213,6 @@ describe('the medium keys in the live bag', () => {
     expect(toEngineParams(legacy).pickup).toBe(1);
     expect(toEngineParams(legacy).refill).toBe(0.6);
     expect(toEngineParams(legacy).wetSeconds).toBe(7);
-    // Spec 10: the pair falls back to the canonical 0 / 50 (engine 0 / 0.5).
-    expect(toEngineParams(legacy).edgeFade).toBe(0);
-    expect(toEngineParams(legacy).edgeFalloff).toBe(0.5);
   });
 
   it('accepts a medium-key patch in the selection-edit allowlist', () => {
@@ -257,11 +232,6 @@ describe('the medium keys in the live bag', () => {
     expect(getRecordedAquarelleStroke(8101)!.params.refill).toBe(45);
     expect(updateAquarelleStrokesInScript([8101], { params: { wetSeconds: 12 } })).toBe(1);
     expect(getRecordedAquarelleStroke(8101)!.params.wetSeconds).toBe(12);
-    // Spec 10: the two edge knobs ride the same write allowlist.
-    expect(updateAquarelleStrokesInScript([8101], { params: { edgeFade: 45 } })).toBe(1);
-    expect(getRecordedAquarelleStroke(8101)!.params.edgeFade).toBe(45);
-    expect(updateAquarelleStrokesInScript([8101], { params: { edgeFalloff: 80 } })).toBe(1);
-    expect(getRecordedAquarelleStroke(8101)!.params.edgeFalloff).toBe(80);
   });
 });
 
@@ -289,13 +259,11 @@ describe('applyAquarelleMedium', () => {
     // keeps the visible cover (any Body above 0 takes the coverage composite).
     expect(aquarelleParams.value.body).toBe(100);
     expect(aquarelleParams.value.emboss).toBe(3);
-    // 64-22 / Spec 10: all sixteen medium keys land in the one write.
+    // 64-22: all fourteen medium keys land in the one write.
     expect(aquarelleParams.value.feather).toBe(85);
     expect(aquarelleParams.value.pickup).toBe(100);
     expect(aquarelleParams.value.refill).toBe(0);
     expect(aquarelleParams.value.wetSeconds).toBe(12);
-    expect(aquarelleParams.value.edgeFade, 'no transparency on the shipped edge').toBe(0);
-    expect(aquarelleParams.value.edgeFalloff, 'the linear falloff shape').toBe(50);
     expect(aquarelleParams.value.size, 'a medium never resizes the brush').toBe(77);
     expect(aquarelleParams.value.lift, 'a medium never changes the eraser').toBe(33);
     expect(aquarelleSelectedMediumId.value).toBe('acrylic');

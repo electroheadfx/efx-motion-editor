@@ -64,7 +64,7 @@ describe('toEngineParams', () => {
 
   it('maps the seven canonical globals onto 0..1', () => {
     expect(toEngineParams({ water: 50, load: 25, flow: 100, bleed: 0, dry: 75, edge: 60, granulation: 40 }))
-      .toEqual({ size: 12 / 32, water: 0.5, load: 0.25, flow: 1, bleed: 0, dry: 0.75, edge: 0.6, granulation: 0.4, lift: 0.22, viscosity: 0, body: 0, emboss: 0, feather: 0, pickup: 1, refill: 0.6, edgeFade: 0, edgeFalloff: 0.5, wetSeconds: 7 });
+      .toEqual({ size: 12 / 32, water: 0.5, load: 0.25, flow: 1, bleed: 0, dry: 0.75, edge: 0.6, granulation: 0.4, lift: 0.22, viscosity: 0, body: 0, emboss: 0, feather: 0, pickup: 1, refill: 0.6, wetSeconds: 7 });
   });
 
   // Phase 64 (v2.2.0): Body and Emboss join the medium bag. 0 is neutral —
@@ -170,41 +170,6 @@ describe('toEngineParams', () => {
     expect(toEngineParams({}).pickup).toBe(1);
     expect(toEngineParams(undefined).pickup).toBe(1);
     expect(toEngineParams({ water: 50 }).pickup).toBe(1);
-  });
-
-  // Spec 10 (edge transparency and edge falloff): two canonical 0..100
-  // globals through the same clamp01 table every Phase 64 medium key obeys.
-  // Amount 0 is neutral; falloff 50 is the linear default.
-  it('maps the Edge transparency and Edge falloff globals 0..100 onto the 0..1 medium bag', () => {
-    expect(toEngineParams({ edgeFade: 0 }).edgeFade).toBe(0);
-    expect(toEngineParams({ edgeFade: 50 }).edgeFade).toBe(0.5);
-    expect(toEngineParams({ edgeFade: 100 }).edgeFade).toBe(1);
-    // T-64-01: out-of-track values are clamped in the ONE mapping.
-    expect(toEngineParams({ edgeFade: 250 }).edgeFade).toBe(1);
-    expect(toEngineParams({ edgeFade: -40 }).edgeFade).toBe(0);
-    expect(toEngineParams({ edgeFalloff: 0 }).edgeFalloff).toBe(0);
-    expect(toEngineParams({ edgeFalloff: 50 }).edgeFalloff).toBe(0.5);
-    expect(toEngineParams({ edgeFalloff: 100 }).edgeFalloff).toBe(1);
-    expect(toEngineParams({ edgeFalloff: 250 }).edgeFalloff).toBe(1);
-    expect(toEngineParams({ edgeFalloff: -40 }).edgeFalloff).toBe(0);
-  });
-
-  it('replays a stroke without the edge keys at the neutral defaults (amount 0, falloff 50)', () => {
-    expect(toEngineParams({ water: 50 }).edgeFade).toBe(0);
-    expect(toEngineParams(undefined).edgeFade).toBe(0);
-    expect(toEngineParams({ edgeFade: Number.NaN }).edgeFade).toBe(0);
-    expect(toEngineParams({ edgeFade: Number.POSITIVE_INFINITY }).edgeFade).toBe(0);
-    expect(toEngineParams({ water: 50 }).edgeFalloff).toBe(0.5);
-    expect(toEngineParams(undefined).edgeFalloff).toBe(0.5);
-    expect(toEngineParams({ edgeFalloff: Number.NaN }).edgeFalloff).toBe(0.5);
-    expect(toEngineParams({ edgeFalloff: Number.NEGATIVE_INFINITY }).edgeFalloff).toBe(0.5);
-  });
-
-  it('declares Edge transparency 0 and Edge falloff 50 in the canonical and engine bags', () => {
-    expect(DEFAULT_CANONICAL_PARAMS.edgeFade).toBe(0);
-    expect(DEFAULT_CANONICAL_PARAMS.edgeFalloff).toBe(50);
-    expect(DEFAULT_PARAMS.edgeFade).toBe(0);
-    expect(DEFAULT_PARAMS.edgeFalloff).toBe(0.5);
   });
 
   // Phase 64 (v2.2.0): the medium bag's first key. 0 is neutral — an absent

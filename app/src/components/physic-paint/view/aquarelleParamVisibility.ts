@@ -132,9 +132,9 @@ const PICKUP_HIDDEN: readonly MediumId[] = Object.freeze(['watercolor']);
 const ACRYLIC_HIDDEN: readonly MediumId[] = Object.freeze(['acrylic']);
 
 /**
- * The fifteen rows in Matrix 2's order (fourteen canvas rows + the
- * Eraser-context Lift row). Reset restores the active medium record's
- * full sixteen-key set; `size` and `lift` stay outside it.
+ * The thirteen rows in Matrix 2's order (twelve canvas rows + the
+ * Eraser-context Lift row). The 13-key count is what makes the Reset
+ * key set (`rows - lift` + `body`) reproduce the shipped patch.
  */
 export const AQUARELLE_PARAM_ROWS: readonly AquarelleParamRow[] = Object.freeze([
   Object.freeze({
@@ -175,10 +175,6 @@ export const AQUARELLE_PARAM_ROWS: readonly AquarelleParamRow[] = Object.freeze(
   }),
   Object.freeze({ key: 'dry', label: 'Dry speed', group: 'drying', paint: 'all', water: true }),
   Object.freeze({ key: 'feather', label: 'Feather', group: 'edge', paint: BRISTLE_MEDIA }),
-  // Spec 10: the bristle lateral film's two knobs. Both render through the
-  // existing GlobalSlider — 0 / 50 / 100 ARE the three named shapes.
-  Object.freeze({ key: 'edgeFade', label: 'Edge transparency', group: 'edge', paint: BRISTLE_MEDIA }),
-  Object.freeze({ key: 'edgeFalloff', label: 'Edge falloff', group: 'edge', paint: BRISTLE_MEDIA }),
   Object.freeze({ key: 'flow', label: 'Flow', group: 'watercolor', paint: WATERCOLOR_ONLY, water: true }),
   Object.freeze({ key: 'bleed', label: 'Bleed', group: 'watercolor', paint: WATERCOLOR_ONLY, water: true }),
   Object.freeze({ key: 'edge', label: 'Edges', group: 'watercolor', paint: WATERCOLOR_ONLY, water: true }),

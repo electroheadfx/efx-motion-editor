@@ -2284,28 +2284,10 @@ function lineProfileSet(engine: WatercolorEngine): Record<string, unknown> {
   const bandY1 = Math.min(dh, centre + LINE_BAND_PX + 1)
   const absorb = absorbBand(engine, dw, dh, px0, px1, bandY0, bandY1)
 
-  // Spec 10: the edge's SPARSE witness. The coverage raster is the printed
-  // fraction's own record — a threshold-opened cell never reaches the deposit,
-  // so its cover stays 0, while a surviving cell carries the mark's full cover
-  // share. `print` is each row's fraction of texels at or above half the
-  // profile's texel peak: 1 at the core, 1 - amount·t^e across the dissolve
-  // band, 0 at the silhouette at amount 100. A lateral DEPTH film (the
-  // rejected white veil) prints every texel and reads 1 at every station.
-  let coverPeak = 0
-  for (let gy = bandY0; gy < bandY1; gy += 1) {
-    const cr = dh - 1 - gy
-    for (let x = px0; x < px1; x += 1) {
-      const v = cData[(cr * dw + x) * 4]! / 255
-      if (v > coverPeak) coverPeak = v
-    }
-  }
-  const printFloor = coverPeak > 0 ? coverPeak * 0.5 : Number.POSITIVE_INFINITY
-
   const offsets: number[] = []
   const cover: number[] = []
   const dark: number[] = []
   const ink: number[] = []
-  const print: number[] = []
   for (let o = -LINE_BAND_PX; o <= LINE_BAND_PX; o += 1) {
     const gy = centre + o
     if (gy < 0 || gy >= dh) continue
@@ -2313,13 +2295,10 @@ function lineProfileSet(engine: WatercolorEngine): Record<string, unknown> {
     let cSum = 0
     let dSum = 0
     let iSum = 0
-    let printed = 0
     let n = 0
     for (let x = px0; x < px1; x += 1) {
       const i4 = (cr * dw + x) * 4
-      const c = cData[i4]! / 255
-      cSum += c
-      if (c >= printFloor) printed += 1
+      cSum += cData[i4]! / 255
       dSum += 1 - Math.min(tData[i4]!, tData[i4 + 1]!, tData[i4 + 2]!) / 255
       iSum += absorb.data[(gy - bandY0) * absorb.width + (x - px0)]!
       n += 1
@@ -2328,7 +2307,6 @@ function lineProfileSet(engine: WatercolorEngine): Record<string, unknown> {
     cover.push(round4(cSum / n))
     dark.push(round4(dSum / n))
     ink.push(round4(iSum / n))
-    print.push(round4(printed / n))
   }
 
   const peakCover = cover.reduce((m, v) => Math.max(m, v), 0)
@@ -2529,7 +2507,7 @@ function lineProfileSet(engine: WatercolorEngine): Record<string, unknown> {
       },
     },
     offsets,
-    across: { cover, dark, ink, print },
+    across: { cover, dark, ink },
     stations,
     tiling: {
       rows: tilingRows.map(({ darkHp: _darkHp, ...rest }) => rest),
@@ -3229,113 +3207,6 @@ function readTipTexture(): string | undefined {
   return raw
 }
 
-// --- Spec 10: edge transparency and falloff ---------------------------------
-//
-// Two bristle-only sliders — Edge transparency (amount A) and Edge falloff
-// (shape bias b) — drive TWO shares in `gatherBristle`, and neither is a
-// lateral depth film (UAT 2026-11-25 #1-#5 rejected every depth form: its
-// lerp target is a paler pigment, so each fringe dab replaces the same-sheet
-// stroke beneath it and the paper reads as a smooth opaque white veil):
-//
-//   - the amount's UNIFORM pigment share (1 - amount·CORE) scales the carried
-//     absorbance (after the pickup mix), the scatter S and the cover target.
-//     The core keeps 45% of its pigment at amount 100 (~65% of the original
-//     opacity) — the artist's "core 65% film";
-//   - the LATERAL DISSOLVE raises the same paper-tooth threshold the Feather
-//     law raises (amount · SHIFT · t^e), so the fringe opens into full-depth
-//     specks of the mark's own pigment and every opened cell is INERT — the
-//     deposit discards it and the underlayer survives untouched.
-//
-// Neutral at amount 0 by construction (both products are exactly zero), so
-// the two amount-0 baselines are identity gates captured from the PRE-change
-// engine (UAT row 1's automated proxy). The `print` array is the sparse
-// edge's own witness: a depth film prints every texel (1 at every station), a
-// threshold dissolve prints 1 - amount·t^e across the band.
-//
-// The script entry MUST stamp `brushId: 'bristle-round'` literally:
-// `toStudioStroke` defaults to `BRUSH_ID` (`round`), a NON-bristle preset whose
-// path never runs `gatherBristle` — the lateral film would never execute and
-// the identity gate would prove nothing. The report echoes the script entry's
-// own id as `strokeBrush` (the live-response proof) beside `brush` (the
-// `resolvedBrush` echo).
-const EDGE_DEFAULT_AMOUNT = 0
-const EDGE_DEFAULT_FALLOFF = 50
-/** The knobs, read once by `main()` before any stroke. Module state like
- *  `LINE_BAND_PX` / `TIP_TEXTURE`, so a refused operand can never leave a
- *  half-painted sheet behind. */
-let EDGE_AMOUNT = EDGE_DEFAULT_AMOUNT
-let EDGE_FALLOFF = EDGE_DEFAULT_FALLOFF
-
-/** Spec 10: the artist's straight drag at the acrylic record's bag, Body 100
- *  (so the scattering S term is exercised), with the two edge-film keys folded
- *  into the loose params bag. `--edge` / `--falloff` are integers 0..100. */
-function edgeTransparencyScript(): readonly ScriptEntry[] {
-  const params = bristleLineParams(100, STROKE_PARAMS['size']!)
-  params['edgeFade'] = EDGE_AMOUNT
-  params['edgeFalloff'] = EDGE_FALLOFF
-  return [
-    {
-      color: LINE_COLOR,
-      points: straightLine(LINE_Y),
-      mutationId: LINE_MUTATION_ID,
-      brushId: 'bristle-round',
-      params,
-    },
-  ]
-}
-
-/** Spec 10: the two edge-film operands. Valid ONLY on `edge-transparency` —
- *  a value on any other scenario is refused, never silently ignored. Absent
- *  keeps the canonical defaults 0 / 50. */
-function readEdgeKnob(name: 'edge' | 'falloff', scenario: string, fallback: number): number {
-  const raw = new URLSearchParams(location.search).get(name)
-  if (raw === null || raw === '') return fallback
-  if (scenario !== 'edge-transparency') {
-    throw new Error(`--${name} is only valid with --scenario edge-transparency`)
-  }
-  const value = Number(raw)
-  if (!Number.isInteger(value) || value < 0 || value > 100) {
-    throw new Error(`invalid ${name} "${raw}" (expected an integer 0..100)`)
-  }
-  return value
-}
-
-/** Spec 10: the lateral profile, read once after the script settles. The
- *  coverage channel carries the base-replacement share (the film's shape bars)
- *  and `ink` the delivered absorbance (the core pigment bar a weight-film
- *  cannot pass); both are judged against the neutral reference, and
- *  `edgeTiling.enclosed` is the same lane scan the bristle-line gate uses. */
-function edgeTransparencyMetrics(engine: WatercolorEngine, strokeBrush: string): Record<string, unknown> {
-  const profile = lineProfileSet(engine)
-  // `lineProfileSet` keeps the row offsets at the profile's top level and the
-  // per-row arrays under `across` — stitch them back into one record so the
-  // report carries the offsets beside the cover/ink arrays they index.
-  const across = {
-    offsets: profile['offsets'] as number[],
-    ...(profile['across'] as { cover: number[]; ink: number[]; dark: number[] }),
-  }
-  const tiling = profile['tiling'] as { enclosed: unknown }
-  return {
-    strokeBrush,
-    edgeAmount: EDGE_AMOUNT,
-    edgeFalloff: EDGE_FALLOFF,
-    // `dark` is the artist-facing channel (the transparent export's darkness)
-    // and `print` the coverage raster's printed fraction — the sparse edge's
-    // law. `dark` is evidence only (the committed amount-0 baselines predate
-    // it); `print` is judged against absolute stations, never a ratio (a
-    // threshold-opened row has a tiny reference mean, so a ratio would be
-    // noise).
-    edgeAcross: {
-      offsets: across.offsets,
-      cover: across.cover,
-      ink: across.ink,
-      dark: across.dark,
-      print: across.print,
-    },
-    edgeTiling: { enclosed: tiling.enclosed },
-  }
-}
-
 /**
  * 64-29: the band metric over one across profile — the same stations the line
  * census uses (`lineProfileSet`'s offsets and `across.dark`). Runs of
@@ -3446,22 +3317,6 @@ function writeResult(report: Record<string, unknown>): void {
 
 // --- main -------------------------------------------------------------------
 
-/**
- * Spec 10: the ONE capture-type predicate — a bristle capture is a live
- * `gatherBristle` capture. Every `bristle-*` scenario qualifies, and so does
- * `edge-transparency` (the lateral edge film, painted by `bristle-round`): its
- * name does not start `bristle-`, so a prefix test would run the visible-alpha
- * check on it and fail the alpha-law contract — the display film blur makes
- * the exported RGB and alpha intentionally disagree at the fringe.
- *
- * compare.mjs carries the IDENTICAL predicate in `alphaLawFailures`; both
- * sides must agree on which captures are bristle captures. Never weaken the
- * comparator's refusal of a skip on any other scenario.
- */
-function isBristleCapture(scenario: string): boolean {
-  return scenario.startsWith('bristle-') || scenario === 'edge-transparency'
-}
-
 function run(
   gate: string,
   renderer: string,
@@ -3480,9 +3335,7 @@ function run(
   // 2026-11-22 pale-line reproduction and 64-29's texture-tip A/B, otherwise
   // nothing. The report echoes THIS value, so a run that passed `--brush`
   // can never print null.
-  // Spec 10: `edge-transparency` echoes `bristle-round` — the live Gouache
-  // bristle response whose gather carries the lateral edge film.
-  const resolvedBrush = brush ?? (scenario === 'cover-textured' ? 'chalk' : scenario === 'bristle-line' || scenario === 'bristle-tip' ? 'bristle-flat' : scenario === 'edge-transparency' ? 'bristle-round' : undefined)
+  const resolvedBrush = brush ?? (scenario === 'cover-textured' ? 'chalk' : scenario === 'bristle-line' || scenario === 'bristle-tip' ? 'bristle-flat' : undefined)
   // bristle-end: which end path this capture drives. Read before any stroke
   // runs, so an operand the probe refuses can never leave a half-painted
   // sheet behind.
@@ -3514,11 +3367,9 @@ function run(
                             ? bristleTipScript()
                             : scenario === 'bristle-end'
                               ? bristleEndScript(endDrive ?? 'stop', body ?? 100, strokeSize)
-                              : scenario === 'edge-transparency'
-                                ? edgeTransparencyScript()
-                                : scenario === 'emboss-smooth'
-                                  ? embossSmoothScript(emboss ?? -15, resolvedBrush)
-                                  : neutralScript(emboss, body)
+                              : scenario === 'emboss-smooth'
+                                ? embossSmoothScript(emboss ?? -15, resolvedBrush)
+                                : neutralScript(emboss, body)
 
   // 261119-pod (D-F): the scene-parameter echo — `dry` appears in the report
   // only when a script pins it, so every capture records the calibration and a
@@ -3705,7 +3556,7 @@ function run(
       { surface: 'white', pixels: white.pixels },
       { surface: 'transparent', pixels: transparent.pixels },
     ])
-    const visibleAlpha = isBristleCapture(scenario)
+    const visibleAlpha = scenario.startsWith('bristle-')
       ? visibleAlphaSkipped(BRISTLE_VISIBLE_ALPHA_SKIP)
       : visibleAlphaCheck(pigment.pixels, transparent.pixels, sheet)
 
@@ -3811,15 +3662,6 @@ function run(
           }
         : {}
 
-    // Spec 10: the lateral edge film's stations, only for its scenario, so
-    // every other report shape is unchanged. `strokeBrush` is the script
-    // entry's OWN brushId — the live-response proof, distinct from the
-    // `brush` echo above (which reflects `resolvedBrush`, not the stroke).
-    const edgeReport =
-      scenario === 'edge-transparency'
-        ? edgeTransparencyMetrics(engine, script[0]?.brushId ?? '')
-        : {}
-
     writeResult({
       gate,
       scenario,
@@ -3851,7 +3693,6 @@ function run(
       ...bristleEndReport,
       ...tipReport,
       ...embossSmoothReport,
-      ...edgeReport,
       ...coverLifecycle,
       renderer,
       verdict: 'MEDIUM-ENGINE CAPTURED',
@@ -3920,17 +3761,16 @@ function readBrush(): string | undefined {
  *  `bristle-wet`, the wetness acceptance; 2026-11-22 adds `bristle-line`,
  *  the acrylic pale-line defect's three-field across profile; 64-29 adds
  *  `bristle-tip`, the texture-tip A/B; quick 261123-hr5 adds `emboss-smooth`,
- *  the signed-emboss smoothing relation; Spec 10 adds `edge-transparency`,
- *  the lateral edge film's identity and sweep gate.
+ *  the signed-emboss smoothing relation.
  *  The closed list here and the one in run.mjs must stay literal-identical:
  *  a name accepted by the parser but unknown to the probe fails at capture,
  *  and a name the probe knows but the parser rejects can never be requested. */
 function readScenario(): string {
   const raw = new URLSearchParams(location.search).get('scenario')
   if (raw === null || raw === '') return 'neutral'
-  if (raw !== 'cover' && raw !== 'cover-over-wet' && raw !== 'watercolor-50' && raw !== 'white-over-blue' && raw !== 'cover-advect' && raw !== 'cover-lift' && raw !== 'cover-textured' && raw !== 'red-over-blue-50' && raw !== 'bristle-edge' && raw !== 'bristle-wet' && raw !== 'bristle-line' && raw !== 'bristle-tip' && raw !== 'bristle-end' && raw !== 'edge-transparency' && raw !== 'emboss-smooth') {
+  if (raw !== 'cover' && raw !== 'cover-over-wet' && raw !== 'watercolor-50' && raw !== 'white-over-blue' && raw !== 'cover-advect' && raw !== 'cover-lift' && raw !== 'cover-textured' && raw !== 'red-over-blue-50' && raw !== 'bristle-edge' && raw !== 'bristle-wet' && raw !== 'bristle-line' && raw !== 'bristle-tip' && raw !== 'bristle-end' && raw !== 'emboss-smooth') {
     throw new Error(
-      `invalid scenario "${raw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue", "cover-advect", "cover-lift", "cover-textured", "red-over-blue-50", "bristle-edge", "bristle-wet", "bristle-line", "bristle-end", "edge-transparency", "emboss-smooth" or "bristle-tip")`,
+      `invalid scenario "${raw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue", "cover-advect", "cover-lift", "cover-textured", "red-over-blue-50", "bristle-edge", "bristle-wet", "bristle-line", "bristle-end", "emboss-smooth" or "bristle-tip")`,
     )
   }
   return raw
@@ -3982,8 +3822,6 @@ function main(): void {
     strokeSize = readStrokeSize()
     LINE_BAND_PX = readBand()
     TIP_TEXTURE = readTipTexture()
-    EDGE_AMOUNT = readEdgeKnob('edge', scenario, EDGE_DEFAULT_AMOUNT)
-    EDGE_FALLOFF = readEdgeKnob('falloff', scenario, EDGE_DEFAULT_FALLOFF)
     renderer = probeRenderer()
     run(gate, renderer, scenario, sheet, brush, emboss, body, light, wetMode, strokeSize)
   } catch (error) {

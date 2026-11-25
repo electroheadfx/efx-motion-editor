@@ -182,22 +182,6 @@ const ALPHA_LAW_NULLABLE_FIELDS = new Set(['visibleAlphaMaxDelta', 'visibleAlpha
 const ALPHA_LAW_MAX_DELTA = 1 // one 8-bit step: the law is exact up to rounding
 
 /**
- * Spec 10: the ONE capture-type predicate — a bristle capture is a live
- * `gatherBristle` capture. Every `bristle-*` scenario qualifies, and so does
- * `edge-transparency` (the lateral edge film, painted by `bristle-round`): its
- * name does not start `bristle-`, so a prefix test would run the visible-alpha
- * check on it and fail the alpha-law contract — the display film blur makes
- * the exported RGB and alpha intentionally disagree at the fringe.
- *
- * probe.ts carries the IDENTICAL predicate for its visible-alpha selection;
- * the two sides must agree on which captures are bristle captures. The
- * refusal of a skip on any other scenario is never weakened.
- */
-function isBristleCapture(scenario) {
-  return scenario.startsWith('bristle-') || scenario === 'edge-transparency'
-}
-
-/**
  * 64-31: the shipped alpha law enforced on a capture, in EVERY mode.
  *
  * OPAQUE — committed and exported storage alpha is OPAQUE: the opaque-export
@@ -233,7 +217,7 @@ function alphaLawFailures(data) {
     )
     return failures
   }
-  const bristle = isBristleCapture(String(data.scenario))
+  const bristle = String(data.scenario).startsWith('bristle-')
   if (bristle) {
     if (typeof data.visibleAlphaSkip !== 'string' || data.visibleAlphaSkip.length === 0) {
       failures.push(
@@ -1055,418 +1039,6 @@ function bristleLineFailures(data) {
   return failures
 }
 
-// Spec 10: the edge-transparency station bars. The law is ONE mechanism — the
-// LATERAL THRESHOLD DISSOLVE — and never a film. UAT 2026-11-25 rejected every
-// film in every form: a lateral DEPTH film sets each fringe cell's lerp target
-// to a paler pigment, so every fringe cell REPLACES the same-sheet stroke
-// beneath it and the paper reads as a smooth opaque white veil (#1/#3/#4); a
-// UNIFORM share washes the whole mark and leaves the falloff invisible — the
-// artist's "always full transparence" (#5). Uniform opacity is the spec's own
-// non-goal.
-//
-//   threshold += amount · SHIFT · t^e, banded from EDGE_START (0.30) to the
-//   silhouette, with e = 2^(2b - 1) at falloff bias b. A cell under the
-//   raised threshold never reaches the deposit, so it is INERT — the
-//   underlayer survives untouched — while a surviving cell prints the mark's
-//   OWN pigment at full depth.
-//
-// The witnesses:
-//   - the CORE keeps the reference's cover AND ink (ratio 1 / 1): a uniform
-//     share reads below 1 on both and the ink bar is its teeth;
-//   - the RIM's cover share (base replacement) falls to 1 - amount;
-//   - the `print` profile — the coverage raster's fraction of texels at or
-//     above half the core peak — stays ~1 at the core, falls to
-//     `1 - amount·t^e` across the band (modulo the paper tooth's CDF) and to
-//     `1 - amount` at the silhouette. A depth film prints EVERY texel and
-//     reads 1 at every station; it cannot pass.
-//
-// The cover and ink channels are normalised against the REFERENCE capture at
-// the SAME row (the neutral baseline). Normalising by the capture's own peak
-// cannot work — the base profile is not flat (the neutral baseline peaks
-// off-centre at +15 px, 0.8188 vs 0.7493 on row 0), so core-at-0 would read
-// 0.915 and the identity could never pass. `print` is an ABSOLUTE fraction: a
-// fully opened row's reference mean is near zero, so a ratio would be noise.
-// Three stations, in SILHOUETTE units (`u = lateral / uFeatherEdge` — the same
-// denominator gatherBristle uses), with t = (u - EDGE_START) / (1 - EDGE_START):
-//   core (offset 0)     cover and ink both unchanged from the reference
-//   mid  (0.65·rim)     the band's midpoint (t = 0.5) — judged on `print`
-//   rim  (the rim)      cover share 1 - amount (0 at amount 100)
-//
-// THE CORE INK BAR IS THE LAW'S TEETH. The ink channel is the delivered
-// absorbance. At the CORE every stroke converges to the carried pigment, so
-// the capture's ink equals the reference's; a UNIFORM share converges to a
-// fraction of it and reads below the bar (the v5 failure, #5). The RAMP
-// stations get no ink bar (the printed cells converge to the same pigment, so
-// their mean ink is the cover's shape at the placement tolerance); the print
-// bars carry the sparsity, and the cover bars the base-replacement shape.
-//
-// THE SILHOUETTE IS THE REFERENCE'S GEOMETRIC RIM: the outermost coverage row
-// within 1 % of the peak (measured 2026-11-25: 15 px on the 1080 neutral).
-// The threshold dissolve moves the VISIBLE edge inward by a falloff-dependent
-// amount, so calibrating from the dissolve itself would put the same station
-// at a different u for every falloff; the stroke's silhouette never moves.
-// The anchor is guarded to at least 8 px — a degenerate profile fails rather
-// than silently judging a 1 px station.
-//
-// The enclosed lane scan reuses the bristle-line gate's three bars.
-const EDGE_CORE_TOLERANCE = 0.06
-const EDGE_STATION_TOLERANCE = 0.12
-/** The core's ink bar: the core is the stroke's converged region and the
- *  capture/reference streams are the same script and seed, so the ink ratio
- *  lands on 1 exactly — the bar only absorbs the half-float readback and the
- *  JSON rounding. A uniform pigment share reads below it (the v5 failure). */
-const EDGE_INK_CORE_TOLERANCE = 0.06
-/** The printed-fraction bars' tolerance: the core prints 1, the rim 0 at
- *  amount 100, and the paper tooth's own distribution moves the measured
- *  fraction by a few percent at the calibration's parameters. */
-const EDGE_PRINT_TOLERANCE = 0.12
-/** The amount-0 identity's row tolerance: the profile arrays are recorded at
- *  four decimals, so a row may move by one rounding step under GPU ULP drift
- *  (measured 2026-11-25: every row identical to 4 dp). A real amount-0 change
- *  — any threshold nibble — moves whole rows far past this. */
-const EDGE_IDENTITY_TOLERANCE = 2e-4
-const EDGE_SILHOUETTE_MIN_PX = 8
-/** Mirrors BRISTLE_EDGE_START: where the dissolve begins, in silhouette units. */
-const EDGE_START = 0.3
-/** The dissolve band's midpoint in silhouette units: (START + 1) / 2. */
-const EDGE_MID_U = (EDGE_START + 1) / 2
-/** The printed fraction at the mid station is the law's shift mapped through
- *  the PAPER TOOTH's own height CDF, which is steeper than a linear ramp (the
- *  direction and the falloff ordering hold; the amplitude is the paper's, not
- *  a law constant — measured 2026-11-25 at the 10 px mid station (t = 0.5):
- *  0.16 / 0.71 / 0.90 against the law's 0.29 / 0.50 / 0.75 for falloff 0 /
- *  50 / 100). The band below only orders the falloffs and rejects a
- *  continuous film. */
-const EDGE_PRINT_MID_TOLERANCE = 0.25
-/** The core prints at least this share of its texels at every amount (the
- *  load/streak variation keeps a few cells open; measured 0.89). */
-const EDGE_PRINT_CORE_FLOOR = 0.85
-
-/** The reference's SILHOUETTE radius in document pixels: the |offset| of the
- *  coverage profile's peak. Inside the silhouette the neutral mark's film is
- *  flat, and outside it the feather's spill falls away, so the last flat row —
- *  the peak — sits at u = 1 (measured 2026-11-25: 15 px on the 1080 neutral).
- *  This is the GEOMETRIC station anchor: the shipped threshold dissolve moves
- *  the VISIBLE edge inward by a falloff-dependent amount, so calibrating the
- *  stations from the dissolve itself (a film-floor boundary) would put the
- *  same station at a different u for every falloff. Null for a blank profile
- *  or a peak inside EDGE_SILHOUETTE_MIN_PX. */
-function edgeSilhouettePx(reference) {
-  const profile = reference.edgeAcross
-  if (profile === null || typeof profile !== 'object') return null
-  const offsets = profile.offsets
-  const cover = profile.cover
-  if (!Array.isArray(offsets) || !Array.isArray(cover) || offsets.length !== cover.length) return null
-  let peak = 0
-  for (const value of cover) peak = Math.max(peak, value)
-  if (!(peak > 0)) return null
-  // The OUTERMOST row still within 1 % of the peak: the last flat row before
-  // the feather's spill falls away.
-  const flat = peak * 0.99
-  let at = 0
-  for (let i = cover.length - 1; i >= 0; i -= 1) {
-    if (cover[i] >= flat) {
-      at = Math.abs(offsets[i])
-      break
-    }
-  }
-  return at >= EDGE_SILHOUETTE_MIN_PX ? at : null
-}
-
-function edgeTransparencyFailures(data, reference) {
-  const failures = []
-  // The stroke's OWN id, not only the report echo: `toStudioStroke` defaults
-  // to `round`, a non-bristle preset whose path never runs `gatherBristle`,
-  // so the lateral film would never execute.
-  if (data.strokeBrush !== 'bristle-round') {
-    failures.push(
-      `strokeBrush ${JSON.stringify(data.strokeBrush)} is not 'bristle-round' ` +
-        '(the stroke must stamp a live bristle response; the `round` fallback never runs gatherBristle)',
-    )
-  }
-  if (data.brush !== 'bristle-round') {
-    failures.push(
-      `brush ${JSON.stringify(data.brush)} is not 'bristle-round' (the report must echo the live response)`,
-    )
-  }
-  if (!Number.isFinite(data.edgeAmount) || data.edgeAmount < 0 || data.edgeAmount > 100) {
-    failures.push(`edgeAmount ${JSON.stringify(data.edgeAmount)} is not a 0..100 knob (the capture must echo it)`)
-  }
-  if (!Number.isFinite(data.edgeFalloff) || data.edgeFalloff < 0 || data.edgeFalloff > 100) {
-    failures.push(`edgeFalloff ${JSON.stringify(data.edgeFalloff)} is not a 0..100 knob (the capture must echo it)`)
-  }
-  if (reference === null || typeof reference !== 'object' || reference.width !== data.width) {
-    return [
-      ...failures,
-      `width ${data.width} does not match the reference ${reference && reference.width} ` +
-        '(the silhouette is calibrated in the same document pixels)',
-    ]
-  }
-  const profile = data.edgeAcross
-  if (
-    profile === null ||
-    typeof profile !== 'object' ||
-    !Array.isArray(profile.offsets) ||
-    !Array.isArray(profile.cover) ||
-    !Array.isArray(profile.ink)
-  ) {
-    return [...failures, 'capture is missing edgeAcross { offsets, cover, ink }; re-run the edge-transparency probe']
-  }
-  const offsets = profile.offsets
-  const cover = profile.cover
-  const ink = profile.ink
-  if (offsets.length !== cover.length || offsets.length !== ink.length || offsets.length === 0) {
-    return [
-      ...failures,
-      `edgeAcross arrays disagree in length (${offsets.length}/${cover.length}/${ink.length}) — no station can be read`,
-    ]
-  }
-  if (failures.some((line) => line.includes('edgeAmount') || line.includes('edgeFalloff'))) {
-    return failures
-  }
-  const amount = data.edgeAmount / 100
-  const bias = data.edgeFalloff / 100
-  const exponent = 2 ** (2 * bias - 1)
-  let peak = 0
-  for (const value of cover) peak = Math.max(peak, value)
-  if (!(peak > 0)) {
-    return [...failures, 'the coverage profile is blank (peak 0) — the stroke deposited no film']
-  }
-  // The film is the coverage ratio against the neutral reference at the same
-  // row: the exact factor the gather applied (1 by identity at amount 0).
-  const referenceProfile = reference.edgeAcross
-  if (
-    referenceProfile === null ||
-    typeof referenceProfile !== 'object' ||
-    !Array.isArray(referenceProfile.offsets) ||
-    !Array.isArray(referenceProfile.cover) ||
-    referenceProfile.offsets.length !== offsets.length ||
-    referenceProfile.offsets.some((value, index) => value !== offsets[index])
-  ) {
-    return [
-      ...failures,
-      'the reference carries no aligned edgeAcross cover profile (offsets arrays differ or are missing); ' +
-        'the station film cannot be normalised without a same-geometry neutral capture',
-    ]
-  }
-  const referenceCover = referenceProfile.cover
-  const referenceInk = Array.isArray(referenceProfile.ink) ? referenceProfile.ink : null
-  if (referenceInk === null || referenceInk.length !== offsets.length) {
-    return [
-      ...failures,
-      'the reference carries no aligned edgeAcross ink profile — the pigment share cannot be ' +
-        'measured without the neutral baseline\'s own absorbance; re-run the amount-0 baseline',
-    ]
-  }
-  // The amount-0 IDENTITY (2026-11-25). The raw export digests drift by GPU
-  // ULPs once the gather gains the threshold term (the comparator's field loop
-  // tolerates that for these gates), so the render's identity is proven HERE:
-  // every cover and ink row must match the pre-change baseline's row within
-  // EDGE_IDENTITY_TOLERANCE. A real amount-0 change — any film, any threshold
-  // nibble — moves whole rows far past it.
-  if (amount === 0) {
-    let worst = 0
-    let worstAt = 0
-    for (let i = 0; i < offsets.length; i += 1) {
-      const delta = Math.max(
-        Math.abs(cover[i] - referenceCover[i]),
-        Math.abs(ink[i] - referenceInk[i]),
-      )
-      if (delta > worst) {
-        worst = delta
-        worstAt = offsets[i]
-      }
-    }
-    if (worst > EDGE_IDENTITY_TOLERANCE) {
-      failures.push(
-        `amount-0 identity: the profile differs from the pre-change baseline by up to ` +
-          `${worst.toFixed(6)} at ${worstAt} px (tolerance ${EDGE_IDENTITY_TOLERANCE}) — ` +
-          'the edge law must be INERT at amount 0 (no threshold shift)',
-      )
-    }
-  }
-  const coverShareAt = (station) => {
-    const index = offsets.indexOf(station)
-    if (index < 0) return null
-    const baseline = referenceCover[index]
-    return baseline > 0 ? cover[index] / baseline : undefined
-  }
-  const pigmentAt = (station) => {
-    const index = offsets.indexOf(station)
-    if (index < 0) return null
-    const baseline = referenceInk[index]
-    return baseline > 0 ? ink[index] / baseline : undefined
-  }
-  const inkAt = (station) => {
-    const index = offsets.indexOf(station)
-    return index >= 0 ? ink[index] : null
-  }
-  // The station domain: the reference's GEOMETRIC silhouette (its coverage
-  // peak). The dissolve moves the VISIBLE edge inward by a falloff-dependent
-  // amount, so calibrating from the film itself (a floor boundary) would put
-  // the same station at a different u for every falloff; the stroke's
-  // silhouette never moves.
-  const silhouette = edgeSilhouettePx(reference)
-  if (silhouette === null) {
-    return [
-      ...failures,
-      `the reference profile cannot calibrate a silhouette (its coverage peak is under ` +
-        `${EDGE_SILHOUETTE_MIN_PX} px, or edgeAcross is missing); a capture cannot be judged without it`,
-    ]
-  }
-  const midStation = Math.round(EDGE_MID_U * silhouette)
-  const rimStation = silhouette
-  // The station's own position in silhouette units — the bars read the law at
-  // the u the whole-pixel station actually sits at.
-  const stationT = (station) => {
-    const u = Math.min(1, station / silhouette)
-    const t = (u - EDGE_START) / (1 - EDGE_START)
-    return Math.max(0, Math.min(1, t))
-  }
-  // The cover (base-replacement) share at a station: the printed fraction the
-  // dissolve leaves there (the survivors keep the full target). The CORE and
-  // RIM bars only: the mid's printed fraction is the paper tooth's own height
-  // CDF (steeper than the shift's ramp — see EDGE_PRINT_MID_TOLERANCE), so the
-  // mid is judged on the PRINT bar, the same law's product without the
-  // mean-vs-fraction ambiguity of the cover channel.
-  const printedAt = (station) => 1 - amount * stationT(station) ** exponent
-  const stations = [
-    ['core', 0, 1, EDGE_CORE_TOLERANCE],
-    ['rim', rimStation, 1 - amount, EDGE_STATION_TOLERANCE],
-  ]
-  for (const [label, station, expected, tolerance] of stations) {
-    const measured = coverShareAt(station)
-    if (measured === null) {
-      failures.push(`the coverage profile carries no row at the ${label} station ${station} px`)
-      continue
-    }
-    if (measured === undefined) {
-      failures.push(
-        `the reference carries no coverage at the ${label} station ${station} px; ` +
-          'the cover share cannot be normalised there (the neutral baseline must reach every station)',
-      )
-      continue
-    }
-    if (Math.abs(measured - expected) > tolerance) {
-      const hint =
-        label === 'core'
-          ? ' — the core must keep the reference\'s own replacement share at every falloff ' +
-            '(the edge is a dissolve, never a uniform film)'
-          : ' — the rim must read exactly 1 - amount'
-      failures.push(
-        `edge cover ${label} at ${station} px reads ${measured.toFixed(4)} ` +
-          `(expected ${expected.toFixed(4)} ± ${tolerance} at amount ${data.edgeAmount} / falloff ${data.edgeFalloff})${hint}`,
-      )
-    }
-  }
-  // The CORE ink bar (see the block comment): the stroke's converged region
-  // must keep the neutral reference's own pigment — the edge transparency may
-  // open the fringe, never thin the whole mark (uniform opacity is the spec's
-  // non-goal; UAT 2026-11-25 #5).
-  {
-    const [label, station, expected] = stations[0]
-    const measured = pigmentAt(station)
-    if (measured === null) {
-      failures.push(`the ink profile carries no row at the ${label} station ${station} px`)
-    } else if (measured === undefined) {
-      failures.push(
-        `the reference carries no ink at the ${label} station ${station} px; ` +
-          'the pigment share cannot be normalised there (the neutral baseline must reach every station)',
-      )
-    } else if (Math.abs(measured - expected) > EDGE_INK_CORE_TOLERANCE) {
-      failures.push(
-        `edge pigment core at ${station} px reads ${measured.toFixed(4)} ` +
-          `(expected ${expected.toFixed(4)} ± ${EDGE_INK_CORE_TOLERANCE} at amount ${data.edgeAmount} / falloff ${data.edgeFalloff}) — ` +
-          'the core must keep the full pigment: a UNIFORM share washes the whole mark (UAT 2026-11-25 #5, ' +
-          '"always full transparence") and a depth film sets a paler fringe pigment that replaces the ' +
-          'underlayer (the white veil); the edge transparency is the threshold dissolve alone',
-      )
-    }
-  }
-  // Spec 10 — THE SPARSE EDGE'S OWN WITNESS. A lateral depth film prints every
-  // texel at every station (the white veil); the shipped threshold dissolve
-  // prints the mark's own full-depth pigment in a SHARE of the cells and opens
-  // the rest completely, leaving the underlayer untouched. At amount 100 the
-  // printed fraction is ~1 at the core, 1 - t^e at the mid and 0 at the rim.
-  if (amount > 0) {
-    const printProfile = Array.isArray(profile.print) ? profile.print : null
-    if (printProfile === null || printProfile.length !== offsets.length) {
-      return [
-        ...failures,
-        'capture is missing the edgeAcross print profile (the sparse edge\'s witness); ' +
-          're-run the edge-transparency probe',
-      ]
-    }
-    const printAt = (station) => {
-      const index = offsets.indexOf(station)
-      return index >= 0 ? printProfile[index] : null
-    }
-    const printBars = [
-      ['core', 0, EDGE_PRINT_CORE_FLOOR, 0, 'floor'],
-      ['mid', midStation, printedAt(midStation), EDGE_PRINT_MID_TOLERANCE, 'band'],
-      ['rim', rimStation, 1 - amount, EDGE_PRINT_TOLERANCE, 'band'],
-    ]
-    for (const [label, station, expected, tolerance, kind] of printBars) {
-      const measured = printAt(station)
-      if (measured === null) {
-        failures.push(`the print profile carries no row at the ${label} station ${station} px`)
-        continue
-      }
-      const failed = kind === 'floor' ? measured < expected : Math.abs(measured - expected) > tolerance
-      if (failed) {
-        failures.push(
-          `edge print ${label} at ${station} px reads ${measured.toFixed(4)} ` +
-            `(${kind === 'floor' ? `expected at least ${expected.toFixed(4)}` : `expected ${expected.toFixed(4)} ± ${tolerance}`} ` +
-            `at amount ${data.edgeAmount} / falloff ${data.edgeFalloff}) — ` +
-            'the edge must DISSOLVE into threshold-opened specks over the untouched underlayer, never lay ' +
-            'a continuous thinner film: a depth film prints every texel and the paper shows as a milky veil',
-        )
-      }
-    }
-    const coreInk = inkAt(0)
-    const rimInk = inkAt(rimStation)
-    if (coreInk === null || rimInk === null) {
-      failures.push('the ink profile carries no core/rim row for the supporting direction check')
-    } else if (!(rimInk < coreInk)) {
-      failures.push(
-        `ink at the rim ${rimInk} is not below the core ${coreInk} ` +
-          '(the dissolve must open the rim; an unopened rim keeps the core pigment)',
-      )
-    }
-  }
-  const enclosed = data.edgeTiling && data.edgeTiling.enclosed
-  if (enclosed === null || typeof enclosed !== 'object') {
-    failures.push('edgeTiling.enclosed is missing (the enclosure scan never ran; a null scan cannot pass)')
-  } else {
-    const enclosedMissing = ['meanPct', 'fracPct', 'maxRunPx'].filter(
-      (field) => typeof enclosed[field] !== 'number',
-    )
-    if (enclosedMissing.length > 0) {
-      failures.push(`edgeTiling.enclosed is missing ${enclosedMissing.join(', ')}`)
-    } else {
-      if (enclosed.meanPct > ENCLOSED_MEAN_MAX_PCT) {
-        failures.push(
-          `edgeTiling.enclosed.meanPct ${enclosed.meanPct} exceeds ${ENCLOSED_MEAN_MAX_PCT}% ` +
-            `at ${enclosed.offset} (a pale line enclosed by paint)`,
-        )
-      }
-      if (enclosed.fracPct > ENCLOSED_FRAC_MAX_PCT) {
-        failures.push(
-          `edgeTiling.enclosed.fracPct ${enclosed.fracPct} exceeds ${ENCLOSED_FRAC_MAX_PCT}% ` +
-            '(the pale lane spans the stroke, not a fibre)',
-        )
-      }
-      if (enclosed.maxRunPx > ENCLOSED_MAX_RUN_PX) {
-        failures.push(
-          `edgeTiling.enclosed.maxRunPx ${enclosed.maxRunPx} exceeds ${ENCLOSED_MAX_RUN_PX} px ` +
-            '(an enclosed lane, not an enclosed dot)',
-        )
-      }
-    }
-  }
-  return failures
-}
-
 /**
  * 64-29: the mask the bristle-tip scenario registers itself (probe.ts).
  *  Any other requested id is a deliberate unknown: the capture must show the
@@ -1665,9 +1237,6 @@ const SCENARIO_INVARIANTS = {
   'bristle-line': bristleLineFailures,
   'bristle-line-over': bristleLineFailures,
   'bristle-tip': bristleTipFailures,
-  // Spec 10: the lateral edge film's three station bars (reference-aware: the
-  // visible silhouette is calibrated from the neutral baseline's profile).
-  'edge-transparency': edgeTransparencyFailures,
 }
 
 /** Run the scenario's invariant function, if it has one. `reference` is the
@@ -2003,7 +1572,6 @@ if (mode === 'differs') {
 
 let differing = 0
 let missing = 0
-let edgeDrift = 0
 for (const field of FIELDS) {
   const a = actual[field]
   const b = refData[field]
@@ -2028,29 +1596,9 @@ for (const field of FIELDS) {
     console.log(`absent    ${field.padEnd(18)} ${a}  (baseline predates the field; not compared)`)
     continue
   }
-  // Spec 10 (2026-11-25): the amount-0 identity is a SEMANTIC identity. The
-  // edge law's paper-threshold term changes the gather's GPU codegen (the new
-  // dataflow reorders the bristle summation by a few ULPs), so an amount-0
-  // capture's raw export digests can differ from the PRE-change baseline while
-  // the rendered scene is identical — the measured row means match to the
-  // export's own 8-bit precision. The identity is proven by the edge
-  // invariant, which requires every cover and ink row to match the baseline
-  // within EDGE_IDENTITY_TOLERANCE, and by the alpha-law fields compared
-  // here. Digests are drift EVIDENCE, never a failure, and ONLY for the edge
-  // gates at amount 0 — every other gate keeps byte-exact digests.
-  const edgeIdentity =
-    mode === 'baseline' && actual.gate.startsWith('edge-transparency') && actual.edgeAmount === 0
   if (a !== b) {
-    if (edgeIdentity && field.startsWith('digest')) {
-      edgeDrift += 1
-      console.log(
-        `drift     ${field.padEnd(18)} capture=${a} reference=${b}  ` +
-          '(ULP-level GPU drift; the amount-0 profile identity is asserted)',
-      )
-    } else {
-      differing += 1
-      console.log(`DIFFER    ${field.padEnd(18)} capture=${a} reference=${b}`)
-    }
+    differing += 1
+    console.log(`DIFFER    ${field.padEnd(18)} capture=${a} reference=${b}`)
   } else {
     console.log(`equal     ${field.padEnd(18)} ${a}`)
   }
@@ -2117,10 +1665,7 @@ if (
 const scenarioNote = SCENARIO_INVARIANTS[actual.scenario]
   ? ' and the scenario invariants hold'
   : ''
-const equalityNote =
-  edgeDrift > 0
-    ? `all ${FIELDS.length} fields equal except ${edgeDrift} digest(s), drifted within the ` +
-      'amount-0 profile-identity tolerance (ULP-level GPU codegen, not a law change)'
-    : `all ${FIELDS.length} fields equal`
-console.log(`RESULT: PASS — ${equalityNote}${scenarioNote} (${gate} vs ${counterpart})`)
+console.log(
+  `RESULT: PASS — all ${FIELDS.length} fields equal${scenarioNote} (${gate} vs ${counterpart})`,
+)
 console.log('=========================================================')

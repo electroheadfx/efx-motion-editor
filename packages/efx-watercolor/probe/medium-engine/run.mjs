@@ -237,7 +237,7 @@ const gateFlag = args.indexOf('--gate')
 const gate = gateFlag >= 0 ? args[gateFlag + 1] : undefined
 if (!gate) {
   console.error(
-    'usage: node run.mjs --gate <name> [--scenario cover|cover-over-wet|cover-advect|cover-lift|watercolor-50|white-over-blue|cover-textured|red-over-blue-50|bristle-edge|bristle-wet|bristle-line|bristle-end|bristle-tip|edge-transparency|emboss-smooth] [--emboss <-100..100>] [--body <0..100>] [--light <0..4>] [--size <32..4096>] [--brush <id>] [--wet-mode <0|1>] [--texture <mask id>] [--drive <stop|lift|decay|mouse|mouse-lift|bake>] [--edge <0..100>] [--falloff <0..100>]   (e.g. neutral-identity)',
+    'usage: node run.mjs --gate <name> [--scenario cover|cover-over-wet|cover-advect|cover-lift|watercolor-50|white-over-blue|cover-textured|red-over-blue-50|bristle-edge|bristle-wet|bristle-line|bristle-end|bristle-tip|emboss-smooth] [--emboss <-100..100>] [--body <0..100>] [--light <0..4>] [--size <32..4096>] [--brush <id>] [--wet-mode <0|1>] [--texture <mask id>] [--drive <stop|lift|decay|mouse|mouse-lift|bake>]   (e.g. neutral-identity)',
   )
   console.error(
     '       every operand except --gate is optional and additive; an omitted operand writes no key/value, so the neutral gate keeps reproducing the committed baseline',
@@ -295,56 +295,19 @@ if (bodyRaw !== undefined) {
 // (cover geometry, covering stroke left wet) and `cover-lift` (fixed cover
 // geometry, then a Lift stroke); 64-24 adds `bristle-wet` (two ages on one
 // sheet); 64-29 adds `bristle-tip` (the texture-tip A/B); quick 261123-hr5
-// adds `emboss-smooth` (the signed-emboss smoothing relation); Spec 10 adds
-// `edge-transparency` (the lateral edge-film identity and sweep gate). This
-// closed list and probe.ts readScenario's must stay literal-identical.
+// adds `emboss-smooth` (the signed-emboss smoothing relation). This closed
+// list and probe.ts readScenario's must stay literal-identical.
 const scenarioFlag = args.indexOf('--scenario')
 const scenarioRaw = scenarioFlag >= 0 ? args[scenarioFlag + 1] : undefined
 let scenario
 if (scenarioRaw !== undefined) {
-  if (scenarioRaw !== 'cover' && scenarioRaw !== 'cover-over-wet' && scenarioRaw !== 'watercolor-50' && scenarioRaw !== 'white-over-blue' && scenarioRaw !== 'cover-advect' && scenarioRaw !== 'cover-lift' && scenarioRaw !== 'cover-textured' && scenarioRaw !== 'red-over-blue-50' && scenarioRaw !== 'bristle-edge' && scenarioRaw !== 'bristle-wet' && scenarioRaw !== 'bristle-line' && scenarioRaw !== 'bristle-tip' && scenarioRaw !== 'bristle-end' && scenarioRaw !== 'edge-transparency' && scenarioRaw !== 'emboss-smooth') {
+  if (scenarioRaw !== 'cover' && scenarioRaw !== 'cover-over-wet' && scenarioRaw !== 'watercolor-50' && scenarioRaw !== 'white-over-blue' && scenarioRaw !== 'cover-advect' && scenarioRaw !== 'cover-lift' && scenarioRaw !== 'cover-textured' && scenarioRaw !== 'red-over-blue-50' && scenarioRaw !== 'bristle-edge' && scenarioRaw !== 'bristle-wet' && scenarioRaw !== 'bristle-line' && scenarioRaw !== 'bristle-tip' && scenarioRaw !== 'bristle-end' && scenarioRaw !== 'emboss-smooth') {
     console.error(
-      `invalid --scenario "${scenarioRaw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue", "cover-advect", "cover-lift", "cover-textured", "red-over-blue-50", "bristle-edge", "bristle-wet", "bristle-line", "bristle-end", "edge-transparency", "emboss-smooth" or "bristle-tip")`,
+      `invalid --scenario "${scenarioRaw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue", "cover-advect", "cover-lift", "cover-textured", "red-over-blue-50", "bristle-edge", "bristle-wet", "bristle-line", "bristle-end", "emboss-smooth" or "bristle-tip")`,
     )
     process.exit(1)
   }
   scenario = scenarioRaw
-}
-
-// Spec 10: the two edge-film knobs, integers 0..100, valid ONLY with
-// `--scenario edge-transparency` — the page refuses them elsewhere too, so a
-// capture can never silently paint with a knob its gate does not judge.
-// Omitted writes no key/value, keeping every other query byte-identical.
-const edgeFlag = args.indexOf('--edge')
-const edgeRaw = edgeFlag >= 0 ? args[edgeFlag + 1] : undefined
-let edge
-if (edgeRaw !== undefined) {
-  const value = Number(edgeRaw)
-  if (!Number.isInteger(value) || value < 0 || value > 100) {
-    console.error(`invalid --edge "${edgeRaw}" (expected an integer 0..100)`)
-    process.exit(1)
-  }
-  if (scenario !== 'edge-transparency') {
-    console.error('--edge is only valid with --scenario edge-transparency')
-    process.exit(1)
-  }
-  edge = value
-}
-
-const falloffFlag = args.indexOf('--falloff')
-const falloffRaw = falloffFlag >= 0 ? args[falloffFlag + 1] : undefined
-let falloff
-if (falloffRaw !== undefined) {
-  const value = Number(falloffRaw)
-  if (!Number.isInteger(value) || value < 0 || value > 100) {
-    console.error(`invalid --falloff "${falloffRaw}" (expected an integer 0..100)`)
-    process.exit(1)
-  }
-  if (scenario !== 'edge-transparency') {
-    console.error('--falloff is only valid with --scenario edge-transparency')
-    process.exit(1)
-  }
-  falloff = value
 }
 
 // 64-10: optional square-sheet size. Omitted keeps the phase-default sheet,
@@ -510,9 +473,7 @@ const pageQuery =
   (over === undefined ? '' : '&over=1') +
   (wetMode === undefined ? '' : `&wetMode=${wetMode}`) +
   (texture === undefined ? '' : `&texture=${encodeURIComponent(texture)}`) +
-  (drive === undefined ? '' : `&drive=${encodeURIComponent(drive)}`) +
-  (edge === undefined ? '' : `&edge=${edge}`) +
-  (falloff === undefined ? '' : `&falloff=${falloff}`)
+  (drive === undefined ? '' : `&drive=${encodeURIComponent(drive)}`)
 const resultPath = join(outDir, `${gate}.json`)
 
 const esbuildCandidates = [

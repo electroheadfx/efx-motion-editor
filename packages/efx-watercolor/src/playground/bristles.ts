@@ -266,44 +266,6 @@ export const BRISTLE_DRY_EDGE = 0.35;
 /** §5.4 `paint.landing` — the spread of the staggered landing (1.6). */
 export const BRISTLE_LANDING = 1.6;
 
-// ------------------------- Spec 10: edge transparency and falloff -------------------------
-//
-//  Edge transparency (amount, 0..1) and Edge falloff (shape bias, 0..1) drive
-//  ONE mechanism — the LATERAL DISSOLVE (`bristleEdgeShift`), in SILHOUETTE
-//  units: 1 is the visible rim (BRISTLE_FEATHER_EDGE of the nominal
-//  footprint), not the footprint's own edge. The amount raises the gather's
-//  paper-tooth THRESHOLD across the band, so the fringe opens into full-depth
-//  specks of the mark's own pigment and every opened cell is INERT — the
-//  underlayer is left exactly as it was, and the core keeps its paint.
-//
-//  The two rejected forms (UAT 2026-11-25): a lateral DEPTH film — its lerp
-//  target is a paler pigment (cA·film), so a fringe dab replaces the
-//  same-sheet stroke beneath it with a thinner film and the paper shows as an
-//  opaque white veil (#1/#3/#4); and a UNIFORM share — the whole mark washes
-//  and the falloff is invisible (#5, "always full transparence"). Uniform
-//  opacity is the spec's own non-goal. The threshold is the edge mechanism
-//  this engine already ships (Feather, the takeoff); the twin below mirrors
-//  the gather's expression and the constants are bound as uniforms in
-//  `bindGather`, so the shader cannot re-type them.
-/** Where the dissolve starts, in silhouette units (0.30). Was 0.55: with the
- *  band confined to the outer 30% of the footprint the amount read as a rim
- *  cut and falloff 0 and 100 were indistinguishable live (UAT 2026-11-25
- *  #5). 0.30 lets the broad shape reach the middle of the mark while the rim
- *  shape still hugs the silhouette. */
-export const BRISTLE_EDGE_START = 0.3;
-/** Falloff 0's exponent (0.5): the broad dissolve — √t rises early. */
-export const BRISTLE_EDGE_EXP_MIN = 0.5;
-/** Falloff 100's exponent (2): the rim dissolve — the band hugs the silhouette. */
-export const BRISTLE_EDGE_EXP_MAX = 2;
-/**
- * The rim's paper-threshold rise at amount 100 (1.1): the dissolve's scale.
- * Calibrated like BRISTLE_TAKEOFF_SHIFT — a full-pressure body (1.0 · 0.97)
- * clears the paper's -0.25 floor with ~1.2 — so 1.1 opens the outermost band
- * completely (no deposit, no erase: the spec's rim law) while the falloff
- * spreads the opening across the band.
- */
-export const BRISTLE_EDGE_SHIFT = 1.1;
-
 // ------------------------- the contact pressure law (spike 004) -------------------------
 //
 //  The pointer's pressure is NOT the pressure the reference's carrier and
@@ -434,42 +396,6 @@ export function gatherSoftness(_feather: number): number {
   // The band is the reference's constant; Feather never widens it (that was
   // the inversion: a wider band lowers the threshold and ADDS paint).
   return BRISTLE_SOFTNESS;
-}
-
-/**
- * Spec 10: `e = 2^(2b - 1)` — the falloff shape bias as the fade's exponent,
- * clamped to `[BRISTLE_EDGE_EXP_MIN, BRISTLE_EDGE_EXP_MAX]`. Canonical
- * falloff 0 / 50 / 100 maps to 0.5 / 1 / 2: the broad fade, linear, and the
- * rim fade. A non-finite bias reads as linear (1): a missing record key
- * replays the neutral shape, never NaN.
- */
-export function edgeFalloffExponent(bias: number): number {
-  if (!Number.isFinite(bias)) return 1;
-  return clamp(2 ** (2 * clamp01(bias) - 1), BRISTLE_EDGE_EXP_MIN, BRISTLE_EDGE_EXP_MAX);
-}
-
-/**
- * Spec 10: the lateral DISSOLVE — the mirror of the gather's paper-threshold
- * rise. `lateral` is in SILHOUETTE units (1 = the visible rim), `amount`
- * (0..1) is Edge transparency and `falloff` (0..1) the shape bias. The rise
- * is `amount · BRISTLE_EDGE_SHIFT · t^e` with `t` the normalised distance
- * into the band past BRISTLE_EDGE_START and `e = edgeFalloffExponent(falloff)`:
- * 0 at the band's start, BRISTLE_EDGE_SHIFT at the silhouette, and the falloff
- * chooses how early the dissolve begins (broad √t / linear / rim t²). Amount 0
- * (or a non-finite argument) returns 0 — the threshold never moves.
- *
- * Cells BEYOND the silhouette clamp to the rim rise by design: the thin tail
- * opens completely (the spec's inert rim at amount 100 — no deposit, no
- * erase). A threshold-opened cell never reaches the deposit, so the
- * underlayer survives it untouched.
- */
-export function bristleEdgeShift(lateral: number, amount: number, falloff: number): number {
-  if (!Number.isFinite(lateral) || !Number.isFinite(amount) || !Number.isFinite(falloff)) return 0;
-  const a = clamp01(amount);
-  if (a <= 0) return 0;
-  const u = clamp01(lateral);
-  const t = clamp01((u - BRISTLE_EDGE_START) / Math.max(1 - BRISTLE_EDGE_START, 1e-4));
-  return a * BRISTLE_EDGE_SHIFT * t ** edgeFalloffExponent(falloff);
 }
 
 // ------------------------- the trace and edge formulas (64-23) -------------------------

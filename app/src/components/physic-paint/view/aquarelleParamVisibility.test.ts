@@ -44,9 +44,7 @@ const MEDIA = ['watercolor', 'acrylic'] as const;
 // The ROW survives in AQUARELLE_PARAM_ROWS; only its visibility went.
 // quick 261124-iq9: Viscosity and Water leave the Gouache (acrylic) context,
 // and Pickup/Refill leave it too (bristle-program keys), leaving four rows.
-// Spec 10: Edge transparency and Edge falloff join the bristle context, so the
-// Gouache paint context renders six rows.
-const P_A = 'load|pickup|dry|feather|edgeFade|edgeFalloff';
+const P_A = 'load|pickup|dry|feather';
 // rev 3: Pickup joins Refill as bristle-only — `uPickupRate` (carrier) and
 // `uSmear` (gather) are the only bindings, so the fluid row is dead and the
 // watercolor context hides it.
@@ -107,8 +105,8 @@ describe('Matrix 2 — the row set per (tool, medium) context', () => {
     }
   });
 
-  it('reproduces the gated row counts: P-A 6, P-W 8, W 6, L 1', () => {
-    expect(visibleAquarelleParamRows('brush', 'acrylic'), 'P-A').toHaveLength(6);
+  it('reproduces the gated row counts: P-A 4, P-W 8, W 6, L 1', () => {
+    expect(visibleAquarelleParamRows('brush', 'acrylic'), 'P-A').toHaveLength(4);
     expect(visibleAquarelleParamRows('brush', 'watercolor'), 'P-W').toHaveLength(8);
     expect(visibleAquarelleParamRows('water', 'watercolor'), 'W').toHaveLength(6);
     expect(visibleAquarelleParamRows('water', 'acrylic'), 'W (acrylic)').toHaveLength(6);
@@ -207,7 +205,7 @@ describe('groups — fixed order, empty groups dropped', () => {
 });
 
 describe('the row table itself', () => {
-  it('holds exactly the fifteen Matrix 2 rows in order', () => {
+  it('holds exactly the thirteen Matrix 2 rows in order', () => {
     expect(keys(AQUARELLE_PARAM_ROWS)).toBe(
       [
         'viscosity',
@@ -218,8 +216,6 @@ describe('the row table itself', () => {
         'water',
         'dry',
         'feather',
-        'edgeFade',
-        'edgeFalloff',
         'flow',
         'bleed',
         'edge',
@@ -321,22 +317,6 @@ describe('the shared row selector — isAquarelleParamRowVisible', () => {
       expect(isAquarelleParamRowVisible('water', medium, 'viscosity'), `water + ${medium}`).toBe(
         true,
       );
-    }
-  });
-
-  // Spec 10: the two edge knobs are bristle-only. The paint branch plus the
-  // bristle medium is the whole law, so the fluid paint context and the Water
-  // tool never see them.
-  it('shows the edge pair on Brush + acrylic only (bristle-only rows)', () => {
-    for (const key of ['edgeFade', 'edgeFalloff'] as const) {
-      expect(isAquarelleParamRowVisible('brush', 'acrylic', key), `brush + acrylic ${key}`).toBe(
-        true,
-      );
-      expect(isAquarelleParamRowVisible('brush', 'watercolor', key), `watercolor ${key}`).toBe(
-        false,
-      );
-      expect(isAquarelleParamRowVisible('water', 'acrylic', key), `water tool ${key}`).toBe(false);
-      expect(isAquarelleParamRowVisible('lift', 'acrylic', key), `eraser ${key}`).toBe(false);
     }
   });
 
