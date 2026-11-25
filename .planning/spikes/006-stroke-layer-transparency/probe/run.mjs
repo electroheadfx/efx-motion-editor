@@ -28,7 +28,7 @@ const readFlag = (name, fallback) => {
 }
 
 const scenario = readFlag('scenario', 'composite')
-const size = Number(readFlag('size', scenario === 'q3b' || scenario === 'q3c' ? 2048 : 540))
+const size = Number(readFlag('size', scenario === 'q3b' || scenario === 'q3c' || scenario === 'q4' ? 2048 : 540))
 const start = Number(readFlag('start', 0.30))
 const amount = Number(readFlag('amount', 100))
 const stride = Number(readFlag('stride', 2))
@@ -38,7 +38,8 @@ const falloff = Number(readFlag('falloff', 50))
 const entry = scenario === 'cost' ? 'cost.ts'
   : scenario === 'q3b' ? 'q3b.ts'
     : scenario === 'q3c' ? 'q3c.ts'
-      : 'probe.ts'
+      : scenario === 'q4' ? 'q4.ts'
+        : 'probe.ts'
 const gate = readFlag('gate', `${scenario}-${size}-s${start}-a${amount}`)
 
 const pageQuery =
@@ -266,6 +267,56 @@ if (scenario === "q3b") {
     console.log(`     capture         : digest ${q.captureParity.digestEqual ? "equal" : "DIFFERS"}, render vs restored max ${q.captureParity.renderVsRestoredMaxChannel}/255`)
     console.log(`     bake replay     : ${q.bakeReplay.pass ? "equal" : "DIFFERS"} (stroke max ${q.bakeReplay.sameStrokeMax})`)
   }
+} else if (scenario === "q4") {
+  const r = result
+  console.log(`  renderer      : ${r.renderer}`)
+  console.log(`  sheet         : requested ${r.sheet.requested}, allocated ${r.sheet.actual} (${r.sheet.pixels} texels)`)
+  console.log(`  stroke rect   : ${JSON.stringify(r.geometry.strokeRect)} = ${r.geometry.strokePixels} texels`)
+  const fz = r.frozen
+  console.log(`  frozen encoder: bands [${fz.bands.join(",")}] (D-optimal pinned ${fz.pinnedByDoptimal}), rank-one J, ${fz.iterations} LM iterations, seed mix`)
+  console.log(`  write-back    : ${fz.writeBack}`)
+  console.log(`  bars          : max <= ${r.threshold.maxChannel}/255, p95 <= ${r.threshold.p95Channel}/255, ${r.threshold.overTexels} texels over`)
+  console.log("")
+  console.log("  BAR 1 — live vs merged (re-rendered through ALL 16 bands, every texel)")
+  for (const c of r.bar1) {
+    console.log(`     ${c.scene.padEnd(7)} falloff ${String(c.falloff).padStart(3)}  max ${String(c.maxChannel).padStart(3)}  mean ${fmt(c.meanChannel).padStart(5)}  p95 ${String(c.p95Channel).padStart(3)}  over ${String(c.overThreshold).padStart(7)}  ${c.texels} texels  ${c.pass ? "PASS" : "FAIL"}`)
+    console.log(`             betweenness (sampled every 8th): ${c.betweenness.outside} of ${c.betweenness.sampled} texels outside the interval`)
+  }
+  console.log(`     overall: max ${r.bar1Overall.maxChannel}, p95 ${r.bar1Overall.p95Channel}, ${r.bar1Overall.overThreshold} over of ${r.bar1Overall.texels} — ${r.bar1Overall.pass ? "PASS" : "FAIL"}`)
+  console.log("")
+  const b2 = r.bar2
+  console.log("  BAR 2 — amount 0 bypasses the layer path")
+  const cmp = (label, c) => {
+    const lt = c.layers.find((l) => l.layer === "lastTouch")
+    const extra = c.differingLayers.filter((n) => n !== "lastTouch")
+    console.log(`     ${label.padEnd(26)} paint ${c.paintIdentical ? "IDENTICAL" : "DIFFERS" + (extra.length ? " [" + extra.join(",") + "]" : "")}   crop ${c.rectEqual ? "equal" : "differs"}${lt && lt.differingValues ? `   lastTouch ${lt.differingValues} vals, max delta ${lt.maxAbsDelta.toExponential(2)} s` : ""}`)
+  }
+  cmp("first visit vs replay", b2.shippedReplay)
+  cmp("replay vs replay", b2.visitStability)
+  console.log(`     digests: A ${b2.digests.strokeA}  B ${b2.digests.strokeB}  A+B (first visit) ${b2.digests.sameVisit}  visit replays ${b2.digests.visitReplay1}/${b2.digests.visitReplay2}`)
+  console.log(`     layer path at amount 0 vs shipped: max ${b2.amountZeroLayerPath.maxChannel}/255, mean ${fmt(b2.amountZeroLayerPath.meanChannel)}, p95 ${b2.amountZeroLayerPath.p95Channel} (${b2.amountZeroLayerPath.coveredTexels} covered texels) — the bypass is required`)
+  console.log("")
+  const b3 = r.bar3
+  console.log("  BAR 3 — capture round trip of a merged sheet")
+  console.log(`     display pre vs restored: ${b3.displayVsRestored.differingBytes} differing bytes, max ${b3.displayVsRestored.maxChannel}/255 — ${b3.pass ? "byte-identical" : "DIFFERS"}`)
+  console.log(`     captured state vs the merged sheet: max ${b3.stateCheck.maxAbs} (a ${b3.stateCheck.byLane.a}, b ${b3.stateCheck.byLane.b}, s ${b3.stateCheck.byLane.s}, cover ${b3.stateCheck.byLane.cover})`)
+  console.log(`     in-place form (ink = fit - fixed): ${b3.poolSplit.differingBytes} differing bytes, max ${b3.poolSplit.maxChannel}/255`)
+  console.log("")
+  const b4 = r.bar4
+  console.log("  BAR 4 — determinism")
+  cmp("A: first paint vs replay", b4.scriptReplay.strokeA)
+  cmp("A: replay vs replay", b4.scriptReplay.strokeARepeat)
+  cmp("B: replay vs replay", b4.scriptReplay.strokeB)
+  cmp("visit: first vs replay", b4.scriptReplay.sameVisit)
+  cmp("visit: replay vs replay", b4.scriptReplay.visitStability)
+  console.log(`     merge twice: A ${b4.mergeReplay.a.differingBytes} B ${b4.mergeReplay.b.differingBytes} it ${b4.mergeReplay.iterations.differingBytes} differing bytes`)
+  console.log("")
+  console.log(`  BAR 5 — bake replay: ${r.bar5.scope}`)
+  console.log(`     workbench proves: merge is pure ${r.bar5.workbenchProven.mergeIsPure ? "yes" : "NO"}, merged sheet survives capture ${r.bar5.workbenchProven.mergedSurvivesCapture ? "yes" : "NO"}, script paints the same bytes ${r.bar5.workbenchProven.scriptPaintsSameBytes ? "yes" : "NO"}`)
+  for (const g of r.bar5.implementationGate) console.log(`     quick gate: ${g}`)
+  console.log("")
+  const v = r.verdict
+  console.log(`  VERDICT       : bar 1 ${v.bar1 ? "PASS" : "FAIL"}, bar 2 ${v.bar2 ? "PASS" : "FAIL"}, bar 3 ${v.bar3 ? "PASS" : "FAIL"}, bar 4 ${v.bar4 ? "PASS" : "FAIL"} — Q4 ${v.q4Pass ? "PASS" : "FAIL"} (${v.q4Scope})`)
 } else if (scenario === "cost") {
   const r = result
   console.log(`  renderer      : ${r.renderer}`)

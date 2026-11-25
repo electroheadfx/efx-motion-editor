@@ -133,6 +133,26 @@ reads as current code.
   space in the acceptance criterion, and disqualify hue comparisons on near-grey
   composites — hue is ill-conditioned there, so qualify it by chroma.
 
+- **A replay is only "the same script" from the same starting state — name it.** Spike
+  006 Q4: the engine carries the previous stroke's end direction/tip angle into the next
+  stroke's first dab (`scriptBegin` seeds from `lastDir`/`lastAngle`; `resetSheet` clears
+  neither), so an in-process replay after a reset inherits a different start and paints
+  differently. It is deterministic, not nondeterminism — pinning the carry to the
+  constructor's `[1,0]/0` reproduced the first paint byte for byte, and two fresh
+  processes produced identical full-capture digests. Log each run's start state; a parity
+  bar that does not name its starting state cannot be reproduced.
+- **Byte-identity of a capture is not byte-identity of a sheet.** A capture is cropped to
+  the engine's `everPainted` bbox, which drifts a few texels between runs while the paint
+  is identical; and a layer that is not zero outside the crop (a sentinel-stamped
+  timestamp) reads as different if you zero-fill. Compare the rendered display or the
+  union of the crops, and judge the layers the feature actually owns.
+- **Separate what the harness can prove from what only the implementation can.** A probe
+  can prove that a pass is a pure deterministic function of its inputs, that its output
+  survives capture/restore, and that a script replays; it cannot prove that the engine
+  *calls* it at the right lifecycle point (pointer vs scripted stroke end, bake replay).
+  Write those as named gate rows in the findings — a "deferred" line with no rows is a
+  silent gap.
+
 ## Tools & Libraries
 
 - `esbuild` from the root `node_modules` (bundle the probe, `--format=iife`).

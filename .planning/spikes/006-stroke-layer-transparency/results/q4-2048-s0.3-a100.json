@@ -1,0 +1,1481 @@
+{
+  "spike": "006",
+  "scenario": "q4",
+  "query": {
+    "requested": 2048,
+    "sheet": 2048,
+    "paperSeed": 12648430,
+    "start": 0.3,
+    "amount": 1
+  },
+  "threshold": {
+    "maxChannel": 2,
+    "p95Channel": 1,
+    "overTexels": 0
+  },
+  "frozen": {
+    "bands": [
+      1,
+      3,
+      5,
+      7,
+      9,
+      10,
+      11,
+      13
+    ],
+    "pinnedByDoptimal": true,
+    "dOptimal8": {
+      "name": "dOptimal8",
+      "indices": [
+        1,
+        3,
+        5,
+        7,
+        9,
+        10,
+        11,
+        13
+      ],
+      "mask": 11946,
+      "logDet": -28.399,
+      "weights": [
+        0.121,
+        0.446,
+        0.21,
+        0.446,
+        0.193,
+        0.527,
+        0.39,
+        0.597
+      ]
+    },
+    "rankOneJacobian": true,
+    "iterations": 4,
+    "seedMix": true,
+    "writeBack": "in place: ink = fit - fixed; display = ink + fixed = fit"
+  },
+  "reference": {
+    "commit": "d509a886d",
+    "codeIdentity": "git diff d509a886d HEAD -- packages/efx-watercolor/src app/src is empty (measured 2026-11-25)",
+    "engineSource": "the probe imports the shipped engine read-only; no engine file was modified"
+  },
+  "renderer": "WebKit WebGL | Google Inc. (Apple) | ANGLE (Apple, ANGLE Metal Renderer: Apple M3 Max, Unspecified Version)",
+  "bakeMs": 2947,
+  "sheet": {
+    "requested": 2048,
+    "actual": 2048,
+    "pixels": 4194304
+  },
+  "geometry": {
+    "strokeRect": {
+      "x0": 514,
+      "y0": 0,
+      "x1": 1381,
+      "y1": 1678
+    },
+    "strokePixels": 1454826,
+    "centreX": 1045,
+    "halfWidth": 407
+  },
+  "bar1": [
+    {
+      "scene": "paper",
+      "falloff": 0,
+      "texels": 1454826,
+      "maxChannel": 1,
+      "meanChannel": 0.16,
+      "p95Channel": 1,
+      "overThreshold": 0,
+      "worst": {
+        "at": [
+          740,
+          0
+        ],
+        "aEff": 0.073,
+        "got": [
+          254,
+          249,
+          249
+        ],
+        "want": [
+          254,
+          250,
+          249
+        ]
+      },
+      "pass": true,
+      "betweenness": {
+        "sampled": 70395,
+        "outside": 0
+      },
+      "bins": [
+        {
+          "aEff": "0-0.01",
+          "n": 638429,
+          "max": 1,
+          "mean": 0,
+          "over": 0
+        },
+        {
+          "aEff": "0.01-0.1",
+          "n": 73117,
+          "max": 1,
+          "mean": 0.07,
+          "over": 0
+        },
+        {
+          "aEff": "0.1-0.25",
+          "n": 95945,
+          "max": 1,
+          "mean": 0.29,
+          "over": 0
+        },
+        {
+          "aEff": "0.25-0.5",
+          "n": 168397,
+          "max": 1,
+          "mean": 0.52,
+          "over": 0
+        },
+        {
+          "aEff": "0.5-0.75",
+          "n": 118289,
+          "max": 1,
+          "mean": 0.59,
+          "over": 0
+        },
+        {
+          "aEff": "0.75-0.9",
+          "n": 44127,
+          "max": 1,
+          "mean": 0.53,
+          "over": 0
+        },
+        {
+          "aEff": "0.9-0.99",
+          "n": 27897,
+          "max": 1,
+          "mean": 0.26,
+          "over": 0
+        },
+        {
+          "aEff": "0.99-0.9999",
+          "n": 121779,
+          "max": 1,
+          "mean": 0.07,
+          "over": 0
+        },
+        {
+          "aEff": "0.9999-1.0001",
+          "n": 166846,
+          "max": 1,
+          "mean": 0,
+          "over": 0
+        }
+      ]
+    },
+    {
+      "scene": "paper",
+      "falloff": 50,
+      "texels": 1454826,
+      "maxChannel": 1,
+      "meanChannel": 0.16,
+      "p95Channel": 1,
+      "overThreshold": 0,
+      "worst": {
+        "at": [
+          732,
+          0
+        ],
+        "aEff": 0.148,
+        "got": [
+          252,
+          242,
+          241
+        ],
+        "want": [
+          252,
+          243,
+          241
+        ]
+      },
+      "pass": true,
+      "betweenness": {
+        "sampled": 70659,
+        "outside": 0
+      },
+      "bins": [
+        {
+          "aEff": "0-0.01",
+          "n": 632821,
+          "max": 1,
+          "mean": 0,
+          "over": 0
+        },
+        {
+          "aEff": "0.01-0.1",
+          "n": 47724,
+          "max": 1,
+          "mean": 0.05,
+          "over": 0
+        },
+        {
+          "aEff": "0.1-0.25",
+          "n": 64274,
+          "max": 1,
+          "mean": 0.25,
+          "over": 0
+        },
+        {
+          "aEff": "0.25-0.5",
+          "n": 106478,
+          "max": 1,
+          "mean": 0.49,
+          "over": 0
+        },
+        {
+          "aEff": "0.5-0.75",
+          "n": 142234,
+          "max": 1,
+          "mean": 0.57,
+          "over": 0
+        },
+        {
+          "aEff": "0.75-0.9",
+          "n": 94476,
+          "max": 1,
+          "mean": 0.54,
+          "over": 0
+        },
+        {
+          "aEff": "0.9-0.99",
+          "n": 74711,
+          "max": 1,
+          "mean": 0.28,
+          "over": 0
+        },
+        {
+          "aEff": "0.99-0.9999",
+          "n": 125262,
+          "max": 1,
+          "mean": 0.08,
+          "over": 0
+        },
+        {
+          "aEff": "0.9999-1.0001",
+          "n": 166846,
+          "max": 1,
+          "mean": 0,
+          "over": 0
+        }
+      ]
+    },
+    {
+      "scene": "paper",
+      "falloff": 100,
+      "texels": 1454826,
+      "maxChannel": 1,
+      "meanChannel": 0.13,
+      "p95Channel": 1,
+      "overThreshold": 0,
+      "worst": {
+        "at": [
+          729,
+          0
+        ],
+        "aEff": 0.204,
+        "got": [
+          251,
+          239,
+          238
+        ],
+        "want": [
+          251,
+          239,
+          237
+        ]
+      },
+      "pass": true,
+      "betweenness": {
+        "sampled": 68549,
+        "outside": 0
+      },
+      "bins": [
+        {
+          "aEff": "0-0.01",
+          "n": 629547,
+          "max": 1,
+          "mean": 0,
+          "over": 0
+        },
+        {
+          "aEff": "0.01-0.1",
+          "n": 33812,
+          "max": 1,
+          "mean": 0.03,
+          "over": 0
+        },
+        {
+          "aEff": "0.1-0.25",
+          "n": 40791,
+          "max": 1,
+          "mean": 0.2,
+          "over": 0
+        },
+        {
+          "aEff": "0.25-0.5",
+          "n": 78030,
+          "max": 1,
+          "mean": 0.43,
+          "over": 0
+        },
+        {
+          "aEff": "0.5-0.75",
+          "n": 101941,
+          "max": 1,
+          "mean": 0.51,
+          "over": 0
+        },
+        {
+          "aEff": "0.75-0.9",
+          "n": 104884,
+          "max": 1,
+          "mean": 0.5,
+          "over": 0
+        },
+        {
+          "aEff": "0.9-0.99",
+          "n": 130685,
+          "max": 1,
+          "mean": 0.26,
+          "over": 0
+        },
+        {
+          "aEff": "0.99-0.9999",
+          "n": 166265,
+          "max": 1,
+          "mean": 0.08,
+          "over": 0
+        },
+        {
+          "aEff": "0.9999-1.0001",
+          "n": 168871,
+          "max": 1,
+          "mean": 0,
+          "over": 0
+        }
+      ]
+    },
+    {
+      "scene": "stroke",
+      "falloff": 0,
+      "texels": 1454826,
+      "maxChannel": 2,
+      "meanChannel": 0.19,
+      "p95Channel": 1,
+      "overThreshold": 0,
+      "worst": {
+        "at": [
+          684,
+          751
+        ],
+        "aEff": 0.084,
+        "got": [
+          69,
+          61,
+          109
+        ],
+        "want": [
+          69,
+          59,
+          109
+        ]
+      },
+      "pass": true,
+      "betweenness": {
+        "sampled": 70395,
+        "outside": 15
+      },
+      "bins": [
+        {
+          "aEff": "0-0.01",
+          "n": 638429,
+          "max": 1,
+          "mean": 0,
+          "over": 0
+        },
+        {
+          "aEff": "0.01-0.1",
+          "n": 73117,
+          "max": 2,
+          "mean": 0.14,
+          "over": 0
+        },
+        {
+          "aEff": "0.1-0.25",
+          "n": 95945,
+          "max": 2,
+          "mean": 0.44,
+          "over": 0
+        },
+        {
+          "aEff": "0.25-0.5",
+          "n": 168397,
+          "max": 2,
+          "mean": 0.61,
+          "over": 0
+        },
+        {
+          "aEff": "0.5-0.75",
+          "n": 118289,
+          "max": 1,
+          "mean": 0.62,
+          "over": 0
+        },
+        {
+          "aEff": "0.75-0.9",
+          "n": 44127,
+          "max": 1,
+          "mean": 0.51,
+          "over": 0
+        },
+        {
+          "aEff": "0.9-0.99",
+          "n": 27897,
+          "max": 1,
+          "mean": 0.25,
+          "over": 0
+        },
+        {
+          "aEff": "0.99-0.9999",
+          "n": 121779,
+          "max": 1,
+          "mean": 0.08,
+          "over": 0
+        },
+        {
+          "aEff": "0.9999-1.0001",
+          "n": 166846,
+          "max": 1,
+          "mean": 0,
+          "over": 0
+        }
+      ]
+    },
+    {
+      "scene": "stroke",
+      "falloff": 50,
+      "texels": 1454826,
+      "maxChannel": 2,
+      "meanChannel": 0.17,
+      "p95Channel": 1,
+      "overThreshold": 0,
+      "worst": {
+        "at": [
+          661,
+          751
+        ],
+        "aEff": 0.081,
+        "got": [
+          68,
+          61,
+          109
+        ],
+        "want": [
+          68,
+          59,
+          109
+        ]
+      },
+      "pass": true,
+      "betweenness": {
+        "sampled": 70659,
+        "outside": 7
+      },
+      "bins": [
+        {
+          "aEff": "0-0.01",
+          "n": 632821,
+          "max": 1,
+          "mean": 0,
+          "over": 0
+        },
+        {
+          "aEff": "0.01-0.1",
+          "n": 47724,
+          "max": 2,
+          "mean": 0.12,
+          "over": 0
+        },
+        {
+          "aEff": "0.1-0.25",
+          "n": 64274,
+          "max": 2,
+          "mean": 0.36,
+          "over": 0
+        },
+        {
+          "aEff": "0.25-0.5",
+          "n": 106478,
+          "max": 2,
+          "mean": 0.58,
+          "over": 0
+        },
+        {
+          "aEff": "0.5-0.75",
+          "n": 142234,
+          "max": 1,
+          "mean": 0.59,
+          "over": 0
+        },
+        {
+          "aEff": "0.75-0.9",
+          "n": 94476,
+          "max": 1,
+          "mean": 0.51,
+          "over": 0
+        },
+        {
+          "aEff": "0.9-0.99",
+          "n": 74711,
+          "max": 1,
+          "mean": 0.26,
+          "over": 0
+        },
+        {
+          "aEff": "0.99-0.9999",
+          "n": 125262,
+          "max": 1,
+          "mean": 0.08,
+          "over": 0
+        },
+        {
+          "aEff": "0.9999-1.0001",
+          "n": 166846,
+          "max": 1,
+          "mean": 0,
+          "over": 0
+        }
+      ]
+    },
+    {
+      "scene": "stroke",
+      "falloff": 100,
+      "texels": 1454826,
+      "maxChannel": 2,
+      "meanChannel": 0.14,
+      "p95Channel": 1,
+      "overThreshold": 0,
+      "worst": {
+        "at": [
+          658,
+          713
+        ],
+        "aEff": 0.135,
+        "got": [
+          85,
+          67,
+          116
+        ],
+        "want": [
+          85,
+          65,
+          116
+        ]
+      },
+      "pass": true,
+      "betweenness": {
+        "sampled": 68549,
+        "outside": 6
+      },
+      "bins": [
+        {
+          "aEff": "0-0.01",
+          "n": 629547,
+          "max": 1,
+          "mean": 0,
+          "over": 0
+        },
+        {
+          "aEff": "0.01-0.1",
+          "n": 33812,
+          "max": 2,
+          "mean": 0.1,
+          "over": 0
+        },
+        {
+          "aEff": "0.1-0.25",
+          "n": 40791,
+          "max": 2,
+          "mean": 0.29,
+          "over": 0
+        },
+        {
+          "aEff": "0.25-0.5",
+          "n": 78030,
+          "max": 2,
+          "mean": 0.49,
+          "over": 0
+        },
+        {
+          "aEff": "0.5-0.75",
+          "n": 101941,
+          "max": 1,
+          "mean": 0.52,
+          "over": 0
+        },
+        {
+          "aEff": "0.75-0.9",
+          "n": 104884,
+          "max": 1,
+          "mean": 0.48,
+          "over": 0
+        },
+        {
+          "aEff": "0.9-0.99",
+          "n": 130685,
+          "max": 1,
+          "mean": 0.24,
+          "over": 0
+        },
+        {
+          "aEff": "0.99-0.9999",
+          "n": 166265,
+          "max": 1,
+          "mean": 0.08,
+          "over": 0
+        },
+        {
+          "aEff": "0.9999-1.0001",
+          "n": 168871,
+          "max": 1,
+          "mean": 0,
+          "over": 0
+        }
+      ]
+    }
+  ],
+  "bar1Overall": {
+    "maxChannel": 2,
+    "p95Channel": 1,
+    "overThreshold": 0,
+    "texels": 8728956,
+    "pass": true
+  },
+  "bar2": {
+    "shippedReplay": {
+      "rectA": {
+        "x0": 0,
+        "y0": 0,
+        "x1": 2048,
+        "y1": 2048
+      },
+      "rectB": {
+        "x0": 0,
+        "y0": 0,
+        "x1": 2048,
+        "y1": 2048
+      },
+      "union": {
+        "x0": 0,
+        "y0": 0,
+        "x1": 2048,
+        "y1": 2048
+      },
+      "rectEqual": true,
+      "layers": [
+        {
+          "layer": "cover",
+          "differingValues": 0,
+          "comparedTexels": 4194304
+        },
+        {
+          "layer": "fixedA",
+          "differingValues": 0,
+          "comparedTexels": 4194304
+        },
+        {
+          "layer": "fixedB",
+          "differingValues": 0,
+          "comparedTexels": 4194304
+        },
+        {
+          "layer": "inkA",
+          "differingValues": 0,
+          "comparedTexels": 4194304
+        },
+        {
+          "layer": "inkB",
+          "differingValues": 0,
+          "comparedTexels": 4194304
+        },
+        {
+          "layer": "lastTouch",
+          "differingValues": 0,
+          "comparedTexels": 4194304,
+          "maxAbsDelta": 0
+        },
+        {
+          "layer": "relief",
+          "differingValues": 0,
+          "comparedTexels": 4194304
+        },
+        {
+          "layer": "wet",
+          "differingValues": 0,
+          "comparedTexels": 4194304
+        }
+      ],
+      "differingValues": 0,
+      "differingLayers": [],
+      "paintIdentical": true,
+      "identical": true
+    },
+    "visitStability": {
+      "rectA": {
+        "x0": 0,
+        "y0": 0,
+        "x1": 2048,
+        "y1": 2048
+      },
+      "rectB": {
+        "x0": 0,
+        "y0": 0,
+        "x1": 2048,
+        "y1": 2048
+      },
+      "union": {
+        "x0": 0,
+        "y0": 0,
+        "x1": 2048,
+        "y1": 2048
+      },
+      "rectEqual": true,
+      "layers": [
+        {
+          "layer": "cover",
+          "differingValues": 0,
+          "comparedTexels": 4194304
+        },
+        {
+          "layer": "fixedA",
+          "differingValues": 0,
+          "comparedTexels": 4194304
+        },
+        {
+          "layer": "fixedB",
+          "differingValues": 0,
+          "comparedTexels": 4194304
+        },
+        {
+          "layer": "inkA",
+          "differingValues": 0,
+          "comparedTexels": 4194304
+        },
+        {
+          "layer": "inkB",
+          "differingValues": 0,
+          "comparedTexels": 4194304
+        },
+        {
+          "layer": "lastTouch",
+          "differingValues": 0,
+          "comparedTexels": 4194304,
+          "maxAbsDelta": 0
+        },
+        {
+          "layer": "relief",
+          "differingValues": 0,
+          "comparedTexels": 4194304
+        },
+        {
+          "layer": "wet",
+          "differingValues": 0,
+          "comparedTexels": 4194304
+        }
+      ],
+      "differingValues": 0,
+      "differingLayers": [],
+      "paintIdentical": true,
+      "identical": true
+    },
+    "digests": {
+      "strokeA": "3b53a64e",
+      "strokeB": "3d04526f",
+      "sameVisit": "36a3f71d",
+      "visitReplay1": "36a3f71d",
+      "visitReplay2": "36a3f71d"
+    },
+    "amountZeroLayerPath": {
+      "coveredTexels": 869423,
+      "maxChannel": 203,
+      "meanChannel": 28.67,
+      "p95Channel": 88,
+      "worst": {
+        "at": [
+          1009,
+          1392
+        ],
+        "layerPath": [
+          255,
+          254,
+          254
+        ],
+        "shipped": [
+          174,
+          67,
+          51
+        ]
+      }
+    },
+    "note": "the layer path at amount 0 is NOT the shipped path: A_eff = cover replaces the base with the layer, dropping the same-visit pickup. The bypass is a required branch, not a formality.",
+    "pass": true
+  },
+  "bar3": {
+    "mergedDigest": "3170f21b",
+    "displayVsRestored": {
+      "differingBytes": 0,
+      "maxChannel": 0
+    },
+    "stateCheck": {
+      "maxAbs": 1,
+      "byLane": {
+        "a": 0,
+        "b": 0,
+        "s": 0,
+        "cover": 1
+      },
+      "exact": false
+    },
+    "poolSplit": {
+      "note": "ink = fit - fixed, display = ink + fixed (fp16 difference)",
+      "differingBytes": 9300,
+      "maxChannel": 1
+    },
+    "pass": true
+  },
+  "bar4": {
+    "scriptReplay": {
+      "strokeA": {
+        "rectA": {
+          "x0": 0,
+          "y0": 253,
+          "x1": 2048,
+          "y1": 1796
+        },
+        "rectB": {
+          "x0": 0,
+          "y0": 269,
+          "x1": 2048,
+          "y1": 1779
+        },
+        "union": {
+          "x0": 0,
+          "y0": 253,
+          "x1": 2048,
+          "y1": 1796
+        },
+        "rectEqual": false,
+        "layers": [
+          {
+            "layer": "cover",
+            "differingValues": 0,
+            "comparedTexels": 3160064
+          },
+          {
+            "layer": "fixedA",
+            "differingValues": 0,
+            "comparedTexels": 3160064
+          },
+          {
+            "layer": "fixedB",
+            "differingValues": 0,
+            "comparedTexels": 3160064
+          },
+          {
+            "layer": "inkA",
+            "differingValues": 0,
+            "comparedTexels": 3160064
+          },
+          {
+            "layer": "inkB",
+            "differingValues": 0,
+            "comparedTexels": 3160064
+          },
+          {
+            "layer": "lastTouch",
+            "differingValues": 67584,
+            "comparedTexels": 3160064,
+            "maxAbsDelta": 604800.25
+          },
+          {
+            "layer": "relief",
+            "differingValues": 0,
+            "comparedTexels": 3160064
+          },
+          {
+            "layer": "wet",
+            "differingValues": 0,
+            "comparedTexels": 3160064
+          }
+        ],
+        "differingValues": 67584,
+        "differingLayers": [
+          "lastTouch"
+        ],
+        "paintIdentical": true,
+        "identical": false
+      },
+      "strokeARepeat": {
+        "rectA": {
+          "x0": 0,
+          "y0": 269,
+          "x1": 2048,
+          "y1": 1779
+        },
+        "rectB": {
+          "x0": 0,
+          "y0": 252,
+          "x1": 2048,
+          "y1": 1796
+        },
+        "union": {
+          "x0": 0,
+          "y0": 252,
+          "x1": 2048,
+          "y1": 1796
+        },
+        "rectEqual": false,
+        "layers": [
+          {
+            "layer": "cover",
+            "differingValues": 0,
+            "comparedTexels": 3162112
+          },
+          {
+            "layer": "fixedA",
+            "differingValues": 0,
+            "comparedTexels": 3162112
+          },
+          {
+            "layer": "fixedB",
+            "differingValues": 0,
+            "comparedTexels": 3162112
+          },
+          {
+            "layer": "inkA",
+            "differingValues": 0,
+            "comparedTexels": 3162112
+          },
+          {
+            "layer": "inkB",
+            "differingValues": 0,
+            "comparedTexels": 3162112
+          },
+          {
+            "layer": "lastTouch",
+            "differingValues": 69632,
+            "comparedTexels": 3162112,
+            "maxAbsDelta": 604800.25
+          },
+          {
+            "layer": "relief",
+            "differingValues": 0,
+            "comparedTexels": 3162112
+          },
+          {
+            "layer": "wet",
+            "differingValues": 0,
+            "comparedTexels": 3162112
+          }
+        ],
+        "differingValues": 69632,
+        "differingLayers": [
+          "lastTouch"
+        ],
+        "paintIdentical": true,
+        "identical": false
+      },
+      "strokeB": {
+        "rectA": {
+          "x0": 269,
+          "y0": 0,
+          "x1": 1779,
+          "y1": 2048
+        },
+        "rectB": {
+          "x0": 252,
+          "y0": 0,
+          "x1": 1796,
+          "y1": 2048
+        },
+        "union": {
+          "x0": 252,
+          "y0": 0,
+          "x1": 1796,
+          "y1": 2048
+        },
+        "rectEqual": false,
+        "layers": [
+          {
+            "layer": "cover",
+            "differingValues": 0,
+            "comparedTexels": 3162112
+          },
+          {
+            "layer": "fixedA",
+            "differingValues": 0,
+            "comparedTexels": 3162112
+          },
+          {
+            "layer": "fixedB",
+            "differingValues": 0,
+            "comparedTexels": 3162112
+          },
+          {
+            "layer": "inkA",
+            "differingValues": 0,
+            "comparedTexels": 3162112
+          },
+          {
+            "layer": "inkB",
+            "differingValues": 0,
+            "comparedTexels": 3162112
+          },
+          {
+            "layer": "lastTouch",
+            "differingValues": 69632,
+            "comparedTexels": 3162112,
+            "maxAbsDelta": 604800.25
+          },
+          {
+            "layer": "relief",
+            "differingValues": 0,
+            "comparedTexels": 3162112
+          },
+          {
+            "layer": "wet",
+            "differingValues": 0,
+            "comparedTexels": 3162112
+          }
+        ],
+        "differingValues": 69632,
+        "differingLayers": [
+          "lastTouch"
+        ],
+        "paintIdentical": true,
+        "identical": false
+      },
+      "sameVisit": {
+        "rectA": {
+          "x0": 0,
+          "y0": 0,
+          "x1": 2048,
+          "y1": 2048
+        },
+        "rectB": {
+          "x0": 0,
+          "y0": 0,
+          "x1": 2048,
+          "y1": 2048
+        },
+        "union": {
+          "x0": 0,
+          "y0": 0,
+          "x1": 2048,
+          "y1": 2048
+        },
+        "rectEqual": true,
+        "layers": [
+          {
+            "layer": "cover",
+            "differingValues": 0,
+            "comparedTexels": 4194304
+          },
+          {
+            "layer": "fixedA",
+            "differingValues": 0,
+            "comparedTexels": 4194304
+          },
+          {
+            "layer": "fixedB",
+            "differingValues": 0,
+            "comparedTexels": 4194304
+          },
+          {
+            "layer": "inkA",
+            "differingValues": 0,
+            "comparedTexels": 4194304
+          },
+          {
+            "layer": "inkB",
+            "differingValues": 0,
+            "comparedTexels": 4194304
+          },
+          {
+            "layer": "lastTouch",
+            "differingValues": 0,
+            "comparedTexels": 4194304,
+            "maxAbsDelta": 0
+          },
+          {
+            "layer": "relief",
+            "differingValues": 0,
+            "comparedTexels": 4194304
+          },
+          {
+            "layer": "wet",
+            "differingValues": 0,
+            "comparedTexels": 4194304
+          }
+        ],
+        "differingValues": 0,
+        "differingLayers": [],
+        "paintIdentical": true,
+        "identical": true
+      },
+      "visitStability": {
+        "rectA": {
+          "x0": 0,
+          "y0": 0,
+          "x1": 2048,
+          "y1": 2048
+        },
+        "rectB": {
+          "x0": 0,
+          "y0": 0,
+          "x1": 2048,
+          "y1": 2048
+        },
+        "union": {
+          "x0": 0,
+          "y0": 0,
+          "x1": 2048,
+          "y1": 2048
+        },
+        "rectEqual": true,
+        "layers": [
+          {
+            "layer": "cover",
+            "differingValues": 0,
+            "comparedTexels": 4194304
+          },
+          {
+            "layer": "fixedA",
+            "differingValues": 0,
+            "comparedTexels": 4194304
+          },
+          {
+            "layer": "fixedB",
+            "differingValues": 0,
+            "comparedTexels": 4194304
+          },
+          {
+            "layer": "inkA",
+            "differingValues": 0,
+            "comparedTexels": 4194304
+          },
+          {
+            "layer": "inkB",
+            "differingValues": 0,
+            "comparedTexels": 4194304
+          },
+          {
+            "layer": "lastTouch",
+            "differingValues": 0,
+            "comparedTexels": 4194304,
+            "maxAbsDelta": 0
+          },
+          {
+            "layer": "relief",
+            "differingValues": 0,
+            "comparedTexels": 4194304
+          },
+          {
+            "layer": "wet",
+            "differingValues": 0,
+            "comparedTexels": 4194304
+          }
+        ],
+        "differingValues": 0,
+        "differingLayers": [],
+        "paintIdentical": true,
+        "identical": true
+      },
+      "bakes": {
+        "digestA": "3b53a64e",
+        "digestB": "3d04526f",
+        "digestAB": "36a3f71d"
+      }
+    },
+    "mergeReplay": {
+      "a": {
+        "differingBytes": 0,
+        "maxChannel": 0
+      },
+      "b": {
+        "differingBytes": 0,
+        "maxChannel": 0
+      },
+      "iterations": {
+        "differingBytes": 0,
+        "maxChannel": 0
+      }
+    },
+    "carryLog": [
+      {
+        "label": "firstA",
+        "pinned": false,
+        "before": {
+          "lastDir": [
+            1,
+            0
+          ],
+          "lastAngle": 0
+        },
+        "after": {
+          "lastDir": [
+            1,
+            -0.000453
+          ],
+          "lastAngle": -0.00045
+        }
+      },
+      {
+        "label": "firstB",
+        "pinned": false,
+        "before": {
+          "lastDir": [
+            1,
+            -0.000453
+          ],
+          "lastAngle": -0.00045
+        },
+        "after": {
+          "lastDir": [
+            0.22773,
+            0.973724
+          ],
+          "lastAngle": 1.341051
+        }
+      },
+      {
+        "label": "firstVisitA",
+        "pinned": true,
+        "before": {
+          "lastDir": [
+            1,
+            0
+          ],
+          "lastAngle": 0
+        },
+        "after": {
+          "lastDir": [
+            1,
+            -0.000453
+          ],
+          "lastAngle": -0.00045
+        }
+      },
+      {
+        "label": "firstVisitB",
+        "pinned": false,
+        "before": {
+          "lastDir": [
+            1,
+            -0.000453
+          ],
+          "lastAngle": -0.00045
+        },
+        "after": {
+          "lastDir": [
+            0.22773,
+            0.973724
+          ],
+          "lastAngle": 1.341051
+        }
+      },
+      {
+        "label": "visitReplay1A",
+        "pinned": true,
+        "before": {
+          "lastDir": [
+            1,
+            0
+          ],
+          "lastAngle": 0
+        },
+        "after": {
+          "lastDir": [
+            1,
+            -0.000453
+          ],
+          "lastAngle": -0.00045
+        }
+      },
+      {
+        "label": "visitReplay1B",
+        "pinned": false,
+        "before": {
+          "lastDir": [
+            1,
+            -0.000453
+          ],
+          "lastAngle": -0.00045
+        },
+        "after": {
+          "lastDir": [
+            0.22773,
+            0.973724
+          ],
+          "lastAngle": 1.341051
+        }
+      },
+      {
+        "label": "visitReplay2A",
+        "pinned": true,
+        "before": {
+          "lastDir": [
+            1,
+            0
+          ],
+          "lastAngle": 0
+        },
+        "after": {
+          "lastDir": [
+            1,
+            -0.000453
+          ],
+          "lastAngle": -0.00045
+        }
+      },
+      {
+        "label": "visitReplay2B",
+        "pinned": false,
+        "before": {
+          "lastDir": [
+            1,
+            -0.000453
+          ],
+          "lastAngle": -0.00045
+        },
+        "after": {
+          "lastDir": [
+            0.22773,
+            0.973724
+          ],
+          "lastAngle": 1.341051
+        }
+      },
+      {
+        "label": "replayA2",
+        "pinned": true,
+        "before": {
+          "lastDir": [
+            1,
+            0
+          ],
+          "lastAngle": 0
+        },
+        "after": {
+          "lastDir": [
+            1,
+            -0.000453
+          ],
+          "lastAngle": -0.00045
+        }
+      },
+      {
+        "label": "replayA3",
+        "pinned": true,
+        "before": {
+          "lastDir": [
+            1,
+            0
+          ],
+          "lastAngle": 0
+        },
+        "after": {
+          "lastDir": [
+            1,
+            -0.000453
+          ],
+          "lastAngle": -0.00045
+        }
+      },
+      {
+        "label": "replayB2",
+        "pinned": true,
+        "before": {
+          "lastDir": [
+            1,
+            0
+          ],
+          "lastAngle": 0
+        },
+        "after": {
+          "lastDir": [
+            0.22763,
+            0.973748
+          ],
+          "lastAngle": 1.341153
+        }
+      },
+      {
+        "label": "replayB3",
+        "pinned": true,
+        "before": {
+          "lastDir": [
+            1,
+            0
+          ],
+          "lastAngle": 0
+        },
+        "after": {
+          "lastDir": [
+            0.22763,
+            0.973748
+          ],
+          "lastAngle": 1.341153
+        }
+      }
+    ],
+    "pass": true
+  },
+  "bar5": {
+    "workbenchProven": {
+      "mergeIsPure": true,
+      "mergedSurvivesCapture": true,
+      "scriptPaintsSameBytes": true,
+      "statement": "the merge is a deterministic pure function of (base, layer, cover, lateral, amount, start, falloff); a merged sheet survives capture -> wipe -> restore -> re-render byte-identically; the same script paints the same bytes. Those are the three inputs a bake replay needs."
+    },
+    "implementationGate": [
+      "POINTER stroke with edgeTransparency > 0: the merge runs at stroke end — one draw after the dab loop, before the next stroke reads the sheet. The workbench drives scripted strokes only; it cannot hold the pointer lifecycle.",
+      "SCRIPTED stroke (adapter.applyStroke -> Studio apply / capture / bake): the same stroke-end call runs. The workbench proves the merge output, not that the engine invokes it.",
+      "BAKE replay: re-baking a merged sheet into keys renders byte-identical to the live display (the workbench proves the merge replays from captured inputs; it cannot prove the engine replays the merged sheet through its own bake path).",
+      "edgeTransparency = 0: no layer target is allocated, no merge draw is submitted, and the capture bytes equal the reference digest recorded here (engine sources are unchanged since d509a886d).",
+      "The merge must be fed the sheet's SUMMED base (ink.read + fixed). The probe's base is stroke A captured after a fix; the law is a function of the state, not of which pool holds it."
+    ],
+    "scope": "deferred — the lifecycle rows are the implementation quick's explicit gate"
+  },
+  "verdict": {
+    "bar1": true,
+    "bar1Overall": {
+      "maxChannel": 2,
+      "p95Channel": 1,
+      "overThreshold": 0,
+      "texels": 8728956
+    },
+    "bar2": true,
+    "bar2ShippedDigest": "36a3f71d",
+    "bar2LayerPathDiverges": true,
+    "bar2DivergenceMax": 203,
+    "bar3": true,
+    "bar3DisplayDifferingBytes": 0,
+    "bar4": true,
+    "bar5": "quick",
+    "q4Pass": true,
+    "q4Scope": "bars 1-4 measured here; bar 5 is the quick's explicit gate"
+  }
+}

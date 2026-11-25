@@ -144,6 +144,13 @@ export function encodeSnapshot(
   pool: 'mobile' | 'settled' | 'both' = 'mobile',
   /** standing water the restored sheet carries — the wet transport needs it. */
   wetFill = 0,
+  /**
+   * The engine's in-place write-back form: `settled` goes in the settled pool
+   * and `sheet − settled` in the mobile pool, so the display's `ink + fixed`
+   * sum is `sheet` again (the merge writes `fit − fixed` and leaves `fixed`
+   * alone). Overrides `pool` when given.
+   */
+  settled?: SheetState,
 ) {
   const { w, h } = sheet
   const n = w * h
@@ -158,19 +165,32 @@ export function encodeSnapshot(
   const wet = new Uint16Array(n * 4)
   const share = pool === 'both' ? 0.5 : 1
   for (let i = 0; i < n; i++) {
-    for (let c = 0; c < 4; c++) {
-      const v = toHalf(sheet.a[i * 4 + c]! * share)
-      if (pool !== 'settled') mobileA[i * 4 + c] = v
-      if (pool !== 'mobile') settledA[i * 4 + c] = v
+    if (settled) {
+      for (let c = 0; c < 4; c++) {
+        settledA[i * 4 + c] = toHalf(settled.a[i * 4 + c]!)
+        mobileA[i * 4 + c] = toHalf(sheet.a[i * 4 + c]! - settled.a[i * 4 + c]!)
+      }
+      for (let c = 0; c < 3; c++) {
+        settledB[i * 4 + c] = toHalf(settled.b[i * 3 + c]!)
+        mobileB[i * 4 + c] = toHalf(sheet.b[i * 3 + c]! - settled.b[i * 3 + c]!)
+      }
+      settledB[i * 4 + 3] = toHalf(settled.s[i]!)
+      mobileB[i * 4 + 3] = toHalf(sheet.s[i]! - settled.s[i]!)
+    } else {
+      for (let c = 0; c < 4; c++) {
+        const v = toHalf(sheet.a[i * 4 + c]! * share)
+        if (pool !== 'settled') mobileA[i * 4 + c] = v
+        if (pool !== 'mobile') settledA[i * 4 + c] = v
+      }
+      for (let c = 0; c < 3; c++) {
+        const v = toHalf(sheet.b[i * 3 + c]! * share)
+        if (pool !== 'settled') mobileB[i * 4 + c] = v
+        if (pool !== 'mobile') settledB[i * 4 + c] = v
+      }
+      const sv = toHalf(sheet.s[i]! * share)
+      if (pool !== 'settled') mobileB[i * 4 + 3] = sv
+      if (pool !== 'mobile') settledB[i * 4 + 3] = sv
     }
-    for (let c = 0; c < 3; c++) {
-      const v = toHalf(sheet.b[i * 3 + c]! * share)
-      if (pool !== 'settled') mobileB[i * 4 + c] = v
-      if (pool !== 'mobile') settledB[i * 4 + c] = v
-    }
-    const sv = toHalf(sheet.s[i]! * share)
-    if (pool !== 'settled') mobileB[i * 4 + 3] = sv
-    if (pool !== 'mobile') settledB[i * 4 + 3] = sv
     cover[i * 4] = toHalf(Math.min(Math.max(sheet.cover[i]!, 0), 1))
     const density = Math.min(1, Math.abs(sheet.a[i * 4]!) + Math.abs(sheet.a[i * 4 + 1]!) + Math.abs(sheet.a[i * 4 + 2]!))
     wet[i * 4] = toHalf(wetFill * density)

@@ -4,7 +4,7 @@ idea: stroke-layer-transparency
 name: composite-law
 type: standard
 validates: "Given a stroke layer (its own ink, cover and a lateral alpha field) and a base sheet, when the layer is merged once with band_out = A*band_L + (1-A)*band_S at amount 100 over paper and over an earlier same-visit stroke, then every station of the fade band prints, the core returns the layer's own pigment, every band stays between the two inputs, and a 50 % layer over white reads 50 % darkness through displayBasisGLSL — in the Gouache (Kubelka-Munk) branch as well as the legacy one"
-verdict: VALIDATED ✓ (conditional — see the three corrections in the findings)
+verdict: VALIDATED ✓ (Q1–Q4 measured; encoder frozen; engine lifecycle = the implementation quick's gate)
 related: [001, 002]
 tags: [webgl2, watercolor, kombe, kubelka-munk, transparency, composite, spectral, phase-64, v2.2.0]
 ---
@@ -22,9 +22,10 @@ This is the killer question of the four the artist asked. If 7 coefficients cann
 the composite, the other three (committed base, parity, cost) are moot — the storage
 format, not the architecture, would have to change.
 
-**Scope: Q1 here; Q2/Q3/Q3b were added later in the same harness, Q4 was never run.**
-See `SPECS/v2.2.0-medium-engine/SPIKE-stroke-layer-FINDINGS.md` and the summary table
-below.
+**Scope: Q1 here; Q2/Q3/Q3b/Q3c/Q4 were added later in the same harness.** Q1–Q4 are all
+measured; the encoder is frozen (8 compiled bands, rank-one Jacobian, 4 LM iterations,
+seed mix, in-place `fit − fixed`) and Q4 passes every bar the workbench can hold. See
+`SPECS/v2.2.0-medium-engine/SPIKE-stroke-layer-FINDINGS.md` and the summary table below.
 
 ## Research
 
@@ -62,11 +63,12 @@ weights are linear, the band mix is exactly a linear-light RGB mix. It reduces t
 ```bash
 node .planning/spikes/006-stroke-layer-transparency/probe/run.mjs \
   --size 540 [--start 0.30] [--amount 100] [--stride 2] [--seed 0xc0ffee]
+# gates: --scenario composite (default) | cost | q3b | q3c | q4
 ```
 
-Bundles `probe.ts` with esbuild, runs it in headless Chrome (real WebGL2, SwiftShader
+Bundles the scenario with esbuild, runs it in headless Chrome (real WebGL2, SwiftShader
 acceptable), writes `results/<gate>.json` and prints a summary. No dev server, no
-vitest. ~8 s per run at 540².
+vitest. ~8 s per run at 540², ~20 s for `--scenario q4 --size 2048`.
 
 ## What to Expect
 
@@ -214,7 +216,7 @@ and the between-law intact** — but only with three corrections to the design:
 3. The alpha must be **gated** by the layer's own coverage: `A_eff = A · cover_L`. Bare
    `A` washes the under-stroke by up to 157/255 — the pale band, again.
 
-## Q2, Q3, Q3b and Q3c — measured later, same harness
+## Q2, Q3, Q3b, Q3c and Q4 — measured later, same harness
 
 Full detail and tables in `SPIKE-stroke-layer-FINDINGS.md`; the one-liners:
 
@@ -224,7 +226,7 @@ Full detail and tables in `SPIKE-stroke-layer-FINDINGS.md`; the one-liners:
 | **Q3** — merge cost on the real GPU (GLSL LM pass) | **Residual + memory GO, frame budget NO-GO.** ~40–50 ms per stroke rect at 2K; 4K is unallocatable (the engine clamps to 2048²). |
 | **Q3b** — the serialized stroke-end path | **FAIL on the felt first-dab wait.** A single draw after an idle GPU: **36 ms median** for the stroke rect (size ladder 1×1 0.5 ms, 512² 0.6, 1024² 17.5, full 31.9) — real fragment work. An immediate next stroke waits **36–44 ms** (bar 20 ms); a 50 ms or 200 ms pause waits 0.1/0.0 ms. Painting is unaffected (**+0.4 ms** display, zero dropped frames) and the in-place merge into the engine's existing `ink`/`cover` doubles costs **+80 MiB** (ceiling 160). The two sanctioned variants do not close it: half resolution is 11.9 ms but the band cannot be upsampled (**max 216/255**, 21 % over); the rank-one Jacobian is exact (max 3, identical) but barely faster (latency 36.0 → 33.2 ms, inside the run-to-run spread). |
 | **Q3c** — the reduced-band-set fit | **FAIL, by 0.6–1.8 ms.** Fitting the 8 D-optimal bands (`[1,3,5,7,9,10,11,13]`, maximising `log det` of the weighted sensitivity Gram over all 12,870 subsets) and re-rendering through all 16 meets the residual bar **exactly** — max 2/255, p95 1, **0 texels over** of 1,454,826 — at 8 bands + 4 iterations + rank-one J + the `mix(base, layer, aEff)` seed, for **20.6–21.0 ms felt** (bar 20; interleaved 4× A/B reads 21.8 vs 19.8 for the same shader without the seed mix). The brief's 2-iteration combination is **9.4–9.7 ms** but misses the residual (max 13, p95 3, 75,463 over). Each LM iteration costs ~5.5 ms over the stroke rect and the bar needs four. The 8-band fit still beats Q3b's baseline on both axes (29.3–30.3 ms, max 3/62 over). Hard stop (>25 ms) not tripped. |
-| **Q4** — parity | **not run** — Q3b and Q3c both failed their gates, per the brief. |
+| **Q4** — parity | **PASS on the four workbench bars.** Live vs merged **max 2/255, p95 1, 0 texels over** of 8,728,956 at amount 100 and falloff 0/50/100, over paper and over a same-visit stroke. Capture round trip of a merged sheet: **byte-identical** display; the frozen `fit − fixed` write-back costs ≤1/255. Merge twice: bit-identical; two processes: identical full-capture digests (`36a3f71d` for the visit). Amount 0: the shipped reference reproduces, and the layer path at amount 0 diverges **203/255**, so the bypass is mandatory. **Bake/lifecycle parity is the quick's 5 explicit gates.** |
 
 ## Investigation Trail
 
@@ -247,8 +249,12 @@ Full detail and tables in `SPIKE-stroke-layer-FINDINGS.md`; the one-liners:
 
 ## Limitations
 
-- **Q4 never measured.** Parity (live vs merged, capture and bake replay, amount-0 byte
-  identity) is unmeasured: Q3b and Q3c both failed their gates, and the brief said stop.
+- **Q4's lifecycle rows are not measured.** The probe drives *scripted* strokes and calls
+  the merge itself, so it cannot prove that the engine's stroke end invokes the merge for
+  a pointer stroke, that the bake path does the same, or that a bake replay matches the
+  live display. Those five rows are the implementation quick's explicit gate (FINDINGS
+  §D.5). Q4's workbench bars (live vs merged, capture round trip, merge determinism,
+  amount-0 reference) all pass.
 - **The Q3b/Q3c timings are one machine, one scene.** Apple M3 Max through ANGLE Metal,
   headless Chrome, a straight Gouache stroke at 2K, 8 bands / 4 LM iterations. Different
   scenes change the band's area, and that is what the merge cost is proportional to.
@@ -263,7 +269,8 @@ Full detail and tables in `SPIKE-stroke-layer-FINDINGS.md`; the one-liners:
 - The composite is measured on the **band law**, with `readback(flat)` so granulation,
   the edge crispener and the display film-blur are out of the comparison. The relief
   (emboss) is not composited.
-- The merged state is written into the mobile pool only; the two-pool split matters to a
-  later wet transport, which this probe never runs on an encoded sheet.
+- The merged state is written back as **`ink = fit − fixed`** (the frozen form), and the
+  probe measures only its display round trip (≤1/255). How a *later* stroke's wet
+  transport behaves on an encoded sheet is unmeasured.
 - `q1 only` means the "is it worth shipping" question is still open: if the merge pass at
   2K/4K is unaffordable, the law being right does not help.
