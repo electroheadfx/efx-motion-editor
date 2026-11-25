@@ -2510,4 +2510,65 @@ describe('the edge-layer gate (Spec 10)', () => {
     })
   })
 
+  // 261125-kvl WR-02: the Studio lifecycle bars are EXECUTED — each fixture
+  // below mutates one valid capture into a failing one and asserts the
+  // comparator rejects it BY NAME. Without these, a dropped or inverted bar
+  // in `edgeStudioFailures` would pass every test (the review's WR-02: the
+  // valid fixture alone cannot fail a missing bar).
+  describe('the Studio lifecycle bars, executed on failing fixtures', () => {
+    function rejects(name: string, mutation: Record<string, unknown>): string {
+      const { status, output } = compareSynthetic(name, {
+        ...validEdgeLayerCapture(100, 50),
+        ...mutation,
+      })
+      expect(status, lawVerdict(status, output)).toBe(1)
+      expect(output).toContain('RESULT: FAIL')
+      return output
+    }
+
+    it('WR-02: fails a callback with the layer still open', () => {
+      const output = rejects('nyquist-studio-g1', { edgeG1LayerOpenAtCallback: true })
+      expect(invariantLine(output)).toContain('edgeG1LayerOpenAtCallback')
+    })
+
+    it('WR-02: fails a merge count that is not exactly once per stroke', () => {
+      const two = rejects('nyquist-studio-g1-draws', { edgeG1MergeDraws: 2 })
+      expect(invariantLine(two)).toContain('edgeG1MergeDraws')
+      const none = rejects('nyquist-studio-g2-draws', { edgeG2MergeDraws: 0 })
+      expect(invariantLine(none)).toContain('edgeG2MergeDraws')
+    })
+
+    it('WR-02: fails a missing merge on the next stroke after an abort', () => {
+      const output = rejects('nyquist-studio-abort', { edgeAbortNextMerge: 0 })
+      expect(invariantLine(output)).toContain('edgeAbortNextMerge')
+    })
+
+    it('WR-02: fails an undo that did not restore the pre-merge sheet', () => {
+      const output = rejects('nyquist-studio-undo', { edgeUndoRestoreMax: 3 })
+      expect(invariantLine(output)).toContain('edgeUndoRestoreMax')
+    })
+
+    it('WR-02: fails a layer field that survived restore', () => {
+      const output = rejects('nyquist-studio-restore', { edgeRestoreLayerFieldsNull: false })
+      expect(invariantLine(output)).toContain('edgeRestoreLayerFieldsNull')
+    })
+
+    it('WR-02: fails a non-idempotent discard', () => {
+      const output = rejects('nyquist-studio-discard', { edgeCreateDiscardIdempotent: false })
+      expect(invariantLine(output)).toContain('edgeCreateDiscardIdempotent')
+    })
+
+    it('WR-02: fails a memory reading outside the measured set', () => {
+      const output = rejects('nyquist-studio-memory', { edgeMemoryLayerBytes: 1 })
+      expect(invariantLine(output)).toContain('edgeMemoryLayerBytes')
+    })
+
+    it('WR-02: fails a capture missing a Studio row', () => {
+      const capture = validEdgeLayerCapture(100, 50)
+      delete capture.edgeCreateReallocated
+      const { status, output } = compareSynthetic('nyquist-studio-missing', capture)
+      expect(status, lawVerdict(status, output)).toBe(1)
+      expect(invariantLine(output)).toContain('edgeCreateReallocated')
+    })
+  })
 })
