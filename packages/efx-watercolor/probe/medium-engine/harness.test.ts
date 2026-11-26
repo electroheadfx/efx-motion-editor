@@ -2288,13 +2288,26 @@ describe('the edge-layer gate (Spec 10)', () => {
     })
 
     it('refuses the two knobs on every other scenario, in both files', () => {
-      expectContains(PROBE, '`--${name} is only valid with --scenario edge-layer`')
+      // 261126 (the cap leg): the same knobs are the bristle-end scene's
+      // layer operands, so the refusal names both scenes.
+      expectContains(PROBE, '`--${name} is only valid with --scenario edge-layer or bristle-end`')
       expectContains(PROBE, "EDGE_LAYER_AMOUNT = readEdgeKnob('edge', scenario, EDGE_LAYER_DEFAULT_AMOUNT)")
       expectContains(PROBE, "EDGE_LAYER_FALLOFF = readEdgeKnob('falloff', scenario, EDGE_LAYER_DEFAULT_FALLOFF)")
-      expectContains(RUN, '--edge is only valid with --scenario edge-layer')
-      expectContains(RUN, '--falloff is only valid with --scenario edge-layer')
+      expectContains(RUN, '--edge is only valid with --scenario edge-layer or bristle-end')
+      expectContains(RUN, '--falloff is only valid with --scenario edge-layer or bristle-end')
       expectContains(RUN, '`&edge=${edge}`')
       expectContains(RUN, '`&falloff=${falloff}`')
+    })
+
+    it('reads the layer knobs on bristle-end as one operand set, only with --edge', () => {
+      expectContains(PROBE, "const readPercent = (key: 'dry' | 'feather' | 'edge' | 'falloff' | 'pickup')")
+      expectContains(PROBE, "throw new Error('--falloff / --pickup on bristle-end need --edge as the layer switch')")
+      expectContains(PROBE, '...(overrides?.edge != null ? { edgeFade: overrides.edge, edgeFalloff: overrides.falloff ?? 50 } : {}),')
+      expectContains(PROBE, '...(overrides?.pickup != null ? { pickup: overrides.pickup } : {}),')
+      // The report echoes the trio so a capture can never be misread as a
+      // different bag; a null amount is the sheet-path control.
+      expectContains(PROBE, 'amount: endSetup.edge,')
+      expectContains(RUN, "const LAYER_SCENES = ['edge-layer', 'bristle-end']")
     })
 
     it('carries the same bristle predicate in probe.ts, compare.mjs and this file', () => {

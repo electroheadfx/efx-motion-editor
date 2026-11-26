@@ -1853,7 +1853,17 @@ function understoryLine(y: number): readonly AquarellePoint[] {
 function bristleLineParams(
   body: number,
   strokeSize: number,
-  overrides?: { dry: number | null; feather: number | null },
+  overrides?: {
+    dry: number | null
+    feather: number | null
+    /** 261126 (the cap leg): the Spec 10 layer knobs. Written together — the
+     *  pair is one operand set — and ONLY when `--edge` was given, so every
+     *  committed cap baseline keeps the record's exact bag. `edgeFade` 0 is
+     *  the sheet-path control (the Engine's amount-0 branch). */
+    edge?: number | null
+    falloff?: number | null
+    pickup?: number | null
+  },
 ): Record<string, number> {
   const acrylic = MEDIUMS.find((medium) => medium.id === 'acrylic')
   if (!acrylic) throw new Error('bristle-line: the acrylic medium record is missing')
@@ -1863,6 +1873,8 @@ function bristleLineParams(
     ...acrylic.params,
     ...(overrides?.dry != null ? { dry: overrides.dry } : {}),
     ...(overrides?.feather != null ? { feather: overrides.feather } : {}),
+    ...(overrides?.edge != null ? { edgeFade: overrides.edge, edgeFalloff: overrides.falloff ?? 50 } : {}),
+    ...(overrides?.pickup != null ? { pickup: overrides.pickup } : {}),
     body,
   }
 }
@@ -2122,14 +2134,16 @@ const EDGE_POINTER_PRESS = 0.7
  *  size a "4K" capture can actually reach on this GPU budget. */
 const EDGE_4K_REQUEST = 4096
 
-/** Spec 10: the two edge operands. Valid ONLY on `edge-layer` — a value on any
- *  other scenario is refused, never silently ignored. Absent keeps the
+/** Spec 10: the two edge operands. Valid on `edge-layer` (the layer's own
+ *  scene) and — from 261126, the cap leg — `bristle-end`, whose end census
+ *  judges the LAYER path against the sheet path at the same stroke. A value on
+ *  any other scenario is refused, never silently ignored. Absent keeps the
  *  canonical defaults 0 / 50. */
 function readEdgeKnob(name: 'edge' | 'falloff', scenario: string, fallback: number): number {
   const raw = new URLSearchParams(location.search).get(name)
   if (raw === null || raw === '') return fallback
-  if (scenario !== 'edge-layer') {
-    throw new Error(`--${name} is only valid with --scenario edge-layer`)
+  if (scenario !== 'edge-layer' && scenario !== 'bristle-end') {
+    throw new Error(`--${name} is only valid with --scenario edge-layer or bristle-end`)
   }
   const value = Number(raw)
   if (!Number.isInteger(value) || value < 0 || value > 100) {
@@ -2149,12 +2163,13 @@ function readEdgeWetUnder(scenario: string): boolean {
   return true
 }
 
-/** 261126: the pickup operand — null keeps the record's canonical 100. */
+/** 261126: the pickup operand — null keeps the record's canonical 100. Valid
+ *  on `edge-layer` and (the cap leg) `bristle-end`. */
 function readEdgePickup(scenario: string): number | null {
   const raw = new URLSearchParams(location.search).get('pickup')
   if (raw === null || raw === '') return null
-  if (scenario !== 'edge-layer') {
-    throw new Error('--pickup is only valid with --scenario edge-layer')
+  if (scenario !== 'edge-layer' && scenario !== 'bristle-end') {
+    throw new Error('--pickup is only valid with --scenario edge-layer or bristle-end')
   }
   const value = Number(raw)
   if (!Number.isInteger(value) || value < 0 || value > 100) {
@@ -2479,6 +2494,15 @@ const EDGE_PICKUP_HALF_PX = 4
  *  smear's cover normaliser, so the reported wet reading is the gather's own
  *  `wetAt`, not a re-scaled variant. */
 const EDGE_PICKUP_BODY_FLOOR = 0.5
+/** The sheet cover at which the gather's solid-paint gate is fully OPEN:
+ *  `smoothstep(0.55, 0.85, cover / 0.5)` reaches 1 at cover = 0.425. Below it
+ *  the smear fades out — that is the under's own presence edge, a legitimate
+ *  gate transition, not a mosaic. The direction texture must therefore be
+ *  measured only where pickup can actually fire, or the under's band edge
+ *  swamps the reading (measured 261126: the full crossing rect reads 0.0336
+ *  on a layer whose gate-open rows vary by 0.030 and whose bare-paper rows
+ *  carry the under's edge step). */
+const EDGE_PICKUP_SOLID_COVER = 0.425
 
 /** Every pickup field ABSENT — a tree/capture without the layer fabricated no
  *  zero. */
@@ -2512,6 +2536,12 @@ const EDGE_PICKUP_ABSENT: Record<string, unknown> = {
   edgePickupLayerDirHighPass: null,
   edgePickupSheetDirHighPass: null,
   edgePickupDirCos: null,
+  // 261126 (edge-leg): the same direction texture over the SOLID-GATE region
+  // only (sheet cover >= 0.425), i.e. where the smear can fire — the mosaic's
+  // instrument, free of the under's own presence edge.
+  edgePickupSolidTexels: null,
+  edgePickupLayerDirHighPassSolid: null,
+  edgePickupSheetDirHighPassSolid: null,
 }
 
 /** The per-texel chroma (max − min channel) standard deviation of an RGB grid
@@ -2630,12 +2660,15 @@ function edgeGridDirHighPass(
   b: Float32Array,
   width: number,
   height: number,
+  mask: Float32Array | null = null,
+  maskMin = 0,
 ): number | null {
   if (width < 3 || height < 3) return null
   const DIR_FLOOR = 1e-3
   const dir = new Float32Array(width * height * 7)
   dir.fill(Number.NaN)
   for (let i = 0; i < width * height; i += 1) {
+    if (mask !== null && !(mask[i]! >= maskMin)) continue
     const o = i * 4
     let norm = 0
     const v = [a[o]!, a[o + 1]!, a[o + 2]!, a[o + 3]!, b[o]!, b[o + 1]!, b[o + 2]!]
@@ -2799,6 +2832,12 @@ function edgePickupReadout(
   const gh = rect.y1 - rect.y0
   const layerGrid = layer === null ? null : new Float32Array(gw * gh * 3)
   const mergedGrid = new Float32Array(gw * gh * 3)
+  // The solid-gate mask: the sheet's own cover over the read rect. The gate
+  // `smoothstep(0.55, 0.85, cover / 0.5)` is fully open at 0.425; only there
+  // can the smear fire, so only there is a per-texel hue texture a PICKUP
+  // defect rather than the under's legitimate presence edge.
+  const solidMask = new Float32Array(width * height)
+  for (let i = 0; i < solidMask.length; i += 1) solidMask[i] = doc.cover[i]!
   const mixGrid = layer === null || pigment === null ? null : new Float32Array(gw * gh)
   if (mixGrid !== null) mixGrid.fill(Number.NaN)
   for (let y = rect.y0; y < rect.y1; y += 1) {
@@ -2884,6 +2923,33 @@ function edgePickupReadout(
   const layerDirHighPass = layer === null ? null : edgeGridDirHighPass(layer.a, layer.b, width, height)
   const sheetDirHighPass = edgeGridDirHighPass(doc.a, doc.b, width, height)
   const dirCos = layer === null ? null : edgeDirCos(filmL, filmS)
+  // The mosaic proper: the same direction texture with bare paper and the
+  // gate's fade excluded. The count is the texels that survive both the
+  // solid-cover mask and the direction floor.
+  let solidTexels = 0
+  for (let i = 0; i < width * height; i += 1) {
+    if (!(solidMask[i]! >= EDGE_PICKUP_SOLID_COVER)) continue
+    if (layer !== null) {
+      const o = i * 4
+      let norm2 = 0
+      for (let c = 0; c < 4; c += 1) norm2 += layer.a[o + c]! * layer.a[o + c]!
+      for (let c = 0; c < 3; c += 1) norm2 += layer.b[o + c]! * layer.b[o + c]!
+      if (!(norm2 > 1e-6)) continue
+    }
+    solidTexels += 1
+  }
+  const layerDirHighPassSolid =
+    layer === null
+      ? null
+      : edgeGridDirHighPass(layer.a, layer.b, width, height, solidMask, EDGE_PICKUP_SOLID_COVER)
+  const sheetDirHighPassSolid = edgeGridDirHighPass(
+    doc.a,
+    doc.b,
+    width,
+    height,
+    solidMask,
+    EDGE_PICKUP_SOLID_COVER,
+  )
   return {
     edgePickupTexels: n,
     edgePickupLayerRgb: layerRgb === null ? null : meanRgb(layerRgb),
@@ -2919,6 +2985,11 @@ function edgePickupReadout(
     edgePickupLayerDirHighPass: layerDirHighPass === null ? null : round4(layerDirHighPass),
     edgePickupSheetDirHighPass: sheetDirHighPass === null ? null : round4(sheetDirHighPass),
     edgePickupDirCos: dirCos === null ? null : round4(dirCos),
+    edgePickupSolidTexels: solidTexels,
+    edgePickupLayerDirHighPassSolid:
+      layerDirHighPassSolid === null ? null : round4(layerDirHighPassSolid),
+    edgePickupSheetDirHighPassSolid:
+      sheetDirHighPassSolid === null ? null : round4(sheetDirHighPassSolid),
   }
 }
 
@@ -5328,17 +5399,23 @@ interface EndSetup {
   readonly dry: number | null
   readonly feather: number | null
   readonly release: number | null
+  /** 261126 (the cap leg): the Spec 10 layer knobs, null when the operand was
+   *  absent (the record's own bag, layer off). `edge` 0 is the sheet-path
+   *  control at the SAME stroke. */
+  readonly edge: number | null
+  readonly falloff: number | null
+  readonly pickup: number | null
 }
 
-const NO_END_SETUP: EndSetup = { dry: null, feather: null, release: null }
+const NO_END_SETUP: EndSetup = { dry: null, feather: null, release: null, edge: null, falloff: null, pickup: null }
 
-/** The `--dry` / `--feather` / `--release` operands, read once beside the
- *  drive. run.mjs is the first line of defence (same bounds, same refusals);
- *  this is the second, so a hand-built page query can never capture a stroke
- *  the flags were supposed to forbid. */
+/** The `--dry` / `--feather` / `--release` / layer operands, read once beside
+ *  the drive. run.mjs is the first line of defence (same bounds, same
+ *  refusals); this is the second, so a hand-built page query can never capture
+ *  a stroke the flags were supposed to forbid. */
 function readEndSetup(drive: EndDrive | undefined): EndSetup {
   const query = new URLSearchParams(location.search)
-  const readPercent = (key: 'dry' | 'feather'): number | null => {
+  const readPercent = (key: 'dry' | 'feather' | 'edge' | 'falloff' | 'pickup'): number | null => {
     const raw = query.get(key)
     if (raw === null || raw === '') return null
     const value = Number(raw)
@@ -5349,6 +5426,15 @@ function readEndSetup(drive: EndDrive | undefined): EndSetup {
   }
   const dry = readPercent('dry')
   const feather = readPercent('feather')
+  // 261126 (the cap leg): the Spec 10 layer knobs, read EXACTLY as the
+  // edge-layer scene reads them — absent writes nothing, so every committed
+  // cap baseline's bag is untouched; given, they ride the stroke's bag.
+  const edge = readPercent('edge')
+  const falloff = readPercent('falloff')
+  const pickup = readPercent('pickup')
+  if (edge === null && (falloff !== null || pickup !== null)) {
+    throw new Error('--falloff / --pickup on bristle-end need --edge as the layer switch')
+  }
   const releaseRaw = query.get('release')
   let release: number | null = null
   if (releaseRaw !== null && releaseRaw !== '') {
@@ -5361,7 +5447,7 @@ function readEndSetup(drive: EndDrive | undefined): EndSetup {
     }
     release = value
   }
-  return { dry, feather, release }
+  return { dry, feather, release, edge, falloff, pickup }
 }
 
 /** One queued sample of the live drive. `p` keeps the mouse sentinel (-1). */
@@ -6723,6 +6809,13 @@ function run(
               release: endSetup.release,
               strokeSize,
               brush: resolvedBrush ?? null,
+              // 261126 (the cap leg): the layer knobs the bag carried — null
+              // when the operand was absent (the record's own, sheet path).
+              layer: {
+                amount: endSetup.edge,
+                falloff: endSetup.edge === null ? null : (endSetup.falloff ?? 50),
+                pickup: endSetup.pickup,
+              },
             },
             endCensus: {
               drive: endDrive ?? 'stop',

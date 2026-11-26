@@ -372,8 +372,12 @@ if (scenarioRaw !== undefined) {
 
 // quick 261125-kvl (Spec 10): the two edge knobs — Edge transparency (the
 // layer alpha amount) and Edge falloff (the band's shape bias). Integers
-// 0..100; omitted keeps the canonical defaults 0 / 50. `edge-layer` only:
-// any other scenario is refused here first, never silently ignored.
+// 0..100; omitted keeps the canonical defaults 0 / 50. `edge-layer` and (from
+// 261126, the cap leg) `bristle-end`, whose own end census judges the layer
+// path against the sheet path at the same stroke: any other scenario is
+// refused here first, never silently ignored.
+const LAYER_SCENES = ['edge-layer', 'bristle-end']
+const layerScene = LAYER_SCENES.includes(scenario)
 const edgeFlag = args.indexOf('--edge')
 const edgeRaw = edgeFlag >= 0 ? args[edgeFlag + 1] : undefined
 let edge
@@ -383,8 +387,8 @@ if (edgeRaw !== undefined) {
     console.error(`invalid --edge "${edgeRaw}" (expected an integer 0..100)`)
     process.exit(1)
   }
-  if (scenario !== 'edge-layer') {
-    console.error('--edge is only valid with --scenario edge-layer')
+  if (!layerScene) {
+    console.error('--edge is only valid with --scenario edge-layer or bristle-end')
     process.exit(1)
   }
   edge = value
@@ -399,8 +403,8 @@ if (falloffRaw !== undefined) {
     console.error(`invalid --falloff "${falloffRaw}" (expected an integer 0..100)`)
     process.exit(1)
   }
-  if (scenario !== 'edge-layer') {
-    console.error('--falloff is only valid with --scenario edge-layer')
+  if (!layerScene) {
+    console.error('--falloff is only valid with --scenario edge-layer or bristle-end')
     process.exit(1)
   }
   falloff = value
@@ -410,7 +414,7 @@ if (falloffRaw !== undefined) {
 // (canonical 0..100). Omitted keeps the acrylic record's canonical 100, so
 // the committed edge-layer baseline is unchanged; the operand exists so a
 // capture can carry the pickup-0 control over the SAME scene. `edge-layer`
-// only, refused elsewhere here first.
+// and (from 261126, the cap leg) `bristle-end`, refused elsewhere here first.
 const pickupFlag = args.indexOf('--pickup')
 const pickupRaw = pickupFlag >= 0 ? args[pickupFlag + 1] : undefined
 let pickup
@@ -420,8 +424,8 @@ if (pickupRaw !== undefined) {
     console.error(`invalid --pickup "${pickupRaw}" (expected an integer 0..100)`)
     process.exit(1)
   }
-  if (scenario !== 'edge-layer') {
-    console.error('--pickup is only valid with --scenario edge-layer')
+  if (!layerScene) {
+    console.error('--pickup is only valid with --scenario edge-layer or bristle-end')
     process.exit(1)
   }
   pickup = value
