@@ -2349,12 +2349,13 @@ describe('the edge-layer gate (Spec 10)', () => {
 
     it('refuses the two knobs on every other scenario, in both files', () => {
       // 261126 (the cap leg): the same knobs are the bristle-end scene's
-      // layer operands; 261126-hgl's `edge-rim` reads them too, and
-      // 261126-n20 adds `bristle-line` (the ridge layer arm), so the refusal
-      // names all four scenes.
+      // layer operands; 261126-hgl's `edge-rim` reads them too, 261126-n20
+      // adds `bristle-line` (the ridge layer arm), and quick 261126-v8j's
+      // `feather-noise` reads them as FEATHER falloff / the Edge switch, so
+      // the refusal names all five scenes.
       expectContains(
         PROBE,
-        '`--${name} is only valid with --scenario edge-layer, edge-rim, bristle-end or bristle-line`',
+        '`--${name} is only valid with --scenario edge-layer, edge-rim, bristle-end, bristle-line or feather-noise`',
       )
       expectContains(
         PROBE,
@@ -2366,11 +2367,11 @@ describe('the edge-layer gate (Spec 10)', () => {
       )
       expectContains(
         RUN,
-        '--edge is only valid with --scenario edge-layer, edge-rim, bristle-end or bristle-line',
+        '--edge is only valid with --scenario edge-layer, edge-rim, bristle-end, bristle-line or feather-noise',
       )
       expectContains(
         RUN,
-        '--falloff is only valid with --scenario edge-layer, edge-rim, bristle-end or bristle-line',
+        '--falloff is only valid with --scenario edge-layer, edge-rim, bristle-end, bristle-line or feather-noise',
       )
       expectContains(RUN, '`&edge=${edge}`')
       expectContains(RUN, '`&falloff=${falloff}`')
@@ -2406,7 +2407,7 @@ describe('the edge-layer gate (Spec 10)', () => {
       // The feather reader widened: --feather rides the layer scenes, --dry and
       // --release stay bristle-end only. The scenario test is the allowed-list,
       // so a new scene must opt in explicitly.
-      expectContains(RUN, "const feather = readEndPercent('--feather', LAYER_SCENES)")
+      expectContains(RUN, "const feather = readEndPercent('--feather', EDGE_KNOB_SCENES)")
       expectContains(RUN, "const readEndPercent = (flagName, scenes = ['bristle-end']) => {")
       expectContains(RUN, 'if (!scenes.includes(scenario)) {')
       // The operand is read, folded into the SAME canonical params bag the
@@ -2459,12 +2460,63 @@ describe('the edge-layer gate (Spec 10)', () => {
       expectContains(PROBE, 'const EDGE_RIM_RUN_MIN = 2')
     })
 
+    it('registers the feather-noise scene and forwards its operands (261126-v8j)', () => {
+      // The scenario enters BOTH closed lists. The chain clause is APPENDED
+      // LAST (the bristle-tip adjacency pins above survive as prefixes), and
+      // the message name sits BEFORE the final "bristle-tip" clause (the four
+      // `or "bristle-tip")` pins stay green).
+      expectContains(PROBE, "raw !== 'edge-rim' && raw !== 'feather-noise'")
+      expectContains(RUN, "scenarioRaw !== 'edge-rim' && scenarioRaw !== 'feather-noise'")
+      expectContains(PROBE, '"bristle-blend", "feather-noise", "bristle-end"')
+      expectContains(RUN, '"bristle-blend", "feather-noise", "bristle-end"')
+      // --stroke-size is the sweep's size axis; --noise is parsed through the
+      // SAME percent reader and forwarded through the explicit pageQuery
+      // enumeration (an operand not enumerated never reaches the page).
+      expectContains(
+        RUN,
+        '--stroke-size is only valid with --scenario bristle-line, bristle-end, bristle-blend or feather-noise',
+      )
+      expectContains(RUN, "const noise = readEndPercent('--noise', ['feather-noise'])")
+      expectContains(RUN, '`&noise=${noise}`')
+      expectContains(RUN, "['pngCrop', 'crop']")
+      // The scene rides the layer-knob allowlist; LAYER_SCENES itself keeps
+      // its four members (the pickup/over law is not this quick's).
+      expectContains(RUN, "const EDGE_KNOB_SCENES = [...LAYER_SCENES, 'feather-noise']")
+      // The scene paints the SAME bristle-line geometry through the same bag,
+      // and both Spec 11 keys are written unconditionally so paramsEcho always
+      // shows them.
+      expectContains(
+        PROBE,
+        'function featherNoiseScript(strokeSize: number): readonly ScriptEntry[] {',
+      )
+      expectContains(PROBE, 'bristleLineParams(100, strokeSize, {')
+      expectContains(PROBE, "params['featherNoise'] = FEATHER_NOISE_KNOBS.noise")
+      expectContains(PROBE, "params['featherFalloff'] = FEATHER_NOISE_KNOBS.featherFalloff")
+      expectContains(PROBE, "'--noise is only valid with --scenario feather-noise'")
+      expectContains(PROBE, 'function readFeatherNoiseKnobs(')
+      expectContains(PROBE, 'FEATHER_NOISE_KNOBS = readFeatherNoiseKnobs(scenario)')
+      // The profile admission and the report: the across profiles must exist
+      // for variationByBand / featureCount / rimCrossings to read.
+      expectContains(PROBE, "scenario !== 'bristle-blend' &&")
+      expectContains(PROBE, "scenario !== 'feather-noise'")
+      expectContains(PROBE, 'function featherNoiseMetrics(')
+      expectContains(PROBE, 'featherNoise: metrics,')
+      // The comparator's family predicate carries the same name.
+      expectContains(COMPARE, "data.scenario === 'feather-noise'")
+    })
+
     it('carries the same bristle predicate in probe.ts, compare.mjs and this file', () => {
-      expectContains(PROBE, "scenario.startsWith('bristle-') || scenario === 'edge-layer'")
-      expectContains(COMPARE, "String(data.scenario).startsWith('bristle-') || data.scenario === 'edge-layer'")
+      // 261126-v8j: the feather-noise scene joins the family, so probe.ts's
+      // predicate broke across lines. The pin follows the SOURCE (one shared
+      // clause set, restated where the line broke), never a weakened test.
+      expectContains(PROBE, "scenario.startsWith('bristle-') ||")
+      expectContains(PROBE, "scenario === 'edge-layer' ||")
+      expectContains(PROBE, "scenario === 'feather-noise'")
+      expectContains(COMPARE, "String(data.scenario).startsWith('bristle-') || data.scenario === 'edge-layer' ||")
+      expectContains(COMPARE, "data.scenario === 'edge-rim' || data.scenario === 'feather-noise'")
       expectContains(
         readFileSync(resolve(HERE, 'harness.test.ts'), 'utf8'),
-        "scenario.startsWith('bristle-') || scenario === 'edge-layer'",
+        "scenario.startsWith('bristle-') ||",
       )
     })
 
@@ -3138,10 +3190,15 @@ describe('the blend share-spectrum detector (261126-n20 task 3)', () => {
     expectContains(RUN, "scenario !== 'bristle-blend'")
     // The other knobs stay refused on it.
     expectContains(RUN, '--over is only valid with --scenario bristle-line')
-    expectContains(RUN, "const feather = readEndPercent('--feather', LAYER_SCENES)")
+    expectContains(RUN, "const feather = readEndPercent('--feather', EDGE_KNOB_SCENES)")
     // The scene, its per-surface capture and the committed mirror.
     expectContains(PROBE, 'function bristleBlendScript(')
-    expectContains(PROBE, "if (scenario !== 'bristle-line' && scenario !== 'bristle-blend') return")
+    // 261126-v8j: feather-noise joins the lineCapture gate, so the guard broke
+    // across lines. The pin follows the source — same clause set, one more arm.
+    expectContains(
+      PROBE,
+      "scenario !== 'bristle-line' &&\n        scenario !== 'bristle-blend' &&\n        scenario !== 'feather-noise'",
+    )
     expectContains(PROBE, "(set as Record<string, unknown>)['blend'] = blendProfileSet(engine, strokeSize)")
     expectContains(PROBE, "lineSurfaces['postFix']")
     expectContains(PROBE, 'blendShareMean: round4(shareMean),')

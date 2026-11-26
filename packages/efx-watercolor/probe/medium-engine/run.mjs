@@ -336,7 +336,7 @@ const gateFlag = args.indexOf('--gate')
 const gate = gateFlag >= 0 ? args[gateFlag + 1] : undefined
 if (!gate) {
   console.error(
-    'usage: node run.mjs --gate <name> [--scenario cover|cover-over-wet|cover-advect|cover-lift|watercolor-50|white-over-blue|cover-textured|red-over-blue-50|bristle-edge|bristle-wet|bristle-line|bristle-blend|bristle-end|bristle-tip|emboss-smooth|edge-layer|edge-rim] [--edge <0..100>] [--falloff <0..100>] [--pickup <0..100>] [--wet-under] [--emboss <-100..100>] [--body <0..100>] [--light <0..4>] [--size <32..4096>] [--brush <id>] [--wet-mode <0|1>] [--texture <mask id>] [--drive <stop|lift|decay|mouse|mouse-lift|bake>] [--stroke-size <1..800>] [--dry <0..100>] [--feather <0..100>] [--release <0..1>]   (e.g. neutral-identity; --feather also on --scenario edge-layer / edge-rim)',
+    'usage: node run.mjs --gate <name> [--scenario cover|cover-over-wet|cover-advect|cover-lift|watercolor-50|white-over-blue|cover-textured|red-over-blue-50|bristle-edge|bristle-wet|bristle-line|bristle-blend|bristle-end|bristle-tip|emboss-smooth|edge-layer|edge-rim|feather-noise] [--edge <0..100>] [--falloff <0..100>] [--noise <0..100>] [--pickup <0..100>] [--wet-under] [--emboss <-100..100>] [--body <0..100>] [--light <0..4>] [--size <32..4096>] [--brush <id>] [--wet-mode <0|1>] [--texture <mask id>] [--drive <stop|lift|decay|mouse|mouse-lift|bake>] [--stroke-size <1..800>] [--dry <0..100>] [--feather <0..100>] [--release <0..1>]   (e.g. neutral-identity; --feather also on --scenario edge-layer / edge-rim; --noise / --falloff on --scenario feather-noise)',
   )
   console.error(
     '       every operand except --gate is optional and additive; an omitted operand writes no key/value, so the neutral gate keeps reproducing the committed baseline',
@@ -403,9 +403,9 @@ const scenarioFlag = args.indexOf('--scenario')
 const scenarioRaw = scenarioFlag >= 0 ? args[scenarioFlag + 1] : undefined
 let scenario
 if (scenarioRaw !== undefined) {
-  if (scenarioRaw !== 'cover' && scenarioRaw !== 'cover-over-wet' && scenarioRaw !== 'watercolor-50' && scenarioRaw !== 'white-over-blue' && scenarioRaw !== 'cover-advect' && scenarioRaw !== 'cover-lift' && scenarioRaw !== 'cover-textured' && scenarioRaw !== 'red-over-blue-50' && scenarioRaw !== 'bristle-edge' && scenarioRaw !== 'bristle-wet' && scenarioRaw !== 'bristle-line' && scenarioRaw !== 'bristle-blend' && scenarioRaw !== 'bristle-tip' && scenarioRaw !== 'bristle-end' && scenarioRaw !== 'emboss-smooth' && scenarioRaw !== 'edge-layer' && scenarioRaw !== 'edge-rim') {
+  if (scenarioRaw !== 'cover' && scenarioRaw !== 'cover-over-wet' && scenarioRaw !== 'watercolor-50' && scenarioRaw !== 'white-over-blue' && scenarioRaw !== 'cover-advect' && scenarioRaw !== 'cover-lift' && scenarioRaw !== 'cover-textured' && scenarioRaw !== 'red-over-blue-50' && scenarioRaw !== 'bristle-edge' && scenarioRaw !== 'bristle-wet' && scenarioRaw !== 'bristle-line' && scenarioRaw !== 'bristle-blend' && scenarioRaw !== 'bristle-tip' && scenarioRaw !== 'bristle-end' && scenarioRaw !== 'emboss-smooth' && scenarioRaw !== 'edge-layer' && scenarioRaw !== 'edge-rim' && scenarioRaw !== 'feather-noise') {
     console.error(
-      `invalid --scenario "${scenarioRaw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue", "cover-advect", "cover-lift", "cover-textured", "red-over-blue-50", "bristle-edge", "bristle-wet", "bristle-line", "bristle-blend", "bristle-end", "emboss-smooth", "edge-layer", "edge-rim" or "bristle-tip")`,
+      `invalid --scenario "${scenarioRaw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue", "cover-advect", "cover-lift", "cover-textured", "red-over-blue-50", "bristle-edge", "bristle-wet", "bristle-line", "bristle-blend", "feather-noise", "bristle-end", "emboss-smooth", "edge-layer", "edge-rim" or "bristle-tip")`,
     )
     process.exit(1)
   }
@@ -423,7 +423,12 @@ if (scenarioRaw !== undefined) {
 // the lateral MIN field exists only on the layer path, so a ridge that appears
 // only there is a different mechanism from the sheet path the artist used.
 const LAYER_SCENES = ['edge-layer', 'edge-rim', 'bristle-end', 'bristle-line']
-const layerScene = LAYER_SCENES.includes(scenario)
+// quick 261126-v8j (Spec 11): `feather-noise` reads the same two operands —
+// on THAT scene `--falloff` means FEATHER falloff, and `--edge` writes the
+// Edge pair with its Edge falloff fixed at 50. LAYER_SCENES itself stays the
+// layer-path list (pickup/over semantics are untouched).
+const EDGE_KNOB_SCENES = [...LAYER_SCENES, 'feather-noise']
+const layerScene = EDGE_KNOB_SCENES.includes(scenario)
 const edgeFlag = args.indexOf('--edge')
 const edgeRaw = edgeFlag >= 0 ? args[edgeFlag + 1] : undefined
 let edge
@@ -434,7 +439,7 @@ if (edgeRaw !== undefined) {
     process.exit(1)
   }
   if (!layerScene) {
-    console.error('--edge is only valid with --scenario edge-layer, edge-rim, bristle-end or bristle-line')
+    console.error('--edge is only valid with --scenario edge-layer, edge-rim, bristle-end, bristle-line or feather-noise')
     process.exit(1)
   }
   edge = value
@@ -450,7 +455,7 @@ if (falloffRaw !== undefined) {
     process.exit(1)
   }
   if (!layerScene) {
-    console.error('--falloff is only valid with --scenario edge-layer, edge-rim, bristle-end or bristle-line')
+    console.error('--falloff is only valid with --scenario edge-layer, edge-rim, bristle-end, bristle-line or feather-noise')
     process.exit(1)
   }
   falloff = value
@@ -535,9 +540,11 @@ if (strokeSizeRaw !== undefined) {
   if (
     scenario !== 'bristle-line' &&
     scenario !== 'bristle-end' &&
-    scenario !== 'bristle-blend'
+    scenario !== 'bristle-blend' &&
+    // quick 261126-v8j (Spec 11): the feather-noise sweep's size axis.
+    scenario !== 'feather-noise'
   ) {
-    console.error('--stroke-size is only valid with --scenario bristle-line, bristle-end or bristle-blend')
+    console.error('--stroke-size is only valid with --scenario bristle-line, bristle-end, bristle-blend or feather-noise')
     process.exit(1)
   }
   strokeSize = value
@@ -687,7 +694,12 @@ const dry = readEndPercent('--dry')
 // layer scenes too, so the artist's Feather 100 can be judged there; the
 // record's Feather 85 stays the default on edge-layer / bristle-end, and
 // edge-rim pins the recipe's 100 in the page when absent.
-const feather = readEndPercent('--feather', LAYER_SCENES)
+// quick 261126-v8j (Spec 11): `feather-noise` reads --feather too — its whole
+// bar set is judged against the feather that produced it.
+const feather = readEndPercent('--feather', EDGE_KNOB_SCENES)
+// The feather-noise operand (Spec 11): 0..100, this scene only. `--falloff`
+// on the same scene means FEATHER falloff (see EDGE_KNOB_SCENES above).
+const noise = readEndPercent('--noise', ['feather-noise'])
 
 const releaseFlag = args.indexOf('--release')
 const releaseRaw = releaseFlag >= 0 ? args[releaseFlag + 1] : undefined
@@ -730,6 +742,10 @@ const pageQuery =
   (drive === undefined ? '' : `&drive=${encodeURIComponent(drive)}`) +
   (dry === undefined ? '' : `&dry=${dry}`) +
   (feather === undefined ? '' : `&feather=${feather}`) +
+  // quick 261126-v8j: the Feather-noise operand MUST ride this explicit
+  // enumeration — an operand parsed but not forwarded never reaches the page,
+  // and every noise-100 cell would render at noise 0.
+  (noise === undefined ? '' : `&noise=${noise}`) +
   (release === undefined ? '' : `&release=${release}`)
 const resultPath = join(outDir, `${gate}.json`)
 
@@ -862,6 +878,9 @@ for (const [key, kind] of [
   ['pngEndCoverage', 'end-coverage'],
   // 261126-rov: the 1:1 mid-body crop beside the end crops.
   ['pngMid', 'mid'],
+  // quick 261126-v8j (Spec 11): the feather-noise scene's 1:1 crop, window
+  // scaled to the brush (2.5 half-widths) so sizes compare at one scale.
+  ['pngCrop', 'crop'],
 ]) {
   const url = result[key]
   if (typeof url !== 'string') continue

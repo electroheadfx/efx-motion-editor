@@ -231,12 +231,13 @@ function alphaLawFailures(data) {
   // Spec 10 (261125-kvl): `edge-layer` is a bristle scene (bristle-round,
   // Body 100) and carries the same film-blur exclusion. 261126-hgl adds
   // `edge-rim` (the artist's short stroke on the blue wash) — same brush,
-  // same exclusion. The probe's skip predicate carries the identical
-  // three-clause test; a drift between the two makes every layer capture
-  // fail here by construction.
+  // same exclusion; quick 261126-v8j adds `feather-noise` (the same
+  // bristle-round line). The probe's skip predicate carries the identical
+  // clause set; a drift between the two makes every layer capture fail here
+  // by construction.
   const bristle =
     String(data.scenario).startsWith('bristle-') || data.scenario === 'edge-layer' ||
-    data.scenario === 'edge-rim'
+    data.scenario === 'edge-rim' || data.scenario === 'feather-noise'
   if (bristle) {
     if (typeof data.visibleAlphaSkip !== 'string' || data.visibleAlphaSkip.length === 0) {
       failures.push(

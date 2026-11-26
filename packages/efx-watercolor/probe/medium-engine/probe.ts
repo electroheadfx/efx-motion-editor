@@ -250,7 +250,18 @@ import { buildBrushForStroke } from '../../src/playground/brushBridge'
 import { engineScaleToSize, sizeToEngineScale, toEngineParams } from '../../src/playground/params'
 // quick 261125-rtc: the report names the effective sampling factor the dab
 // chain ran at, through the engine's OWN size round trip.
-import { bristleSampleScale } from '../../src/playground/bristles'
+// quick 261126-v8j (Spec 11): the feather-noise report derives its band,
+// period and sampling zoom from the SHIPPED constants and twins — never a
+// re-typed literal — and reuses the one `edgeFalloffExponent` map indirectly
+// through the same constants the shader binds.
+import {
+  BRISTLE_FEATHER_EDGE,
+  BRISTLE_FEATHER_MIN,
+  BRISTLE_FEATHER_REACH,
+  bristleSampleScale,
+  featherNoisePeriodPx,
+  featherNoiseScale,
+} from '../../src/playground/bristles'
 import { pigmentFromHex } from '../../src/playground/spectral'
 // Spec 10: the CPU band mirror (`displayBasisGLSL`'s own tables and epsilon)
 // — the probe decodes the committed sheet through the display's exact law.
@@ -2038,6 +2049,87 @@ function readStrokeSize(): number {
   return value
 }
 
+// --- feather-noise (quick 261126-v8j, Spec 11) ------------------------------
+//
+// The artist's Spec 11 reading: the feather noise must enter the brush BODY
+// and the rim at every size, distributed by the shipped Edge-falloff shape.
+// This scene paints ONE straight bristle-round stroke at the artist's bag
+// (`bristleLineScript` / `bristleLineParams` — the SAME geometry the pale-line
+// gate reads) carrying the two new canonical keys, so the report can measure
+// the rim's threshold-crossing profile AND the interior grain distribution
+// along the lateral span.
+//
+// Operand law on THIS scene (and only this scene):
+//   --falloff  = FEATHER falloff (0..100, default 50). It shapes the rim
+//                opening AND the interior grain through the SHIPPED
+//                `edgeFalloffExponent` bias — never a second exponent map.
+//   --edge     = the Edge-transparency layer switch. It writes the Edge pair
+//                (`edgeFade`, `edgeFalloff`) with Edge falloff fixed at 50:
+//                the Edge falloff is out of this quick's scope, and an absent
+//                `--edge` leaves the record's amount 0 (the sheet path).
+//   --noise    = Feather noise (0..100, default 0 = shipped bytes).
+//   --feather  = the acrylic record's own Feather key (absent keeps 85).
+/** The scene's three operands, read once before any stroke. */
+function readEdgeNoise(scenario: string): number {
+  const raw = new URLSearchParams(location.search).get('noise')
+  if (raw === null || raw === '') return 0
+  if (scenario !== 'feather-noise') {
+    throw new Error('--noise is only valid with --scenario feather-noise')
+  }
+  const value = Number(raw)
+  if (!Number.isInteger(value) || value < 0 || value > 100) {
+    throw new Error(`invalid noise "${raw}" (expected an integer 0..100)`)
+  }
+  return value
+}
+
+/** The scene-local knob read: `edge` is the `--edge` PRESENCE (the layer
+ *  switch); `noise` is the Feather-noise operand (0 when absent);
+ *  `featherFalloff` is `--falloff` (50 when absent, already validated by
+ *  `readEdgeKnob`). */
+function readFeatherNoiseKnobs(scenario: string): {
+  edge: boolean
+  noise: number
+  featherFalloff: number
+} {
+  const rawEdge = new URLSearchParams(location.search).get('edge')
+  return {
+    edge: rawEdge !== null && rawEdge !== '',
+    noise: readEdgeNoise(scenario),
+    featherFalloff: EDGE_LAYER_FALLOFF,
+  }
+}
+
+/** ONE straight bristle-round stroke at the artist's bag. `--feather` MUST
+ *  reach the rendered bag: the acrylic record states Feather 85 while every
+ *  sweep cell asks for 100 (the inert control asks for 0), so the override is
+ *  written whenever the operand is given and absent lets the record's own 85
+ *  apply. `falloff: null` keeps the Edge pair's `edgeFalloff` at the shipped
+ *  50; the FEATHER falloff rides the bag's own `featherFalloff` key. Both
+ *  Spec 11 keys are written unconditionally so `paramsEcho` always shows the
+ *  scene's own values at the record's defaults. */
+function featherNoiseScript(strokeSize: number): readonly ScriptEntry[] {
+  const params = bristleLineParams(100, strokeSize, {
+    dry: null,
+    feather: readEdgeFeather('feather-noise'),
+    edge: FEATHER_NOISE_KNOBS.edge ? EDGE_LAYER_AMOUNT : null,
+    falloff: null,
+    pickup: null,
+  })
+  params['featherNoise'] = FEATHER_NOISE_KNOBS.noise
+  params['featherFalloff'] = FEATHER_NOISE_KNOBS.featherFalloff
+  return [
+    {
+      color: LINE_COLOR,
+      points: straightLine(LINE_Y),
+      mutationId: LINE_MUTATION_ID,
+      params,
+      brushId: 'bristle-round',
+      captureLine: true,
+    },
+  ]
+}
+
 // --- bristle-blend (261126-n20, issue 3, the large-size blend worms) --------
 //
 // The artist's report: at Size 200 and above a bristle stroke painted over a
@@ -2273,6 +2365,13 @@ let EDGE_LAYER_FEATHER: number | null = null
  *  fix after the FIRST stroke only, keeping A's stroke-end merge stamp alive:
  *  the wet-under arm the live defect reports. */
 let EDGE_LAYER_WET_UNDER = false
+/** quick 261126-v8j (Spec 11): the feather-noise scene's three operands, read
+ *  once by `main()` before any stroke (see `readFeatherNoiseKnobs`). */
+let FEATHER_NOISE_KNOBS: { edge: boolean; noise: number; featherFalloff: number } = {
+  edge: false,
+  noise: 0,
+  featherFalloff: EDGE_LAYER_DEFAULT_FALLOFF,
+}
 /** 261126 (Spec 10 falloff leg): the law's midpoint station — `lateralWeight`'s
  *  half-weight coordinate, u = 0.5 of the layer's OWN lateral field (whose
  *  u = 1 is the stroke's visible edge, `uLayerEdge`). The station is FOUND in
@@ -2380,10 +2479,13 @@ const EDGE_4K_REQUEST = 4096
 
 /** Spec 10: the two edge operands. Valid on `edge-layer` (the layer's own
  *  scene), `edge-rim`, `bristle-end` (261126's cap leg, whose end census
- *  judges the LAYER path against the sheet path at the same stroke) and
+ *  judges the LAYER path against the sheet path at the same stroke),
  *  `bristle-line` (261126-n20's ridge layer arm — the lateral MIN field
- *  exists only on the layer path). A value on any other scenario is refused,
- *  never silently ignored. Absent keeps the canonical defaults 0 / 50. */
+ *  exists only on the layer path) and, since Spec 11, `feather-noise` (where
+ *  `--falloff` means FEATHER falloff, and `--edge` writes the Edge pair with
+ *  its Edge falloff fixed at 50 — the Edge falloff is out of that quick's
+ *  scope). A value on any other scenario is refused, never silently ignored.
+ *  Absent keeps the canonical defaults 0 / 50. */
 function readEdgeKnob(name: 'edge' | 'falloff', scenario: string, fallback: number): number {
   const raw = new URLSearchParams(location.search).get(name)
   if (raw === null || raw === '') return fallback
@@ -2391,10 +2493,11 @@ function readEdgeKnob(name: 'edge' | 'falloff', scenario: string, fallback: numb
     scenario !== 'edge-layer' &&
     scenario !== 'edge-rim' &&
     scenario !== 'bristle-end' &&
-    scenario !== 'bristle-line'
+    scenario !== 'bristle-line' &&
+    scenario !== 'feather-noise'
   ) {
     throw new Error(
-      `--${name} is only valid with --scenario edge-layer, edge-rim, bristle-end or bristle-line`,
+      `--${name} is only valid with --scenario edge-layer, edge-rim, bristle-end, bristle-line or feather-noise`,
     )
   }
   const value = Number(raw)
@@ -2442,13 +2545,22 @@ function readEdgePickup(scenario: string): number | null {
 }
 
 /** 261126-hgl: the feather operand — null keeps the acrylic record's own
- *  Feather 85. Valid on `edge-layer` and (the cap leg) `bristle-end`, refused
- *  elsewhere, never silently ignored. */
+ *  Feather 85. Valid on `edge-layer`, (the cap leg) `bristle-end`, `edge-rim`
+ *  and, since Spec 11, `feather-noise` — the scene whose whole bar set is
+ *  judged against the feather that produced it. Refused elsewhere, never
+ *  silently ignored. */
 function readEdgeFeather(scenario: string): number | null {
   const raw = new URLSearchParams(location.search).get('feather')
   if (raw === null || raw === '') return null
-  if (scenario !== 'edge-layer' && scenario !== 'edge-rim' && scenario !== 'bristle-end') {
-    throw new Error('--feather is only valid with --scenario edge-layer, edge-rim or bristle-end')
+  if (
+    scenario !== 'edge-layer' &&
+    scenario !== 'edge-rim' &&
+    scenario !== 'bristle-end' &&
+    scenario !== 'feather-noise'
+  ) {
+    throw new Error(
+      '--feather is only valid with --scenario edge-layer, edge-rim, bristle-end or feather-noise',
+    )
   }
   const value = Number(raw)
   if (!Number.isInteger(value) || value < 0 || value > 100) {
@@ -7229,6 +7341,294 @@ function midBodyCrop(transparent: HTMLCanvasElement): string {
   return endCrop(transparent, mid - END_CROP_W / 2, mid + END_CROP_W / 2, 1)
 }
 
+// --- feather-noise metrics (quick 261126-v8j, Spec 11) ----------------------
+//
+// The report's measurement basis is the SAME across profile the pale-line gate
+// reads (`lineProfileSet`, committed surface): per-offset cover / dark / ink
+// averaged over the mid-body x window. The feather-noise block derives the
+// band, period and sampling zoom from the SHIPPED constants and twins (never
+// re-typed literals), then walks that profile for the spec's two questions:
+// does the grain break the rim (crossings, opening, extents) and does it
+// enter the body with the falloff profile (variation by band)?
+/** `straightLine` stamps p = 0.75; `scriptPressure` passes it through. */
+const FN_SAMPLE_PRESSURE = 0.75
+/** The across high-pass window: wider than 2× the 16 px period cap, so a
+ *  single feature spans less than half the window and is preserved whole. */
+const FN_PROFILE_HP_WINDOW = 41
+/** A run shorter than two rows is threshold chatter, not a feature. */
+const FN_FEATURE_RUN_MIN_PX = 2
+/** The feature floor: a visible step on 8-bit paper (1/255) with a margin. */
+const FN_FEATURE_FLOOR = Math.max(0.004, 1 / 255)
+/** The silhouette's own extent: the last row at 5 % of the body peak. */
+const FN_OUTER_FRACTION = 0.05
+/** The crop reads every size at the same RELATIVE scale (2.5 half-widths). */
+const FN_CROP_SCALE = 2.5
+const FN_CROP_MIN_HALF = 64
+const FN_CROP_MAX_HALF = 256
+/** The law is the source, the measurement the proof: a divergence beyond
+ *  10 % is a named FAIL, never a silent pass. */
+const FN_HALF_WIDTH_TOLERANCE = 0.1
+
+/** The 1:1 crop centred on the stroke's mid-body, half-window in px. */
+function featherNoiseCrop(transparent: HTMLCanvasElement, halfWindow: number): string {
+  const mid = Math.round(0.5 * transparent.width)
+  return endCrop(transparent, mid - halfWindow, mid + halfWindow, 1)
+}
+
+/** One side's feature count on the high-passed dark profile, restricted to
+ *  the feather band (lateral = |offset| / halfWidthPx in
+ *  [featherStart, BRISTLE_FEATHER_EDGE]). Runs of |hp| >= the feature floor
+ *  are closed across single-row gaps (a 1 px dip below the floor does not
+ *  split one lobe) and counted only when at least 2 px long. */
+function featherNoiseFeatures(
+  offsets: readonly number[],
+  hp: readonly number[],
+  halfWidthPx: number,
+  bandLo: number,
+  bandHi: number,
+  sign: 1 | -1,
+): number {
+  if (halfWidthPx <= 0) return 0
+  const flags: boolean[] = []
+  for (let i = 0; i < offsets.length; i += 1) {
+    const o = offsets[i]!
+    if (sign > 0 ? o <= 0 : o >= 0) continue
+    const u = Math.abs(o) / halfWidthPx
+    if (u < bandLo || u > bandHi) continue
+    flags.push(Math.abs(hp[i]!) >= FN_FEATURE_FLOOR)
+  }
+  for (let i = 1; i < flags.length - 1; i += 1) {
+    if (!flags[i] && flags[i - 1] && flags[i + 1]) flags[i] = true
+  }
+  return runLengths(flags).filter((n) => n >= FN_FEATURE_RUN_MIN_PX).length
+}
+
+/** The scene's whole readout. Pure measurement: every threshold and constant
+ *  above is a reading definition, never a render input. */
+function featherNoiseMetrics(
+  transparent: HTMLCanvasElement,
+  bag: Record<string, number>,
+  strokeSize: number,
+  surfaces: Record<string, unknown>,
+): Record<string, unknown> {
+  const preset = BRUSH_PRESETS.find((candidate) => candidate.id === 'bristle-round')
+  if (!preset) throw new Error('feather-noise: the bristle-round preset is missing')
+  const record = MEDIUMS.find((medium) => medium.id === 'acrylic')?.params
+  const dh = transparent.height
+  const dw = transparent.width
+
+  // radiusPx: the ENGINE's footprint law (Engine.sizeMult / brushRadius) with
+  // the SAME inputs the scene hands the engine. The scripted stroke carries no
+  // maxRadius (scriptScale 1), `speedThin` 0 makes the speed term exactly 1,
+  // and the pressure is `straightLine`'s constant. `strokeSize / 2` would
+  // describe a fraction of the mark and is FORBIDDEN here.
+  const engineSize = toEngineParams(bag).size ?? sizeToEngineScale(strokeSize)
+  const pressure = Math.min(Math.max(FN_SAMPLE_PRESSURE, 0), 1)
+  const t = Math.pow(pressure, preset.pressureSize)
+  const speedTerm = Math.min(Math.max(1 - 0 * preset.speedThin, 0.4), 1)
+  const scriptScale = 1
+  const radiusHeights =
+    (preset.size[0] + (preset.size[1] - preset.size[0]) * t) *
+    speedTerm *
+    Math.pow(3, (engineSize - 0.5) * 2) *
+    scriptScale *
+    0.8
+  const radiusPx = radiusHeights * dh
+  // The engine's uHalfWidthPx = uRadius · uSheet.y — the same quantity.
+  const halfWidthPx = radiusPx
+
+  // The feather band, from the shipped constants: the shader's
+  // `featherStart = uFeatherEdge · (1 − mix(uFeatherMin, uFeatherReach, uFeather))`.
+  const effectiveFeather = bag['feather'] ?? record?.feather ?? null
+  const uFeather = Math.min(Math.max((effectiveFeather ?? 85) / 100, 0), 1)
+  const featherStart =
+    BRISTLE_FEATHER_EDGE *
+    (1 - (BRISTLE_FEATHER_MIN + (BRISTLE_FEATHER_REACH - BRISTLE_FEATHER_MIN) * uFeather))
+  const bandPx = (BRISTLE_FEATHER_EDGE - featherStart) * halfWidthPx
+  const periodPx = featherNoisePeriodPx(bandPx)
+  const rimScale = featherNoiseScale(bandPx)
+
+  // The committed across profile (postFix = the sheet the artist judges).
+  const profile = (surfaces['postFix'] as Record<string, unknown> | undefined) ?? null
+  const offsets = (profile?.['offsets'] as number[] | undefined) ?? []
+  const across =
+    (profile?.['across'] as
+      | { cover?: number[]; dark?: number[]; ink?: number[] }
+      | undefined) ?? {}
+  const dark = across.dark ?? []
+  const cover = across.cover ?? []
+  const peakDark = dark.reduce((m, v) => Math.max(m, v), 0)
+
+  // The silhouette: the outermost row still at 5 % of the body peak, per side,
+  // from the MEAN across profile (the stable measure bar (6) compares across
+  // falloffs — it must not chase per-dab scalloping).
+  let plusExtent = 0
+  let minusExtent = 0
+  for (let i = 0; i < offsets.length; i += 1) {
+    if (dark[i]! < FN_OUTER_FRACTION * peakDark) continue
+    const o = offsets[i]!
+    if (o > 0) plusExtent = Math.max(plusExtent, o)
+    else if (o < 0) minusExtent = Math.max(minusExtent, -o)
+  }
+  const outerExtentPx = (plusExtent + minusExtent) / 2
+
+  // The opening: the first row BELOW half the body peak, walking outward from
+  // the centre line on each side. When the capture ends before the crossing
+  // (a size-200 opening can exceed the ±140 band) the last captured offset is
+  // used and the reading is flagged `clamped`, never fabricated.
+  const halfPeak = 0.5 * peakDark
+  const centreIndex = offsets.indexOf(0)
+  const maxPlus = offsets.length > 0 ? offsets[offsets.length - 1]! : 0
+  const maxMinus = offsets.length > 0 ? -offsets[0]! : 0
+  let plusOpen: number | null = null
+  let minusOpen: number | null = null
+  if (centreIndex >= 0) {
+    for (let i = centreIndex; i < offsets.length; i += 1) {
+      if (offsets[i]! > 0 && dark[i]! < halfPeak) {
+        plusOpen = offsets[i]!
+        break
+      }
+    }
+    for (let i = centreIndex; i >= 0; i -= 1) {
+      if (offsets[i]! < 0 && dark[i]! < halfPeak) {
+        minusOpen = -offsets[i]!
+        break
+      }
+    }
+  }
+  const openingClamped = plusOpen === null || minusOpen === null
+  const openingHalfOffsetPx = ((plusOpen ?? maxPlus) + (minusOpen ?? maxMinus)) / 2
+
+  // The grain distribution: RMS of the profile's high-pass inside the three
+  // lateral bands (u = |offset| / halfWidthPx; core [0, 0.33), mid
+  // [0.33, 0.66), rim [0.66, 1]). The rim is the feather band; the core is
+  // where falloff 0 must reach and falloff 100 must not. Samples per band are
+  // recorded so a capture whose band exceeds the sampled span is visible.
+  const hp = boxcarHighpass(dark, FN_PROFILE_HP_WINDOW)
+  const bandValues: { core: number[]; mid: number[]; rim: number[] } = {
+    core: [],
+    mid: [],
+    rim: [],
+  }
+  for (let i = 0; i < offsets.length; i += 1) {
+    const u = halfWidthPx > 0 ? Math.abs(offsets[i]!) / halfWidthPx : Number.POSITIVE_INFINITY
+    if (u < 0.33) bandValues.core.push(hp[i]!)
+    else if (u < 0.66) bandValues.mid.push(hp[i]!)
+    else if (u <= 1) bandValues.rim.push(hp[i]!)
+  }
+  const variationByBand = {
+    core: round4(seriesStats(bandValues.core).rms),
+    mid: round4(seriesStats(bandValues.mid).rms),
+    rim: round4(seriesStats(bandValues.rim).rms),
+    samples: {
+      core: bandValues.core.length,
+      mid: bandValues.mid.length,
+      rim: bandValues.rim.length,
+    },
+  }
+
+  // The band's feature count, per side (the band width is one side's width);
+  // the report carries the larger side and both counts.
+  const bandLo = featherStart
+  const bandHi = BRISTLE_FEATHER_EDGE
+  const featurePlus = featherNoiseFeatures(offsets, hp, halfWidthPx, bandLo, bandHi, 1)
+  const featureMinus = featherNoiseFeatures(offsets, hp, halfWidthPx, bandLo, bandHi, -1)
+
+  // ONE pixel scan over the mid-body station feeds two readings:
+  //  - the envelope: the outermost row whose STRONGEST pixel still carries ink
+  //    above the resolution floor. This is the footprint-law cross-check — the
+  //    mean across profile above averages the station's dab scalloping and the
+  //    rim's soft threshold, under-reading the aperture by ~1-2 px at small
+  //    sizes; the envelope is the ink's actual lateral reach, the quantity
+  //    uRadius bounds.
+  //  - the rim's rag: ink<->paper transitions ALONG the stroke on the rim-band
+  //    rows (u in [uFeatherEdge, 1], both sides), thresholded at half each
+  //    row's own peak so the reading is scale-free; the mean per row is
+  //    reported.
+  const pixels = transparent.getContext('2d')!.getImageData(0, 0, dw, dh).data
+  const centre = Math.round(LINE_Y * dh)
+  const px0 = Math.round(LINE_PROFILE_X0 * dw)
+  const px1 = Math.round(LINE_PROFILE_X1 * dw)
+  let crossings = 0
+  let rimRows = 0
+  let plusEnvelope = 0
+  let minusEnvelope = 0
+  if (halfWidthPx > 0) {
+    for (const o of offsets) {
+      const gy = centre + o
+      if (gy < 0 || gy >= dh) continue
+      const cr = dh - 1 - gy
+      const u = Math.abs(o) / halfWidthPx
+      const rimRow = u >= BRISTLE_FEATHER_EDGE && u <= 1
+      let rowPeak = 0
+      const values: number[] | null = rimRow ? [] : null
+      for (let x = px0; x < px1; x += 1) {
+        const i4 = (cr * dw + x) * 4
+        const v = 1 - Math.min(pixels[i4]!, pixels[i4 + 1]!, pixels[i4 + 2]!) / 255
+        if (v > rowPeak) rowPeak = v
+        if (values !== null) values.push(v)
+      }
+      if (rowPeak >= FN_FEATURE_FLOOR) {
+        if (o > 0) plusEnvelope = Math.max(plusEnvelope, o)
+        else if (o < 0) minusEnvelope = Math.max(minusEnvelope, -o)
+      }
+      if (values === null || rowPeak < FN_FEATURE_FLOOR) continue
+      const thr = 0.5 * rowPeak
+      let prev = false
+      let rowCrossings = 0
+      for (const v of values) {
+        const on = v >= thr
+        if (on !== prev) rowCrossings += 1
+        prev = on
+      }
+      crossings += rowCrossings
+      rimRows += 1
+    }
+  }
+  const measuredHalfWidthPx = (plusEnvelope + minusEnvelope) / 2
+  const halfWidthDeltaPct =
+    radiusPx > 0 ? (100 * Math.abs(measuredHalfWidthPx - radiusPx)) / radiusPx : null
+
+  const halfWindow = Math.min(
+    FN_CROP_MAX_HALF,
+    Math.max(FN_CROP_MIN_HALF, Math.round(FN_CROP_SCALE * radiusPx)),
+  )
+
+  return {
+    radiusPx: round2(radiusPx),
+    halfWidthPx: round2(halfWidthPx),
+    bandPx: round2(bandPx),
+    periodPx: round4(periodPx),
+    rimScale: round4(rimScale),
+    featherStart: round4(featherStart),
+    effectiveFeather,
+    strokeSize,
+    inputs: {
+      paramsSize: round4(engineSize),
+      pressure: round4(pressure),
+      scriptScale,
+      sheetHeight: dh,
+      presetSize: [preset.size[0], preset.size[1]],
+      pressureSize: preset.pressureSize,
+      speedThin: preset.speedThin,
+    },
+    profile: { offsets, dark, cover },
+    variationByBand,
+    featureCount: Math.max(featurePlus, featureMinus),
+    featureSides: { plus: featurePlus, minus: featureMinus },
+    rimCrossings: rimRows > 0 ? round4(crossings / rimRows) : 0,
+    rimRows,
+    openingHalfOffsetPx: round2(openingHalfOffsetPx),
+    openingClamped,
+    outerExtentPx: round2(outerExtentPx),
+    measuredHalfWidthPx: round2(measuredHalfWidthPx),
+    halfWidthDeltaPct: halfWidthDeltaPct === null ? null : round2(halfWidthDeltaPct),
+    halfWidthOk: halfWidthDeltaPct === null ? false : halfWidthDeltaPct <= 100 * FN_HALF_WIDTH_TOLERANCE,
+    cropHalfWindowPx: halfWindow,
+    pngCrop: featherNoiseCrop(transparent, halfWindow),
+  }
+}
+
 /** The crop windows: the last / first ~2.4 brush widths of travel. */
 function endCropWindow(dw: number): { start: [number, number]; end: [number, number] } {
   const x0 = Math.round(END_X0 * dw)
@@ -7490,7 +7890,10 @@ function run(
         : scenario === 'bristle-line' ||
             scenario === 'bristle-blend' ||
             scenario === 'bristle-end' ||
-            scenario === 'edge-rim'
+            scenario === 'edge-rim' ||
+            // quick 261126-v8j (Spec 11): the feather-noise scene paints the
+            // SAME bristle-round line — the gather is what carries the law.
+            scenario === 'feather-noise'
           ? 'bristle-round'
           : undefined)
   // bristle-end: which end path this capture drives. Read before any stroke
@@ -7546,7 +7949,9 @@ function run(
                                   ? edgeLayerScript()
                                   : scenario === 'edge-rim'
                                     ? edgeRimScript()
-                                    : neutralScript(emboss, body)
+                                    : scenario === 'feather-noise'
+                                      ? featherNoiseScript(strokeSize)
+                                      : neutralScript(emboss, body)
 
   // 261119-pod (D-F): the scene-parameter echo — `dry` appears in the report
   // only when a script pins it, so every capture records the calibration and a
@@ -7592,7 +7997,16 @@ function run(
     // time (subtracted from bakeMs), never medium cost.
     const lineSurfaces: Record<string, unknown> = {}
     const lineCapture = (surface: string) => {
-      if (scenario !== 'bristle-line' && scenario !== 'bristle-blend') return
+      // quick 261126-v8j (Spec 11): the feather-noise scene paints the SAME
+      // bristle-line geometry, so the across profiles are its measurement
+      // basis too — without this widening variationByBand / featureCount /
+      // rimCrossings would read absent profiles.
+      if (
+        scenario !== 'bristle-line' &&
+        scenario !== 'bristle-blend' &&
+        scenario !== 'feather-noise'
+      )
+        return
       const start = performance.now()
       const set = lineProfileSet(engine)
       // 261126-n20 (issue 3): the blend scene records its share spectrum on
@@ -7979,10 +8393,14 @@ function run(
     ])
     // Spec 10: `edge-layer` is a bristle scene (bristle-round, Body 100) and
     // carries the same film-blur exclusion; 261126-hgl's `edge-rim` is the
-    // same brush on the artist's pair. The comparator's alpha-law predicate
-    // carries the identical three-clause test; the two must agree.
+    // same brush on the artist's pair; 261126-v8j's `feather-noise` paints
+    // the same bristle-round line. The comparator's alpha-law predicate
+    // carries the identical clause set; the two must agree.
     const visibleAlpha =
-      scenario.startsWith('bristle-') || scenario === 'edge-layer' || scenario === 'edge-rim'
+      scenario.startsWith('bristle-') ||
+      scenario === 'edge-layer' ||
+      scenario === 'edge-rim' ||
+      scenario === 'feather-noise'
         ? visibleAlphaSkipped(BRISTLE_VISIBLE_ALPHA_SKIP)
         : visibleAlphaCheck(pigment.pixels, transparent.pixels, sheet)
 
@@ -8072,6 +8490,35 @@ function run(
             // 261126-rov: the 1:1 mid-body crop beside the blend numbers.
             pngMid: midBodyCrop(transparentCanvas),
           }
+        : {}
+
+    // quick 261126-v8j (Spec 11): the feather-noise scene's readout — the
+    // band / period / sampling-zoom echo derived from the shipped constants,
+    // the committed across profiles, the grain's by-band RMS, the band's
+    // feature count, the rim's along crossings, the opening / silhouette
+    // walks and the footprint-law cross-check. `pngCrop` is a 1:1 mid-body
+    // crop at a constant 2.5 half-widths, so sizes compare at one relative
+    // scale (the base64 is lifted out to disk by run.mjs, never left here).
+    const featherNoiseReport =
+      scenario === 'feather-noise'
+        ? (() => {
+            const bag = paramsBag(script.find((entry) => entry.captureLine) ?? script[0]!)
+            const metrics = featherNoiseMetrics(
+              transparentCanvas,
+              bag,
+              strokeSize,
+              lineSurfaces,
+            )
+            const pngCrop = metrics['pngCrop'] as string
+            delete metrics['pngCrop']
+            return {
+              paramsEcho: bag,
+              lineSurfaces,
+              featherNoise: metrics,
+              pngTransparent: transparentCanvas.toDataURL('image/png'),
+              pngCrop,
+            }
+          })()
         : {}
 
     // bristle-end (2026-11-23): the end-region census and its two 2x crops.
@@ -8202,6 +8649,7 @@ function run(
       ...bristleWetReport,
       ...lineReport,
       ...blendReport,
+      ...featherNoiseReport,
       ...bristleEndReport,
       ...tipReport,
       ...embossSmoothReport,
@@ -8283,9 +8731,9 @@ function readBrush(): string | undefined {
 function readScenario(): string {
   const raw = new URLSearchParams(location.search).get('scenario')
   if (raw === null || raw === '') return 'neutral'
-  if (raw !== 'cover' && raw !== 'cover-over-wet' && raw !== 'watercolor-50' && raw !== 'white-over-blue' && raw !== 'cover-advect' && raw !== 'cover-lift' && raw !== 'cover-textured' && raw !== 'red-over-blue-50' && raw !== 'bristle-edge' && raw !== 'bristle-wet' && raw !== 'bristle-line' && raw !== 'bristle-blend' && raw !== 'bristle-tip' && raw !== 'bristle-end' && raw !== 'emboss-smooth' && raw !== 'edge-layer' && raw !== 'edge-rim') {
+  if (raw !== 'cover' && raw !== 'cover-over-wet' && raw !== 'watercolor-50' && raw !== 'white-over-blue' && raw !== 'cover-advect' && raw !== 'cover-lift' && raw !== 'cover-textured' && raw !== 'red-over-blue-50' && raw !== 'bristle-edge' && raw !== 'bristle-wet' && raw !== 'bristle-line' && raw !== 'bristle-blend' && raw !== 'bristle-tip' && raw !== 'bristle-end' && raw !== 'emboss-smooth' && raw !== 'edge-layer' && raw !== 'edge-rim' && raw !== 'feather-noise') {
     throw new Error(
-      `invalid scenario "${raw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue", "cover-advect", "cover-lift", "cover-textured", "red-over-blue-50", "bristle-edge", "bristle-wet", "bristle-line", "bristle-blend", "bristle-end", "emboss-smooth", "edge-layer", "edge-rim" or "bristle-tip")`,
+      `invalid scenario "${raw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue", "cover-advect", "cover-lift", "cover-textured", "red-over-blue-50", "bristle-edge", "bristle-wet", "bristle-line", "bristle-blend", "feather-noise", "bristle-end", "emboss-smooth", "edge-layer", "edge-rim" or "bristle-tip")`,
     )
   }
   return raw
@@ -8346,6 +8794,10 @@ function main(): void {
     EDGE_LAYER_PICKUP = readEdgePickup(scenario)
     EDGE_LAYER_FEATHER = readEdgeFeather(scenario)
     EDGE_LAYER_WET_UNDER = readEdgeWetUnder(scenario)
+    // quick 261126-v8j (Spec 11): the feather-noise operands — `--noise`
+    // (refused off this scene), the `--edge` layer switch and the `--falloff`
+    // value already read above (on this scene it means FEATHER falloff).
+    FEATHER_NOISE_KNOBS = readFeatherNoiseKnobs(scenario)
     sheet = readSize()
     brush = readBrush()
     emboss = readEmboss()
