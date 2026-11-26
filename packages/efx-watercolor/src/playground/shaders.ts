@@ -1073,8 +1073,9 @@ float wetAt(vec2 uv){
 // write both call it, and only ever inside the uSmear > 0 guard.
 //
 // 261126 (edge-leg): uSmearSmooth = 1 on the STROKE LAYER's programs only,
-// and it also selects the layer's own previous film as the smear's reference
-// (bristleDepositFS). The sheet law re-reads the pre-dab canvas every dab, so
+// and it also selects the layer's reference: its own previous film plus the
+// under at the layer's transmittance 1 - cover_L (bristleDepositFS). The
+// sheet law re-reads the pre-dab canvas every dab, so
 // its hash field diffuses over the stroke; a layer whose reference was the
 // untouched sheet made the hash a canvas-stationary per-bristle/per-6-px FIELD
 // in its accumulated film — the artist's pickup mosaic (measured: layer chroma
