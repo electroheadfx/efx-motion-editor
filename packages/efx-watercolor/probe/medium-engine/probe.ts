@@ -2495,6 +2495,80 @@ const EDGE_PICKUP_ABSENT: Record<string, unknown> = {
   edgePickupTouchWrite: null,
   edgePickupTouchMax: null,
   edgePickupNow: null,
+  // 261126 (edge-leg): the per-texel texture of the pickup — the mosaic's
+  // instrument. Absent without a layer for the same reason as the means.
+  edgePickupMixStd: null,
+  edgePickupLayerChromaStd: null,
+  edgePickupLayerHighPass: null,
+  edgePickupMergedChromaStd: null,
+  edgePickupMergedHighPass: null,
+}
+
+/** The per-texel chroma (max − min channel) standard deviation of an RGB grid
+ *  — how far the hue wanders texel to texel. 0 is a smooth field. */
+function edgeGridChromaStd(grid: Float32Array): number {
+  const n = grid.length / 3
+  if (n === 0) return 0
+  let sum = 0
+  let sum2 = 0
+  for (let i = 0; i < n; i += 1) {
+    const r = grid[i * 3]!
+    const g = grid[i * 3 + 1]!
+    const b = grid[i * 3 + 2]!
+    const chroma = Math.max(r, g, b) - Math.min(r, g, b)
+    sum += chroma
+    sum2 += chroma * chroma
+  }
+  const mean = sum / n
+  return Math.sqrt(Math.max(sum2 / n - mean * mean, 0))
+}
+
+/**
+ * The RMS of a 3x3 high-pass over an RGB grid: every interior texel's
+ * departure from its own 3x3 mean, per channel, pooled. This is the
+ * bristle-scale texture the artist reads as "noise instead of a smooth
+ * optical blend" — a smooth gradient lives in the low-pass and leaves this
+ * near zero.
+ */
+function edgeGridHighPass(grid: Float32Array, width: number, height: number): number {
+  if (width < 3 || height < 3) return 0
+  let sum2 = 0
+  let n = 0
+  for (let y = 1; y < height - 1; y += 1) {
+    for (let x = 1; x < width - 1; x += 1) {
+      const i = y * width + x
+      for (let c = 0; c < 3; c += 1) {
+        let mean = 0
+        for (let dy = -1; dy <= 1; dy += 1) {
+          for (let dx = -1; dx <= 1; dx += 1) {
+            mean += grid[((y + dy) * width + (x + dx)) * 3 + c]!
+          }
+        }
+        mean /= 9
+        const residual = grid[i * 3 + c]! - mean
+        sum2 += residual * residual
+        n += 1
+      }
+    }
+  }
+  return n > 0 ? Math.sqrt(sum2 / n) : 0
+}
+
+/** The standard deviation of a per-texel scalar grid, ignoring NaNs. */
+function edgeGridScalarStd(grid: Float32Array): number | null {
+  let sum = 0
+  let sum2 = 0
+  let n = 0
+  for (let i = 0; i < grid.length; i += 1) {
+    const v = grid[i]!
+    if (!Number.isFinite(v)) continue
+    sum += v
+    sum2 += v * v
+    n += 1
+  }
+  if (n === 0) return null
+  const mean = sum / n
+  return Math.sqrt(Math.max(sum2 / n - mean * mean, 0))
 }
 
 /**
@@ -2555,6 +2629,17 @@ function edgePickupReadout(
   let n = 0
   const x0 = Math.max(rect.x0, centre - EDGE_PICKUP_HALF_PX)
   const x1 = Math.min(rect.x1 - 1, centre + EDGE_PICKUP_HALF_PX)
+  // 261126 (edge-leg): the per-texel grids behind the means — the mosaic is a
+  // TEXTURE, so it needs a variance beside its average. The crossing window is
+  // 9 px across stroke B and the under rect's full height along it; both
+  // bristle-scale (the nearest-bristle index steps ~1.1 px) and the 6 px
+  // along-cell live inside it.
+  const gw = x1 - x0 + 1
+  const gh = rect.y1 - rect.y0
+  const layerGrid = layer === null ? null : new Float32Array(gw * gh * 3)
+  const mergedGrid = new Float32Array(gw * gh * 3)
+  const mixGrid = layer === null || pigment === null ? null : new Float32Array(gw * gh)
+  if (mixGrid !== null) mixGrid.fill(Number.NaN)
   for (let y = rect.y0; y < rect.y1; y += 1) {
     const ly = y - rect.y0
     if (ly < 0 || ly >= height) continue
@@ -2562,9 +2647,14 @@ function edgePickupReadout(
       const lx = x - rect.x0
       if (lx < 0 || lx >= width) continue
       const fi = ly * width + lx
+      const gi = (ly * gw + (x - x0)) * 3
+      let lRgb: [number, number, number] | null = null
       if (layer !== null && layerRgb !== null) {
-        const lRgb = edgeBandsRgb8(edgeTexelBands(layer.a, layer.b, fi, 1))
+        lRgb = edgeBandsRgb8(edgeTexelBands(layer.a, layer.b, fi, 1))
         for (let c = 0; c < 3; c += 1) layerRgb[c] = layerRgb[c]! + lRgb[c]!
+        if (layerGrid !== null) {
+          for (let c = 0; c < 3; c += 1) layerGrid[gi + c] = lRgb[c]!
+        }
       }
       const sRgb = edgeBandsRgb8(edgeTexelBands(doc.a, doc.b, fi, 1))
       for (let c = 0; c < 3; c += 1) {
@@ -2572,7 +2662,25 @@ function edgePickupReadout(
       }
       const cr = dh - 1 - y
       const i4 = (cr * dw + x) * 4
-      for (let c = 0; c < 3; c += 1) mergedRgb[c] = mergedRgb[c]! + tData[i4 + c]!
+      for (let c = 0; c < 3; c += 1) {
+        mergedRgb[c] = mergedRgb[c]! + tData[i4 + c]!
+        mergedGrid[gi + c] = tData[i4 + c]!
+      }
+      if (mixGrid !== null && lRgb !== null) {
+        // The per-texel coefficient projection — the same formula as the mean
+        // mix above, so the variance is of the quantity the mean reports.
+        let dA2 = 0
+        let dAdB = 0
+        for (let c = 0; c < 7; c += 1) {
+          const sCoeff = c < 4 ? doc.a[fi * 4 + c]! : doc.b[fi * 4 + (c - 4)]!
+          const lCoeff = c < 4 ? layer!.a[fi * 4 + c]! : layer!.b[fi * 4 + (c - 4)]!
+          const dA = sCoeff - pigment[c]!
+          const dB = lCoeff - pigment[c]!
+          dA2 += dA * dA
+          dAdB += dA * dB
+        }
+        mixGrid[ly * gw + (x - x0)] = dA2 > 1e-8 ? Math.min(1, Math.max(0, dAdB / dA2)) : Number.NaN
+      }
       if (layer !== null) {
         for (let c = 0; c < 4; c += 1) filmL[c] = filmL[c]! + layer.a[fi * 4 + c]!
         for (let c = 0; c < 3; c += 1) filmL[4 + c] = filmL[4 + c]! + layer.b[fi * 4 + c]!
@@ -2606,6 +2714,7 @@ function edgePickupReadout(
       : null
   const meanRgb = (acc: number[]): [number, number, number] =>
     acc.map((v) => round2(v / n)) as [number, number, number]
+  const mixStd = mixGrid === null ? null : edgeGridScalarStd(mixGrid)
   return {
     edgePickupTexels: n,
     edgePickupLayerRgb: layerRgb === null ? null : meanRgb(layerRgb),
@@ -2619,6 +2728,16 @@ function edgePickupReadout(
     edgePickupTouchWrite: capture.touchCoreWrite,
     edgePickupTouchMax: capture.touchRectMax,
     edgePickupNow: capture.nowCore,
+    // 261126 (edge-leg): the texture behind the means. A pickup law that
+    // blends the under with a SMOOTH weight keeps the mean while collapsing
+    // these; a per-texel hash (the mosaic) keeps the mean and holds them high.
+    edgePickupMixStd: mixStd === null ? null : round4(mixStd),
+    edgePickupLayerChromaStd:
+      layerGrid === null ? null : round2(edgeGridChromaStd(layerGrid)),
+    edgePickupLayerHighPass:
+      layerGrid === null ? null : round2(edgeGridHighPass(layerGrid, gw, gh)),
+    edgePickupMergedChromaStd: round2(edgeGridChromaStd(mergedGrid)),
+    edgePickupMergedHighPass: round2(edgeGridHighPass(mergedGrid, gw, gh)),
   }
 }
 
@@ -2768,6 +2887,9 @@ interface EdgeProfile {
   readonly dark: number[]
   readonly ink: number[]
   readonly print: number[] | null
+  /** 261126 (edge leg): each station's row-mean DISPLAY colour — the
+   *  artist-facing channel the lateral hue transition is judged on. */
+  readonly rgb: Array<[number, number, number]>
 }
 
 /**
@@ -2796,6 +2918,7 @@ function edgeLayerProfile(
   const cover: number[] = []
   const lateral: number[] = []
   const print: number[] = []
+  const rgb: Array<[number, number, number]> = []
   // The print share: each row's fraction of texels at or above half the
   // profile's peak, read from the SHEET's coverage raster — the merge writes
   // `cover = 1 - (1-cover_S)(1 - A·cover_L)`, so this raster is where the
@@ -2828,6 +2951,9 @@ function edgeLayerProfile(
     let lSum = 0
     let dSum = 0
     let iSum = 0
+    let rSum = 0
+    let gSum = 0
+    let bSum = 0
     let printed = 0
     for (let j = 0; j < count; j += 1) {
       const fi = axis === 'y' ? index * width + j : j * width + index
@@ -2835,6 +2961,9 @@ function edgeLayerProfile(
       const y = axis === 'y' ? rect.y0 + index : rect.y0 + j
       const cr = dh - 1 - y
       const i4 = (cr * dw + x) * 4
+      rSum += tData[i4]!
+      gSum += tData[i4 + 1]!
+      bSum += tData[i4 + 2]!
       dSum += 1 - Math.min(tData[i4]!, tData[i4 + 1]!, tData[i4 + 2]!) / 255
       iSum +=
         (fields.a[fi * 4]! +
@@ -2854,6 +2983,7 @@ function edgeLayerProfile(
     offsets.push(o)
     dark.push(round4(dSum / count))
     ink.push(round4(iSum / count))
+    rgb.push([round2(rSum / count), round2(gSum / count), round2(bSum / count)])
     if (layer !== null) {
       cover.push(round4(cSum / count))
       lateral.push(round4(lSum / count))
@@ -2867,6 +2997,154 @@ function edgeLayerProfile(
     dark,
     ink,
     print: layer === null ? null : print,
+    rgb,
+  }
+}
+
+/** One profile's lateral hue reading: the largest adjacent-station step of the
+ *  normalised chromaticity inside the painted band (darkness >= 0.03), the
+ *  total chromaticity travel over the band, and where the worst step sits.
+ *  A smooth falloff changes the hue a little at every station; a mosaic leaves
+ *  a step. Display RGB8 row means, so it is the artist's surface. */
+function edgeHueStep(profile: EdgeProfile): { max: number | null; at: number | null; travel: number | null } {
+  const chroma = (station: number): [number, number, number] | null => {
+    const [r, g, b] = profile.rgb[station]!
+    const sum = r + g + b
+    return sum > 1 ? [r / sum, g / sum, b / sum] : null
+  }
+  let max = 0
+  let at: number | null = null
+  let travel = 0
+  let prev: { station: number; chroma: [number, number, number] } | null = null
+  for (let i = 0; i < profile.offsets.length; i += 1) {
+    if (profile.dark[i]! < 0.03) {
+      prev = null
+      continue
+    }
+    const current = chroma(i)
+    if (current === null) {
+      prev = null
+      continue
+    }
+    if (prev !== null) {
+      const step = Math.max(
+        Math.abs(current[0] - prev.chroma[0]),
+        Math.abs(current[1] - prev.chroma[1]),
+        Math.abs(current[2] - prev.chroma[2]),
+      )
+      travel += step
+      if (step > max) {
+        max = step
+        at = profile.offsets[i]!
+      }
+    }
+    prev = { station: i, chroma: current }
+  }
+  if (at === null) return { max: null, at: null, travel: null }
+  return { max: round4(max), at, travel: round4(travel) }
+}
+
+/**
+ * 261126 (edge-leg): stroke B's END profile from the committed transparent
+ * export — the artist's pale-band surface. B is a vertical drag ending at
+ * y = 0.88·sheet, so the profile runs down the last third of its travel on the
+ * centre columns (doc x = 0.5·sheet ± 3 px). `dark` is the display's own
+ * darkness `1 − min(rgb)/255` (the same channel the across profiles read), so
+ * a layer-path end can be compared station by station against the sheet path's
+ * (`--edge 0`) at the same stroke.
+ *
+ * The summary windows are fractions of the sheet RELATIVE to the stroke's
+ * MEASURED end (the last station whose darkness is still >= 0.05): `body`
+ * ends 0.045 before it, `tailMax`/`dipMin` cover the last running bands, and
+ * `cap` the takeoff band before the endpoint. The absolute windows are not
+ * usable here — the adapter's dwell keeps the stamped endpoint a little
+ * behind the fed samples, so the nominal 0.88 end lands near 0.72 and a fixed
+ * window reads empty paper. The ratios are the judges: a pale band is a dip
+ * under the body, and an over-dark end is a cap over it.
+ */
+function edgeEndReadout(transparent: HTMLCanvasElement, sheet: number): Record<string, unknown> {
+  const dw = transparent.width
+  const dh = transparent.height
+  const tData = transparent.getContext('2d')!.getImageData(0, 0, dw, dh).data
+  const centre = Math.round(0.5 * sheet)
+  const half = 3
+  const y0 = Math.round(0.6 * sheet)
+  const y1 = Math.round(0.9 * sheet)
+  const offsets: number[] = []
+  const dark: number[] = []
+  const rgb: Array<[number, number, number]> = []
+  for (let y = y0; y <= y1; y += 1) {
+    const cr = dh - 1 - y
+    let rSum = 0
+    let gSum = 0
+    let bSum = 0
+    let count = 0
+    for (let x = centre - half; x <= centre + half; x += 1) {
+      if (x < 0 || x >= dw) continue
+      const i4 = (cr * dw + x) * 4
+      rSum += tData[i4]!
+      gSum += tData[i4 + 1]!
+      bSum += tData[i4 + 2]!
+      count += 1
+    }
+    if (count === 0) continue
+    const r = rSum / count
+    const g = gSum / count
+    const b = bSum / count
+    offsets.push(round4(y / sheet))
+    dark.push(round4(1 - Math.min(r, g, b) / 255))
+    rgb.push([round2(r), round2(g), round2(b)])
+  }
+  const at = (lo: number, hi: number): number[] => {
+    const out: number[] = []
+    for (let i = 0; i < offsets.length; i += 1) {
+      if (offsets[i]! >= lo && offsets[i]! <= hi) out.push(dark[i]!)
+    }
+    return out
+  }
+  const mean = (values: number[]): number | null =>
+    values.length > 0 ? round4(values.reduce((a, b) => a + b, 0) / values.length) : null
+  // The MEASURED end: the last station still visibly painted. Everything
+  // below is anchored to it, never to the nominal script endpoint.
+  let endIndex = -1
+  for (let i = dark.length - 1; i >= 0; i -= 1) {
+    if (dark[i]! >= 0.05) {
+      endIndex = i
+      break
+    }
+  }
+  if (endIndex < 0) {
+    return {
+      edgeEndOffsets: offsets,
+      edgeEndDark: dark,
+      edgeEndRgb: rgb,
+      edgeEndMeasured: null,
+      edgeEndBodyDark: null,
+      edgeEndTailMax: null,
+      edgeEndDipMin: null,
+      edgeEndCapDark: null,
+      edgeEndDipRatio: null,
+      edgeEndCapRatio: null,
+    }
+  }
+  const end = offsets[endIndex]!
+  const body = mean(at(end - 0.09, end - 0.045))
+  const tail = at(end - 0.045, end - 0.015)
+  const dip = at(end - 0.035, end - 0.006)
+  const cap = mean(at(end - 0.015, end - 0.002))
+  const tailMax = tail.length > 0 ? round4(Math.max(...tail)) : null
+  const dipMin = dip.length > 0 ? round4(Math.min(...dip)) : null
+  return {
+    edgeEndOffsets: offsets,
+    edgeEndDark: dark,
+    edgeEndRgb: rgb,
+    edgeEndMeasured: round4(end),
+    edgeEndBodyDark: body,
+    edgeEndTailMax: tailMax,
+    edgeEndDipMin: dipMin,
+    edgeEndCapDark: cap,
+    edgeEndDipRatio: body !== null && body > 0 && dipMin !== null ? round4(dipMin / body) : null,
+    edgeEndCapRatio: body !== null && body > 0 && cap !== null ? round4(cap / body) : null,
   }
 }
 
@@ -3507,6 +3785,7 @@ function edgeLayerReport(
       ink: underProfile.ink,
       lateral: underProfile.lateral,
       print: underProfile.print,
+      rgb: underProfile.rgb,
     },
     edgeAcrossPaper: {
       offsets: paperProfile.offsets,
@@ -3515,7 +3794,26 @@ function edgeLayerReport(
       ink: paperProfile.ink,
       lateral: paperProfile.lateral,
       print: paperProfile.print,
+      rgb: paperProfile.rgb,
     },
+    // 261126 (edge-leg): the lateral hue transition, measured on the committed
+    // display row means. `max` is the worst adjacent-station chromaticity
+    // step inside the painted band; a smooth transparency falloff moves the
+    // hue a little at every station instead.
+    ...(() => {
+      const under = edgeHueStep(underProfile)
+      const paper = edgeHueStep(paperProfile)
+      return {
+        edgeHueStepPaper: paper.max,
+        edgeHueStepAtPaper: paper.at,
+        edgeHueTravelPaper: paper.travel,
+        edgeHueStepUnder: under.max,
+        edgeHueStepAtUnder: under.at,
+        edgeHueTravelUnder: under.travel,
+      }
+    })(),
+    // 261126 (edge-leg): stroke B's end profile — the pale-band surface.
+    ...edgeEndReadout(transparent, sheet),
     edgeMidAlphaPaper: paperReadings.midAlpha,
     edgeMidAlphaUnder: underReadings.midAlpha,
     edgeMidCoverPaper: paperReadings.midCover,
