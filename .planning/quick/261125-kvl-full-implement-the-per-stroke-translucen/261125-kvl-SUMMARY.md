@@ -355,3 +355,17 @@ The ~60 Studio lifecycle bars had no failing fixture, so a dropped or inverted b
 - Created files exist: `261125-kvl-SUMMARY.md`, `deferred-items.md`, `baselines/edge-layer-neutral.json`.
 - All eight commits are ancestors of HEAD: be7f56bbb, 5e07724e5, 244a82a22, bbd946b77, 71bcbe251, e8b0f4467, 55119b6b0, e940c5165.
 - No code left uncommitted (`git status` shows only the hook-modified PLAN/BEADS-RECALL and the untracked docs artifacts the orchestrator commits).
+
+## Close-out — 2026-11-26 (UAT approved)
+
+The artist approved the live surface on 2026-11-26 ("Its amazing work, you success!"). The shipped implementation is no longer the band-mix encoder described above: live UAT rejected the encoder's optical average on 2026-11-25 (pale/lavender fringe, no pickup, smoothed feather noise, rectangular patches) and the layer was rebuilt through five more commits:
+
+- `16e3bda2a` — the coefficient-space composite: `film_out = mix(film_S, film_L, aEff)` stored as `ink = film − fixed`; the LM fit, band table, seed, k division and merge pre-blur are gone; the live display mixes a/b/scatter coefficients before the one shipped basis. Live = committed exact; amount 0 byte-identical.
+- `4611dd030` — the layer's last-touch stamp: `bristleTouch` no longer early-returns while the layer is open, so the gather sees the paint the dab crosses. Pickup over dry settled under: 0.57 mix (was 0).
+- `a484788f5` — one reusable `lateralWeight(u, amount, falloff) = 1 − amount·u^e`, e = 2^(2b − 1), u = 0 on the centre/action line and 1 at the visual edge, anchor `BRISTLE_LAYER_EDGE = 0.9`, no inner plateau. At amount 100 the near-opaque half-band is 0/4/15 px at falloff 0/50/100.
+- `539160b0b` — the layer's smear arm returns the hash's mean (`uSmearSmooth`, layer-only; the sheet path keeps the shipped hash byte-identically), removing the stationary pickup mosaic.
+- `9f8c0fe4a` — the layer's ink pair ping-pongs (`layerInkCarry`) and the deposit reads the LAYER's own previous film (±1.5 px 5-tap average) as the smear reference (the sheet only where the layer is empty); the layer's cover smear is suppressed. Probe: layer high-pass 0.0492 → 0.0131 (sheet 0.0126, pickup-0 0.0015); under-share 0.5255 → 0.3032; across-band chroma 0.214 at the centre → the under's 0.080 at the rim.
+
+Final gates after `9f8c0fe4a`: package vitest 43 files / 1099 passed / 8 skipped; package tsc clean; app vitest 467 files / 9876 passed / 4 skipped / 96 todo; app tsc clean. Amount 0 at 2048 equals the committed `edge-layer-neutral` on all four digests (82374ed4 / 83f54524 / 8aad7f58 / 8a347e61); live-vs-committed encode p95 0/255 and polish p95 0/255 (lateral stations max 22); replay and capture round trip identical; reruns byte-identical. The cap quick `261125-rtc` (`e58497d3b`) is separate and remains closed.
+
+Known residual carried to a new quick: a subtle white halo at the Feathered fringe on the layer path (Edge transparency on, noise Feather; the artist's green-over-blue screenshot, 2026-11-26). Mechanism to verify: the merge exchanges a fraction `aEff` of the under film against a layer film premultiplied by the gather's coverage, so at the fringe the under loses `O(a)` while the layer adds `O(a²)` — a local film minimum. Still recorded, not gated: the first-visit cached-base pickup residual (by design), the under-side cover drift 0.0363/0.0576, and the layer memory 40 B/px against DESIGN's 22 B/px. Nothing is pushed.
