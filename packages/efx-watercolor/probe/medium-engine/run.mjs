@@ -191,8 +191,8 @@
 //                                     (omitted is stop; bake rides the
 //                                     adapter's scripted replay)
 //             [--dry <0..100>]        bristle-end only: the acrylic Dry key
-//             [--feather <0..100>]    edge-layer / bristle-end: the acrylic
-//                                     Feather key (261126-hgl: the layer
+//             [--feather <0..100>]    edge-layer / edge-rim / bristle-end: the
+//                                     acrylic Feather key (261126-hgl: the layer
 //                                     scene's feathered-fringe operand)
 //             [--release <0..1>]      bristle-end only: the LAST authored
 //                                     sample's pressure (stop and bake only;
@@ -244,10 +244,12 @@
 //  comparator fails it by name.
 //             [--scenario edge-layer]
 //                                     spike 006's two-stroke layer scene
-//             [--edge <0..100>]       edge-layer only: the layer alpha amount
-//             [--falloff <0..100>]    edge-layer only: 0 broad / 50 linear /
-//                                     100 rim
-//             [--pickup <0..100>]     edge-layer only: overrides the record's
+//             [--edge <0..100>]       layer scenes: the layer alpha amount
+//                                     (edge-layer default 0; edge-rim 100)
+//             [--falloff <0..100>]    layer scenes: 0 broad / 50 linear /
+//                                     100 rim (edge-layer default 50; edge-rim
+//                                     100)
+//             [--pickup <0..100>]     layer scenes: overrides the record's
 //                                     canonical 100 (the pickup-0 control)
 //             [--wet-under]           edge-layer only: skip the fix after the
 //                                     FIRST stroke (wet under-paint arm); absent
@@ -259,6 +261,24 @@
 //    compare.mjs <gate> --edge-structural
 //                                     edge-layer only: the structural counters,
 //                                     self-contained on one capture
+//
+//  261126-hgl Task 3 adds `--scenario edge-rim`: the ARTIST'S surface — a
+//  `#1469e8` wash at Size 272 on the sheet path (edge 0, falloff 50), then a
+//  SHORT `#f9e01c` stroke at Size 100 on the layer path (edge/falloff/pickup
+//  100, feather 100, dry 0), both `bristle-round` (Gouache) at Pigment 100.
+//  One shot each through the adapter's applyStroke, settled and fixed; the
+//  foreground's stroke-end merge is read on the two rim bands (a lateral band
+//  across its mid-length and a tip band along its axis past the end cap) on
+//  BOTH surfaces: the committed transparent export and the live
+//  displayLayerFS reconstruction (the merge's own inputs, the polish order).
+//  The report carries `edgeRimLight{lateral,tip}{Committed,Live}` /
+//  `edgeRimChroma{...}` (1/255, coherence-guarded: 5-station box smooth,
+//  >= 2-station runs), `edgeRimBand` (winning station, run, bare-under and
+//  core references) and `edgeRimProfiles` (per-station dark/chroma/cover).
+//  `--edge 0` is the sheet-path control (no layer, no merge, no live half).
+//             [--scenario edge-rim]
+//                                     the artist's short Gouache stroke on the
+//                                     blue wash; rim readout on both surfaces
 //
 //  2026-11-22 adds `--scenario bristle-line` — the acrylic pale-line defect's
 //  reproduction at the ARTIST'S parameters. ONE straight bristle-flat stroke
@@ -298,7 +318,7 @@ const gateFlag = args.indexOf('--gate')
 const gate = gateFlag >= 0 ? args[gateFlag + 1] : undefined
 if (!gate) {
   console.error(
-    'usage: node run.mjs --gate <name> [--scenario cover|cover-over-wet|cover-advect|cover-lift|watercolor-50|white-over-blue|cover-textured|red-over-blue-50|bristle-edge|bristle-wet|bristle-line|bristle-end|bristle-tip|emboss-smooth|edge-layer] [--edge <0..100>] [--falloff <0..100>] [--pickup <0..100>] [--wet-under] [--emboss <-100..100>] [--body <0..100>] [--light <0..4>] [--size <32..4096>] [--brush <id>] [--wet-mode <0|1>] [--texture <mask id>] [--drive <stop|lift|decay|mouse|mouse-lift|bake>] [--stroke-size <1..400>] [--dry <0..100>] [--feather <0..100>] [--release <0..1>]   (e.g. neutral-identity; --feather also on --scenario edge-layer)',
+    'usage: node run.mjs --gate <name> [--scenario cover|cover-over-wet|cover-advect|cover-lift|watercolor-50|white-over-blue|cover-textured|red-over-blue-50|bristle-edge|bristle-wet|bristle-line|bristle-end|bristle-tip|emboss-smooth|edge-layer|edge-rim] [--edge <0..100>] [--falloff <0..100>] [--pickup <0..100>] [--wet-under] [--emboss <-100..100>] [--body <0..100>] [--light <0..4>] [--size <32..4096>] [--brush <id>] [--wet-mode <0|1>] [--texture <mask id>] [--drive <stop|lift|decay|mouse|mouse-lift|bake>] [--stroke-size <1..400>] [--dry <0..100>] [--feather <0..100>] [--release <0..1>]   (e.g. neutral-identity; --feather also on --scenario edge-layer / edge-rim)',
   )
   console.error(
     '       every operand except --gate is optional and additive; an omitted operand writes no key/value, so the neutral gate keeps reproducing the committed baseline',
@@ -357,15 +377,17 @@ if (bodyRaw !== undefined) {
 // geometry, then a Lift stroke); 64-24 adds `bristle-wet` (two ages on one
 // sheet); 64-29 adds `bristle-tip` (the texture-tip A/B); quick 261123-hr5
 // adds `emboss-smooth` (the signed-emboss smoothing relation); quick
-// 261125-kvl adds `edge-layer` (the per-stroke translucent stroke layer). This
-// closed list and probe.ts readScenario's must stay literal-identical.
+// 261125-kvl adds `edge-layer` (the per-stroke translucent stroke layer);
+// quick 261126-hgl adds `edge-rim` (the artist's short stroke on the blue
+// wash). This closed list and probe.ts readScenario's must stay
+// literal-identical.
 const scenarioFlag = args.indexOf('--scenario')
 const scenarioRaw = scenarioFlag >= 0 ? args[scenarioFlag + 1] : undefined
 let scenario
 if (scenarioRaw !== undefined) {
-  if (scenarioRaw !== 'cover' && scenarioRaw !== 'cover-over-wet' && scenarioRaw !== 'watercolor-50' && scenarioRaw !== 'white-over-blue' && scenarioRaw !== 'cover-advect' && scenarioRaw !== 'cover-lift' && scenarioRaw !== 'cover-textured' && scenarioRaw !== 'red-over-blue-50' && scenarioRaw !== 'bristle-edge' && scenarioRaw !== 'bristle-wet' && scenarioRaw !== 'bristle-line' && scenarioRaw !== 'bristle-tip' && scenarioRaw !== 'bristle-end' && scenarioRaw !== 'emboss-smooth' && scenarioRaw !== 'edge-layer') {
+  if (scenarioRaw !== 'cover' && scenarioRaw !== 'cover-over-wet' && scenarioRaw !== 'watercolor-50' && scenarioRaw !== 'white-over-blue' && scenarioRaw !== 'cover-advect' && scenarioRaw !== 'cover-lift' && scenarioRaw !== 'cover-textured' && scenarioRaw !== 'red-over-blue-50' && scenarioRaw !== 'bristle-edge' && scenarioRaw !== 'bristle-wet' && scenarioRaw !== 'bristle-line' && scenarioRaw !== 'bristle-tip' && scenarioRaw !== 'bristle-end' && scenarioRaw !== 'emboss-smooth' && scenarioRaw !== 'edge-layer' && scenarioRaw !== 'edge-rim') {
     console.error(
-      `invalid --scenario "${scenarioRaw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue", "cover-advect", "cover-lift", "cover-textured", "red-over-blue-50", "bristle-edge", "bristle-wet", "bristle-line", "bristle-end", "emboss-smooth", "edge-layer" or "bristle-tip")`,
+      `invalid --scenario "${scenarioRaw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue", "cover-advect", "cover-lift", "cover-textured", "red-over-blue-50", "bristle-edge", "bristle-wet", "bristle-line", "bristle-end", "emboss-smooth", "edge-layer", "edge-rim" or "bristle-tip")`,
     )
     process.exit(1)
   }
@@ -376,9 +398,10 @@ if (scenarioRaw !== undefined) {
 // layer alpha amount) and Edge falloff (the band's shape bias). Integers
 // 0..100; omitted keeps the canonical defaults 0 / 50. `edge-layer` and (from
 // 261126, the cap leg) `bristle-end`, whose own end census judges the layer
-// path against the sheet path at the same stroke: any other scenario is
-// refused here first, never silently ignored.
-const LAYER_SCENES = ['edge-layer', 'bristle-end']
+// path against the sheet path at the same stroke; 261126-hgl adds `edge-rim`,
+// the artist's short stroke on the blue wash: any other scenario is refused
+// here first, never silently ignored.
+const LAYER_SCENES = ['edge-layer', 'edge-rim', 'bristle-end']
 const layerScene = LAYER_SCENES.includes(scenario)
 const edgeFlag = args.indexOf('--edge')
 const edgeRaw = edgeFlag >= 0 ? args[edgeFlag + 1] : undefined
@@ -390,7 +413,7 @@ if (edgeRaw !== undefined) {
     process.exit(1)
   }
   if (!layerScene) {
-    console.error('--edge is only valid with --scenario edge-layer or bristle-end')
+    console.error('--edge is only valid with --scenario edge-layer, edge-rim or bristle-end')
     process.exit(1)
   }
   edge = value
@@ -406,7 +429,7 @@ if (falloffRaw !== undefined) {
     process.exit(1)
   }
   if (!layerScene) {
-    console.error('--falloff is only valid with --scenario edge-layer or bristle-end')
+    console.error('--falloff is only valid with --scenario edge-layer, edge-rim or bristle-end')
     process.exit(1)
   }
   falloff = value
@@ -427,7 +450,7 @@ if (pickupRaw !== undefined) {
     process.exit(1)
   }
   if (!layerScene) {
-    console.error('--pickup is only valid with --scenario edge-layer or bristle-end')
+    console.error('--pickup is only valid with --scenario edge-layer, edge-rim or bristle-end')
     process.exit(1)
   }
   pickup = value
@@ -602,8 +625,10 @@ if (driveRaw !== undefined) {
 // are bristle-end only, and `--release` is refused on the paths whose release
 // pressure the script's own points define (only stop and bake are overridable;
 // the default stop cell already authors 0.75). 261126-hgl: `--feather` is also
-// accepted on `edge-layer` — the artist's Feathered fringe is the layer path's
-// own operand, and the record's Feather 85 stays the default everywhere.
+// accepted on the layer scenes (`edge-layer`, `edge-rim`) — the artist's
+// Feathered fringe is the layer path's own operand; edge-rim pins the recipe's
+// 100 when absent, and the record's Feather 85 stays the default on edge-layer
+// and bristle-end.
 const readEndPercent = (flagName, scenes = ['bristle-end']) => {
   const flag = args.indexOf(flagName)
   const raw = flag >= 0 ? args[flag + 1] : undefined
@@ -622,8 +647,9 @@ const readEndPercent = (flagName, scenes = ['bristle-end']) => {
 const dry = readEndPercent('--dry')
 // 261126-hgl: the Feathered fringe's mid operand — the acrylic record's own
 // Feather key, folded into the same canonical bag as --dry. Readable on the
-// layer scene too, so the artist's Feather 100 can be judged there; the
-// record's Feather 85 stays the default when absent.
+// layer scenes too, so the artist's Feather 100 can be judged there; the
+// record's Feather 85 stays the default on edge-layer / bristle-end, and
+// edge-rim pins the recipe's 100 in the page when absent.
 const feather = readEndPercent('--feather', LAYER_SCENES)
 
 const releaseFlag = args.indexOf('--release')
@@ -864,6 +890,17 @@ if (typeof result.edgeAmount === 'number') {
   )
   console.log(
     `edge      : capture round trip ${result.edgeCaptureRoundTrip ?? 'absent'} | replay identical ${result.edgeReplayIdentical ?? 'absent'} | print ${result.edgePrintRetentionPaper ?? 'absent'} / ${result.edgePrintRetentionUnder ?? 'absent'}`,
+  )
+}
+// 261126-hgl Task 3: the rim readout, both axes and both surfaces, in 1/255
+// units. Measurement only — no bar is registered here (Task 4 owns it).
+if (typeof result.edgeRimLightLateralCommitted === 'number' || typeof result.edgeRimLightTipCommitted === 'number') {
+  const fmt = (value) => (typeof value === 'number' ? `${value}` : 'absent')
+  console.log(
+    `rim       : light L/T committed ${fmt(result.edgeRimLightLateralCommitted)} / ${fmt(result.edgeRimLightTipCommitted)} | chroma ${fmt(result.edgeRimChromaLateralCommitted)} / ${fmt(result.edgeRimChromaTipCommitted)} (1/255)`,
+  )
+  console.log(
+    `rim       : light L/T live ${fmt(result.edgeRimLightLateralLive)} / ${fmt(result.edgeRimLightTipLive)} | chroma ${fmt(result.edgeRimChromaLateralLive)} / ${fmt(result.edgeRimChromaTipLive)} (1/255)`,
   )
 }
 if (result.lineSurfaces && typeof result.lineSurfaces === 'object') {

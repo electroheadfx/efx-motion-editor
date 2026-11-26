@@ -2147,8 +2147,8 @@ const EDGE_4K_REQUEST = 4096
 function readEdgeKnob(name: 'edge' | 'falloff', scenario: string, fallback: number): number {
   const raw = new URLSearchParams(location.search).get(name)
   if (raw === null || raw === '') return fallback
-  if (scenario !== 'edge-layer' && scenario !== 'bristle-end') {
-    throw new Error(`--${name} is only valid with --scenario edge-layer or bristle-end`)
+  if (scenario !== 'edge-layer' && scenario !== 'edge-rim' && scenario !== 'bristle-end') {
+    throw new Error(`--${name} is only valid with --scenario edge-layer, edge-rim or bristle-end`)
   }
   const value = Number(raw)
   if (!Number.isInteger(value) || value < 0 || value > 100) {
@@ -2173,8 +2173,8 @@ function readEdgeWetUnder(scenario: string): boolean {
 function readEdgePickup(scenario: string): number | null {
   const raw = new URLSearchParams(location.search).get('pickup')
   if (raw === null || raw === '') return null
-  if (scenario !== 'edge-layer' && scenario !== 'bristle-end') {
-    throw new Error('--pickup is only valid with --scenario edge-layer or bristle-end')
+  if (scenario !== 'edge-layer' && scenario !== 'edge-rim' && scenario !== 'bristle-end') {
+    throw new Error('--pickup is only valid with --scenario edge-layer, edge-rim or bristle-end')
   }
   const value = Number(raw)
   if (!Number.isInteger(value) || value < 0 || value > 100) {
@@ -2189,8 +2189,8 @@ function readEdgePickup(scenario: string): number | null {
 function readEdgeFeather(scenario: string): number | null {
   const raw = new URLSearchParams(location.search).get('feather')
   if (raw === null || raw === '') return null
-  if (scenario !== 'edge-layer' && scenario !== 'bristle-end') {
-    throw new Error('--feather is only valid with --scenario edge-layer or bristle-end')
+  if (scenario !== 'edge-layer' && scenario !== 'edge-rim' && scenario !== 'bristle-end') {
+    throw new Error('--feather is only valid with --scenario edge-layer, edge-rim or bristle-end')
   }
   const value = Number(raw)
   if (!Number.isInteger(value) || value < 0 || value > 100) {
@@ -4329,6 +4329,516 @@ function edgeLayerReport(
     edgePickupControl: EDGE_LAYER_PICKUP,
     edgeFeatherControl: EDGE_LAYER_FEATHER,
     edgeWetUnder: EDGE_LAYER_WET_UNDER,
+    pngTransparent: transparent.toDataURL('image/png'),
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 261126-hgl Task 3: the artist's surface — a short Gouache stroke on the
+// blue wash, and the coherent-rim readout (measurement only)
+// ---------------------------------------------------------------------------
+
+/** The artist's exact recipe (user-pasted 2026-11-26): a `#1469e8` wash at
+ *  Size 272 on the sheet path, then a SHORT `#f9e01c` stroke at Size 100 on
+ *  the layer path, both `bristle-round` (UI name Gouache) at Pigment 100,
+ *  Dry 0, Feather 100, Pickup 100. Edge transparency and falloff are the
+ *  operands (defaults 100 / 100); `--edge 0` is the sheet-path control
+ *  (Engine's amount-0 branch, no layer allocated, no merge). */
+const EDGE_RIM_WASH_COLOR = '#1469e8'
+const EDGE_RIM_FOREGROUND_COLOR = '#f9e01c'
+const EDGE_RIM_WASH_SIZE = 272
+const EDGE_RIM_FOREGROUND_SIZE = 100
+/** The wash's own edge keys: the recipe's sheet-path stroke. */
+const EDGE_RIM_WASH_EDGE = 0
+const EDGE_RIM_WASH_FALLOFF = 50
+/** The foreground's operand defaults on this scene (the recipe pins 100 on
+ *  every one of them; the operands exist so the pickup-0 and falloff
+ *  controls — and the edge-0 sheet-path control — ride the same scene). */
+const EDGE_RIM_DEFAULT_AMOUNT = 100
+const EDGE_RIM_DEFAULT_FALLOFF = 100
+const EDGE_RIM_WASH_MUTATION = 0x5c0001
+const EDGE_RIM_FOREGROUND_MUTATION = 0x5d0001
+/** The scene's shared axis, doc uv: the wash and the foreground both run
+ *  down-and-right along (1, -1)/√2, so their centrelines coincide and the
+ *  lateral band reads foreground-over-wash on both sides. */
+const EDGE_RIM_DIR_X = Math.SQRT1_2
+const EDGE_RIM_DIR_Y = -Math.SQRT1_2
+/** The lateral band: stations across the foreground's centreline at its
+ *  mid-length. Size 100 at pressure 0.85 measures ~162 px across half
+ *  (footprint law `(0.011 + 0.039·p) × sizeMult × 0.8 × aspect`), inside
+ *  the wash's ~318 px, so ±260 px reaches bare wash on BOTH sides. */
+const EDGE_RIM_LATERAL_REACH_PX = 260
+/** The lateral band's row window ALONG the axis: the stroke's painted body
+ *  runs ~±130 px from its midpoint, so ±50 px keeps every row inside it. */
+const EDGE_RIM_LATERAL_ROW_HALF = 50
+/** The tip band: stations along the axis past the end cap. The painted reach
+ *  is ~361 px from the midpoint (end point +130 px plus its cap dab's 231 px
+ *  along radius), so +430 px is bare wash and station 0 is the body's core. */
+const EDGE_RIM_TIP_START_PX = -60
+const EDGE_RIM_TIP_END_PX = 430
+const EDGE_RIM_TIP_ROW_HALF = 60
+/** The bare-under station set (layer path): a station whose row-mean layer
+ *  cover is at or below this is the unpainted wash the rim is judged on. */
+const EDGE_RIM_BARE_COVER = 0.02
+/** The coherence guard (user decision, R2 item 3): a 5-station box smooth of
+ *  the station profile, then a run of at least two consecutive stations over
+ *  the threshold — the pickup's 2-station alternation is texture, never the
+ *  halo. */
+const EDGE_RIM_SMOOTH_STATIONS = 5
+const EDGE_RIM_RUN_MIN = 2
+/** The sheet-path control's references (no layer exists to find them by):
+ *  bare = the outermost stations (lateral |offset| >= 80 % of the reach, tip
+ *  stations within 30 px of the band's far end); core = the station nearest
+ *  the midpoint. */
+const EDGE_RIM_BARE_SHARE = 0.8
+const EDGE_RIM_TIP_BARE_PX = 30
+
+/** The artist's wash: down-and-right through the sheet's centre, full
+ *  pressure (the wash is the wide body the foreground sits on). */
+function edgeRimWashPoints(): readonly AquarellePoint[] {
+  return [
+    { x: 0.18, y: 0.82, p: 1, tx: 0, ty: 0, tw: 0 },
+    { x: 0.5, y: 0.5, p: 1, tx: 0, ty: 0, tw: 0 },
+    { x: 0.82, y: 0.18, p: 1, tx: 0, ty: 0, tw: 0 },
+  ]
+}
+
+/** The artist's foreground: a SHORT stroke with a tip, down-and-right inside
+ *  the wash (~260 px path on a 2048² sheet), at the measured pressure 0.85
+ *  (across half ~162 px — the screenshot's surface, not a long crossing). */
+function edgeRimForegroundPoints(): readonly AquarellePoint[] {
+  return [
+    { x: 0.455, y: 0.545, p: 0.85, tx: 0, ty: 0, tw: 0 },
+    { x: 0.5, y: 0.5, p: 0.85, tx: 0, ty: 0, tw: 0 },
+    { x: 0.545, y: 0.455, p: 0.85, tx: 0, ty: 0, tw: 0 },
+  ]
+}
+
+/** The recipe's two entries, both from the canonical artist bag
+ *  (`bristleLineParams`: the acrylic record + Dry/Feather/layer overrides)
+ *  with Pigment (`load`) pinned to 100. The wash is the sheet-path stroke
+ *  (edge 0); the foreground carries the scene's two layer operands. */
+function edgeRimScript(): readonly ScriptEntry[] {
+  const wash = bristleLineParams(100, EDGE_RIM_WASH_SIZE, {
+    dry: 0,
+    feather: 100,
+    edge: EDGE_RIM_WASH_EDGE,
+    falloff: EDGE_RIM_WASH_FALLOFF,
+    pickup: EDGE_LAYER_PICKUP ?? 100,
+  })
+  wash['load'] = 100
+  const foreground = bristleLineParams(100, EDGE_RIM_FOREGROUND_SIZE, {
+    dry: 0,
+    feather: EDGE_LAYER_FEATHER ?? 100,
+    edge: EDGE_LAYER_AMOUNT,
+    falloff: EDGE_LAYER_FALLOFF,
+    pickup: EDGE_LAYER_PICKUP ?? 100,
+  })
+  foreground['load'] = 100
+  return [
+    {
+      color: EDGE_RIM_WASH_COLOR,
+      points: edgeRimWashPoints(),
+      mutationId: EDGE_RIM_WASH_MUTATION,
+      brushId: 'bristle-round',
+      params: wash,
+    },
+    {
+      color: EDGE_RIM_FOREGROUND_COLOR,
+      points: edgeRimForegroundPoints(),
+      mutationId: EDGE_RIM_FOREGROUND_MUTATION,
+      brushId: 'bristle-round',
+      params: foreground,
+    },
+  ]
+}
+
+/** The foreground's merge moment over both rim bands: the layer's own cover
+ *  (the reference selector), the sheet the layer composites onto (the live
+ *  surface's sheet side) and the committed result. */
+interface EdgeRimRectCapture {
+  readonly preSheet: { lateral: EdgeDocFields; tip: EdgeDocFields }
+  readonly preLayer: { lateral: EdgeLayerFields | null; tip: EdgeLayerFields | null }
+  readonly postSheet: { lateral: EdgeDocFields; tip: EdgeDocFields }
+}
+
+/** One rim band's rect (doc px, y-up): the axis-aligned box of the rotated
+ *  station × row window, 2 px of margin so every live 5-tap stays inside the
+ *  capture. A point is `centre + (a·X + b·Y)` where the station axis X and
+ *  the row axis Y swap between bands: lateral is `X = p`, `Y = d`; tip is
+ *  `X = d`, `Y = p`, with `p = (1,1)/√2`, `d = (1,-1)/√2`. So the x window is
+ *  `[aMin - rowHalf, aMax + rowHalf]/√2` for both, but the y window follows
+ *  the station axis's sign: lateral `[aMin - rowHalf, aMax + rowHalf]/√2`,
+ *  tip `[-aMax - rowHalf, -aMin + rowHalf]/√2` (mirrored — the tip band runs
+ *  toward decreasing doc y, and a symmetric y window leaves everything past
+ *  the midpoint unsampled). */
+function edgeRimBandRect(sheet: number, axis: 'lateral' | 'tip'): EdgeRect {
+  const centre = 0.5 * sheet
+  const aMin = axis === 'lateral' ? -EDGE_RIM_LATERAL_REACH_PX : EDGE_RIM_TIP_START_PX
+  const aMax = axis === 'lateral' ? EDGE_RIM_LATERAL_REACH_PX : EDGE_RIM_TIP_END_PX
+  const rowHalf = axis === 'lateral' ? EDGE_RIM_LATERAL_ROW_HALF : EDGE_RIM_TIP_ROW_HALF
+  const sqrt2 = Math.SQRT2
+  const yLo = axis === 'lateral' ? (aMin - rowHalf) / sqrt2 : (-aMax - rowHalf) / sqrt2
+  const yHi = axis === 'lateral' ? (aMax + rowHalf) / sqrt2 : (-aMin + rowHalf) / sqrt2
+  return {
+    x0: Math.max(0, Math.floor(centre + (aMin - rowHalf) / sqrt2) - 2),
+    x1: Math.min(sheet, Math.ceil(centre + (aMax + rowHalf) / sqrt2) + 2),
+    y0: Math.max(0, Math.floor(centre + yLo) - 2),
+    y1: Math.min(sheet, Math.ceil(centre + yHi) + 2),
+  }
+}
+
+/** One axis's per-station profile, both display surfaces. `committed` is the
+ *  final transparent export's row mean (the artist's baked surface); `live`
+ *  is displayLayerFS reconstructed from the merge's own inputs (the softened
+ *  sheet and layer films mixed pointwise) — null on the sheet-path control,
+ *  where no layer exists. `cover` is the layer's own row-mean cover_L (the
+ *  bare-under selector). */
+interface EdgeRimProfile {
+  readonly axis: 'lateral' | 'tip'
+  readonly span: readonly [number, number]
+  readonly stations: number[]
+  readonly committedDark: number[]
+  readonly committedChroma: number[]
+  readonly liveDark: number[] | null
+  readonly liveChroma: number[] | null
+  readonly cover: number[] | null
+  /** Sampled texel counts per station. A 0-count station carries NaN in the
+   *  reading arrays (null in the JSON) and never enters the metric — a
+   *  fabricated 0 would read as a maximal rim. */
+  readonly committedCount: number[]
+  readonly liveCount: number[] | null
+  /** Stations whose row-mean layer cover is at or below EDGE_RIM_BARE_COVER
+   *  (layer path), or the geometric outer window (sheet-path control). */
+  readonly bareStations: number[]
+  /** The foreground's most-painted station (layer path) or the station
+   *  nearest the midpoint (sheet-path control). */
+  readonly coreStation: number | null
+}
+
+/** One axis's profile over both surfaces, read at 1 px stations. Each rect
+ *  texel is binned by its rotated coordinate: lateral stations are offsets
+ *  along `p` (rows along `d`), tip stations are offsets along `d` (rows
+ *  along `p`). Per texel the committed dark is `1 − min(rgb)/255` and chroma
+ *  is `(max(rgb) − min(rgb))/255` (the display's own bytes); the live pair
+ *  is the same formula on the reconstructed displayLayerFS bytes. */
+function edgeRimProfile(
+  engine: WatercolorEngine,
+  sheet: number,
+  transparent: HTMLCanvasElement,
+  capture: EdgeRimRectCapture | null,
+  axis: 'lateral' | 'tip',
+  granulation: number,
+): EdgeRimProfile {
+  const dw = transparent.width
+  const dh = transparent.height
+  const ctx = transparent.getContext('2d')
+  if (!ctx) throw new Error('edge-rim: the transparent export has no 2d context')
+  const tData = ctx.getImageData(0, 0, dw, dh).data
+  const rect = edgeRimBandRect(sheet, axis)
+  const width = rect.x1 - rect.x0
+  const height = rect.y1 - rect.y0
+  const centre = 0.5 * sheet
+  const aMin = axis === 'lateral' ? -EDGE_RIM_LATERAL_REACH_PX : EDGE_RIM_TIP_START_PX
+  const aMax = axis === 'lateral' ? EDGE_RIM_LATERAL_REACH_PX : EDGE_RIM_TIP_END_PX
+  const rowHalf = axis === 'lateral' ? EDGE_RIM_LATERAL_ROW_HALF : EDGE_RIM_TIP_ROW_HALF
+  const stations: number[] = []
+  for (let a = aMin; a <= aMax; a += 1) stations.push(a)
+  const n = stations.length
+  const count = new Float64Array(n)
+  const darkSum = new Float64Array(n)
+  const chromaSum = new Float64Array(n)
+  const liveDarkSum = new Float64Array(n)
+  const liveChromaSum = new Float64Array(n)
+  const liveCount = new Float64Array(n)
+  const coverSum = new Float64Array(n)
+  const coverCount = new Float64Array(n)
+  const sheetFields = capture === null ? null : capture.preSheet[axis]
+  const layer = capture === null ? null : capture.preLayer[axis]
+  // The live surface: displayLayerFS softens the sheet and the layer films
+  // SEPARATELY and mixes them at the texel — the settle's own order.
+  let k: Float32Array | null = null
+  let sheetBlur: { a: Float32Array; b: Float32Array } | null = null
+  let layerBlur: { a: Float32Array; b: Float32Array } | null = null
+  if (sheetFields !== null && layer !== null) {
+    const paperG = readEdgePaperG(engine, sheetFields)
+    k = new Float32Array(width * height)
+    for (let i = 0; i < k.length; i += 1) k[i] = edgeGranulationK(paperG[i]!, granulation)
+    sheetBlur = edgeBlurFilm(sheetFields.a, sheetFields.b, width, height, EDGE_LAYER_FILM_BLUR)
+    layerBlur = edgeBlurFilm(layer.a, layer.b, width, height, EDGE_LAYER_FILM_BLUR)
+  }
+  // The stroke's direction d = (DIR_X, DIR_Y) = (1, -1)/√2; its perpendicular
+  // p = (-DIR_Y, DIR_X) = (1, 1)/√2. `along` is the p coordinate (the lateral
+  // station), `across` the d coordinate (the along-stroke row).
+  const perpX = -EDGE_RIM_DIR_Y
+  const perpY = EDGE_RIM_DIR_X
+  for (let y = rect.y0; y < rect.y1; y += 1) {
+    for (let x = rect.x0; x < rect.x1; x += 1) {
+      const xp = x - centre
+      const yp = y - centre
+      const along = xp * perpX + yp * perpY
+      const across = xp * EDGE_RIM_DIR_X + yp * EDGE_RIM_DIR_Y
+      const a = axis === 'lateral' ? along : across
+      const b = axis === 'lateral' ? across : along
+      if (b < -rowHalf || b > rowHalf) continue
+      const station = Math.round(a)
+      if (station < aMin || station > aMax) continue
+      const si = station - aMin
+      const fi = (y - rect.y0) * width + (x - rect.x0)
+      const cr = dh - 1 - y
+      const i4 = (cr * dw + x) * 4
+      const r = tData[i4]!
+      const g = tData[i4 + 1]!
+      const bl = tData[i4 + 2]!
+      count[si] = count[si]! + 1
+      darkSum[si] = darkSum[si]! + (1 - Math.min(r, g, bl) / 255)
+      chromaSum[si] = chromaSum[si]! + (Math.max(r, g, bl) - Math.min(r, g, bl)) / 255
+      if (layer !== null) {
+        coverSum[si] = coverSum[si]! + layer.cover[fi]!
+        coverCount[si] = coverCount[si]! + 1
+      }
+      if (k !== null && sheetFields !== null && layer !== null && sheetBlur !== null && layerBlur !== null) {
+        const mixWeight = edgeLayerAEff(layer.lateral[fi]!, layer.cover[fi]!)
+        const filmWeight = edgeLayerFilmWeight(layer.lateral[fi]!, layer.cover[fi]!, layer.presence[fi]!)
+        const rgb = edgeBandsRgb8(
+          edgeMixedBands(sheetBlur.a, sheetBlur.b, layerBlur.a, layerBlur.b, fi, mixWeight, k[fi]!, filmWeight),
+        )
+        const liveHi = Math.max(rgb[0], rgb[1], rgb[2])
+        const liveLo = Math.min(rgb[0], rgb[1], rgb[2])
+        liveDarkSum[si] = liveDarkSum[si]! + (1 - liveLo / 255)
+        liveChromaSum[si] = liveChromaSum[si]! + (liveHi - liveLo) / 255
+        liveCount[si] = liveCount[si]! + 1
+      }
+    }
+  }
+  const committedDark: number[] = []
+  const committedChroma: number[] = []
+  const liveDark: number[] = []
+  const liveChroma: number[] = []
+  const cover: number[] = []
+  for (let i = 0; i < n; i += 1) {
+    const c = count[i]!
+    committedDark.push(c > 0 ? round4(darkSum[i]! / c) : Number.NaN)
+    committedChroma.push(c > 0 ? round4(chromaSum[i]! / c) : Number.NaN)
+    if (layer !== null) {
+      liveDark.push(liveCount[i]! > 0 ? round4(liveDarkSum[i]! / liveCount[i]!) : Number.NaN)
+      liveChroma.push(liveCount[i]! > 0 ? round4(liveChromaSum[i]! / liveCount[i]!) : Number.NaN)
+      cover.push(coverCount[i]! > 0 ? round4(coverSum[i]! / coverCount[i]!) : Number.NaN)
+    }
+  }
+  const bareStations: number[] = []
+  let coreStation: number | null = null
+  if (layer !== null) {
+    let peak = -1
+    for (let i = 0; i < cover.length; i += 1) {
+      if (cover[i]! > peak) {
+        peak = cover[i]!
+        coreStation = stations[i]!
+      }
+      if (cover[i]! <= EDGE_RIM_BARE_COVER) bareStations.push(stations[i]!)
+    }
+    // A band with no painted station cannot name its core: unjudgeable.
+    if (!(peak > EDGE_RIM_BARE_COVER)) coreStation = null
+  } else {
+    // The sheet-path control: no layer to select by — the geometric outer
+    // window is the bare wash and the midpoint is the core.
+    for (const station of stations) {
+      const isBare =
+        axis === 'lateral'
+          ? Math.abs(station) >= EDGE_RIM_BARE_SHARE * EDGE_RIM_LATERAL_REACH_PX
+          : station >= EDGE_RIM_TIP_END_PX - EDGE_RIM_TIP_BARE_PX
+      if (isBare) bareStations.push(station)
+    }
+    coreStation = 0
+  }
+  return {
+    axis,
+    span: [aMin, aMax],
+    stations,
+    committedDark,
+    committedChroma,
+    liveDark: layer === null ? null : liveDark,
+    liveChroma: layer === null ? null : liveChroma,
+    cover: layer === null ? null : cover,
+    committedCount: Array.from(count),
+    liveCount: layer === null ? null : Array.from(liveCount),
+    bareStations,
+    coreStation,
+  }
+}
+
+/** A 5-station box smooth (the coherence guard's first half). Only stations
+ *  the profile actually sampled contribute; an unsampled run smooths to NaN
+ *  and so can never open or continue a coherent run. */
+function edgeRimSmooth(values: readonly number[], counts: readonly number[], window: number): number[] {
+  const half = (window - 1) / 2
+  const out: number[] = []
+  for (let i = 0; i < values.length; i += 1) {
+    let sum = 0
+    let n = 0
+    for (let j = i - half; j <= i + half; j += 1) {
+      if (j < 0 || j >= values.length) continue
+      if (!(counts[j]! > 0)) continue
+      sum += values[j]!
+      n += 1
+    }
+    out.push(n > 0 ? sum / n : Number.NaN)
+  }
+  return out
+}
+
+/** One axis × surface × channel's rim reading: the smoothed score, the
+ *  winning station and its coherent run, and both reference levels. */
+interface EdgeRimBandReading {
+  readonly value: number
+  readonly station: number | null
+  readonly run: number
+  readonly bare: number
+  readonly core: number
+  readonly target: number
+}
+
+/** The rim metric on one surface. `light` flags a station LIGHTER than BOTH
+ *  the bare under and the core; `chroma` flags a station less chromatic than
+ *  BOTH (R2's rule — the same two-sided target for both channels). The plan's
+ *  light line assumed the stroke is darker than the wash; at the artist's
+ *  yellow-over-blue pair the composite core is LIGHTER than the blue wash
+ *  (min-channel dark 0.53 vs 0.92), so a bare-only target would flag the core
+ *  itself at ~90/255. The profile is 5-station smoothed first; only maxima
+ *  inside a run of at least two consecutive over-target stations count (a
+ *  lone station is texture). 0 when measured clean, null when the references
+ *  cannot be established (never a fabricated zero). */
+function edgeRimSurfaceBand(
+  profile: EdgeRimProfile,
+  values: readonly number[] | null,
+  counts: readonly number[] | null,
+  kind: 'light' | 'chroma',
+): EdgeRimBandReading | null {
+  if (values === null || counts === null || profile.coreStation === null || profile.bareStations.length === 0) {
+    return null
+  }
+  const indexOf = new Map<number, number>()
+  for (let i = 0; i < profile.stations.length; i += 1) indexOf.set(profile.stations[i]!, i)
+  const coreIndex = indexOf.get(profile.coreStation)
+  if (coreIndex === undefined || !(counts[coreIndex]! > 0)) return null
+  let bareSum = 0
+  let bareN = 0
+  for (const station of profile.bareStations) {
+    const i = indexOf.get(station)
+    if (i === undefined || !(counts[i]! > 0)) continue
+    bareSum += values[i]!
+    bareN += 1
+  }
+  if (bareN === 0) return null
+  const bare = bareSum / bareN
+  const core = values[coreIndex]!
+  const target = Math.min(bare, core)
+  const smooth = edgeRimSmooth(values, counts, EDGE_RIM_SMOOTH_STATIONS)
+  let best = 0
+  let bestStation: number | null = null
+  let bestRun = 0
+  let i = 0
+  while (i < smooth.length) {
+    if (Number.isFinite(smooth[i]!) && target > smooth[i]!) {
+      let j = i
+      while (j < smooth.length && Number.isFinite(smooth[j]!) && target > smooth[j]!) j += 1
+      if (j - i >= EDGE_RIM_RUN_MIN) {
+        for (let t = i; t < j; t += 1) {
+          const delta = target - smooth[t]!
+          if (delta > best) {
+            best = delta
+            bestStation = profile.stations[t]!
+            bestRun = j - i
+          }
+        }
+      }
+      i = j
+    } else {
+      i += 1
+    }
+  }
+  return {
+    value: round2(best * 255),
+    station: bestStation,
+    run: bestRun,
+    bare: round4(bare),
+    core: round4(core),
+    target: round4(target),
+  }
+}
+
+/** The rim report — the eight scores, both bands' references and the
+ *  per-station profiles. Only this scenario emits it, so every other report
+ *  shape is unchanged. `null` scores mean the axis could not be judged
+ *  (never a fabricated zero); the control's live halves are null by
+ *  construction (no layer, no live composite). */
+function edgeRimReport(
+  engine: WatercolorEngine,
+  sheet: number,
+  transparent: HTMLCanvasElement,
+  capture: EdgeRimRectCapture | null,
+): Record<string, unknown> {
+  const granulation = (engine as unknown as EdgeLayerInternals).params.granulation
+  const lateral = edgeRimProfile(engine, sheet, transparent, capture, 'lateral', granulation)
+  const tip = edgeRimProfile(engine, sheet, transparent, capture, 'tip', granulation)
+  const bandOf = (profile: EdgeRimProfile) => ({
+    axis: profile.axis,
+    span: profile.span,
+    coreStation: profile.coreStation,
+    bareStations: profile.bareStations,
+    light: {
+      committed: edgeRimSurfaceBand(profile, profile.committedDark, profile.committedCount, 'light'),
+      live: edgeRimSurfaceBand(profile, profile.liveDark, profile.liveCount, 'light'),
+    },
+    chroma: {
+      committed: edgeRimSurfaceBand(profile, profile.committedChroma, profile.committedCount, 'chroma'),
+      live: edgeRimSurfaceBand(profile, profile.liveChroma, profile.liveCount, 'chroma'),
+    },
+  })
+  const lateralBand = bandOf(lateral)
+  const tipBand = bandOf(tip)
+  const pick = (reading: EdgeRimBandReading | null): number | null => (reading === null ? null : reading.value)
+  return {
+    edgeAmount: EDGE_LAYER_AMOUNT,
+    edgeFalloff: EDGE_LAYER_FALLOFF,
+    // The recipe pins 100 on both when the operand is absent; the echo is the
+    // scene's ACTUAL value, so a stale capture fails by name.
+    edgePickupControl: EDGE_LAYER_PICKUP ?? 100,
+    edgeFeatherControl: EDGE_LAYER_FEATHER ?? 100,
+    edgeRimLightLateralCommitted: pick(lateralBand.light.committed),
+    edgeRimLightTipCommitted: pick(tipBand.light.committed),
+    edgeRimChromaLateralCommitted: pick(lateralBand.chroma.committed),
+    edgeRimChromaTipCommitted: pick(tipBand.chroma.committed),
+    edgeRimLightLateralLive: pick(lateralBand.light.live),
+    edgeRimLightTipLive: pick(tipBand.light.live),
+    edgeRimChromaLateralLive: pick(lateralBand.chroma.live),
+    edgeRimChromaTipLive: pick(tipBand.chroma.live),
+    edgeRimBand: { lateral: lateralBand, tip: tipBand },
+    edgeRimProfiles: {
+      lateral: {
+        stations: lateral.stations,
+        committedDark: lateral.committedDark,
+        committedChroma: lateral.committedChroma,
+        liveDark: lateral.liveDark,
+        liveChroma: lateral.liveChroma,
+        cover: lateral.cover,
+        committedCount: lateral.committedCount,
+        liveCount: lateral.liveCount,
+      },
+      tip: {
+        stations: tip.stations,
+        committedDark: tip.committedDark,
+        committedChroma: tip.committedChroma,
+        liveDark: tip.liveDark,
+        liveChroma: tip.liveChroma,
+        cover: tip.cover,
+        committedCount: tip.committedCount,
+        liveCount: tip.liveCount,
+      },
+    },
+    // The scene's own surface, beside the numbers: run.mjs writes any PNG
+    // payload next to the JSON (a scenario that emits none stays inert), so
+    // the bands' geometry can be checked against the pixels it measured.
     pngTransparent: transparent.toDataURL('image/png'),
   }
 }
@@ -6514,7 +7024,7 @@ function run(
       ? 'chalk'
       : scenario === 'bristle-tip'
         ? 'bristle-flat'
-        : scenario === 'bristle-line' || scenario === 'bristle-end'
+        : scenario === 'bristle-line' || scenario === 'bristle-end' || scenario === 'edge-rim'
           ? 'bristle-round'
           : undefined)
   // bristle-end: which end path this capture drives. Read before any stroke
@@ -6555,7 +7065,9 @@ function run(
                                 ? embossSmoothScript(emboss ?? -15, resolvedBrush)
                                 : scenario === 'edge-layer'
                                   ? edgeLayerScript()
-                                  : neutralScript(emboss, body)
+                                  : scenario === 'edge-rim'
+                                    ? edgeRimScript()
+                                    : neutralScript(emboss, body)
 
   // 261119-pod (D-F): the scene-parameter echo — `dry` appears in the report
   // only when a script pins it, so every capture records the calibration and a
@@ -6791,11 +7303,60 @@ function run(
         edgeEntry += 1
       }
     }
+    // 261126-hgl Task 3: the artist's rim scene. The wash is a sheet-path
+    // stroke (edge 0 — no layer, no merge); the foreground is the layer
+    // stroke, and its stroke-end merge is the moment the rim bands are read:
+    // the merge's own inputs (sheet + layer) are the live composite's two
+    // sides, and the merge's result is the committed one. One shot each, the
+    // adapter's exact applyStroke verb, settle and fix — the Studio's bake.
+    let edgeRimCapture: EdgeRimRectCapture | null = null
+    if (scenario === 'edge-rim') {
+      pinStrokeStart(engine)
+      const rimLateral = edgeRimBandRect(sheet, 'lateral')
+      const rimTip = edgeRimBandRect(sheet, 'tip')
+      const rimHost = engine as unknown as {
+        mergeStrokeLayer: (rect: EdgeRect) => void
+        dw: number
+        dh: number
+      }
+      const rimBaseMerge = rimHost.mergeStrokeLayer.bind(engine)
+      rimHost.mergeStrokeLayer = (rect: EdgeRect) => {
+        // The guard mirrors the edge-layer instrument: an out-of-bounds read
+        // throws, so a merge on a resized document is timed nowhere and read
+        // nowhere. The rim scene runs no Studio rows; the arm stays inert.
+        if (rimHost.dw !== sheet || rimHost.dh !== sheet || edgeRimCapture !== null) {
+          rimBaseMerge(rect)
+          return
+        }
+        const preSheet = {
+          lateral: readEdgeDocFields(engine, sheet, rimLateral),
+          tip: readEdgeDocFields(engine, sheet, rimTip),
+        }
+        const preLayer = {
+          lateral: readEdgeLayerFields(engine, sheet, rimLateral),
+          tip: readEdgeLayerFields(engine, sheet, rimTip),
+        }
+        rimBaseMerge(rect)
+        const postSheet = {
+          lateral: readEdgeDocFields(engine, sheet, rimLateral),
+          tip: readEdgeDocFields(engine, sheet, rimTip),
+        }
+        edgeRimCapture = { preSheet, preLayer, postSheet }
+      }
+      for (const entry of script) {
+        adapter.applyStroke(makeStroke(entry))
+        const settle = entry.settle ?? SETTLE_TICKS
+        for (let tick = 0; tick <= settle; tick += 1) adapter.stepTick(tick)
+        adapter.fix()
+      }
+    }
     script.forEach((entry, index) => {
       // Spec 10: the edge-layer visit drives its own split strokes above (the
       // only way to read a layer before the stroke-end merge clears it), so
-      // the shared loop is a no-op here — never a second drive.
-      if (scenario === 'edge-layer') return
+      // the shared loop is a no-op here — never a second drive. 261126-hgl:
+      // the rim scene drives its own two strokes for the same reason (its
+      // readout is the foreground's merge moment).
+      if (scenario === 'edge-layer' || scenario === 'edge-rim') return
       // 64-24: the acceptance's clock-only age — the virtual clock moves, the
       // fluid does not, so "thirty seconds old" and "just re-wetted" are
       // independent facts. Applied BEFORE the entry, so the entry's own dabs
@@ -6909,10 +7470,11 @@ function run(
       { surface: 'transparent', pixels: transparent.pixels },
     ])
     // Spec 10: `edge-layer` is a bristle scene (bristle-round, Body 100) and
-    // carries the same film-blur exclusion. The comparator's alpha-law
-    // predicate carries the identical two-clause test; the two must agree.
+    // carries the same film-blur exclusion; 261126-hgl's `edge-rim` is the
+    // same brush on the artist's pair. The comparator's alpha-law predicate
+    // carries the identical three-clause test; the two must agree.
     const visibleAlpha =
-      scenario.startsWith('bristle-') || scenario === 'edge-layer'
+      scenario.startsWith('bristle-') || scenario === 'edge-layer' || scenario === 'edge-rim'
         ? visibleAlphaSkipped(BRISTLE_VISIBLE_ALPHA_SKIP)
         : visibleAlphaCheck(pigment.pixels, transparent.pixels, sheet)
 
@@ -7068,7 +7630,9 @@ function run(
             transparent.digest,
             transparent.pixels,
           )
-        : {}
+        : scenario === 'edge-rim'
+          ? edgeRimReport(engine, sheet, transparentCanvas, edgeRimCapture)
+          : {}
 
     writeResult({
       gate,
@@ -7178,9 +7742,9 @@ function readBrush(): string | undefined {
 function readScenario(): string {
   const raw = new URLSearchParams(location.search).get('scenario')
   if (raw === null || raw === '') return 'neutral'
-  if (raw !== 'cover' && raw !== 'cover-over-wet' && raw !== 'watercolor-50' && raw !== 'white-over-blue' && raw !== 'cover-advect' && raw !== 'cover-lift' && raw !== 'cover-textured' && raw !== 'red-over-blue-50' && raw !== 'bristle-edge' && raw !== 'bristle-wet' && raw !== 'bristle-line' && raw !== 'bristle-tip' && raw !== 'bristle-end' && raw !== 'emboss-smooth' && raw !== 'edge-layer') {
+  if (raw !== 'cover' && raw !== 'cover-over-wet' && raw !== 'watercolor-50' && raw !== 'white-over-blue' && raw !== 'cover-advect' && raw !== 'cover-lift' && raw !== 'cover-textured' && raw !== 'red-over-blue-50' && raw !== 'bristle-edge' && raw !== 'bristle-wet' && raw !== 'bristle-line' && raw !== 'bristle-tip' && raw !== 'bristle-end' && raw !== 'emboss-smooth' && raw !== 'edge-layer' && raw !== 'edge-rim') {
     throw new Error(
-      `invalid scenario "${raw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue", "cover-advect", "cover-lift", "cover-textured", "red-over-blue-50", "bristle-edge", "bristle-wet", "bristle-line", "bristle-end", "emboss-smooth", "edge-layer" or "bristle-tip")`,
+      `invalid scenario "${raw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue", "cover-advect", "cover-lift", "cover-textured", "red-over-blue-50", "bristle-edge", "bristle-wet", "bristle-line", "bristle-end", "emboss-smooth", "edge-layer", "edge-rim" or "bristle-tip")`,
     )
   }
   return raw
@@ -7225,8 +7789,19 @@ function main(): void {
     scenario = readScenario()
     // Spec 10: the two edge knobs are read before any stroke (module state),
     // and refused on any other scenario — never silently ignored.
-    EDGE_LAYER_AMOUNT = readEdgeKnob('edge', scenario, EDGE_LAYER_DEFAULT_AMOUNT)
-    EDGE_LAYER_FALLOFF = readEdgeKnob('falloff', scenario, EDGE_LAYER_DEFAULT_FALLOFF)
+    // 261126-hgl: `edge-rim` defaults every layer operand to the recipe's
+    // 100 (Edge, falloff, pickup, feather); every other scene keeps the
+    // canonical 0 / 50.
+    EDGE_LAYER_AMOUNT = readEdgeKnob(
+      'edge',
+      scenario,
+      scenario === 'edge-rim' ? EDGE_RIM_DEFAULT_AMOUNT : EDGE_LAYER_DEFAULT_AMOUNT,
+    )
+    EDGE_LAYER_FALLOFF = readEdgeKnob(
+      'falloff',
+      scenario,
+      scenario === 'edge-rim' ? EDGE_RIM_DEFAULT_FALLOFF : EDGE_LAYER_DEFAULT_FALLOFF,
+    )
     EDGE_LAYER_PICKUP = readEdgePickup(scenario)
     EDGE_LAYER_FEATHER = readEdgeFeather(scenario)
     EDGE_LAYER_WET_UNDER = readEdgeWetUnder(scenario)

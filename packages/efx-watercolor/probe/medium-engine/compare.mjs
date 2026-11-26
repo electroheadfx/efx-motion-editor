@@ -218,11 +218,14 @@ function alphaLawFailures(data) {
     return failures
   }
   // Spec 10 (261125-kvl): `edge-layer` is a bristle scene (bristle-round,
-  // Body 100) and carries the same film-blur exclusion. The probe's skip
-  // predicate carries the identical two-clause test; a drift between the two
-  // makes every edge-layer capture fail here by construction.
+  // Body 100) and carries the same film-blur exclusion. 261126-hgl adds
+  // `edge-rim` (the artist's short stroke on the blue wash) — same brush,
+  // same exclusion. The probe's skip predicate carries the identical
+  // three-clause test; a drift between the two makes every layer capture
+  // fail here by construction.
   const bristle =
-    String(data.scenario).startsWith('bristle-') || data.scenario === 'edge-layer'
+    String(data.scenario).startsWith('bristle-') || data.scenario === 'edge-layer' ||
+    data.scenario === 'edge-rim'
   if (bristle) {
     if (typeof data.visibleAlphaSkip !== 'string' || data.visibleAlphaSkip.length === 0) {
       failures.push(
@@ -1294,12 +1297,6 @@ const EDGE_ENCODE_OVER = 0
  *  REPORTED — the prescribed blur order makes a byte-exact rim impossible, and
  *  UAT row 6 judges how the commit reads. All three must be real numbers. */
 const EDGE_POLISH_P95 = 1
-/** 261126-hgl: the fringe's light-ring score in 1/255 units — a station
- *  inside the painted band that is lighter than the painted stations on BOTH
- *  sides of it, measured on the committed display profile of each lateral
- *  axis. The pre-fix artist arm read 6.89-11.23/255 on the under axis; the
- *  occupancy-normalized merge must leave at most one display step. */
-const EDGE_FRINGE_DIP_MAX = 1
 /** The printed-share reading at the band edge is REPORTED, not barred: the
  *  reverted film law's EDGE_PRINT_* floors were defined against `1 − amount·t^e`
  *  on the whole mark, and the layer law's raster mixes the base's own print
@@ -1348,8 +1345,11 @@ const EDGE_LAYER_READINGS = [
   'edgeCoreExactUnder',
   'edgeContinuityPaper',
   'edgeContinuityUnder',
-  // 261126-hgl: the halo readout — the light-ring score on both lateral axes.
-  // Required once the layer path runs; the bar is `EDGE_FRINGE_DIP_MAX`.
+  // 261126-hgl: the halo readout on the `edge-layer` scene — a DIAGNOSTIC,
+  // never a bar. The red-over-blue `edge-layer` pair pales by construction
+  // (red's coefficient dominates the mix), so its dip score judges the scene,
+  // not the halo; the artist's halo is judged on `edge-rim` (yellow over the
+  // blue wash) by the rim block. Required so the reading stays emitted.
   'edgeFringeDipPaper',
   'edgeFringeDipUnder',
   'edgePrintRetentionPaper',
@@ -1702,19 +1702,17 @@ function edgeLayerFailures(data, reference) {
   if (!Number.isInteger(data.edgePolishOver) || data.edgePolishOver < 0) {
     failures.push(`edgePolishOver ${data.edgePolishOver} is not a non-negative texel count`)
   }
-  // 261126-hgl: the fringe's light ring, barred on BOTH lateral axes. The
-  // committed display must never carry a station lighter than the painted
-  // stations on both sides of it — the artist's pale halo.
+  // 261126-hgl: `edgeFringeDipPaper/Under` are DIAGNOSTICS, never a bar. The
+  // `edge-layer` pair is red over blue, which pales by construction (red's
+  // coefficient dominates the mix), so a dip here cannot judge the halo; the
+  // artist's halo is measured on `edge-rim` (yellow over the blue wash) by the
+  // rim block Task 4 registers (Task 3 emits the readings only). The values
+  // must still be real non-negative readings.
   for (const side of ['Paper', 'Under']) {
     const field = `edgeFringeDip${side}`
     const value = data[field]
     if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
       failures.push(`${field} ${JSON.stringify(value)} is not a non-negative 1/255 reading`)
-    } else if (value > EDGE_FRINGE_DIP_MAX) {
-      failures.push(
-        `${field} ${value}/255 exceeds ${EDGE_FRINGE_DIP_MAX}/255 — a light ring at the fringe: ` +
-          'a station inside the painted band is lighter than the painted stations on BOTH sides of it',
-      )
     }
   }
   failures.push(...edgeStudioFailures(data))
@@ -2402,14 +2400,12 @@ function printDurations(label, data) {
       `${label.padEnd(9)} : polish max ${data.edgePolishMax} | p95 ${data.edgePolishP95} | over ${data.edgePolishOver} (p95 bar ${EDGE_POLISH_P95}/255)${over}`,
     )
   }
-  // 261126-hgl: the fringe's light-ring score per lateral axis (bar 1/255).
+  // 261126-hgl: the fringe's light-ring score per lateral axis — PRINTED as a
+  // diagnostic, never barred. The red-over-blue `edge-layer` scene pales by
+  // construction; the artist's halo is judged on `edge-rim`.
   if (typeof data.edgeFringeDipPaper === 'number' || typeof data.edgeFringeDipUnder === 'number') {
-    const dip = (value) =>
-      typeof value === 'number' && value > EDGE_FRINGE_DIP_MAX
-        ? `${value} — OVER the ${EDGE_FRINGE_DIP_MAX}/255 bar`
-        : `${value}`
     console.log(
-      `${label.padEnd(9)} : fringe dip paper ${dip(data.edgeFringeDipPaper)} | under ${dip(data.edgeFringeDipUnder)} (bar ${EDGE_FRINGE_DIP_MAX}/255)`,
+      `${label.padEnd(9)} : fringe dip paper ${data.edgeFringeDipPaper} | under ${data.edgeFringeDipUnder} (diagnostic — red-over-blue pales by construction)`,
     )
   }
 }

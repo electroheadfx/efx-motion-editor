@@ -2159,9 +2159,10 @@ describe('the edge-layer gate (Spec 10)', () => {
       edgeCoreExactUnder: layer ? 0 : null,
       edgeContinuityPaper: layer ? 0 : null,
       edgeContinuityUnder: layer ? 0 : null,
-      // 261126-hgl: the fringe light-ring score per lateral axis, barred at
-      // 1/255 (`EDGE_FRINGE_DIP_MAX`). Absent at amount 0 — no layer, no ring
-      // readout. A test moves one to prove the bar.
+      // 261126-hgl: the fringe light-ring score per lateral axis — a
+      // DIAGNOSTIC now (the red-over-blue pair pales by construction; the
+      // artist's halo is judged on `edge-rim`). Absent at amount 0 — no
+      // layer, no ring readout. A test moves one to prove it never fails.
       edgeFringeDipPaper: layer ? 0 : null,
       edgeFringeDipUnder: layer ? 0 : null,
       edgePrintRetentionPaper: layer ? Math.max(0, 1 - amount / 100) : null,
@@ -2296,12 +2297,19 @@ describe('the edge-layer gate (Spec 10)', () => {
 
     it('refuses the two knobs on every other scenario, in both files', () => {
       // 261126 (the cap leg): the same knobs are the bristle-end scene's
-      // layer operands, so the refusal names both scenes.
-      expectContains(PROBE, '`--${name} is only valid with --scenario edge-layer or bristle-end`')
-      expectContains(PROBE, "EDGE_LAYER_AMOUNT = readEdgeKnob('edge', scenario, EDGE_LAYER_DEFAULT_AMOUNT)")
-      expectContains(PROBE, "EDGE_LAYER_FALLOFF = readEdgeKnob('falloff', scenario, EDGE_LAYER_DEFAULT_FALLOFF)")
-      expectContains(RUN, '--edge is only valid with --scenario edge-layer or bristle-end')
-      expectContains(RUN, '--falloff is only valid with --scenario edge-layer or bristle-end')
+      // layer operands; 261126-hgl's `edge-rim` reads them too, so the
+      // refusal names all three scenes.
+      expectContains(PROBE, '`--${name} is only valid with --scenario edge-layer, edge-rim or bristle-end`')
+      expectContains(
+        PROBE,
+        "scenario === 'edge-rim' ? EDGE_RIM_DEFAULT_AMOUNT : EDGE_LAYER_DEFAULT_AMOUNT",
+      )
+      expectContains(
+        PROBE,
+        "scenario === 'edge-rim' ? EDGE_RIM_DEFAULT_FALLOFF : EDGE_LAYER_DEFAULT_FALLOFF",
+      )
+      expectContains(RUN, '--edge is only valid with --scenario edge-layer, edge-rim or bristle-end')
+      expectContains(RUN, '--falloff is only valid with --scenario edge-layer, edge-rim or bristle-end')
       expectContains(RUN, '`&edge=${edge}`')
       expectContains(RUN, '`&falloff=${falloff}`')
     })
@@ -2314,7 +2322,7 @@ describe('the edge-layer gate (Spec 10)', () => {
       // The report echoes the trio so a capture can never be misread as a
       // different bag; a null amount is the sheet-path control.
       expectContains(PROBE, 'amount: endSetup.edge,')
-      expectContains(RUN, "const LAYER_SCENES = ['edge-layer', 'bristle-end']")
+      expectContains(RUN, "const LAYER_SCENES = ['edge-layer', 'edge-rim', 'bristle-end']")
     })
 
     it('accepts --feather on the two layer scenes and reads the fringe dip (261126-hgl)', () => {
@@ -2338,9 +2346,12 @@ describe('the edge-layer gate (Spec 10)', () => {
       expectContains(PROBE, 'const EDGE_FRINGE_GAP = 3')
     })
 
-    it('bars the fringe dip and reads the presence lane (261126-hgl, the one law)', () => {
-      // The comparator's bar and its two required readings.
-      expectContains(COMPARE, 'const EDGE_FRINGE_DIP_MAX = 1')
+    it('keeps the fringe dip as a diagnostic and reads the presence lane (261126-hgl)', () => {
+      // 261126-hgl retired the dip bar: the red-over-blue `edge-layer` pair
+      // pales by construction, so the dip can never judge the artist's halo
+      // (that surface is `edge-rim`). The readings stay emitted as
+      // diagnostics, and the bar must not come back.
+      expectNotContains(COMPARE, 'EDGE_FRINGE_DIP_MAX')
       expectContains(COMPARE, "'edgeFringeDipPaper',")
       expectContains(COMPARE, "'edgeFringeDipUnder',")
       // The film's bytes: two textures of 4 + 2 B/texel cannot ride the
@@ -2355,6 +2366,32 @@ describe('the edge-layer gate (Spec 10)', () => {
         'function edgeLayerFilmWeight(lateral: number, coverL: number, presence: number): number {',
       )
       expectContains(PROBE, 'layerA[o + c]! * layerWeight')
+    })
+
+    it('registers the edge-rim scene and emits its eight rim readings (261126-hgl task 3)', () => {
+      // The scenario is accepted by both closed lists and skips the shared
+      // script drive (it has its own two-stroke drive with a merge wrapper).
+      expectContains(PROBE, "raw !== 'edge-layer' && raw !== 'edge-rim'")
+      expectContains(RUN, "scenarioRaw !== 'edge-layer' && scenarioRaw !== 'edge-rim'")
+      expectContains(PROBE, 'function edgeRimScript(): readonly ScriptEntry[] {')
+      expectContains(PROBE, 'function edgeRimReport(')
+      expectContains(PROBE, "function edgeRimBandRect(sheet: number, axis: 'lateral' | 'tip'): EdgeRect {")
+      expectContains(PROBE, 'function edgeRimProfile(')
+      // The eight fields: light and chroma, lateral and tip, committed and
+      // live — the artist's acceptance surface, one reading per cell.
+      for (const axis of ['Lateral', 'Tip']) {
+        for (const kind of ['Light', 'Chroma']) {
+          for (const surface of ['Committed', 'Live']) {
+            expectContains(PROBE, `edgeRim${kind}${axis}${surface}:`)
+          }
+        }
+      }
+      // The recipe's inks: the artist's yellow over the blue wash.
+      expectContains(PROBE, "const EDGE_RIM_WASH_COLOR = '#1469e8'")
+      expectContains(PROBE, "const EDGE_RIM_FOREGROUND_COLOR = '#f9e01c'")
+      // The coherence guard: a 5-station box smooth and a two-station floor.
+      expectContains(PROBE, 'const EDGE_RIM_SMOOTH_STATIONS = 5')
+      expectContains(PROBE, 'const EDGE_RIM_RUN_MIN = 2')
     })
 
     it('carries the same bristle predicate in probe.ts, compare.mjs and this file', () => {
@@ -2743,17 +2780,23 @@ describe('the edge-layer gate (Spec 10)', () => {
       expect(invariantLine(output)).toContain('edgeMemoryLayerBytes')
     })
 
-    it('261126-hgl: fails a fringe light ring over 1/255 on either axis', () => {
-      // The base capture (dip 0 on both axes) must still pass; one axis moved
-      // over the bar must fail BY NAME — the halo is the surface this quick
-      // exists for, so the bar is EXECUTED, never merely pinned.
+    it('261126-hgl: the fringe dip is a diagnostic, never a failure', () => {
+      // Task 3 retired the dip bar: the red-over-blue `edge-layer` pair pales
+      // by construction, so a dip over one display step must still PASS, and
+      // the run prints the readings with the diagnostic wording. An
+      // unreadable value (null / negative) still fails by name.
       const base = compareSynthetic('nyquist-fringe-pass', validEdgeLayerCapture(100, 50))
       expect(base.status, lawVerdict(base.status, base.output)).toBe(0)
-      const output = rejects('nyquist-fringe-dip', { edgeFringeDipUnder: 2 })
-      expect(invariantLine(output)).toContain('edgeFringeDipUnder')
-      expect(output).toContain('light ring')
-      const paper = rejects('nyquist-fringe-dip-paper', { edgeFringeDipPaper: 3 })
-      expect(invariantLine(paper)).toContain('edgeFringeDipPaper')
+      const dipped = compareSynthetic('nyquist-fringe-dipped', {
+        ...validEdgeLayerCapture(100, 50),
+        edgeFringeDipUnder: 2,
+        edgeFringeDipPaper: 3,
+      })
+      expect(dipped.status, lawVerdict(dipped.status, dipped.output)).toBe(0)
+      expect(dipped.output).toContain('fringe dip paper 3 | under 2')
+      expect(dipped.output).toContain('diagnostic — red-over-blue pales by construction')
+      const unreadable = rejects('nyquist-fringe-null', { edgeFringeDipUnder: null })
+      expect(invariantLine(unreadable)).toContain('edgeFringeDipUnder')
     })
 
     it('WR-02: fails a capture missing a Studio row', () => {
