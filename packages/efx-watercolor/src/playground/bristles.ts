@@ -387,6 +387,39 @@ export const BRISTLE_SMEAR_PERIOD_PX = 6;
  */
 export const BRISTLE_SMEAR_CAP = 1.0;
 
+/**
+ * 2026-11-26 (the artist's big-brush smoothing): the canonical-Size band where
+ * the big-brush laws blend in — 0 at 200 px, 1 at 300 px. Above 200 px the
+ * smear's per-cell hash tiles read as pixelation on big brushes (measured on
+ * the live yellow/pink overlap: hard 6-px rectangles in the colour blend) and
+ * the cap alpha's per-hair stagger reads as a pale cap line. Both blend onto
+ * their smooth arms; at or below 200 px every term reduces to the shipped law.
+ */
+export const BRISTLE_BIG_FROM_PX = 200;
+export const BRISTLE_BIG_TO_PX = 300;
+
+/**
+ * 261126-rov: the seeded interior displacement. The dark bristle-run bands
+ * read the run lattice; a per-stroke seeded Perlin fBm displacing the lattice
+ * lookup breaks the straight stripes while the coverage/film laws stay
+ * untouched. Every brush size is displaced; the fragment's Pickup gate
+ * (uSmear 0..0.15) keeps Pickup 0 byte-identical. The pickup/blend colour
+ * lines have NO field of their own (the artist's live ruling): they follow
+ * the body lattice with no micro displacement. Engine.bindGather binds these
+ * as uniforms, so the shader cannot drift from the twins.
+ */
+/** The three-octave fBm's cells per half-width (across, along). */
+export const BRISTLE_DISPLACE_CELLS_X = 0.5;
+export const BRISTLE_DISPLACE_CELLS_Y = 0.6;
+/** The lookup displacement at gate 1 and full interior, across units. */
+export const BRISTLE_DISPLACE_AMP = 0.5;
+/** The interior mask: full displacement inside 0.75, zero past 0.95. */
+export const BRISTLE_DISPLACE_RIM_INNER = 0.75;
+export const BRISTLE_DISPLACE_RIM_OUTER = 0.95;
+/** The two per-stroke seed coordinates derive from the recorded bristle set. */
+export const BRISTLE_DISPLACE_SEED_A = 137;
+export const BRISTLE_DISPLACE_SEED_B = 149;
+
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 const clamp01 = (v: number) => clamp(v, 0, 1);
 const smoothstep = (a: number, b: number, x: number) => {

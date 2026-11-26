@@ -1009,6 +1009,24 @@ uniform float uSmearCap;     // §3.3 clamp (BRISTLE_SMEAR_CAP 0.8)
 // under's pigment (the sheet path's per-dab under decay, Law 2,
 // bristleDepositFS). 0 keeps the sheet law's hash verbatim.
 uniform float uSmearSmooth;
+// 2026-11-26 (the artist's big-brush smoothing): 0..1 — the canonical-Size
+// blend onto the smooth smear arm above Size 200 px. The hash's 6-px cells
+// read as pixelation on big brushes; the mean keeps the tuned pickup drag.
+uniform float uSmearSmoothBig;
+// 2026-11-26 (the same smoothing on the stroke's cap): 0..1 — above Size
+// 200 px the cap alpha blends to a smooth ramp; the per-hair stagger and the
+// hard ramp edge read as a pale cap line on big brushes.
+uniform float uCapBlurBig;
+// 261126-rov: the seeded interior displacement (quick 261126-rov). BODY — a
+// three-octave Perlin fBm extending the gather's run lookup (the dark
+// bristle-run bands). Per-stroke seeded and stroke-anchored; the Pickup gate
+// keeps Pickup 0 byte-identical. The pickup/blend colour lines carry NO
+// field of their own (the artist's live ruling): their lookup is the body
+// lattice's g.nearest, so they follow the runs without micro displacement.
+uniform float uDisplaceAmp;
+uniform vec2 uDisplaceCells;
+uniform vec2 uDisplaceSeed;
+uniform vec2 uDisplaceRim;
 uniform float uBodyFloor;    // the Body-0 cover ceiling (BRISTLE_BODY_ALPHA_FLOOR 0.5)
 uniform vec4 uPigmentA;      // the brush's palette absorbance 0..3 (same-paint gate)
 uniform vec3 uPigmentB;      // the brush's palette absorbance 4..6
@@ -1095,7 +1113,9 @@ float smoothSmearMean(float k, float cap){
 float smearWeight(int nearest, float alongPx, float wet){
   float k = uSmear * wet;
   float raw = clamp(k * hash21(vec2(float(nearest), floor(alongPx / uSmearPeriodPx))), 0.0, uSmearCap);
-  return mix(raw, smoothSmearMean(k, uSmearCap), uSmearSmooth);
+  // max(): the layer arm's full-smooth law plus the sheet's big-brush blend
+  // (uSmearSmoothBig, 0 at <=200 px) — one mix, no second law.
+  return mix(raw, smoothSmearMean(k, uSmearCap), max(uSmearSmooth, uSmearSmoothBig));
 }
 
 // §4.4 — the paper tooth as a threshold, in TWO coordinate systems:
@@ -1117,6 +1137,33 @@ float grainHeight(vec2 css, vec2 normal){
   return streaks * uStreakShare + tooth * 0.35 + cloud * (0.65 - uStreakShare);
 }
 
+// 261126-rov: classic 2D Perlin gradient noise on the shared hash family —
+// a random gradient per lattice corner (the two hashes give the gradient's
+// components, offsets the classic 37/17 and 71/53 pairs), quintic fade and a
+// bilinear mix. The raw output peaks near ±0.55; the x1.8 normalises it to
+// ~±1 so the displacement amplitude reads as a fraction of the half-width.
+// No loops, no pow (the bristle fragments ban it), deterministic per seed.
+vec2 perlinGrad(vec2 cell){
+  return vec2(hash21(cell + vec2(37.0, 17.0)), hash21(cell + vec2(71.0, 53.0))) * 2.0 - 1.0;
+}
+float perlinNoise2(vec2 p){
+  vec2 cell = floor(p);
+  vec2 f = p - cell;
+  vec2 u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
+  float n00 = dot(perlinGrad(cell), f);
+  float n10 = dot(perlinGrad(cell + vec2(1.0, 0.0)), f - vec2(1.0, 0.0));
+  float n01 = dot(perlinGrad(cell + vec2(0.0, 1.0)), f - vec2(0.0, 1.0));
+  float n11 = dot(perlinGrad(cell + vec2(1.0, 1.0)), f - vec2(1.0, 1.0));
+  return 1.8 * mix(mix(n00, n10, u.x), mix(n01, n11, u.x), u.y);
+}
+// The body field's octave mix (the artist's large/medium/fine): weights sum
+// to 1, the offsets keep the octaves from ever aligning.
+float perlinFbm(vec2 p){
+  return 0.5714 * perlinNoise2(p)
+       + 0.2857 * perlinNoise2(p * 2.0 + vec2(17.3, 11.1))
+       + 0.1429 * perlinNoise2(p * 4.0 + vec2(31.7, 23.9));
+}
+
 struct Gathered {
   vec4 cA;                   // carried absorbance 0..3
   vec3 cB;                   // carried absorbance 4..6
@@ -1136,9 +1183,27 @@ Gathered gatherBristle(vec2 uv){
   p.x *= uSheetAspect;
   vec2 q = vec2(dot(p, uAxis), dot(p, vec2(-uAxis.y, uAxis.x))) / uRadius;
   float across = q.x;
+  // 261126-rov BODY: the seeded interior displacement breaks the straight
+  // bristle-run bands by moving the lattice LOOKUP, never the coverage/film
+  // laws. The along coordinate is anchored to the paint location (uAlongPx +
+  // q.y), not the dab: every covering dab evaluates one stroke-wide wave, so
+  // the displacement survives the dab overlap instead of averaging out. The
+  // run index and the per-bristle offset read the displaced coordinate;
+  // lateral/tooth/streak laws keep the true across. Every brush size is
+  // displaced; the Pickup gate (uSmear 0..0.15) keeps Pickup 0 identical.
+  float acrossLookup = across;
+  float displaceGate = smoothstep(0.0, 0.15, uSmear);
+  if (uDisplaceAmp > 0.0 && displaceGate > 0.0) {
+    float interior = 1.0 - smoothstep(uDisplaceRim.x, uDisplaceRim.y, abs(across));
+    float alongWarp = (uAlongPx + q.y * uHalfWidthPx) / max(uHalfWidthPx, 1.0);
+    acrossLookup = clamp(
+      across + uDisplaceAmp * displaceGate * interior *
+        perlinFbm(vec2(across * uDisplaceCells.x, alongWarp * uDisplaceCells.y) + uDisplaceSeed),
+      -1.0, 1.0);
+  }
   int count = int(uCount + 0.5);
   float spacing = 2.0 / float(count);
-  int nearest = int(floor((across + 1.0) / spacing));
+  int nearest = int(floor((acrossLookup + 1.0) / spacing));
   if (nearest < 0 || nearest >= count) return g;
   g.nearest = nearest;
 
@@ -1152,7 +1217,7 @@ Gathered gatherBristle(vec2 uv){
     // §4.1: radius = max(radiusScale * spacing * halfWidth, 0.8 px).
     float spacingPx = spacing * uRadius * uSheet.y;
     float radius = max(shape.x * spacingPx, 0.8);
-    float offset = (across - state.y) * uRadius * uSheet.y / radius;
+    float offset = (acrossLookup - state.y) * uRadius * uSheet.y / radius;
     if (abs(offset) >= 1.0) continue;
     float profile = 1.0 - offset * offset;
     profile *= profile;                                    // §5.1
@@ -1318,8 +1383,15 @@ Gathered gatherBristle(vec2 uv){
   // deposit rect and ended on a straight wall with a notch (the artist's
   // 2026-11-20 end-block crop). Every hair now ends at or before the radius.
   // The trailing half is untouched (along = 0 there): interiors never thin.
-  float hairEnd = 1.0 - (1.0 - fadeStreak) * capW * 0.6;
-  float alongFade = 1.0 - smoothstep(hairEnd - capW * 0.4, hairEnd, along);
+  // 2026-11-26 (the artist's big-brush smoothing): above Size 200 px the cap
+  // alpha blends toward a SMOOTH ramp — the per-hair stagger and the narrow
+  // ramp edge read as a pale cap line on big brushes. At uCapBlurBig = 0 the
+  // two lines below reduce exactly to the shipped stagger (capStreak =
+  // fadeStreak, capEdge = capW * 0.4), so small brushes are untouched.
+  float capStreak = mix(fadeStreak, 0.5, uCapBlurBig);
+  float capEdge = capW * mix(0.4, 1.0, uCapBlurBig);
+  float hairEnd = 1.0 - (1.0 - capStreak) * capW * 0.6;
+  float alongFade = 1.0 - smoothstep(hairEnd - capEdge, hairEnd, along);
   // 2026-11-20 (the artist's pen end block): the trailing half carries no
   // fade because the NEXT dab normally covers it — but the dab's trailing
   // RECTANGLE (outside the footprint, q.y > 1) was painted at full weight,
@@ -1345,10 +1417,18 @@ Gathered gatherBristle(vec2 uv){
   float inked = uSoftness > 0.0
     ? smoothstep(threshold - uSoftness, threshold + uSoftness, coverage)
     : step(threshold, coverage);
+  // 2026-11-26 (the artist's pale cap band — "the cap that was never
+  // fixed"): on the END impression the film keeps its FULL weight and the end
+  // breaks up through the coverage THRESHOLD only (full-depth specks, the
+  // takeoff's own principle). The post-threshold fade is the pale alpha band
+  // left where a pressure release ended a sweep — no later dab ever repaints
+  // it, so it survives as a lighter stripe under the next stroke. The START
+  // cap keeps the shipped film fade (its zone IS repainted by the dabs ahead).
+  float filmFade = mix(featherFade, 1.0, uEndCap);
   g.coverage = inked * featherFade;
-  g.cA *= featherFade;
-  g.cB *= featherFade;
-  g.alpha *= featherFade;
+  g.cA *= filmFade;
+  g.cB *= filmFade;
+  g.alpha *= filmFade;
   // GAP-4: a texture tip bounds WHERE the dab lands (uTipMix = 0 keeps the
   // untextured law byte-identical: the multiply is never executed).
   if (uTipMix > 0.0) g.coverage *= tipMask(uv);
@@ -1400,6 +1480,10 @@ void main(){
   vec4 cA = g.cA;
   vec3 cB = g.cB;
   if (uSmear > 0.0) {
+    // 261126-rov (artist's live ruling): the pickup/blend colour lines carry
+    // NO displacement of their own — no micro displacement on the colour
+    // blend. The lookup stays g.nearest, so the lines follow the runs the
+    // body field waves and nothing finer.
     float smear = smearWeight(g.nearest, uAlongPx + q.y * uHalfWidthPx, wetAt(vUv));
     // 2026-11-20 (the artist's yellow-on-white report): the SAME solid-paint
     // gate as the carrier's liftGate. A partial or blank snapshot is a thin

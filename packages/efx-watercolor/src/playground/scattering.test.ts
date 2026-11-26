@@ -1278,8 +1278,11 @@ describe('261119-pod — the §3.3 smear, the snapshot and the four-side Feather
     // (uSmearSmooth defaults to 0 there). The layer programs turn on the
     // mean-preserving arm — the layer re-reads the same untouched sheet every
     // dab, so the hash froze into the accumulated film as a mosaic.
+    // 2026-11-26 (the artist's big-brush smoothing): the sheet also blends
+    // onto the mean above canonical Size 200 px (uSmearSmoothBig) — the 6-px
+    // hash cells read as pixelation on big brushes.
     expectContains(g, 'float raw = clamp(k * hash21(vec2(float(nearest), floor(alongPx / uSmearPeriodPx))), 0.0, uSmearCap);')
-    expectContains(g, 'return mix(raw, smoothSmearMean(k, uSmearCap), uSmearSmooth);')
+    expectContains(g, 'return mix(raw, smoothSmearMean(k, uSmearCap), max(uSmearSmooth, uSmearSmoothBig));')
     expectContains(g, 'float k = uSmear * wet;')
     // The smooth arm is the hash's own mean E[min(k·h, cap)] for h uniform:
     // k/2 below the cap, cap − cap²/(2k) above — the tuned mean drag is
@@ -1290,13 +1293,20 @@ describe('261119-pod — the §3.3 smear, the snapshot and the four-side Feather
     expectContains(g, 'uniform float uSmearPeriodPx;')
     expectContains(g, 'uniform float uSmearCap;')
     expectContains(g, 'uniform float uSmearSmooth;')
+    // 2026-11-26 (the artist's big-brush smoothing): the canonical-Size blend
+    // onto the smooth arm, bound from the Size the artist reads.
+    expectContains(g, 'uniform float uSmearSmoothBig;')
   })
 
-  it('smooths the smear on the STROKE LAYER only, never the sheet path', () => {
-    // Default 0 in the shared bind: every sheet-path program keeps the hash.
+  it('smooths the smear on the STROKE LAYER, and on the sheet above Size 200', () => {
+    // Default 0 in the shared bind: at or below Size 200 px every sheet-path
+    // program keeps the shipped hash verbatim.
     expect(ENGINE_SOURCE).toMatch(/gl\.uniform1f\(p\.u\.uSmearSmooth!, 0\)/)
+    // ...and the big-brush blend rides its own uniforms, still 0 at <=200 px.
+    expect(ENGINE_SOURCE).toMatch(/gl\.uniform1f\(p\.u\.uSmearSmoothBig!, bigBrush\);/)
+    expect(ENGINE_SOURCE).toMatch(/gl\.uniform1f\(p\.u\.uCapBlurBig!, bigBrush\);/)
     const layer = sliceBetween(ENGINE_SOURCE, 'private bristleLayerInk(', 'private touch(')
-    // ...and the layer's two gather consumers turn it on after the bind.
+    // The layer's two gather consumers turn the full-smooth arm on after the bind.
     expect(layer.match(/gl\.uniform1f\([dc]\.u\.uSmearSmooth!, 1\)/g) ?? []).toHaveLength(2)
   })
 
@@ -1517,13 +1527,25 @@ describe('261119-pod — the §3.3 smear, the snapshot and the four-side Feather
     expectContains(g, ': 0.0;')
     expectContains(ENGINE_SOURCE, 'gl.uniform1f(p.u.uEndCap!, endCap ? 1 : 0);')
     expectContains(ENGINE_SOURCE, 'this.bristleEndCap = true;')
+    // 2026-11-26 (the artist's pale cap band): a mid-stroke PAUSE catches up
+    // at FULL weight — the end cap belongs to the real end only, or every
+    // hesitation leaves a faded band across the resumed stroke (pronounced
+    // on big brushes and on the stroke layer). The end still stamps its cap
+    // even when a rest catch-up already caught the curve up (a moved stroke).
+    expectContains(ENGINE_SOURCE, 'if (s.started && !s.ending && !s.moved && !caughtUp) {')
+    expectContains(ENGINE_SOURCE, 'if (s.started && s.ending && (!caughtUp || (bristleStroke && s.moved))) {')
     expectContains(ENGINE_SOURCE, 'this.bristleInk(dx, dy, dr, angle, bristleBodyAlpha, contactPr, c1[3]!, alongPx, this.bristleEndCap);')
     // The end report: one smooth along profile reads as a knife cut, so the
     // hairs LIFT OFF at staggered points inside the cap band (mirroring the
     // landing ramp). The per-hair mask must never restore paint past the
     // radius — that ran whole hairs to the deposit rect (end-block crop).
-    expectContains(g, 'float hairEnd = 1.0 - (1.0 - fadeStreak) * capW * 0.6;')
-    expectContains(g, 'float alongFade = 1.0 - smoothstep(hairEnd - capW * 0.4, hairEnd, along);')
+    // 2026-11-26 (the artist's big-brush smoothing): the cap alpha blends to
+    // a smooth ramp above Size 200 px; at 0 the terms reduce to the shipped
+    // stagger exactly (capStreak = fadeStreak, capEdge = capW * 0.4).
+    expectContains(g, 'float capStreak = mix(fadeStreak, 0.5, uCapBlurBig);')
+    expectContains(g, 'float capEdge = capW * mix(0.4, 1.0, uCapBlurBig);')
+    expectContains(g, 'float hairEnd = 1.0 - (1.0 - capStreak) * capW * 0.6;')
+    expectContains(g, 'float alongFade = 1.0 - smoothstep(hairEnd - capEdge, hairEnd, along);')
     // 2026-11-20 (the artist's pen end block): the trailing half has no fade
     // (the next dab covers it), but the trailing RECTANGLE outside the
     // footprint was painted at full weight — a stroke that stopped there
@@ -1544,9 +1566,15 @@ describe('261119-pod — the §3.3 smear, the snapshot and the four-side Feather
     // The fade must reach every value the deposit carries: a coverage-only
     // multiply is erased by the dab-over-dab lerp (measured: F0/F100 differed
     // only by display blur).
-    expectContains(g, 'g.cA *= featherFade;')
-    expectContains(g, 'g.cB *= featherFade;')
-    expectContains(g, 'g.alpha *= featherFade;')
+    // 2026-11-26 (the artist's pale cap band — "the cap that was never
+    // fixed"): on the END impression the film keeps its full weight; the end
+    // breaks up through the coverage THRESHOLD only, so a pressure release
+    // that ended a sweep leaves no pale alpha stripe under the next stroke.
+    // The START cap keeps the shipped film fade (repainted by the dabs ahead).
+    expectContains(g, 'float filmFade = mix(featherFade, 1.0, uEndCap);')
+    expectContains(g, 'g.cA *= filmFade;')
+    expectContains(g, 'g.cB *= filmFade;')
+    expectContains(g, 'g.alpha *= filmFade;')
     expectContains(g, 'float inked = uSoftness > 0.0')
     expectContains(g, ': step(threshold, coverage);')
     expectContains(g, 'g.coverage = inked * featherFade;')

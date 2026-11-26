@@ -1,7 +1,16 @@
 import { BRUSH_PRESETS, brushTipCacheKey, buildBrush, isBristleResponse, tipRowsForUpload, type Brush } from './brushes';
 import {
+  BRISTLE_BIG_FROM_PX,
+  BRISTLE_BIG_TO_PX,
   BRISTLE_CAP,
   BRISTLE_CAP_GAIN,
+  BRISTLE_DISPLACE_AMP,
+  BRISTLE_DISPLACE_CELLS_X,
+  BRISTLE_DISPLACE_CELLS_Y,
+  BRISTLE_DISPLACE_RIM_INNER,
+  BRISTLE_DISPLACE_RIM_OUTER,
+  BRISTLE_DISPLACE_SEED_A,
+  BRISTLE_DISPLACE_SEED_B,
   BRISTLE_DRY_CAP_FLOOR,
   BRISTLE_DRY_CAP_FULL,
   BRISTLE_DRY_EDGE,
@@ -648,6 +657,12 @@ export class WatercolorEngine {
    */
   private bristleContent = false;
   private bristlePrev: { x: number; y: number; along: number } | null = null;
+  /**
+   * 261126-rov: the per-stroke displacement seed. Derived from the recorded
+   * bristle set (the first two bristles' seeds) so no extra RNG draw shifts
+   * the determinism contract; a re-bake replays the same field.
+   */
+  private bristleDisplaceSeed: [number, number] = [0, 0];
   /**
    * 261125-kvl (SPIKE 006, Spec 10) — the per-stroke stroke layer.
    *
@@ -3067,7 +3082,24 @@ export class WatercolorEngine {
     }
     this.queue = [];
     // the curve trails half a sample behind; catch up once the pointer rests or lifts
-    if (s.started && (!s.moved || s.ending) && (s.x !== s.cx || s.y !== s.cy)) {
+    const caughtUp = s.x === s.cx && s.y === s.cy;
+    const bristleStroke = s.tool === 'brush' && isBristleResponse(this.brush);
+    // 2026-11-26 (the artist's pale cap band — "the cap that was never
+    // fixed"): a PAUSE is not an end. The rest catch-up used to stamp the end
+    // cap as a tentative impression; when the stroke resumed, that faded dab
+    // stayed in the sheet as a pale band across the body — pronounced on big
+    // brushes and on the stroke layer (the layer keeps the faded film until
+    // the merge). Resting now catches the curve up at FULL weight; the cap is
+    // stamped only when the stroke actually ends.
+    if (s.started && !s.ending && !s.moved && !caughtUp) {
+      this.trace(s, s.cx, s.cy, s.cx, s.cy, s.pr, 0, 0);
+    }
+    // The END keeps its capped impression — also when a rest catch-up already
+    // caught the curve up here (a bristle stroke that has moved): a pause
+    // before the lift must not leave an uncapped wall. A pure tap (s.moved
+    // false, caught up) keeps its single press impression, and every
+    // non-bristle tool keeps the shipped trailing catch-up exactly.
+    if (s.started && s.ending && (!caughtUp || (bristleStroke && s.moved))) {
       // 2026-11-20: a catch-up dab is not followed by a movement dab, so its
       // trailing half is exposed — stamp it as a tentative end impression.
       this.bristleEndCap = true;
@@ -3083,7 +3115,6 @@ export class WatercolorEngine {
     // `dwell = dt·8` amount never reaches the bristle coverage, so a pointer
     // resting for a few frames before the lift stamped a solid, unbroken
     // full-width patch at the release. Brush marks are movement-driven.
-    const bristleStroke = s.tool === 'brush' && isBristleResponse(this.brush);
     if (!s.moved && s.started && !s.ending && !startedThisTick && !bristleStroke) {
       this.stampScripted(s, s.x, s.y, this.pressureOf(s, -1), 0, 0, 0, dt, this.widthFactorAt(s, 1), 1);
     }
@@ -3746,6 +3777,16 @@ export class WatercolorEngine {
     const halfWidthPx = Math.max(1, radiusValue * this.dh);
     const count = bristleCount(halfWidthPx);
     const set = makeBristles(count, this.rng);
+    // 261126-rov: the displacement seed reads the recorded bristle set
+    // (state.z of bristles 0 and 1) — record-derived, no extra RNG draw,
+    // identical on every re-bake of the stroke.
+    const seedLo = set.data[4]!;
+    const seedHi = set.data[12]!;
+    const deriveSeed = (v: number, k: number) => (Number.isFinite(v) ? v * k : 0);
+    this.bristleDisplaceSeed = [
+      deriveSeed(seedLo, BRISTLE_DISPLACE_SEED_A),
+      deriveSeed(seedHi, BRISTLE_DISPLACE_SEED_B),
+    ];
     this.bristleCount = count;
     this.bristlePrev = null;
     const n = BRISTLE_CAP;
@@ -4047,6 +4088,25 @@ export class WatercolorEngine {
     // layer turns the smooth arm on after this bind. Default 0 keeps every
     // sheet-path program byte-identical.
     gl.uniform1f(p.u.uSmearSmooth!, 0);
+    // 2026-11-26 (the artist's big-brush smoothing): one canonical-Size blend
+    // (0 at 200 px, 1 at 300 px) drives both big-brush smoothings — the
+    // smear's hash cells (uSmearSmoothBig) and the cap alpha's per-hair
+    // stagger (uCapBlurBig). At or below 200 px both binds are exactly 0 and
+    // the shipped laws stay verbatim.
+    const bigSizePx = engineScaleToSize(this.params.size);
+    const bigT = Math.min(1, Math.max(0,
+      (bigSizePx - BRISTLE_BIG_FROM_PX) / (BRISTLE_BIG_TO_PX - BRISTLE_BIG_FROM_PX)));
+    const bigBrush = bigT * bigT * (3 - 2 * bigT);
+    gl.uniform1f(p.u.uSmearSmoothBig!, bigBrush);
+    gl.uniform1f(p.u.uCapBlurBig!, bigBrush);
+    // 261126-rov: the seeded interior displacement — the body's three-octave
+    // fBm on the gather's run lookup. Inert on programs that do not read it
+    // (missing locations are null). The seed is per-stroke, recorded in
+    // beginBristles.
+    gl.uniform1f(p.u.uDisplaceAmp!, BRISTLE_DISPLACE_AMP);
+    gl.uniform2f(p.u.uDisplaceCells!, BRISTLE_DISPLACE_CELLS_X, BRISTLE_DISPLACE_CELLS_Y);
+    gl.uniform2f(p.u.uDisplaceSeed!, this.bristleDisplaceSeed[0], this.bristleDisplaceSeed[1]);
+    gl.uniform2f(p.u.uDisplaceRim!, BRISTLE_DISPLACE_RIM_INNER, BRISTLE_DISPLACE_RIM_OUTER);
     // 2026-11-20: the same-paint gate's reference — the BRUSH's palette, so
     // the drag never weakens as the carried colour drifts toward the canvas.
     const pc = this.pigment.coeffs;
