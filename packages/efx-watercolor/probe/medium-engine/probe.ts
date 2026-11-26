@@ -2498,6 +2498,8 @@ const EDGE_PICKUP_ABSENT: Record<string, unknown> = {
   // 261126 (edge-leg): the per-texel texture of the pickup — the mosaic's
   // instrument. Absent without a layer for the same reason as the means.
   edgePickupMixStd: null,
+  edgePickupMixHighPass: null,
+  edgePickupLayerHueHighPass: null,
   edgePickupLayerChromaStd: null,
   edgePickupLayerHighPass: null,
   edgePickupMergedChromaStd: null,
@@ -2552,6 +2554,81 @@ function edgeGridHighPass(grid: Float32Array, width: number, height: number): nu
     }
   }
   return n > 0 ? Math.sqrt(sum2 / n) : 0
+}
+
+/**
+ * 261126 (edge-leg): the HUE-only high-pass. The raw RGB high-pass above
+ * conflates hue with the gather's legitimate bristle-density texture — a
+ * uniformly-hued but thin bristle texel has a lower absolute chroma, so a
+ * dense/sparse pattern reads as "noise". Normalise each texel to its own
+ * chromaticity (r,g,b)/sum first: then only the hue direction contributes,
+ * which is exactly what "noise instead of a smooth optical blend" means.
+ */
+function edgeGridHueHighPass(grid: Float32Array, width: number, height: number): number {
+  if (width < 3 || height < 3) return 0
+  const chroma = (i: number): [number, number, number] | null => {
+    const r = grid[i * 3]!
+    const g = grid[i * 3 + 1]!
+    const b = grid[i * 3 + 2]!
+    const s = r + g + b
+    return s > 1 ? [r / s, g / s, b / s] : null
+  }
+  let sum2 = 0
+  let n = 0
+  for (let y = 1; y < height - 1; y += 1) {
+    for (let x = 1; x < width - 1; x += 1) {
+      const centre = chroma(y * width + x)
+      if (centre === null) continue
+      const mean = [0, 0, 0]
+      let count = 0
+      for (let dy = -1; dy <= 1; dy += 1) {
+        for (let dx = -1; dx <= 1; dx += 1) {
+          const c = chroma((y + dy) * width + (x + dx))
+          if (c === null) continue
+          mean[0] += c[0]
+          mean[1] += c[1]
+          mean[2] += c[2]
+          count += 1
+        }
+      }
+      if (count === 0) continue
+      for (let c = 0; c < 3; c += 1) {
+        const residual = centre[c]! - mean[c]! / count
+        sum2 += residual * residual
+        n += 1
+      }
+    }
+  }
+  return n > 0 ? Math.sqrt(sum2 / n) : 0
+}
+
+/** The RMS 3x3 high-pass of a per-texel scalar grid, NaN-aware (mixGrid is
+ *  NaN wherever the projection is undefined). */
+function edgeGridScalarHighPass(grid: Float32Array, width: number, height: number): number | null {
+  if (width < 3 || height < 3) return null
+  let sum2 = 0
+  let n = 0
+  for (let y = 1; y < height - 1; y += 1) {
+    for (let x = 1; x < width - 1; x += 1) {
+      const centre = grid[y * width + x]!
+      if (!Number.isFinite(centre)) continue
+      let mean = 0
+      let count = 0
+      for (let dy = -1; dy <= 1; dy += 1) {
+        for (let dx = -1; dx <= 1; dx += 1) {
+          const v = grid[(y + dy) * width + (x + dx)]!
+          if (!Number.isFinite(v)) continue
+          mean += v
+          count += 1
+        }
+      }
+      if (count === 0) continue
+      const residual = centre - mean / count
+      sum2 += residual * residual
+      n += 1
+    }
+  }
+  return n > 0 ? Math.sqrt(sum2 / n) : null
 }
 
 /** The standard deviation of a per-texel scalar grid, ignoring NaNs. */
@@ -2715,6 +2792,7 @@ function edgePickupReadout(
   const meanRgb = (acc: number[]): [number, number, number] =>
     acc.map((v) => round2(v / n)) as [number, number, number]
   const mixStd = mixGrid === null ? null : edgeGridScalarStd(mixGrid)
+  const mixHighPass = mixGrid === null ? null : edgeGridScalarHighPass(mixGrid, gw, gh)
   return {
     edgePickupTexels: n,
     edgePickupLayerRgb: layerRgb === null ? null : meanRgb(layerRgb),
@@ -2732,6 +2810,12 @@ function edgePickupReadout(
     // blends the under with a SMOOTH weight keeps the mean while collapsing
     // these; a per-texel hash (the mosaic) keeps the mean and holds them high.
     edgePickupMixStd: mixStd === null ? null : round4(mixStd),
+    // Hue-only: the pickup SHARE and the layer's own chromaticity. Density
+    // texture (a legitimate bristle pattern) leaves these near zero; only a
+    // hue mosaic lifts them.
+    edgePickupMixHighPass: mixHighPass === null ? null : round4(mixHighPass),
+    edgePickupLayerHueHighPass:
+      layerGrid === null ? null : round4(edgeGridHueHighPass(layerGrid, gw, gh)),
     edgePickupLayerChromaStd:
       layerGrid === null ? null : round2(edgeGridChromaStd(layerGrid)),
     edgePickupLayerHighPass:
