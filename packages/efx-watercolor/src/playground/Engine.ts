@@ -22,7 +22,6 @@ import {
   BRISTLE_STREAK_LENGTH,
   BRISTLE_STREAK_SHARE,
   BRISTLE_TAKEOFF_SHIFT,
-  bristleCentreDebiasGate,
   bristleContactPressure,
   bristleCount,
   bristleSampleScale,
@@ -3746,9 +3745,7 @@ export class WatercolorEngine {
     // §4.1 half-width in document texels (the radius is in doc heights), floor 1.
     const halfWidthPx = Math.max(1, radiusValue * this.dh);
     const count = bristleCount(halfWidthPx);
-    // 261126-n20: above a ~150 px real footprint, redistribute the seeded dark
-    // centre fibre's level onto the rim (no extra RNG draw — see bristles.ts).
-    const set = makeBristles(count, this.rng, bristleCentreDebiasGate(halfWidthPx));
+    const set = makeBristles(count, this.rng);
     this.bristleCount = count;
     this.bristlePrev = null;
     const n = BRISTLE_CAP;
