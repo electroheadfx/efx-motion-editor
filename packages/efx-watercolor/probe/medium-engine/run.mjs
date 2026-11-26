@@ -158,7 +158,7 @@
 //                                     one straight bristle-flat stroke at the
 //                                     acrylic record (Body via --body, default
 //                                     0); three-field across profiles + PNGs
-//             [--stroke-size <1..800>]  bristle-line/bristle-end only: the
+//             [--stroke-size <1..800>]  bristle-line/bristle-blend/bristle-end only: the
 //                                     stroke's `size` key (omitted keeps
 //                                     STROKE_PARAMS' 12; 261125-rtc widened
 //                                     the band from 200 for the artist's
@@ -251,8 +251,9 @@
 //             [--falloff <0..100>]    layer scenes: 0 broad / 50 linear /
 //                                     100 rim (edge-layer default 50; edge-rim
 //                                     100)
-//             [--pickup <0..100>]     layer scenes: overrides the record's
-//                                     canonical 100 (the pickup-0 control)
+//             [--pickup <0..100>]     layer scenes + bristle-blend: overrides
+//                                     the record's canonical 100 (the pickup-0
+//                                     control)
 //             [--wet-under]           edge-layer only: skip the fix after the
 //                                     FIRST stroke (wet under-paint arm); absent
 //                                     keeps the shipped dry-under scene
@@ -295,6 +296,21 @@
 //  (`/tmp/medium-engine/<gate>-<kind>.png`) and strips the base64 from the
 //  saved JSON so the record stays comparable.
 //
+//  261126-n20 Task 3 adds `--scenario bristle-blend` — the artist's
+//  large-size blend worms. A wide low-load light-touch MOBILE pass in
+//  `#f9e01c` (the --over understory, its own mutation id), then ONE judged
+//  `#1469e8` stroke at the acrylic bag (`--stroke-size`, `--pickup`; Body via
+//  --body, default 0 — the artist's value). The judged stroke carries
+//  `captureLine`, so `lineSurfaces` holds the three surfaces exactly as
+//  bristle-line does; each surface's set gains a `blend` block (its own share
+//  profile and spectrum) and the top-level `blend` mirrors the COMMITTED
+//  (postFix) one. `--pickup` is accepted here via the scene allowlist;
+//  `--over`, `--band`, `--dry`, `--feather`, `--release`, `--edge` and
+//  `--falloff` stay refused.
+//             [--scenario bristle-blend]
+//                                     yellow understory + one judged stroke;
+//                                     across share spectrum (worm bars)
+//
 //  The scenario closed lists here and in probe.ts (readScenario) must stay
 //  literal-identical: a name accepted here but unknown to the probe fails at
 //  capture, and a name the probe knows but this parser rejects can never be
@@ -320,7 +336,7 @@ const gateFlag = args.indexOf('--gate')
 const gate = gateFlag >= 0 ? args[gateFlag + 1] : undefined
 if (!gate) {
   console.error(
-    'usage: node run.mjs --gate <name> [--scenario cover|cover-over-wet|cover-advect|cover-lift|watercolor-50|white-over-blue|cover-textured|red-over-blue-50|bristle-edge|bristle-wet|bristle-line|bristle-end|bristle-tip|emboss-smooth|edge-layer|edge-rim] [--edge <0..100>] [--falloff <0..100>] [--pickup <0..100>] [--wet-under] [--emboss <-100..100>] [--body <0..100>] [--light <0..4>] [--size <32..4096>] [--brush <id>] [--wet-mode <0|1>] [--texture <mask id>] [--drive <stop|lift|decay|mouse|mouse-lift|bake>] [--stroke-size <1..800>] [--dry <0..100>] [--feather <0..100>] [--release <0..1>]   (e.g. neutral-identity; --feather also on --scenario edge-layer / edge-rim)',
+    'usage: node run.mjs --gate <name> [--scenario cover|cover-over-wet|cover-advect|cover-lift|watercolor-50|white-over-blue|cover-textured|red-over-blue-50|bristle-edge|bristle-wet|bristle-line|bristle-blend|bristle-end|bristle-tip|emboss-smooth|edge-layer|edge-rim] [--edge <0..100>] [--falloff <0..100>] [--pickup <0..100>] [--wet-under] [--emboss <-100..100>] [--body <0..100>] [--light <0..4>] [--size <32..4096>] [--brush <id>] [--wet-mode <0|1>] [--texture <mask id>] [--drive <stop|lift|decay|mouse|mouse-lift|bake>] [--stroke-size <1..800>] [--dry <0..100>] [--feather <0..100>] [--release <0..1>]   (e.g. neutral-identity; --feather also on --scenario edge-layer / edge-rim)',
   )
   console.error(
     '       every operand except --gate is optional and additive; an omitted operand writes no key/value, so the neutral gate keeps reproducing the committed baseline',
@@ -387,9 +403,9 @@ const scenarioFlag = args.indexOf('--scenario')
 const scenarioRaw = scenarioFlag >= 0 ? args[scenarioFlag + 1] : undefined
 let scenario
 if (scenarioRaw !== undefined) {
-  if (scenarioRaw !== 'cover' && scenarioRaw !== 'cover-over-wet' && scenarioRaw !== 'watercolor-50' && scenarioRaw !== 'white-over-blue' && scenarioRaw !== 'cover-advect' && scenarioRaw !== 'cover-lift' && scenarioRaw !== 'cover-textured' && scenarioRaw !== 'red-over-blue-50' && scenarioRaw !== 'bristle-edge' && scenarioRaw !== 'bristle-wet' && scenarioRaw !== 'bristle-line' && scenarioRaw !== 'bristle-tip' && scenarioRaw !== 'bristle-end' && scenarioRaw !== 'emboss-smooth' && scenarioRaw !== 'edge-layer' && scenarioRaw !== 'edge-rim') {
+  if (scenarioRaw !== 'cover' && scenarioRaw !== 'cover-over-wet' && scenarioRaw !== 'watercolor-50' && scenarioRaw !== 'white-over-blue' && scenarioRaw !== 'cover-advect' && scenarioRaw !== 'cover-lift' && scenarioRaw !== 'cover-textured' && scenarioRaw !== 'red-over-blue-50' && scenarioRaw !== 'bristle-edge' && scenarioRaw !== 'bristle-wet' && scenarioRaw !== 'bristle-line' && scenarioRaw !== 'bristle-blend' && scenarioRaw !== 'bristle-tip' && scenarioRaw !== 'bristle-end' && scenarioRaw !== 'emboss-smooth' && scenarioRaw !== 'edge-layer' && scenarioRaw !== 'edge-rim') {
     console.error(
-      `invalid --scenario "${scenarioRaw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue", "cover-advect", "cover-lift", "cover-textured", "red-over-blue-50", "bristle-edge", "bristle-wet", "bristle-line", "bristle-end", "emboss-smooth", "edge-layer", "edge-rim" or "bristle-tip")`,
+      `invalid --scenario "${scenarioRaw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue", "cover-advect", "cover-lift", "cover-textured", "red-over-blue-50", "bristle-edge", "bristle-wet", "bristle-line", "bristle-blend", "bristle-end", "emboss-smooth", "edge-layer", "edge-rim" or "bristle-tip")`,
     )
     process.exit(1)
   }
@@ -443,8 +459,12 @@ if (falloffRaw !== undefined) {
 // 261126 (Spec 10 pickup leg): Pickup — the ONE carrier/deposit knob
 // (canonical 0..100). Omitted keeps the acrylic record's canonical 100, so
 // the committed edge-layer baseline is unchanged; the operand exists so a
-// capture can carry the pickup-0 control over the SAME scene. `edge-layer`
-// and (from 261126, the cap leg) `bristle-end`, refused elsewhere here first.
+// capture can carry the pickup-0 control over the SAME scene. The allowlist
+// is the layer scenes plus `bristle-end` (the cap leg), `bristle-line` (the
+// ridge layer arm) and 261126-n20's `bristle-blend` (the blend scene's own
+// judged stroke — the sheet path, so no --edge switch is needed). Refused
+// elsewhere here first.
+const PICKUP_SCENES = [...LAYER_SCENES, 'bristle-blend']
 const pickupFlag = args.indexOf('--pickup')
 const pickupRaw = pickupFlag >= 0 ? args[pickupFlag + 1] : undefined
 let pickup
@@ -454,8 +474,10 @@ if (pickupRaw !== undefined) {
     console.error(`invalid --pickup "${pickupRaw}" (expected an integer 0..100)`)
     process.exit(1)
   }
-  if (!layerScene) {
-    console.error('--pickup is only valid with --scenario edge-layer, edge-rim, bristle-end or bristle-line')
+  if (!PICKUP_SCENES.includes(scenario)) {
+    console.error(
+      '--pickup is only valid with --scenario edge-layer, edge-rim, bristle-end, bristle-line or bristle-blend',
+    )
     process.exit(1)
   }
   pickup = value
@@ -510,8 +532,12 @@ if (strokeSizeRaw !== undefined) {
     console.error(`invalid --stroke-size "${strokeSizeRaw}" (expected 1..800)`)
     process.exit(1)
   }
-  if (scenario !== 'bristle-line' && scenario !== 'bristle-end') {
-    console.error('--stroke-size is only valid with --scenario bristle-line or bristle-end')
+  if (
+    scenario !== 'bristle-line' &&
+    scenario !== 'bristle-end' &&
+    scenario !== 'bristle-blend'
+  ) {
+    console.error('--stroke-size is only valid with --scenario bristle-line, bristle-end or bristle-blend')
     process.exit(1)
   }
   strokeSize = value
@@ -529,8 +555,12 @@ if (mutRaw !== undefined) {
     console.error(`invalid --mut "${mutRaw}" (expected a non-negative integer)`)
     process.exit(1)
   }
-  if (scenario !== 'bristle-line' && scenario !== 'bristle-end') {
-    console.error('--mut is only valid with --scenario bristle-line or bristle-end')
+  if (
+    scenario !== 'bristle-line' &&
+    scenario !== 'bristle-end' &&
+    scenario !== 'bristle-blend'
+  ) {
+    console.error('--mut is only valid with --scenario bristle-line, bristle-end or bristle-blend')
     process.exit(1)
   }
   mut = Math.floor(value)
@@ -925,6 +955,19 @@ if (result.lineSurfaces && typeof result.lineSurfaces === 'object') {
     const fmt = (s) => (s ? `min ${s.min} @ ${s.at >= 0 ? '+' : ''}${s.at} px` : 'n/a')
     console.log(
       `surface ${surface}: interior ${inner.span?.[0] ?? '?'}..${inner.span?.[1] ?? '?'} px | cover ${fmt(inner.cover)} | dark ${fmt(inner.dark)} | ink ${fmt(inner.ink)}`,
+    )
+    // 261126-n20 (issue 3): the blend scene's per-surface share spectrum.
+    const blend = set?.blend
+    if (blend && typeof blend === 'object') {
+      console.log(
+        `blend   ${surface}: size ${blend.strokeSize} | support ${blend.supportPx} px | share ${blend.blendShareMean} | across AC ${blend.blendAcrossAc} | worm band ${blend.wormBandShare} @ ${blend.wormPeakPx} px (band ${blend.wormBandPx?.[0]}..${blend.wormBandPx?.[1]}) | aniso ${blend.blendAnisotropy}`,
+      )
+    }
+  }
+  if (result.blend && typeof result.blend === 'object') {
+    const blend = result.blend
+    console.log(
+      `blend      : COMMITTED size ${blend.strokeSize} | support ${blend.supportPx} px | share ${blend.blendShareMean} | across AC ${blend.blendAcrossAc} | worm band ${blend.wormBandShare} @ ${blend.wormPeakPx} px (band ${blend.wormBandPx?.[0]}..${blend.wormBandPx?.[1]}) | aniso ${blend.blendAnisotropy}`,
     )
   }
   for (const [kind, path] of Object.entries(pngPaths)) console.log(`png ${kind}: ${path}`)

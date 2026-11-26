@@ -53,6 +53,14 @@ import {
   RIDGE_SHOULDER_OUTER,
   centreRidge,
 } from './ridge'
+import {
+  BLEND_AC_FLOOR,
+  BLEND_MIN_STATIONS,
+  BLEND_WORM_BAND_HI_PX,
+  BLEND_WORM_BAND_LO_PX,
+  detrendedRms,
+  shareSpectrum,
+} from './blend'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 
@@ -594,7 +602,11 @@ describe('the textured-tip gate (64-16 task 1)', () => {
       // texture-tip A/B keeps its flat tip.
       expectContains(PROBE, "scenario === 'bristle-tip'")
       expectContains(PROBE, "? 'bristle-flat'")
-      expectContains(PROBE, "scenario === 'bristle-line' || scenario === 'bristle-end'")
+      // 261126-n20 task 3 adds `bristle-blend` to the same acrylic fallback;
+      // the chain became multiline, so each membership is pinned on its own.
+      expectContains(PROBE, "scenario === 'bristle-line' ||")
+      expectContains(PROBE, "scenario === 'bristle-blend' ||")
+      expectContains(PROBE, "scenario === 'bristle-end' ||")
       expectContains(PROBE, "? 'bristle-round'")
       expectContains(PROBE, 'brush: resolvedBrush ?? null,')
     })
@@ -3019,5 +3031,129 @@ describe('the centre-ridge detector (261126-n20 task 2)', () => {
     expectContains(COMPARE, 'const RIDGE_ALONG_SHARE_MAX = 0')
     expectContains(COMPARE, 'ridge.peakExcess > RIDGE_EXCESS_MAX')
     expectContains(COMPARE, 'ridge.share > RIDGE_ALONG_SHARE_MAX')
+  })
+})
+
+// ============================================================
+//  quick 261126-n20 task 3: the blend share-spectrum detector.
+//
+//  The defect: over a wet under of another colour, the smear field freezes
+//  into worm-like stripes across the mark. The detector (blend.ts) projects an
+//  across share profile onto the under-to-stroke axis, removes the mean and one
+//  linear fit, and reads the residual's RMS plus its band power. Pure, so it
+//  EXECUTES here on synthetic profiles before the bar trusts it on a capture.
+// ============================================================
+
+describe('the blend share-spectrum detector (261126-n20 task 3)', () => {
+  const W = BLEND_WORM_BAND_LO_PX
+  const H = BLEND_WORM_BAND_HI_PX
+
+  it('pins the declared worm band, the minimum station count and the AC floor', () => {
+    expect(W).toBe(4)
+    expect(H).toBe(32)
+    expect(BLEND_MIN_STATIONS).toBe(8)
+    expect(BLEND_AC_FLOOR).toBe(0.0001)
+  })
+
+  it('reads a flat profile as zeros', () => {
+    const spectrum = shareSpectrum(new Array<number>(64).fill(0.4))
+    expect(spectrum.acRms).toBe(0)
+    expect(spectrum.bandShare).toBe(0)
+    expect(spectrum.peakPx).toBe(0)
+  })
+
+  it('reads a synthetic 12 px sinusoid as its own band peak', () => {
+    // 48 stations at 1 px: lambda 12 divides n, so its bin holds the stripe's
+    // power; the residual linear fit steals a little RMS (0.0694, not A/sqrt2
+    // exactly) and the neighbouring bins carry Dirichlet leakage, so the
+    // honest assertions are the PEAK and a near-unity band share.
+    const n = 48
+    const profile = Array.from({ length: n }, (_, i) => 0.4 + 0.1 * Math.sin((2 * Math.PI * i) / 12))
+    const spectrum = shareSpectrum(profile)
+    expect(spectrum.peakPx).toBe(12)
+    expect(spectrum.bandShare).toBeGreaterThanOrEqual(0.99)
+    expect(spectrum.acRms).toBeCloseTo(0.1 / Math.SQRT2, 2)
+  })
+
+  it('reads an out-of-band stripe as a band share near 0', () => {
+    // lambda 3 sits below the declared 4 px near edge: it is AC energy, but
+    // not THIS defect's energy. The integer-bin grid leaks a little into the
+    // band (measured 0.008), so the bar is "near 0", not "exactly 0".
+    const n = 48
+    const profile = Array.from({ length: n }, (_, i) => 0.4 + 0.1 * Math.sin((2 * Math.PI * i) / 3))
+    const spectrum = shareSpectrum(profile)
+    expect(spectrum.bandShare).toBeLessThan(0.01)
+    expect(spectrum.acRms).toBeCloseTo(0.1 / Math.SQRT2, 2)
+  })
+
+  it('scales the peak to document px with the station spacing', () => {
+    const n = 48
+    const profile = Array.from({ length: n }, (_, i) => 0.4 + 0.1 * Math.sin((2 * Math.PI * i) / 6))
+    const spectrum = shareSpectrum(profile, { stationPx: 2 })
+    expect(spectrum.peakPx).toBe(12)
+    // The band edges move on the 2 px station grid (2..16 stations): most of
+    // the power is inside (measured 0.973), the rest leaks to finer bins.
+    expect(spectrum.bandShare).toBeGreaterThan(0.95)
+  })
+
+  it('reads zeros from degenerate inputs instead of inventing a stripe', () => {
+    const tooFew = shareSpectrum(new Array<number>(BLEND_MIN_STATIONS - 1).fill(0.4))
+    expect(tooFew).toEqual({ acRms: 0, bandShare: 0, peakPx: 0 })
+    const badSpacing = shareSpectrum(new Array<number>(32).fill(0.4), { stationPx: 0 })
+    expect(badSpacing).toEqual({ acRms: 0, bandShare: 0, peakPx: 0 })
+    const reversed = shareSpectrum(new Array<number>(32).fill(0.4), {
+      bandLoPx: H,
+      bandHiPx: W,
+    })
+    expect(reversed).toEqual({ acRms: 0, bandShare: 0, peakPx: 0 })
+    // Below the AC floor a share of noise is arbitrary — it may only silence.
+    const noise = shareSpectrum(
+      Array.from({ length: 32 }, (_, i) => 0.4 + (i % 2 === 0 ? 1e-5 : -1e-5)),
+    )
+    expect(noise.bandShare).toBe(0)
+    expect(noise.peakPx).toBe(0)
+  })
+
+  it('reads detrendedRms as 0 on flat and linear series and A/sqrt(2) on a sinusoid', () => {
+    expect(detrendedRms([])).toBe(0)
+    expect(detrendedRms(new Array<number>(24).fill(0.55))).toBeCloseTo(0, 12)
+    expect(detrendedRms(Array.from({ length: 24 }, (_, i) => 0.2 + 0.01 * i))).toBeCloseTo(0, 12)
+    const wave = Array.from({ length: 48 }, (_, i) => 0.1 * Math.sin((2 * Math.PI * i) / 8))
+    // The residual linear fit is not exactly 0 on this sampling phase
+    // (measured 0.07017 vs 0.07071), so the analytic value is a 2-digit bound.
+    expect(detrendedRms(wave)).toBeCloseTo(0.1 / Math.SQRT2, 2)
+  })
+
+  it('reads the blend scene, its pickup allowlist and the report fields', () => {
+    // Both closed lists accept the scenario, literal-identically.
+    expectContains(PROBE, "raw !== 'bristle-line' && raw !== 'bristle-blend' && raw !== 'bristle-tip'")
+    expectContains(RUN, "scenarioRaw !== 'bristle-line' && scenarioRaw !== 'bristle-blend' && scenarioRaw !== 'bristle-tip'")
+    // --pickup rides the scene allowlist; --stroke-size and --mut accept it.
+    expectContains(RUN, "const PICKUP_SCENES = [...LAYER_SCENES, 'bristle-blend']")
+    expectContains(
+      PROBE,
+      "'--pickup is only valid with --scenario edge-layer, edge-rim, bristle-end, bristle-line or bristle-blend'",
+    )
+    expectContains(RUN, "scenario !== 'bristle-blend'")
+    // The other knobs stay refused on it.
+    expectContains(RUN, '--over is only valid with --scenario bristle-line')
+    expectContains(RUN, "const feather = readEndPercent('--feather', LAYER_SCENES)")
+    // The scene, its per-surface capture and the committed mirror.
+    expectContains(PROBE, 'function bristleBlendScript(')
+    expectContains(PROBE, "if (scenario !== 'bristle-line' && scenario !== 'bristle-blend') return")
+    expectContains(PROBE, "(set as Record<string, unknown>)['blend'] = blendProfileSet(engine, strokeSize)")
+    expectContains(PROBE, "lineSurfaces['postFix']")
+    expectContains(PROBE, 'blendShareMean: round4(shareMean),')
+    expectContains(PROBE, 'blendAcrossAc: spectrum.acRms,')
+    expectContains(PROBE, 'wormBandShare: spectrum.bandShare,')
+    expectContains(PROBE, 'wormPeakPx: spectrum.peakPx,')
+    expectContains(PROBE, 'blendAnisotropy: round4(alongAc > 1e-9 ? spectrum.acRms / alongAc : 0),')
+    expectContains(PROBE, '...blendReport,')
+    // The readout consumes the pure helper on the live profile.
+    expectContains(PROBE, "from './blend'")
+    expectContains(PROBE, 'const spectrum = shareSpectrum(shareProfile)')
+    expectContains(PROBE, 'alongSum += detrendedRms(series)')
+    // The console report prints the blend line.
+    expectContains(RUN, 'blend      : COMMITTED size')
   })
 })

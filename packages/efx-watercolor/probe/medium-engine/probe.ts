@@ -222,6 +222,10 @@ import {
 // quick 261126-n20 (issue 2): the centre-ridge detector — same pure-helper
 // pattern, one detector shared by the bristle-line surfaces and the end lanes.
 import { centreRidge } from './ridge'
+// quick 261126-n20 (issue 3): the blend share-spectrum detector — same
+// pure-helper pattern; the blend readout projects each across station's
+// visible colour onto the under-to-stroke axis and reads its spectrum.
+import { BLEND_WORM_BAND_HI_PX, BLEND_WORM_BAND_LO_PX, detrendedRms, shareSpectrum } from './blend'
 import { WatercolorEngine, clampDocSize } from '../../src/playground/Engine'
 import { BRUSH_PRESETS } from '../../src/playground/brushes'
 import { PAPERS, type PaperPreset } from '../../src/playground/papers'
@@ -2017,6 +2021,171 @@ function readStrokeSize(): number {
   return value
 }
 
+// --- bristle-blend (261126-n20, issue 3, the large-size blend worms) --------
+//
+// The artist's report: at Size 200 and above a bristle stroke painted over a
+// wet under of ANOTHER colour (the Gouache yellow base under a blue stroke)
+// dries with worm-like stripes across the mark — the pickup's per-bristle hash
+// (smearWeight's `hash21(nearest, floor(along / 6))`) is frozen into the film
+// as a mosaic. The scene is the artist's own: ONE wide low-load light-touch
+// MOBILE pass in the yellow, then ONE judged stroke in the blue at the
+// artist's acrylic bag (`--stroke-size`, `--pickup`).
+//
+// The readout, per across station over the mid-body along window (0.45..0.65):
+// the visible colour on white (rgb + 1 - a on the transparent export — opaque
+// transmittance, so the alpha term is 0), projected onto the under-to-stroke
+// axis to a `share` (0 = pure stroke, 1 = pure under). The worm bar reads the
+// support's share profile — stations whose cover clears half the peak — after
+// a mean and one linear fit are removed: `blendAcrossAc`, `wormBandShare`
+// (the AC power fraction inside the declared 4..32 px band), `wormPeakPx`,
+// `blendAnisotropy` (across AC over the along AC of the same rows) and the
+// support width. The three line surfaces are captured exactly as bristle-line
+// does; the top-level `blend` mirrors the COMMITTED (postFix) surface, which
+// is the film the artist judges.
+const BLEND_UNDER_COLOR = '#f9e01c'
+const BLEND_UNDER_RGB: readonly [number, number, number] = [0.976, 0.878, 0.110]
+const BLEND_STROKE_COLOR = '#1469e8'
+const BLEND_STROKE_RGB: readonly [number, number, number] = [0.078, 0.412, 0.910]
+const BLEND_PROFILE_X0 = 0.45
+const BLEND_PROFILE_X1 = 0.65
+
+/** The two-stroke blend scene: the SAME wide low-load light-touch mobile pass
+ *  `--over` drives (yellow instead of the line's blue, its own mutation id),
+ *  then the judged blue stroke last, alone carrying `captureLine`. `pickup`
+ *  is the operand's value or null for the record's canonical 100. */
+function bristleBlendScript(
+  body: number,
+  strokeSize: number,
+  mut: number,
+  pickup: number | null,
+): readonly ScriptEntry[] {
+  const under: ScriptEntry = {
+    color: BLEND_UNDER_COLOR,
+    points: understoryLine(LINE_OVER_Y),
+    mutationId: LINE_OVER_MUTATION_ID,
+    params: { ...bristleLineParams(0, LINE_OVER_SIZE), load: LINE_OVER_LOAD, feather: 100 },
+    brushId: 'bristle-round',
+    fixAfter: false,
+  }
+  const judged: ScriptEntry = {
+    color: BLEND_STROKE_COLOR,
+    points: straightLine(LINE_Y),
+    mutationId: mut,
+    params: bristleLineParams(body, strokeSize, {
+      dry: null,
+      feather: null,
+      pickup,
+    }),
+    brushId: 'bristle-round',
+    captureLine: true,
+  }
+  return [under, judged]
+}
+
+/** The blend readout: one share profile across the stroke's band plus its
+ *  spectrum. Self-contained on the capture's own rasters (transparent +
+ *  coverage), 1 doc px per station. */
+function blendProfileSet(engine: WatercolorEngine, strokeSize: number): Record<string, unknown> {
+  const transparent = engine.exportCanvas('transparent')
+  const coverage = engine.exportCanvas('coverage')
+  const dw = transparent.width
+  const dh = transparent.height
+  const tData = transparent.getContext('2d')!.getImageData(0, 0, dw, dh).data
+  const cData = coverage.getContext('2d')!.getImageData(0, 0, dw, dh).data
+  const centre = Math.round(LINE_Y * dh)
+  const px0 = Math.round(BLEND_PROFILE_X0 * dw)
+  const px1 = Math.round(BLEND_PROFILE_X1 * dw)
+  const bandLo = Math.max(0, centre - LINE_BAND_PX)
+  const bandHi = Math.min(dh - 1, centre + LINE_BAND_PX)
+  // The under -> stroke axis from the artist's declared pigments. The
+  // projection is affine, so any fixed rescale of the axis leaves every AC
+  // field (`blendAcrossAc`, `wormBandShare`, `wormPeakPx`, `blendAnisotropy`)
+  // unchanged; only the mean share carries the axis' scale.
+  const axR = BLEND_UNDER_RGB[0] - BLEND_STROKE_RGB[0]
+  const axG = BLEND_UNDER_RGB[1] - BLEND_STROKE_RGB[1]
+  const axB = BLEND_UNDER_RGB[2] - BLEND_STROKE_RGB[2]
+  const axis2 = axR * axR + axG * axG + axB * axB
+  const project = (r: number, g: number, b: number): number => {
+    if (!(axis2 > 0)) return 0
+    const dr = r - BLEND_STROKE_RGB[0]
+    const dg = g - BLEND_STROKE_RGB[1]
+    const db = b - BLEND_STROKE_RGB[2]
+    const raw = (dr * axR + dg * axG + db * axB) / axis2
+    return raw < 0 ? 0 : raw > 1 ? 1 : raw
+  }
+  /** One row's visible colour on white averaged over the along window. */
+  const rowMean = (gy: number): { share: number; cover: number } => {
+    const cr = dh - 1 - gy
+    let sr = 0
+    let sg = 0
+    let sb = 0
+    let sa = 0
+    let sc = 0
+    let n = 0
+    for (let x = px0; x < px1; x += 1) {
+      const i4 = (cr * dw + x) * 4
+      sr += tData[i4]!
+      sg += tData[i4 + 1]!
+      sb += tData[i4 + 2]!
+      sa += tData[i4 + 3]!
+      sc += cData[i4]! / 255
+      n += 1
+    }
+    const div = n > 0 ? n : 1
+    const a = sa / div / 255
+    const vr = sr / div / 255 + (1 - a)
+    const vg = sg / div / 255 + (1 - a)
+    const vb = sb / div / 255 + (1 - a)
+    return { share: project(vr, vg, vb), cover: sc / div }
+  }
+  const rows: { offset: number; cover: number; share: number }[] = []
+  for (let gy = bandLo; gy <= bandHi; gy += 1) {
+    rows.push({ offset: gy - centre, ...rowMean(gy) })
+  }
+  const peakCover = rows.reduce((m, row) => Math.max(m, row.cover), 0)
+  const support = rows.filter((row) => row.cover >= peakCover * 0.5 && row.cover > 0)
+  const shareProfile = support.map((row) => row.share)
+  const spectrum = shareSpectrum(shareProfile)
+  // The along AC on the SAME support rows: each row's own along share series,
+  // detrended; the mean RMS is the isotropic baseline the across energy is
+  // read against.
+  let alongSum = 0
+  for (const row of support) {
+    const gy = centre + row.offset
+    const cr = dh - 1 - gy
+    const series: number[] = []
+    for (let x = px0; x < px1; x += 1) {
+      const i4 = (cr * dw + x) * 4
+      const a = tData[i4 + 3]! / 255
+      series.push(
+        project(
+          tData[i4]! / 255 + (1 - a),
+          tData[i4 + 1]! / 255 + (1 - a),
+          tData[i4 + 2]! / 255 + (1 - a),
+        ),
+      )
+    }
+    alongSum += detrendedRms(series)
+  }
+  const alongAc = support.length > 0 ? alongSum / support.length : 0
+  const shareMean =
+    shareProfile.length > 0 ? shareProfile.reduce((s, v) => s + v, 0) / shareProfile.length : 0
+  return {
+    strokeSize,
+    supportPx: support.length,
+    peakCover: round4(peakCover),
+    blendShareMean: round4(shareMean),
+    blendAcrossAc: spectrum.acRms,
+    wormBandShare: spectrum.bandShare,
+    wormPeakPx: spectrum.peakPx,
+    blendAnisotropy: round4(alongAc > 1e-9 ? spectrum.acRms / alongAc : 0),
+    wormBandPx: [BLEND_WORM_BAND_LO_PX, BLEND_WORM_BAND_HI_PX],
+    underRgb: [...BLEND_UNDER_RGB],
+    strokeRgb: [...BLEND_STROKE_RGB],
+    profile: shareProfile.map((v) => round4(v)),
+  }
+}
+
 // --- Spec 10: the per-stroke translucent stroke layer (spike 006) -----------
 //
 // Edge transparency is a LATERAL alpha that lets the underlayer through in
@@ -2222,7 +2391,10 @@ function readEdgeWetUnder(scenario: string): boolean {
 }
 
 /** 261126: the pickup operand — null keeps the record's canonical 100. Valid
- *  on `edge-layer` and (the cap leg) `bristle-end`. */
+ *  on `edge-layer`, `edge-rim` and (the cap leg) `bristle-end`; 261126-n20
+ *  adds `bristle-line` (the ridge layer arm) and `bristle-blend` (the blend
+ *  scene's own judged stroke — the artist's Pickup 100 default, with 0 as the
+ *  inert control). */
 function readEdgePickup(scenario: string): number | null {
   const raw = new URLSearchParams(location.search).get('pickup')
   if (raw === null || raw === '') return null
@@ -2230,10 +2402,11 @@ function readEdgePickup(scenario: string): number | null {
     scenario !== 'edge-layer' &&
     scenario !== 'edge-rim' &&
     scenario !== 'bristle-end' &&
-    scenario !== 'bristle-line'
+    scenario !== 'bristle-line' &&
+    scenario !== 'bristle-blend'
   ) {
     throw new Error(
-      '--pickup is only valid with --scenario edge-layer, edge-rim, bristle-end or bristle-line',
+      '--pickup is only valid with --scenario edge-layer, edge-rim, bristle-end, bristle-line or bristle-blend',
     )
   }
   const value = Number(raw)
@@ -7265,7 +7438,10 @@ function run(
       ? 'chalk'
       : scenario === 'bristle-tip'
         ? 'bristle-flat'
-        : scenario === 'bristle-line' || scenario === 'bristle-end' || scenario === 'edge-rim'
+        : scenario === 'bristle-line' ||
+            scenario === 'bristle-blend' ||
+            scenario === 'bristle-end' ||
+            scenario === 'edge-rim'
           ? 'bristle-round'
           : undefined)
   // bristle-end: which end path this capture drives. Read before any stroke
@@ -7304,7 +7480,14 @@ function run(
                               readOver(),
                               readLineOverrides(),
                             )
-                          : scenario === 'bristle-tip'
+                          : scenario === 'bristle-blend'
+                            ? bristleBlendScript(
+                                body ?? 0,
+                                strokeSize,
+                                readMut(),
+                                EDGE_LAYER_PICKUP,
+                              )
+                            : scenario === 'bristle-tip'
                             ? bristleTipScript()
                             : scenario === 'bristle-end'
                               ? bristleEndScript(endDrive ?? 'stop', body ?? 100, strokeSize, endSetup)
@@ -7360,9 +7543,16 @@ function run(
     // time (subtracted from bakeMs), never medium cost.
     const lineSurfaces: Record<string, unknown> = {}
     const lineCapture = (surface: string) => {
-      if (scenario !== 'bristle-line') return
+      if (scenario !== 'bristle-line' && scenario !== 'bristle-blend') return
       const start = performance.now()
-      lineSurfaces[surface] = lineProfileSet(engine)
+      const set = lineProfileSet(engine)
+      // 261126-n20 (issue 3): the blend scene records its share spectrum on
+      // the SAME three surfaces; every other scenario's capture shape is
+      // unchanged (the block is attached only here).
+      if (scenario === 'bristle-blend') {
+        ;(set as Record<string, unknown>)['blend'] = blendProfileSet(engine, strokeSize)
+      }
+      lineSurfaces[surface] = set
       captureMs += performance.now() - start
     }
     // quick 261123-hr5: the signed-emboss readings — the impasto's band and the
@@ -7813,6 +8003,26 @@ function run(
           }
         : {}
 
+    // 261126-n20 (issue 3): the blend scene's report. `lineSurfaces` carries
+    // the three surfaces (each with its own `blend` block beside the same
+    // lineProfileSet the pale-line gate records); the top-level `blend`
+    // mirrors the COMMITTED surface, which is the film the artist judges.
+    const blendReport =
+      scenario === 'bristle-blend'
+        ? {
+            paramsEcho: paramsBag(script.find((entry) => entry.captureLine) ?? script[1]!),
+            lineBodyOverride: body ?? 0,
+            recordBody: MEDIUMS.find((medium) => medium.id === 'acrylic')?.params.body ?? null,
+            lineSurfaces,
+            blend:
+              ((lineSurfaces['postFix'] as Record<string, unknown> | undefined)?.[
+                'blend'
+              ] as unknown) ?? null,
+            pngTransparent: transparentCanvas.toDataURL('image/png'),
+            pngCoverage: coverageCanvas.toDataURL('image/png'),
+          }
+        : {}
+
     // bristle-end (2026-11-23): the end-region census and its two 2x crops.
     // Only this scenario emits them, so every other report shape is unchanged.
     // quick 261125-rtc: the census is the ONE shared install, so a bake capture
@@ -7820,49 +8030,56 @@ function run(
     // and the gather block is the proof the real bristle path ran on both.
     const bristleEndReport =
       scenario === 'bristle-end'
-        ? {
-            endDrive: endDrive ?? 'stop',
-            endSetup: {
-              dry: endSetup.dry,
-              feather: endSetup.feather,
-              release: endSetup.release,
-              strokeSize,
-              brush: resolvedBrush ?? null,
-              // 261126 (the cap leg): the layer knobs the bag carried — null
-              // when the operand was absent (the record's own, sheet path).
-              layer: {
-                amount: endSetup.edge,
-                falloff: endSetup.edge === null ? null : (endSetup.falloff ?? 50),
-                pickup: endSetup.pickup,
-              },
-            },
-            endCensus: {
-              drive: endDrive ?? 'stop',
-              taps: endCensus?.tapCount ?? 0,
-              endCaps: endCensus?.endCapCalls ?? 0,
-              last40: endCensus?.taps ?? [],
-            },
-            gather: {
-              calls: endCensus?.gatherCalls ?? 0,
-              endCapCalls: endCensus?.endCapCalls ?? 0,
-            },
-            endMetrics: bristleEndMetrics(
+        ? (() => {
+            const endMetrics = bristleEndMetrics(
               transparentCanvas,
               pigmentCanvas,
               coverageCanvas,
               strokeSize,
               endCensus?.taps ?? [],
-            ),
-            pngTransparent: transparentCanvas.toDataURL('image/png'),
-            pngCoverage: coverageCanvas.toDataURL('image/png'),
-            pngPigment: pigmentCanvas.toDataURL('image/png'),
-            pngStart: endCrop(transparentCanvas, ...endCropWindow(transparentCanvas.width).start),
-            pngEnd: endCrop(transparentCanvas, ...endCropWindow(transparentCanvas.width).end),
-            // The same end crop in the engine's own channels, so a terminal
-            // contrast step can be attributed to coverage, pigment or display.
-            pngEndPigment: endCrop(pigmentCanvas, ...endCropWindow(pigmentCanvas.width).end),
-            pngEndCoverage: endCrop(coverageCanvas, ...endCropWindow(coverageCanvas.width).end),
-          }
+            )
+            return {
+              endDrive: endDrive ?? 'stop',
+              endSetup: {
+                dry: endSetup.dry,
+                feather: endSetup.feather,
+                release: endSetup.release,
+                strokeSize,
+                brush: resolvedBrush ?? null,
+                // 261126 (the cap leg): the layer knobs the bag carried — null
+                // when the operand was absent (the record's own, sheet path).
+                layer: {
+                  amount: endSetup.edge,
+                  falloff: endSetup.edge === null ? null : (endSetup.falloff ?? 50),
+                  pickup: endSetup.pickup,
+                },
+              },
+              endCensus: {
+                drive: endDrive ?? 'stop',
+                taps: endCensus?.tapCount ?? 0,
+                endCaps: endCensus?.endCapCalls ?? 0,
+                last40: endCensus?.taps ?? [],
+              },
+              gather: {
+                calls: endCensus?.gatherCalls ?? 0,
+                endCapCalls: endCensus?.endCapCalls ?? 0,
+              },
+              endMetrics,
+              // 261126-n20: the plan's contract reads the gap readout at the
+              // report's top level (`r.endPreGap`); the byte-identical copy
+              // stays inside endMetrics for the end-gap bar. Additive only.
+              endPreGap: endMetrics.endPreGap,
+              pngTransparent: transparentCanvas.toDataURL('image/png'),
+              pngCoverage: coverageCanvas.toDataURL('image/png'),
+              pngPigment: pigmentCanvas.toDataURL('image/png'),
+              pngStart: endCrop(transparentCanvas, ...endCropWindow(transparentCanvas.width).start),
+              pngEnd: endCrop(transparentCanvas, ...endCropWindow(transparentCanvas.width).end),
+              // The same end crop in the engine's own channels, so a terminal
+              // contrast step can be attributed to coverage, pigment or display.
+              pngEndPigment: endCrop(pigmentCanvas, ...endCropWindow(pigmentCanvas.width).end),
+              pngEndCoverage: endCrop(coverageCanvas, ...endCropWindow(coverageCanvas.width).end),
+            }
+          })()
         : {}
 
     // 64-29: the texture-tip A/B echoes, only for its scenario, so every other
@@ -7931,6 +8148,7 @@ function run(
       ...bristleEdgeReport,
       ...bristleWetReport,
       ...lineReport,
+      ...blendReport,
       ...bristleEndReport,
       ...tipReport,
       ...embossSmoothReport,
@@ -8007,13 +8225,14 @@ function readBrush(): string | undefined {
  *  the per-stroke translucent stroke layer's two-stroke scene.
  *  The closed list here and the one in run.mjs must stay literal-identical:
  *  a name accepted by the parser but unknown to the probe fails at capture,
- *  and a name the probe knows but the parser rejects can never be requested. */
+ *  and a name the probe knows but the parser rejects can never be requested.
+ *  261126-n20 (issue 3) adds `bristle-blend`, the two-colour blend-worm scene. */
 function readScenario(): string {
   const raw = new URLSearchParams(location.search).get('scenario')
   if (raw === null || raw === '') return 'neutral'
-  if (raw !== 'cover' && raw !== 'cover-over-wet' && raw !== 'watercolor-50' && raw !== 'white-over-blue' && raw !== 'cover-advect' && raw !== 'cover-lift' && raw !== 'cover-textured' && raw !== 'red-over-blue-50' && raw !== 'bristle-edge' && raw !== 'bristle-wet' && raw !== 'bristle-line' && raw !== 'bristle-tip' && raw !== 'bristle-end' && raw !== 'emboss-smooth' && raw !== 'edge-layer' && raw !== 'edge-rim') {
+  if (raw !== 'cover' && raw !== 'cover-over-wet' && raw !== 'watercolor-50' && raw !== 'white-over-blue' && raw !== 'cover-advect' && raw !== 'cover-lift' && raw !== 'cover-textured' && raw !== 'red-over-blue-50' && raw !== 'bristle-edge' && raw !== 'bristle-wet' && raw !== 'bristle-line' && raw !== 'bristle-blend' && raw !== 'bristle-tip' && raw !== 'bristle-end' && raw !== 'emboss-smooth' && raw !== 'edge-layer' && raw !== 'edge-rim') {
     throw new Error(
-      `invalid scenario "${raw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue", "cover-advect", "cover-lift", "cover-textured", "red-over-blue-50", "bristle-edge", "bristle-wet", "bristle-line", "bristle-end", "emboss-smooth", "edge-layer", "edge-rim" or "bristle-tip")`,
+      `invalid scenario "${raw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue", "cover-advect", "cover-lift", "cover-textured", "red-over-blue-50", "bristle-edge", "bristle-wet", "bristle-line", "bristle-blend", "bristle-end", "emboss-smooth", "edge-layer", "edge-rim" or "bristle-tip")`,
     )
   }
   return raw
