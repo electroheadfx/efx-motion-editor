@@ -909,7 +909,7 @@ describe('64-23 — the traces in the gather and the carrier', () => {
     // The mix: streakShare swaps cloud weight for streaks; the tooth holds 0.35.
     expectContains(gather, 'return streaks * uStreakShare + tooth * 0.35 + cloud * (0.65 - uStreakShare);')
     // The trio replaces the paper tap outright: no sampler survives in the gather.
-    expectContains(gather, 'float height = mix(grainHeight(css, uAxis), 0.5, rimCalm);')
+    expectContains(gather, 'float heightPaper = mix(grainHeight(css, uAxis), 0.5, rimCalm);')
     // 2026-11-22 (the pale-line rows): Feather opens the edge through this
     // threshold, never through a depth multiplier — a depth fade gives the
     // texel a small deposit weight a, and the dab lerp then holds the old
@@ -1461,10 +1461,12 @@ describe('261119-pod — the §3.3 smear, the snapshot and the four-side Feather
     // where the tooth is low: the fringe breaks into full-depth specks over
     // paper (measured ENCLOSED 0.22 % / 9 px and 0.01 % / 4 px; fringe-row
     // coherence 0.094 / 4 % and 0.064 / 0 %, at the feather-pin's floor).
-    expectContains(
-      g,
-      'float featherShift = uFeather * uFeatherShift * smoothstep(featherStart, uFeatherEdge, lateral);',
-    )
+    // Spec 11 (feather falloff): the shipped smoothstep IS the neutral branch
+    // — falloff 50 skips pow (pow(x, 1.0) is not guaranteed exact), so the
+    // shipped bytes survive; every other bias shapes the same ramp with the
+    // shipped 2^(2b-1) exponent. No second exponent map.
+    expectContains(g, 'float featherShift = uFeather * uFeatherShift * shaped;')
+    expectContains(g, 'uFeatherFalloff == 0.5')
     expectContains(g, 'float featherFade = 1.0;')
     // 2026-11-23 (the acrylic end-block): the stroke's TAKEOFF. The end of a
     // stroke is its last RUNNING dab's leading frontier — every earlier
@@ -1561,7 +1563,7 @@ describe('261119-pod — the §3.3 smear, the snapshot and the four-side Feather
     // bristle profile; it must never FABRICATE paint there (the old max() skin
     // left a 1 px line along the silhouette wherever the brush was dry).
     expectContains(g, 'float rimCalm = (1.0 - uFeather) * smoothstep(0.45, 0.75, lateral);')
-    expectContains(g, 'float height = mix(grainHeight(css, uAxis), 0.5, rimCalm);')
+    expectContains(g, 'float heightPaper = mix(grainHeight(css, uAxis), 0.5, rimCalm);')
     expectNotContains(g, 'max(inked, skin)')
     // The fade must reach every value the deposit carries: a coverage-only
     // multiply is erased by the dab-over-dab lerp (measured: F0/F100 differed

@@ -34,6 +34,10 @@ import {
   bristleContactPressure,
   bristleCount,
   bristleSampleScale,
+  FEATHER_NOISE_FEATURES,
+  FEATHER_NOISE_MAX_PX,
+  FEATHER_NOISE_MIN_PX,
+  FEATHER_NOISE_REFERENCE_PX,
   gatherSoftness,
   LAST_TOUCH_DRY_SECONDS,
   makeBristles,
@@ -142,6 +146,8 @@ export interface Params {
   wetSeconds: number;  // 64-22: last-touch wetness lifetime in SECONDS (>= 1) — declared here so the ONE mapping has one destination; consumed by 64-24
   edgeFade: number;    // Spec 10: Edge transparency — the stroke layer's lateral alpha scale (0..1, 0 neutral)
   edgeFalloff: number; // Spec 10: Edge falloff — the fade's shape bias (0..1, 0.5 linear)
+  featherNoise: number;   // Spec 11: Feather noise — the brush-relative grain mixed into the tooth (0..1, 0 neutral)
+  featherFalloff: number; // Spec 11: Feather falloff — the opening AND grain body's shape bias (0..1, 0.5 shipped)
 }
 
 export const DEFAULT_PARAMS: Params = {
@@ -160,6 +166,10 @@ export const DEFAULT_PARAMS: Params = {
   // Spec 10: amount 0 is inert at every falloff; 50 is the linear shape.
   edgeFade: 0,
   edgeFalloff: 0.5,
+  // Spec 11: noise 0 never takes the second grainHeight sample; falloff 50
+  // is the shipped opening (the pow is skipped) and the linear grain ramp.
+  featherNoise: 0,
+  featherFalloff: 0.5,
 };
 
 /**
@@ -4028,6 +4038,16 @@ export class WatercolorEngine {
     gl.uniform1f(p.u.uLayerEdge!, BRISTLE_LAYER_EDGE);
     gl.uniform1f(p.u.uEdgeFade!, clamp(this.params.edgeFade, 0, 1));
     gl.uniform1f(p.u.uEdgeFalloff!, clamp(this.params.edgeFalloff, 0, 1));
+    // Spec 11: the feather noise/falloff pair and the band's four constants.
+    // Bound unconditionally like Spec 10's pair: the ONE gather binder feeds
+    // every consumer, and a program that does not declare them gets null
+    // locations. The constants arrive from bristles.ts — never re-typed here.
+    gl.uniform1f(p.u.uFeatherFalloff!, clamp(this.params.featherFalloff, 0, 1));
+    gl.uniform1f(p.u.uFeatherNoise!, clamp(this.params.featherNoise, 0, 1));
+    gl.uniform1f(p.u.uFeatherNoiseFeatures!, FEATHER_NOISE_FEATURES);
+    gl.uniform1f(p.u.uFeatherNoiseMinPx!, FEATHER_NOISE_MIN_PX);
+    gl.uniform1f(p.u.uFeatherNoiseMaxPx!, FEATHER_NOISE_MAX_PX);
+    gl.uniform1f(p.u.uFeatherNoiseRefPx!, FEATHER_NOISE_REFERENCE_PX);
     // The end's takeoff is the same threshold mechanism on the leading
     // frontier: the last running dab's uncovered band opens into tooth
     // specks instead of ending on a straight wall.

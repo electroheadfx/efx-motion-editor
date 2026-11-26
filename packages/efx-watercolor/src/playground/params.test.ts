@@ -64,7 +64,7 @@ describe('toEngineParams', () => {
 
   it('maps the seven canonical globals onto 0..1', () => {
     expect(toEngineParams({ water: 50, load: 25, flow: 100, bleed: 0, dry: 75, edge: 60, granulation: 40 }))
-      .toEqual({ size: 12 / 32, water: 0.5, load: 0.25, flow: 1, bleed: 0, dry: 0.75, edge: 0.6, granulation: 0.4, lift: 0.22, viscosity: 0, body: 0, emboss: 0, feather: 0, pickup: 1, refill: 0.6, edgeFade: 0, edgeFalloff: 0.5, wetSeconds: 7 });
+      .toEqual({ size: 12 / 32, water: 0.5, load: 0.25, flow: 1, bleed: 0, dry: 0.75, edge: 0.6, granulation: 0.4, lift: 0.22, viscosity: 0, body: 0, emboss: 0, feather: 0, pickup: 1, refill: 0.6, edgeFade: 0, edgeFalloff: 0.5, featherNoise: 0, featherFalloff: 0.5, wetSeconds: 7 });
   });
 
   // Phase 64 (v2.2.0): Body and Emboss join the medium bag. 0 is neutral —

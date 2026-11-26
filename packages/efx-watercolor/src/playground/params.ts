@@ -101,6 +101,23 @@ export interface AquarelleCanonicalParams {
    * silhouette). Inert while `edgeFade` is 0.
    */
   edgeFalloff: number
+  /**
+   * Spec 11: how much of a brush-relative paper grain mixes into the paper
+   * tooth, 0..100. The grain's feature size is derived from the feather band
+   * (a fixed number of features, floored in px) and distributed by the SAME
+   * falloff profile as `featherFalloff`, so it enters the brush body. 0 is
+   * neutral: the second `grainHeight` sample is never evaluated and every
+   * recorded stroke replays byte-identically. Bristle responses only.
+   */
+  featherNoise: number
+  /**
+   * Spec 11: the shape bias of the feather's opening AND the grain's body
+   * weight, 0..100. Reuses the shipped `edgeFalloffExponent` shape; 50 is
+   * the shipped opening (the `pow` is skipped, so the shipped bytes survive)
+   * and the linear grain ramp. Inert on the GRAIN while `featherNoise` is 0;
+   * it still shapes the opening at any noise.
+   */
+  featherFalloff: number
 }
 
 export const DEFAULT_CANONICAL_PARAMS: Readonly<AquarelleCanonicalParams> = Object.freeze({
@@ -122,6 +139,8 @@ export const DEFAULT_CANONICAL_PARAMS: Readonly<AquarelleCanonicalParams> = Obje
   wetSeconds: 7,
   edgeFade: 0,
   edgeFalloff: 50,
+  featherNoise: 0,
+  featherFalloff: 50,
 })
 
 function num(v: number | undefined, fallback: number): number {
@@ -230,5 +249,10 @@ export function toEngineParams(
     // clamp01 table; amount 0 is neutral, falloff 50 is linear.
     edgeFade: clamp01(num(p.edgeFade, d.edgeFade) / 100),
     edgeFalloff: clamp01(num(p.edgeFalloff, d.edgeFalloff) / 100),
+    // Spec 11: feather noise/falloff ride the same table. Noise 0 is neutral
+    // (the shader never takes the second grainHeight sample); falloff 50 is
+    // the shipped opening (the shader skips pow) and the linear grain ramp.
+    featherNoise: clamp01(num(p.featherNoise, d.featherNoise) / 100),
+    featherFalloff: clamp01(num(p.featherFalloff, d.featherFalloff) / 100),
   }
 }

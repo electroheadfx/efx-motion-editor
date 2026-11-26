@@ -964,6 +964,17 @@ uniform float uFeatherEdge;  // silhouette radius, in nominal footprint units
 uniform float uFeatherCap;   // leading end cap, fraction of the radius (all Feathers)
 uniform float uFeatherMin;   // the threshold shift's start anchor, fraction of the silhouette
 uniform float uFeatherShift; // the rim threshold rise at F100 (BRISTLE_FEATHER_SHIFT)
+// Spec 11 (feather noise): the TWO knobs and the band's four constants. The
+// falloff reuses the shipped 2^(2b-1) shape (the tested twin
+// edgeFalloffExponent is its only source — no second table); the noise's
+// period is derived from the feather band, floored in px, and its body
+// weight is the SAME exponent. Every constant is bound from bristles.ts.
+uniform float uFeatherFalloff;       // the opening AND grain shape bias (0..1, 0.5 shipped)
+uniform float uFeatherNoise;         // the grain amount (0..1, 0 shipped)
+uniform float uFeatherNoiseFeatures; // features across the band (FEATURES)
+uniform float uFeatherNoiseMinPx;    // the period floor (MIN_PX)
+uniform float uFeatherNoiseMaxPx;    // the period ceiling (MAX_PX)
+uniform float uFeatherNoiseRefPx;    // the tooth reference period (REFERENCE_PX)
 uniform float uTakeoffShift; // the leading frontier's threshold rise (BRISTLE_TAKEOFF_SHIFT)
 uniform float uCapGain;      // the along-cap fade's gain (BRISTLE_CAP_GAIN)
 uniform float uDrySpeed;     // the Dry slider, 0..1
@@ -1273,7 +1284,7 @@ Gathered gatherBristle(vec2 uv){
   // dry (measured on the Dry-55 tail); calming the threshold never adds paint.
   vec2 css = uv * uSheet;
   float rimCalm = (1.0 - uFeather) * smoothstep(0.45, 0.75, lateral);
-  float height = mix(grainHeight(css, uAxis), 0.5, rimCalm);
+  float heightPaper = mix(grainHeight(css, uAxis), 0.5, rimCalm);
   // 2026-11-22 (UAT row 3): the feather opens the edge through the PAPER
   // THRESHOLD, never through a depth multiplier. A depth fade gives a pale
   // texel a small deposit weight a, and the deposit is
@@ -1287,7 +1298,34 @@ Gathered gatherBristle(vec2 uv){
   // lane, and the rag comes from the paper itself, which has no along
   // period. F0 is untouched (uFeather scales the shift to zero).
   float featherStart = uFeatherEdge * (1.0 - mix(uFeatherMin, uFeatherReach, uFeather));
-  float featherShift = uFeather * uFeatherShift * smoothstep(featherStart, uFeatherEdge, lateral);
+  // Spec 11 — Feather falloff: ONE shape language. The shipped 2^(2b-1) bias
+  // (the tested twin edgeFalloffExponent is its single source) shapes the rim
+  // opening below AND the grain's body weight further down. Falloff 50 is the
+  // shipped opening: pow(x, 1.0) is not guaranteed exact, so the neutral
+  // branch skips it outright and the shipped bytes survive byte-identically.
+  float s = smoothstep(featherStart, uFeatherEdge, lateral);
+  float e = exp2(2.0 * uFeatherFalloff - 1.0);
+  float shaped = (uFeatherFalloff == 0.5) ? s : pow(s, e);
+  float featherShift = uFeather * uFeatherShift * shaped;
+  // Spec 11 — Feather noise: a brush-relative paper grain mixed INTO the
+  // paper tooth (mix, never replace), its feature size derived from the
+  // feather BAND — a fixed number of features across it, floored in px so
+  // tiny brushes stay ragged — and its weight the normalised falloff term
+  // u^e across the whole lateral span, so falloff 0 reaches deep into the
+  // mark and 100 hugs the silhouette. Gated by uFeather, so Feather 0 is
+  // inert; noise 0 makes w 0, so the second grainHeight sample (six
+  // valueNoise taps) is never evaluated on the shipped path.
+  float height = heightPaper;
+  float bodyW = pow(clamp(lateral / uFeatherEdge, 0.0, 1.0), e);
+  float w = uFeatherNoise * uFeather * bodyW;
+  if (w > 0.0) {
+    float radiusPx = uRadius * uSheet.y;
+    float bandPx = (uFeatherEdge - featherStart) * radiusPx;
+    float periodPx = clamp(bandPx / uFeatherNoiseFeatures, uFeatherNoiseMinPx, uFeatherNoiseMaxPx);
+    float rimScale = uFeatherNoiseRefPx / periodPx;
+    float rimGrain = grainHeight(css * rimScale, uAxis);
+    height = mix(heightPaper, rimGrain, w);
+  }
   float threshold = uGrain * (1.0 - height) - 0.25 + featherShift;
   // 2026-11-23 (the acrylic end-block debug): the stroke's TAKEOFF. A stroke
   // ends on its last RUNNING dab's leading half — every earlier dab's leading
