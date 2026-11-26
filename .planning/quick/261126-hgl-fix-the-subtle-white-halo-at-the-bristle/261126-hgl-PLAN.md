@@ -93,6 +93,21 @@ Gates and recipes used below are the ones the 261125-rtc and 261125-kvl quicks e
 
 <tasks>
 
+<revision id="R1" by="orchestrator" date="2026-11-26">
+**The Task 1 RED floor was re-scoped from the Pickup-0 control arm to the artist's Pickup-100 arm.**
+
+Task 1 is COMPLETE (commit `027a26a6d`); do NOT re-run it. It measured, at Feather 100 / Edge 100 / 2048² (1/255, `edgeFringeDipUnder`):
+
+| pickup | falloff 0 | falloff 50 | falloff 100 |
+|---|---|---|---|
+| 0 (control) | 0.16 | 0.26 | 1.32 |
+| 100 (artist) | **11.23** | **7.73** | **6.89** |
+
+The Pickup-0 control is halo-free by design (its fringe never falls below BOTH painted sides), so the original >= 3/255 floor could never be met there; the artist's actual recipe (Pickup 100) reproduces the halo strongly. The measured RED is therefore `edgeFringeDipUnder >= 3/255 on the Pickup-100 arm` — MET (6.89–11.23). The Pickup-0 arm stays a control: the law must keep it <= 1/255 and must not worsen it.
+
+**Execute Task 2 only.** Its GREEN bars are unchanged: every one of the nine layer captures (six Feather-100 + three record-feather) must read `edgeFringeDipPaper` and `edgeFringeDipUnder` <= 1/255, and the amount-0 identity / determinism / parity / gate bars stand as written.
+</revision>
+
 <task type="tracer">
   <name>Task 1: RED — wire --feather to the layer scene and read the fringe dip at the artist's recipe</name>
   <files>packages/efx-watercolor/probe/medium-engine/run.mjs, packages/efx-watercolor/probe/medium-engine/probe.ts, packages/efx-watercolor/probe/medium-engine/harness.test.ts</files>
@@ -290,7 +305,7 @@ Also print the pair in `printDurations` beside the polish line (:2374-2379). Do 
 <success_criteria>
 - The ONE law is exactly `film_out = (1 - aEff)·F_S + aEff·(F_L / presence)` with `aEff = lateralWeight(u, amount, falloff)·cover_L` untouched; one commit, no second tuning parameter, no parameter-law retry.
 - The presence is the layer film's own occupancy, stored in a new G lane of attachment 0 (RG16F), accumulated by the existing (ONE, ONE_MINUS_SRC_ALPHA) blend; the merge and the live display carry the same shared snippet; legacy presence-1 texels are byte-identical to the shipped mix.
-- At the artist's recipe (Edge 100, noise Feather 100, Pickup 100 and 0) the fringe dip is at most 1/255 on both lateral axes at every falloff, and the pre-fix capture read at least 3/255 on the under axis at Pickup 0 — RED before, GREEN after, both recorded.
+- At the artist's recipe (Edge 100, noise Feather 100, Pickup 100 and 0) the fringe dip is at most 1/255 on both lateral axes at every falloff, and the pre-fix Pickup-100 capture read 6.89–11.23/255 on the under axis (the measured RED; the Pickup-0 control read <= 1.32 and is halo-free by design) — RED before, GREEN after, both recorded.
 - The sheet path, the one deposit law, the falloff family, the end-density envelope, the cap close-out (e58497d3b), the pickup laws (539160b0b / 9f8c0fe4a) and every UI surface are untouched; amount 0 is byte-identical with zero digest drift.
 - The probe and comparator carry the new bar and its required readings; all four gates pass; determinism is field-identical.
 - The quick ends automated-ready: the live UAT row (two green strokes over a blue wash, Edge 100, noise Feather, Pickup 100 and 0, live and committed, left edge and bottom tip) is handed to the artist and not claimed.
