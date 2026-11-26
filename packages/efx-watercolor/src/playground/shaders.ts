@@ -991,6 +991,11 @@ uniform float uWetSeconds;   // the paint's tack time (params.wetSeconds, >= 1)
 uniform float uSmear;        // the Pickup global, 0..1 (D-A: one knob, two laws)
 uniform float uSmearPeriodPx;// §3.3 hash cell (BRISTLE_SMEAR_PERIOD_PX 6)
 uniform float uSmearCap;     // §3.3 clamp (BRISTLE_SMEAR_CAP 0.8)
+// 261126 (edge-leg): 1 on the STROKE LAYER's programs only — the layer
+// re-reads the untouched sheet every dab, so the per-bristle hash becomes a
+// static field in its accumulated film (see smearWeight). 0 keeps the sheet
+// law's hash verbatim.
+uniform float uSmearSmooth;
 uniform float uBodyFloor;    // the Body-0 cover ceiling (BRISTLE_BODY_ALPHA_FLOOR 0.5)
 uniform vec4 uPigmentA;      // the brush's palette absorbance 0..3 (same-paint gate)
 uniform vec3 uPigmentB;      // the brush's palette absorbance 4..6
@@ -1054,8 +1059,28 @@ float wetAt(vec2 uv){
 // half-width), exactly like the reference's distanceAlong, so there is no
 // dab-constant divergence. ONE declaration: the deposit and the coverage
 // write both call it, and only ever inside the uSmear > 0 guard.
+//
+// 261126 (edge-leg): uSmearSmooth = 1 on the STROKE LAYER's programs only.
+// The sheet law re-reads the pre-dab canvas every dab, so its hash field
+// diffuses over the stroke; the layer re-reads the SAME untouched sheet every
+// dab, so the hash becomes a canvas-stationary per-bristle/per-6-px FIELD in
+// the accumulated film — the artist's pickup mosaic (measured: layer chroma
+// std 22.4 / 3x3 high-pass 13.4 against the same scene at Pickup 0: 4.5 /
+// 1.0). The smooth arm returns the hash's own mean under the same clamp,
+// E[min(k·h, cap)] for h uniform: k/2 below the cap and
+// cap − cap²/(2k) above it, so the tuned mean drag (Pickup 100 at the
+// crossing) is PRESERVED while the per-texel variance collapses to the smooth
+// fields (wet, k) that legitimately vary. The sheet path keeps the hash
+// verbatim (uniform 0), byte-identical.
+float smoothSmearMean(float k, float cap){
+  if (k <= 0.0 || cap <= 0.0) return 0.0;
+  if (k <= cap) return k * 0.5;
+  return cap - (cap * cap) / (2.0 * k);
+}
 float smearWeight(int nearest, float alongPx, float wet){
-  return clamp(uSmear * wet * hash21(vec2(float(nearest), floor(alongPx / uSmearPeriodPx))), 0.0, uSmearCap);
+  float k = uSmear * wet;
+  float raw = clamp(k * hash21(vec2(float(nearest), floor(alongPx / uSmearPeriodPx))), 0.0, uSmearCap);
+  return mix(raw, smoothSmearMean(k, uSmearCap), uSmearSmooth);
 }
 
 // §4.4 — the paper tooth as a threshold, in TWO coordinate systems:

@@ -4020,6 +4020,10 @@ export class WatercolorEngine {
     gl.uniform1f(p.u.uSmear!, this.pickupResponse(this.params.pickup));
     gl.uniform1f(p.u.uSmearPeriodPx!, BRISTLE_SMEAR_PERIOD_PX);
     gl.uniform1f(p.u.uSmearCap!, BRISTLE_SMEAR_CAP);
+    // 261126 (edge-leg): the hash arm is the law that shipped; the stroke
+    // layer turns the smooth arm on after this bind. Default 0 keeps every
+    // sheet-path program byte-identical.
+    gl.uniform1f(p.u.uSmearSmooth!, 0);
     // 2026-11-20: the same-paint gate's reference — the BRUSH's palette, so
     // the drag never weakens as the carried colour drifts toward the canvas.
     const pc = this.pigment.coeffs;
@@ -4221,6 +4225,10 @@ export class WatercolorEngine {
     const d = this.programs.bristleDeposit;
     d.bind();
     this.bindGather(d, x, y, r, angle, pr, alongPx, endCap);
+    // 261126 (edge-leg): the layer re-reads the same untouched sheet every
+    // dab, so the sheet's per-bristle hash would freeze into the film as a
+    // mosaic. The smooth arm keeps the hash's mean drag (smearWeight).
+    gl.uniform1f(d.u.uSmearSmooth!, 1);
     gl.uniform1f(d.u.uScatter!, scatter);
     gl.enable(gl.BLEND);
     gl.blendEquation(gl.FUNC_ADD);
@@ -4238,6 +4246,9 @@ export class WatercolorEngine {
     const c = this.programs.bristleCoverLayer;
     c.bind();
     this.bindGather(c, x, y, r, angle, pr, alongPx, endCap);
+    // Same smoothing as the deposit draw: the cover's smear target shares
+    // the deposit's hash weight, so it must share the arm too.
+    gl.uniform1f(c.u.uSmearSmooth!, 1);
     gl.uniform1f(c.u.uCoverTarget!, bodyAlpha);
     gl.enable(gl.BLEND);
     gl.blendEquation(gl.FUNC_ADD);

@@ -1274,14 +1274,30 @@ describe('261119-pod — the §3.3 smear, the snapshot and the four-side Feather
     expect((SHADERS_SOURCE.match(/float smearWeight\(/g) ?? []).length, 'one smear helper').toBe(1)
     const g = gather()
     expectContains(g, 'float smearWeight(int nearest, float alongPx, float wet){')
-    expectContains(g, 'hash21(vec2(float(nearest), floor(alongPx / uSmearPeriodPx)))')
-    expectContains(
-      g,
-      'clamp(uSmear * wet * hash21(vec2(float(nearest), floor(alongPx / uSmearPeriodPx))), 0.0, uSmearCap)',
-    )
+    // 261126 (edge-leg): the hash arm is the shipped sheet law, kept verbatim
+    // (uSmearSmooth defaults to 0 there). The layer programs turn on the
+    // mean-preserving arm — the layer re-reads the same untouched sheet every
+    // dab, so the hash froze into the accumulated film as a mosaic.
+    expectContains(g, 'float raw = clamp(k * hash21(vec2(float(nearest), floor(alongPx / uSmearPeriodPx))), 0.0, uSmearCap);')
+    expectContains(g, 'return mix(raw, smoothSmearMean(k, uSmearCap), uSmearSmooth);')
+    expectContains(g, 'float k = uSmear * wet;')
+    // The smooth arm is the hash's own mean E[min(k·h, cap)] for h uniform:
+    // k/2 below the cap, cap − cap²/(2k) above — the tuned mean drag is
+    // preserved, only the variance collapses.
+    expectContains(g, 'if (k <= cap) return k * 0.5;')
+    expectContains(g, 'return cap - (cap * cap) / (2.0 * k);')
     expectContains(g, 'uniform float uSmear;')
     expectContains(g, 'uniform float uSmearPeriodPx;')
     expectContains(g, 'uniform float uSmearCap;')
+    expectContains(g, 'uniform float uSmearSmooth;')
+  })
+
+  it('smooths the smear on the STROKE LAYER only, never the sheet path', () => {
+    // Default 0 in the shared bind: every sheet-path program keeps the hash.
+    expect(ENGINE_SOURCE).toMatch(/gl\.uniform1f\(p\.u\.uSmearSmooth!, 0\)/)
+    const layer = sliceBetween(ENGINE_SOURCE, 'private bristleLayerInk(', 'private touch(')
+    // ...and the layer's two gather consumers turn it on after the bind.
+    expect(layer.match(/gl\.uniform1f\([dc]\.u\.uSmearSmooth!, 1\)/g) ?? []).toHaveLength(2)
   })
 
   it('mixes the deposit and the cover target through the SAME helper, inside the guard', () => {
