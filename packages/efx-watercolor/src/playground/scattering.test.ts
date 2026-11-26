@@ -1300,33 +1300,50 @@ describe('261119-pod — the §3.3 smear, the snapshot and the four-side Feather
     expect(layer.match(/gl\.uniform1f\([dc]\.u\.uSmearSmooth!, 1\)/g) ?? []).toHaveLength(2)
   })
 
-  it('reads the LAYER OWN previous film as the smear reference, never the untouched sheet', () => {
+  it('reads the LAYER OWN film plus the under at its own transmittance as the smear reference', () => {
     // 261126 (edge-leg, Law 2): the sheet path's snapshot is its own
-    // accumulated film, so its drag decays geometrically; the layer re-read
-    // the same under every dab and the drag reached a steady state (~73 %
-    // under against the sheet's 28 %). The layer's reference is its own
-    // previous film, averaged over a ~3 px optical kernel, and the sheet is
-    // used only where the layer has not landed yet.
+    // accumulated film PLUS the under it has not yet replaced — every dab
+    // attenuates the settled pool (fixed <- fixed * (1 - a)), so the under's
+    // share decays with the stroke's own opacity. The layer's reference is
+    // the exact analogue: its own previous film, averaged over a ~3 px
+    // optical kernel, plus the under weighted by the layer's transmittance
+    // (1 - cover_L = the layerFilm cover attachment, the same weight the
+    // stroke-end merge applies to the sheet). No presence threshold, no
+    // division, no normalization. Measured 2048 tip fringe (the sheet
+    // control in parentheses): darkness 0.70 (0.69), the 46.87/255 ring at
+    // 0; the constant additive under (the SUM) saturated the body to share
+    // 1.0 and is pinned OUT below.
     const g = gather()
     expectContains(g, 'uniform sampler2D uPrevA;')
     expectContains(g, 'uniform sampler2D uPrevB;')
+    expectContains(g, 'uniform sampler2D uPrevCover;')
     const d = deposit()
     expectContains(d, 'if (uSmearSmooth > 0.5) {')
     expectContains(d, 'vec2 po = vec2(1.5) / uSheet;')
     expectContains(d, 'vec4 prevA = 0.2 * (texture(uPrevA, vUv)')
     expectContains(d, 'vec4 prevB = 0.2 * (texture(uPrevB, vUv)')
-    expectContains(d, 'float prevW = smoothstep(1e-6, 1e-3, prev2);')
-    expectContains(d, 'snapA = mix(snapA, prevA, prevW);')
-    expectContains(d, 'snapB = vec4(mix(snapB.xyz, prevB.xyz, prevW), snapB.a);')
+    expectContains(d, 'float underW = 1.0 - clamp(texture(uPrevCover, vUv).r, 0.0, 1.0);')
+    expectContains(d, 'snapA = snapA * underW + prevA;')
+    expectContains(d, 'snapB = vec4(snapB.xyz * underW + prevB.xyz, snapB.a);')
+    // The retired presence gate must never come back, and the under is never
+    // added at full strength: both saturated the body (the SUM read share
+    // 1.0, near-black blue, at 2048).
+    expectNotContains(d, 'prevW = smoothstep(1e-6, 1e-3, prev2)')
+    expectNotContains(d, 'snapA = snapA + prevA;')
     // The cover alpha stays the SHEET's: the solid/wet gate asks whether the
     // paint the dab CROSSES is wet, never whether the layer has landed.
     expectContains(d, 'smear *= smoothstep(0.55, 0.85, clamp(snapB.a / uBodyFloor, 0.0, 1.0));')
-    // The Engine binds the layer's read half on the free units and swaps the
-    // pair with the carry induction (pinned behaviourally in lastTouch.test).
+    // The Engine binds the layer's read half and its cover on free units and
+    // swaps the pair with the carry induction (pinned behaviourally in
+    // lastTouch.test). The shared bind defaults them for the sheet path.
     const layer = sliceBetween(ENGINE_SOURCE, 'private bristleLayerInk(', 'private touch(')
     expectContains(layer, 'gl.uniform1i(d.u.uPrevA!, g.bindTex(8, layerInk.tex[0]!));')
     expectContains(layer, 'gl.uniform1i(d.u.uPrevB!, g.bindTex(9, layerInk.tex[1]!));')
+    expectContains(layer, 'gl.uniform1i(d.u.uPrevCover!, g.bindTex(10, this.layerFilm!.tex[0]!));')
     expectContains(layer, 'this.layerInk!.swap();')
+    // bindGather's default keeps every other gather consumer's sampler set
+    // complete (the sheet path never samples it: uSmearSmooth 0).
+    expect(ENGINE_SOURCE).toMatch(/gl\.uniform1i\(p\.u\.uPrevCover!, g\.bindTex\(10, this\.smearCanvas\.tex\[0\]!\)\)/)
   })
 
   it('keeps the sheet cover smear OFF the stroke layer', () => {
