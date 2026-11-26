@@ -1004,9 +1004,10 @@ uniform float uSmearPeriodPx;// §3.3 hash cell (BRISTLE_SMEAR_PERIOD_PX 6)
 uniform float uSmearCap;     // §3.3 clamp (BRISTLE_SMEAR_CAP 0.8)
 // 261126 (edge-leg): 1 on the STROKE LAYER's programs only — it selects the
 // hash's mean (see smearWeight) AND the layer's own smear reference: its
-// previous film PLUS the under at its own transmittance (1 - cover_L), the
-// sheet path's per-dab under decay (Law 2, bristleDepositFS). 0 keeps the
-// sheet law's hash verbatim.
+// previous film PLUS the under at its own transmittance, amplified to
+// 1 - cover_L^1.5 so the partial-cover fringe's smoothed film keeps the
+// under's pigment (the sheet path's per-dab under decay, Law 2,
+// bristleDepositFS). 0 keeps the sheet law's hash verbatim.
 uniform float uSmearSmooth;
 uniform float uBodyFloor;    // the Body-0 cover ceiling (BRISTLE_BODY_ALPHA_FLOOR 0.5)
 uniform vec4 uPigmentA;      // the brush's palette absorbance 0..3 (same-paint gate)
@@ -1422,7 +1423,10 @@ void main(){
       // full strength. The layer arm re-reads the same untouched sheet every
       // dab, so its exact analogue is
       //
-      //   reference = uSnap * (1 - cover_L) + prev (the layer's own film)
+      //   reference = uSnap * (1 - cover_L * sqrt(cover_L)) + prev
+      //             (the layer's own film; the weight is the 1.5 exponent —
+      //             written as a sqrt because the deposit fragment bans pow:
+      //             no bristle fragment may re-derive the one curve)
       //
       // where cover_L is the layer's accumulated film opacity (layerFilm's
       // cover attachment) — the very weight the stroke-end merge uses to
@@ -1431,15 +1435,29 @@ void main(){
       // the carried colour PLUS the whole under, so the body read the under's
       // spectrum at share 1.0 and went near-black (measured 2048).
       //
-      // No presence threshold, no division, no normalization: both terms are
-      // deposits in the same coefficient space, and 1 - cover_L is a stable
-      // multiply. At the feathered tip the layer's own film is cap-faded, so
-      // the under dominates the reference, the samePaint gate opens and the
-      // blue drags in exactly as it does on the sheet path; over the body the
-      // layer's opacity attenuates the under the way the sheet path's dabs do,
-      // so the drag decays instead of freezing (the pale, pure-yellow tip
-      // halo). snapB.a stays the SHEET's: the solid/wet gate asks whether the
-      // paint the dab CROSSES is wet, not whether the layer has landed.
+      // The 1.5 exponent AMPLIFIES the under share in the partial-cover
+      // band (2026-11-26, the artist's residual tip veil): with the linear
+      // weight the layer's fringe film still averaged ~half the under into a
+      // thin, nearly neutral film, and the stroke-end merge replaced that
+      // much of the sheet's absorbance with it — a milky apron at the tip,
+      // worst on a dark saturated under. The artist's read: "amplify the
+      // correction a bit". Measured at 2048 on edge-rim (yellow over blue,
+      // layer vs the "--edge 0" sheet control, tip window): the veil texels
+      // (lighter than the control by >2/255 with lower chroma) fall 6.4 %,
+      // against 8.8 % more over-darkened texels at gamma 2 — so 1.5 takes
+      // most of the gain at about half the over-darkening. The body is
+      // untouched (cover_L ~ 1 there: under-share 0.429 -> 0.430, the sheet
+      // control 0.267); the law is colour-agnostic — green over red reads the
+      // same rim scores as yellow over blue. No presence threshold, no
+      // division, no normalization, and never more than the full under: the
+      // SUM saturated the body. At the feathered tip the layer's own film is
+      // cap-faded, so the under dominates the reference, the samePaint gate
+      // opens and the under's pigment drags in as it does on the sheet path;
+      // over the body the layer's opacity attenuates the under the way the
+      // sheet path's dabs do, so the drag decays instead of freezing (the
+      // pale, pure-yellow tip halo). snapB.a stays the SHEET's: the
+      // solid/wet gate asks whether the paint the dab CROSSES is wet, not
+      // whether the layer has landed.
       // A LOCAL OPTICAL AVERAGE of the layer's own film: the bristle carrier's
       // five-nearest average still leaves a per-bristle colour step (~1.1 px
       // at 1080p), and the layer's film holds it verbatim, so the artist reads
@@ -1457,7 +1475,8 @@ void main(){
         + texture(uPrevB, vUv + vec2(-po.x, po.y))
         + texture(uPrevB, vUv + vec2(po.x, -po.y))
         + texture(uPrevB, vUv + vec2(-po.x, -po.y)));
-      float underW = 1.0 - clamp(texture(uPrevCover, vUv).r, 0.0, 1.0);
+      float covL = clamp(texture(uPrevCover, vUv).r, 0.0, 1.0);
+      float underW = 1.0 - covL * sqrt(covL);
       snapA = snapA * underW + prevA;
       snapB = vec4(snapB.xyz * underW + prevB.xyz, snapB.a);
     }

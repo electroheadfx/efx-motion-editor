@@ -1307,8 +1307,12 @@ describe('261119-pod — the §3.3 smear, the snapshot and the four-side Feather
     // share decays with the stroke's own opacity. The layer's reference is
     // the exact analogue: its own previous film, averaged over a ~3 px
     // optical kernel, plus the under weighted by the layer's transmittance
-    // (1 - cover_L = the layerFilm cover attachment, the same weight the
-    // stroke-end merge applies to the sheet). No presence threshold, no
+    // (the layerFilm cover attachment, the same weight the stroke-end merge
+    // applies to the sheet), amplified to cover_L^1.5 so the partial-cover
+    // fringe's smoothed film keeps the under's pigment (2026-11-26: the
+    // linear weight left a milky tip apron; measured at 2048 the 1.5
+    // exponent cuts the veil texels 6.4 % at about half of gamma 2's
+    // over-darkening, body share 0.429 -> 0.430). No presence threshold, no
     // division, no normalization. Measured 2048 tip fringe (the sheet
     // control in parentheses): darkness 0.70 (0.69), the 46.87/255 ring at
     // 0; the constant additive under (the SUM) saturated the body to share
@@ -1322,7 +1326,8 @@ describe('261119-pod — the §3.3 smear, the snapshot and the four-side Feather
     expectContains(d, 'vec2 po = vec2(1.5) / uSheet;')
     expectContains(d, 'vec4 prevA = 0.2 * (texture(uPrevA, vUv)')
     expectContains(d, 'vec4 prevB = 0.2 * (texture(uPrevB, vUv)')
-    expectContains(d, 'float underW = 1.0 - clamp(texture(uPrevCover, vUv).r, 0.0, 1.0);')
+    expectContains(d, 'float covL = clamp(texture(uPrevCover, vUv).r, 0.0, 1.0);')
+    expectContains(d, 'float underW = 1.0 - covL * sqrt(covL);')
     expectContains(d, 'snapA = snapA * underW + prevA;')
     expectContains(d, 'snapB = vec4(snapB.xyz * underW + prevB.xyz, snapB.a);')
     // The retired presence gate must never come back, and the under is never
