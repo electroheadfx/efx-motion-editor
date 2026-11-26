@@ -985,16 +985,22 @@ uniform float uLanding;      // §6 paint.landing (BRISTLE_LANDING 1.6)
 // (1:1), and the two ceilings travel as uniforms from bristles.ts.
 uniform sampler2D uSnapA;
 uniform sampler2D uSnapB;
+// 261126 (edge-leg, Law 2): the STROKE LAYER's own previous film (its two ink
+// attachments), the smear's reference on the layer arm. The sheet path never
+// samples them (uSmearSmooth 0); bindGather still binds a complete sampler set.
+uniform sampler2D uPrevA;
+uniform sampler2D uPrevB;
 uniform sampler2D uTimes;    // the last-touch field's read half (R32F, D-24)
 uniform float uNow;          // SECONDS on the virtual clock — never a wall clock
 uniform float uWetSeconds;   // the paint's tack time (params.wetSeconds, >= 1)
 uniform float uSmear;        // the Pickup global, 0..1 (D-A: one knob, two laws)
 uniform float uSmearPeriodPx;// §3.3 hash cell (BRISTLE_SMEAR_PERIOD_PX 6)
 uniform float uSmearCap;     // §3.3 clamp (BRISTLE_SMEAR_CAP 0.8)
-// 261126 (edge-leg): 1 on the STROKE LAYER's programs only — the layer
-// re-reads the untouched sheet every dab, so the per-bristle hash becomes a
-// static field in its accumulated film (see smearWeight). 0 keeps the sheet
-// law's hash verbatim.
+// 261126 (edge-leg): 1 on the STROKE LAYER's programs only — it selects the
+// hash's mean (see smearWeight) AND the layer's own previous film as the
+// deposit's smear reference (Law 2, bristleDepositFS), so the layer's drag
+// decays to the carried colour exactly as the sheet path's does. 0 keeps the
+// sheet law's hash verbatim.
 uniform float uSmearSmooth;
 uniform float uBodyFloor;    // the Body-0 cover ceiling (BRISTLE_BODY_ALPHA_FLOOR 0.5)
 uniform vec4 uPigmentA;      // the brush's palette absorbance 0..3 (same-paint gate)
@@ -1060,11 +1066,12 @@ float wetAt(vec2 uv){
 // dab-constant divergence. ONE declaration: the deposit and the coverage
 // write both call it, and only ever inside the uSmear > 0 guard.
 //
-// 261126 (edge-leg): uSmearSmooth = 1 on the STROKE LAYER's programs only.
-// The sheet law re-reads the pre-dab canvas every dab, so its hash field
-// diffuses over the stroke; the layer re-reads the SAME untouched sheet every
-// dab, so the hash becomes a canvas-stationary per-bristle/per-6-px FIELD in
-// the accumulated film — the artist's pickup mosaic (measured: layer chroma
+// 261126 (edge-leg): uSmearSmooth = 1 on the STROKE LAYER's programs only,
+// and it also selects the layer's own previous film as the smear's reference
+// (bristleDepositFS). The sheet law re-reads the pre-dab canvas every dab, so
+// its hash field diffuses over the stroke; a layer whose reference was the
+// untouched sheet made the hash a canvas-stationary per-bristle/per-6-px FIELD
+// in its accumulated film — the artist's pickup mosaic (measured: layer chroma
 // std 22.4 / 3x3 high-pass 13.4 against the same scene at Pickup 0: 4.5 /
 // 1.0). The smooth arm returns the hash's own mean under the same clamp,
 // E[min(k·h, cap)] for h uniform: k/2 below the cap and
@@ -1398,6 +1405,43 @@ void main(){
     // re-deposited is what turned the artist's yellow green and darker; a
     // different paint's spectrum is the wet-on-wet drag, at full strength.
     vec4 snapA = texture(uSnapA, vUv);
+    if (uSmearSmooth > 0.5) {
+      // 261126 (edge-leg, Law 2): on the stroke layer the reference is the
+      // LAYER's own previous film, never the untouched sheet. The sheet path's
+      // snapshot IS its own accumulated film, so its drag decays geometrically
+      // to the carried colour; the layer re-read the same under every dab and
+      // the drag became a steady state (measured: 73 % under against the
+      // sheet's 28 %). With the layer's own film as the reference the same
+      // decay holds: first contact sees the sheet (where the layer is still
+      // empty) and every later dab converges on the stroke's colour. The cover
+      // alpha stays the SHEET's: the solid/wet gate asks whether the paint the
+      // dab CROSSES is wet, not whether the layer has landed.
+      // A LOCAL OPTICAL AVERAGE of the picked colour: the bristle carrier's
+      // five-nearest average still leaves a per-bristle colour step (~1.1 px
+      // at 1080p), and the layer's film holds it verbatim, so the artist reads
+      // dots rather than a blend. Four bilinear taps at ±1.5 px (a ~3 px
+      // kernel, three bristle spacings) average the layer's own reference;
+      // the under is the artist's paint and is left untouched.
+      vec2 po = vec2(1.5) / uSheet;
+      vec4 prevA = 0.2 * (texture(uPrevA, vUv)
+        + texture(uPrevA, vUv + vec2(po.x, po.y))
+        + texture(uPrevA, vUv + vec2(-po.x, po.y))
+        + texture(uPrevA, vUv + vec2(po.x, -po.y))
+        + texture(uPrevA, vUv + vec2(-po.x, -po.y)));
+      vec4 prevB = 0.2 * (texture(uPrevB, vUv)
+        + texture(uPrevB, vUv + vec2(po.x, po.y))
+        + texture(uPrevB, vUv + vec2(-po.x, po.y))
+        + texture(uPrevB, vUv + vec2(po.x, -po.y))
+        + texture(uPrevB, vUv + vec2(-po.x, -po.y)));
+      // The layer's own film is the reference wherever it has landed; where it
+      // is still empty the sheet is — the sheet path's first dab sees exactly
+      // that under. The weight is the (averaged) film's own strength, so the
+      // two references meet continuously instead of at a hard threshold.
+      float prev2 = dot(prevA, prevA) + dot(prevB.xyz, prevB.xyz);
+      float prevW = smoothstep(1e-6, 1e-3, prev2);
+      snapA = mix(snapA, prevA, prevW);
+      snapB = vec4(mix(snapB.xyz, prevB.xyz, prevW), snapB.a);
+    }
     float own2 = dot(uPigmentA, uPigmentA) + dot(uPigmentB, uPigmentB);
     float can2 = dot(snapA, snapA) + dot(snapB.xyz, snapB.xyz);
     float cross7 = dot(uPigmentA, snapA) + dot(uPigmentB, snapB.xyz);
@@ -1645,8 +1689,15 @@ void main(){
   if (a <= 1e-3) discard;
   // §3.3 (261119-pod): the smear carries the cover toward the snapshot's
   // COVER alpha through the SAME helper and guard as bristleCoverFS.
+  //
+  // 261126 (edge-leg, Law 2): NOT on the stroke layer. The layer's cover is
+  // the STROKE's own film, so dragging it toward the sheet's cover (the under)
+  // pulled cover_L down to the under's ~0.8 every dab and let the under show
+  // through the stroke's core (measured: 0.76–0.87 against 1.00 at Pickup 0).
+  // The layer's colour pickup is the ink's job above; its cover is the deposit
+  // weight, exactly as at Pickup 0. The sheet path keeps the arm verbatim.
   float target = a * uCoverTarget * g.alpha;
-  if (uSmear > 0.0) {
+  if (uSmear > 0.0 && uSmearSmooth < 0.5) {
     float smear = smearWeight(g.nearest, uAlongPx + q.y * uHalfWidthPx, wetAt(vUv));
     vec4 snapA = texture(uSnapA, vUv);
     vec4 snapB = texture(uSnapB, vUv);

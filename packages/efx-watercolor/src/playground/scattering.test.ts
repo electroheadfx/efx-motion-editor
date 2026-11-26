@@ -1300,6 +1300,47 @@ describe('261119-pod — the §3.3 smear, the snapshot and the four-side Feather
     expect(layer.match(/gl\.uniform1f\([dc]\.u\.uSmearSmooth!, 1\)/g) ?? []).toHaveLength(2)
   })
 
+  it('reads the LAYER OWN previous film as the smear reference, never the untouched sheet', () => {
+    // 261126 (edge-leg, Law 2): the sheet path's snapshot is its own
+    // accumulated film, so its drag decays geometrically; the layer re-read
+    // the same under every dab and the drag reached a steady state (~73 %
+    // under against the sheet's 28 %). The layer's reference is its own
+    // previous film, averaged over a ~3 px optical kernel, and the sheet is
+    // used only where the layer has not landed yet.
+    const g = gather()
+    expectContains(g, 'uniform sampler2D uPrevA;')
+    expectContains(g, 'uniform sampler2D uPrevB;')
+    const d = deposit()
+    expectContains(d, 'if (uSmearSmooth > 0.5) {')
+    expectContains(d, 'vec2 po = vec2(1.5) / uSheet;')
+    expectContains(d, 'vec4 prevA = 0.2 * (texture(uPrevA, vUv)')
+    expectContains(d, 'vec4 prevB = 0.2 * (texture(uPrevB, vUv)')
+    expectContains(d, 'float prevW = smoothstep(1e-6, 1e-3, prev2);')
+    expectContains(d, 'snapA = mix(snapA, prevA, prevW);')
+    expectContains(d, 'snapB = vec4(mix(snapB.xyz, prevB.xyz, prevW), snapB.a);')
+    // The cover alpha stays the SHEET's: the solid/wet gate asks whether the
+    // paint the dab CROSSES is wet, never whether the layer has landed.
+    expectContains(d, 'smear *= smoothstep(0.55, 0.85, clamp(snapB.a / uBodyFloor, 0.0, 1.0));')
+    // The Engine binds the layer's read half on the free units and swaps the
+    // pair with the carry induction (pinned behaviourally in lastTouch.test).
+    const layer = sliceBetween(ENGINE_SOURCE, 'private bristleLayerInk(', 'private touch(')
+    expectContains(layer, 'gl.uniform1i(d.u.uPrevA!, g.bindTex(8, layerInk.tex[0]!));')
+    expectContains(layer, 'gl.uniform1i(d.u.uPrevB!, g.bindTex(9, layerInk.tex[1]!));')
+    expectContains(layer, 'this.layerInk!.swap();')
+  })
+
+  it('keeps the sheet cover smear OFF the stroke layer', () => {
+    // 261126 (edge-leg, Law 2): dragging cover_L toward the sheet's cover
+    // pulled it down to the under's ~0.8 every dab and let the under show
+    // through the stroke's core; the layer's cover is its deposit weight.
+    // The sheet program keeps the arm verbatim.
+    const layerCover = sliceBetween(SHADERS_SOURCE, 'export const bristleCoverLayerFS', 'export const strokeLayerMergeFS')
+    expectContains(layerCover, 'if (uSmear > 0.0 && uSmearSmooth < 0.5) {')
+    expectContains(layerCover, 'float target = a * uCoverTarget * g.alpha;')
+    const sheetCover = sliceBetween(SHADERS_SOURCE, 'export const bristleCoverFS', 'export const bristleTouchFS')
+    expectContains(sheetCover, 'if (uSmear > 0.0) {')
+  })
+
   it('mixes the deposit and the cover target through the SAME helper, inside the guard', () => {
     const d = deposit()
     expectContains(d, 'if (uSmear > 0.0) {')

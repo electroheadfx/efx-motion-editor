@@ -592,6 +592,15 @@ export class WatercolorEngine {
    */
   private touchCarry = newLastTouchCarry();
   /**
+   * 261126 (edge-leg, Law 2): the stroke layer's own ping-pong carry. The
+   * layer's deposit reads its previous film (the smear's reference) and writes
+   * the other half, so the halves differ inside the last dab's rect and ONE
+   * rect-sized copy per dab restores them — the same induction as touchCarry.
+   * `openLayer` / `discardLayer` / `forgetLayer` clear both halves and
+   * invalidate it.
+   */
+  private layerInkCarry = newLastTouchCarry();
+  /**
    * 64-24 (D-24): the carrier's wetness source — 1 is the shipped timestamp
    * law, 0 is 64-21's `wet * coverage` proxy kept ONLY as the recorded A/B
    * control 64-21 reserved `uWetMode` for. The probe's `--wet-mode` flag is
@@ -1010,6 +1019,7 @@ export class WatercolorEngine {
     const { gl, g } = this;
     g.clearTarget(this.layerInk!.read);
     g.clearTarget(this.layerInk!.write);
+    invalidateCarry(this.layerInkCarry);
     g.clearTarget(this.layerRelief!);
     const clear = this.programs.strokeLayerClear;
     clear.bind();
@@ -1031,6 +1041,7 @@ export class WatercolorEngine {
       const { g } = this;
       g.clearTarget(this.layerInk!.read);
       g.clearTarget(this.layerInk!.write);
+      invalidateCarry(this.layerInkCarry);
       g.clearTarget(this.layerFilm!);
       g.clearTarget(this.layerRelief!);
     }
@@ -1045,6 +1056,7 @@ export class WatercolorEngine {
     this.layerFilm = null;
     this.layerRelief = null;
     this.mergeRelief = null;
+    invalidateCarry(this.layerInkCarry);
     this.layerOpen = false;
     this.layerStroke = null;
     this.layerRect = null;
@@ -4017,6 +4029,11 @@ export class WatercolorEngine {
     gl.uniform1i(p.u.uSnapA!, g.bindTex(5, this.smearCanvas.tex[0]!));
     gl.uniform1i(p.u.uSnapB!, g.bindTex(6, this.smearCanvas.tex[1]!));
     gl.uniform1i(p.u.uTimes!, g.bindTex(7, this.lastTouch.read.tex[0]!));
+    // 261126 (edge-leg, Law 2): the stroke layer's own previous film on the
+    // free units 8/9. The sheet arm never samples them (uSmearSmooth 0); the
+    // default bind keeps every gather consumer's sampler set complete.
+    gl.uniform1i(p.u.uPrevA!, g.bindTex(8, this.smearCanvas.tex[0]!));
+    gl.uniform1i(p.u.uPrevB!, g.bindTex(9, this.smearCanvas.tex[1]!));
     gl.uniform1f(p.u.uSmear!, this.pickupResponse(this.params.pickup));
     gl.uniform1f(p.u.uSmearPeriodPx!, BRISTLE_SMEAR_PERIOD_PX);
     gl.uniform1f(p.u.uSmearCap!, BRISTLE_SMEAR_CAP);
@@ -4221,7 +4238,19 @@ export class WatercolorEngine {
    */
   private bristleLayerInk(rect: Rect, x: number, y: number, r: number, angle: number, bodyAlpha: number, pr: number, scatter: number, alongPx: number, endCap: boolean): void {
     const { gl, g } = this;
-    const layerInk = this.layerInk!.read;
+    // 261126 (edge-leg, Law 2): the deposit PING-PONGS — it samples the
+    // layer's previous film (the smear's reference) and writes the other
+    // half. Carry the previous dab's rect read-to-write first, so the write
+    // half equals the film everywhere before this dab's scissored draws (the
+    // touchCarry induction); the swap below restores `.read` as authoritative.
+    const carry = takeCarry(this.layerInkCarry);
+    if (carry) {
+      for (let i = 0; i < 2; i++) {
+        g.blit(this.layerInk!.read.views[i]!, carry.x0, carry.y0, this.layerInk!.write.views[i]!, carry.x0, carry.y0, carry.x1 - carry.x0, carry.y1 - carry.y0);
+      }
+    }
+    const layerInk = this.layerInk!.read;   // the previous film (sampled)
+    const layerOut = this.layerInk!.write;  // this dab's target (written)
     const d = this.programs.bristleDeposit;
     d.bind();
     this.bindGather(d, x, y, r, angle, pr, alongPx, endCap);
@@ -4229,17 +4258,24 @@ export class WatercolorEngine {
     // dab, so the sheet's per-bristle hash would freeze into the film as a
     // mosaic. The smooth arm keeps the hash's mean drag (smearWeight).
     gl.uniform1f(d.u.uSmearSmooth!, 1);
+    // The smear's layer reference: the read half (the film before this dab).
+    gl.uniform1i(d.u.uPrevA!, g.bindTex(8, layerInk.tex[0]!));
+    gl.uniform1i(d.u.uPrevB!, g.bindTex(9, layerInk.tex[1]!));
     gl.uniform1f(d.u.uScatter!, scatter);
     gl.enable(gl.BLEND);
     gl.blendEquation(gl.FUNC_ADD);
     // 1) ink *= (1 - a) — the lerp's first half.
     gl.uniform1i(d.u.uMode!, 1);
     gl.blendFunc(gl.ZERO, gl.ONE_MINUS_SRC_COLOR);
-    g.draw(layerInk, rect);
+    g.draw(layerOut, rect);
     // 2) + carried * a — the lerp's carried half, the SAME weight.
     gl.uniform1i(d.u.uMode!, 0);
     gl.blendFunc(gl.ONE, gl.ONE);
-    g.draw(layerInk, rect);
+    g.draw(layerOut, rect);
+    // The write half is now the film; make it the read half again. `recordStamp`
+    // remembers the only rect the halves differ in, for the next dab's carry.
+    this.layerInk!.swap();
+    recordStamp(this.layerInkCarry, rect);
     // 3) the film: cover blended (the shipped law), the lateral MIN over the
     //    layer's covering dabs. Per-attachment state — WebGL2 cannot mix
     //    ONE_MINUS_SRC_ALPHA and MIN in one equation.

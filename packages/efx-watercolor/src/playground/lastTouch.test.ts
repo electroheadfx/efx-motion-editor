@@ -253,14 +253,39 @@ describe('the last-touch carry (CR-03)', () => {
     expect(ENGINE_SOURCE.includes(needle), `missing engine text: ${needle}`).toBe(true)
   }
 
-  it('imports the carry module and holds one pending-rect state beside the pair', () => {
+  it('imports the carry module and holds ONE pending-rect state per ping-pong pair', () => {
     expect(
       /import \{[^}]*\bnewLastTouchCarry\b[^}]*\} from '\.\/lastTouchCarry'/.test(ENGINE_SOURCE),
       'the engine imports the carry module',
     ).toBe(true)
     engineContains('private touchCarry = newLastTouchCarry();')
-    // One state, created with the engine — never a per-stamp allocation.
-    expect((ENGINE_SOURCE.match(/newLastTouchCarry\(\)/g) ?? [])).toHaveLength(1)
+    // 261126 (edge-leg, Law 2): the stroke layer's ink pair ping-pongs too —
+    // its deposit samples the previous film and writes the other half, so it
+    // needs its own pending-rect state, created with the engine.
+    engineContains('private layerInkCarry = newLastTouchCarry();')
+    // One state per pair, created with the engine — never a per-stamp
+    // allocation.
+    expect((ENGINE_SOURCE.match(/newLastTouchCarry\(\)/g) ?? [])).toHaveLength(2)
+  })
+
+  it('carries the layer ink rect and swaps the layer pair on the same induction', () => {
+    const body = sliceBetween(ENGINE_SOURCE, 'private bristleLayerInk(', 'private touch(')
+    const carryAt = body.indexOf('takeCarry(this.layerInkCarry)')
+    const drawAt = body.indexOf('g.draw(layerOut, rect);')
+    const swapAt = body.indexOf('this.layerInk!.swap();')
+    const recordAt = body.indexOf('recordStamp(this.layerInkCarry, rect);')
+    expect(carryAt, 'the layer carry is taken').toBeGreaterThan(-1)
+    expect(carryAt, 'the carry precedes the scissored draw').toBeLessThan(drawAt)
+    expect(swapAt, 'the layer pair swaps after the write').toBeGreaterThan(drawAt)
+    expect(recordAt, 'the new rect is recorded after the swap').toBeGreaterThan(swapAt)
+    // Both ends of the layer's life invalidate the carry: a fresh stroke's
+    // first dab must never carry a stale film rect.
+    const open = sliceBetween(ENGINE_SOURCE, 'private openLayer(', 'private discardLayer(')
+    expect(open.includes('invalidateCarry(this.layerInkCarry)'), 'openLayer invalidates').toBe(true)
+    const discard = sliceBetween(ENGINE_SOURCE, 'private discardLayer(', 'private forgetLayer(')
+    expect(discard.includes('invalidateCarry(this.layerInkCarry)'), 'discardLayer invalidates').toBe(true)
+    const forget = sliceBetween(ENGINE_SOURCE, 'private forgetLayer(', 'private mergeStrokeLayer(')
+    expect(forget.includes('invalidateCarry(this.layerInkCarry)'), 'forgetLayer invalidates').toBe(true)
   })
 
   it('carries the previous rect before the stamp and records the new one after the swap', () => {
