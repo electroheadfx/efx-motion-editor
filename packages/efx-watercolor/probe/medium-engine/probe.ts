@@ -2490,21 +2490,31 @@ function edgeGranulationK(paperG: number, granulation: number): number {
 }
 
 /**
- * Spec 10: the frozen lateral law's band alpha `aEff` at one texel, from the
+ * Spec 10: the frozen lateral law's lateral weight at one texel, from the
  * layer's OWN lateral field and the scenario's two knobs —
- * `A = lateralWeight(u, amount, bias) = 1 − amount·u^e`,
- * `aEff = clamp(A·cover_L, 0, 1)` with `e = 2^(2·bias − 1)`.
- * `u` is the STORED field: 0 on the stroke's centre line, 1 at its visual
- * edge (`BRISTLE_LAYER_EDGE` of the nominal footprint). This is the weight the
- * MERGE applied; the committed sheet's own recovery is a separate measurement
- * (`midAlpha`), never this law re-read.
+ * `lateral = lateralWeight(u, amount, bias) = 1 − amount·u^e` with
+ * `e = 2^(2·bias − 1)`. `u` is the STORED field: 0 on the stroke's centre
+ * line, 1 at its visual edge (`BRISTLE_LAYER_EDGE` of the nominal footprint).
+ * The merge's mix weight is `aEff = clamp(lateral·cover_L, 0, 1)`; this field
+ * value is reported separately so the profiles can show which half (the
+ * lateral fade or the gather's cover) moves at a station.
  */
-function edgeLayerAEff(lateral: number, coverL: number): number {
+function edgeLayerLateral(lateral: number): number {
   const u = Math.min(1, Math.max(0, lateral))
   const amount = EDGE_LAYER_AMOUNT / 100
   const bias = EDGE_LAYER_FALLOFF / 100
   const e = Math.pow(2, 2 * bias - 1)
-  return Math.min(1, Math.max(0, (1 - amount * Math.pow(u, e)) * coverL))
+  return Math.min(1, Math.max(0, 1 - amount * Math.pow(u, e)))
+}
+
+/**
+ * The frozen band alpha `aEff = clamp(lateral·cover_L, 0, 1)` — the weight the
+ * MERGE applies to BOTH films of the coefficient composite. The committed
+ * sheet's own recovery is a separate measurement (`midAlpha`), never this law
+ * re-read.
+ */
+function edgeLayerAEff(lateral: number, coverL: number): number {
+  return Math.min(1, Math.max(0, edgeLayerLateral(lateral) * coverL))
 }
 
 /** 261126-hgl (the halo readout): the painted band's 5 %-cover floor. */
@@ -4305,6 +4315,12 @@ const EDGE_RIM_TIP_ROW_HALF = 60
 /** The bare-under station set (layer path): a station whose row-mean layer
  *  cover is at or below this is the unpainted wash the rim is judged on. */
 const EDGE_RIM_BARE_COVER = 0.02
+/** The outer fringe band's upper cover bound (layer path): the rim scan is
+ *  restricted to stations whose row-mean layer cover is BELOW this, i.e. the
+ *  partial-coverage fringe. The interior plateau (cover ≈ 1) is excluded so a
+ *  Gouache bristle streak inside the stroke can never be judged as the rim
+ *  (261126-hgl: the false winner sat at cover 0.9994, station −111). */
+const EDGE_RIM_FRINGE_COVER_MAX = 0.98
 /** The coherence guard (user decision, R2 item 3): a 5-station box smooth of
  *  the station profile, then a run of at least two consecutive stations over
  *  the threshold — the pickup's 2-station alternation is texture, never the
@@ -4428,6 +4444,10 @@ interface EdgeRimProfile {
   readonly liveDark: number[] | null
   readonly liveChroma: number[] | null
   readonly cover: number[] | null
+  /** Row-mean lateral weight `1 − amount·u^e` and band alpha `aEff` per
+   *  station (layer path only) — the two halves of the merge weight. */
+  readonly lateral: number[] | null
+  readonly aEff: number[] | null
   /** Sampled texel counts per station. A 0-count station carries NaN in the
    *  reading arrays (null in the JSON) and never enters the metric — a
    *  fabricated 0 would read as a maximal rim. */
@@ -4436,6 +4456,11 @@ interface EdgeRimProfile {
   /** Stations whose row-mean layer cover is at or below EDGE_RIM_BARE_COVER
    *  (layer path), or the geometric outer window (sheet-path control). */
   readonly bareStations: number[]
+  /** The outer fringe band (layer path only): stations whose row-mean cover is
+   *  partial — above the bare floor and below EDGE_RIM_FRINGE_COVER_MAX. The
+   *  rim scan is restricted here so an interior Gouache bristle streak (cover
+   *  ≈ 1, the 261126-hgl false positive at station −111) can never win. */
+  readonly fringeStations: number[]
   /** The foreground's most-painted station (layer path) or the station
    *  nearest the midpoint (sheet-path control). */
   readonly coreStation: number | null
@@ -4478,6 +4503,8 @@ function edgeRimProfile(
   const liveCount = new Float64Array(n)
   const coverSum = new Float64Array(n)
   const coverCount = new Float64Array(n)
+  const lateralSum = new Float64Array(n)
+  const aEffSum = new Float64Array(n)
   const sheetFields = capture === null ? null : capture.preSheet[axis]
   const layer = capture === null ? null : capture.preLayer[axis]
   // The live surface: displayLayerFS softens the sheet and the layer films
@@ -4519,7 +4546,10 @@ function edgeRimProfile(
       darkSum[si] = darkSum[si]! + (1 - Math.min(r, g, bl) / 255)
       chromaSum[si] = chromaSum[si]! + (Math.max(r, g, bl) - Math.min(r, g, bl)) / 255
       if (layer !== null) {
+        const lateralWeight = edgeLayerLateral(layer.lateral[fi]!)
         coverSum[si] = coverSum[si]! + layer.cover[fi]!
+        lateralSum[si] = lateralSum[si]! + lateralWeight
+        aEffSum[si] = aEffSum[si]! + lateralWeight * layer.cover[fi]!
         coverCount[si] = coverCount[si]! + 1
       }
       if (k !== null && sheetFields !== null && layer !== null && sheetBlur !== null && layerBlur !== null) {
@@ -4540,6 +4570,8 @@ function edgeRimProfile(
   const liveDark: number[] = []
   const liveChroma: number[] = []
   const cover: number[] = []
+  const lateral: number[] = []
+  const aEff: number[] = []
   for (let i = 0; i < n; i += 1) {
     const c = count[i]!
     committedDark.push(c > 0 ? round4(darkSum[i]! / c) : Number.NaN)
@@ -4548,9 +4580,12 @@ function edgeRimProfile(
       liveDark.push(liveCount[i]! > 0 ? round4(liveDarkSum[i]! / liveCount[i]!) : Number.NaN)
       liveChroma.push(liveCount[i]! > 0 ? round4(liveChromaSum[i]! / liveCount[i]!) : Number.NaN)
       cover.push(coverCount[i]! > 0 ? round4(coverSum[i]! / coverCount[i]!) : Number.NaN)
+      lateral.push(coverCount[i]! > 0 ? round4(lateralSum[i]! / coverCount[i]!) : Number.NaN)
+      aEff.push(coverCount[i]! > 0 ? round4(aEffSum[i]! / coverCount[i]!) : Number.NaN)
     }
   }
   const bareStations: number[] = []
+  const fringeStations: number[] = []
   let coreStation: number | null = null
   if (layer !== null) {
     let peak = -1
@@ -4560,6 +4595,7 @@ function edgeRimProfile(
         coreStation = stations[i]!
       }
       if (cover[i]! <= EDGE_RIM_BARE_COVER) bareStations.push(stations[i]!)
+      else if (cover[i]! < EDGE_RIM_FRINGE_COVER_MAX) fringeStations.push(stations[i]!)
     }
     // A band with no painted station cannot name its core: unjudgeable.
     if (!(peak > EDGE_RIM_BARE_COVER)) coreStation = null
@@ -4584,9 +4620,12 @@ function edgeRimProfile(
     liveDark: layer === null ? null : liveDark,
     liveChroma: layer === null ? null : liveChroma,
     cover: layer === null ? null : cover,
+    lateral: layer === null ? null : lateral,
+    aEff: layer === null ? null : aEff,
     committedCount: Array.from(count),
     liveCount: layer === null ? null : Array.from(liveCount),
     bareStations,
+    fringeStations,
     coreStation,
   }
 }
@@ -4630,8 +4669,17 @@ interface EdgeRimBandReading {
  *  (min-channel dark 0.53 vs 0.92), so a bare-only target would flag the core
  *  itself at ~90/255. The profile is 5-station smoothed first; only maxima
  *  inside a run of at least two consecutive over-target stations count (a
- *  lone station is texture). 0 when measured clean, null when the references
- *  cannot be established (never a fabricated zero). */
+ *  lone station is texture).
+ *
+ *  The SCAN is restricted to the outer fringe band when the layer defines one
+ *  (`fringeStations`: partial row-mean cover, above the bare floor and below
+ *  EDGE_RIM_FRINGE_COVER_MAX). The references still come from the whole
+ *  profile (bare = the unpainted wash, core = the most-painted station); only
+ *  candidate stations are gated, so an interior bristle streak at full cover
+ *  can never win. The sheet-path control (no layer, no cover profile) has no
+ *  band to select by and scans its whole profile, unchanged. 0 when measured
+ *  clean, null when the references cannot be established (never a fabricated
+ *  zero). */
 function edgeRimSurfaceBand(
   profile: EdgeRimProfile,
   values: readonly number[] | null,
@@ -4658,14 +4706,26 @@ function edgeRimSurfaceBand(
   const core = values[coreIndex]!
   const target = Math.min(bare, core)
   const smooth = edgeRimSmooth(values, counts, EDGE_RIM_SMOOTH_STATIONS)
+  // The layer path restricts candidates to its outer fringe band; the
+  // sheet-path control (no cover profile) has no band to select by and scans
+  // its whole profile, unchanged. An empty fringe band has no candidates.
+  const scan = new Uint8Array(smooth.length)
+  if (profile.cover !== null) {
+    for (const station of profile.fringeStations) {
+      const i = indexOf.get(station)
+      if (i !== undefined) scan[i] = 1
+    }
+  } else {
+    scan.fill(1)
+  }
   let best = 0
   let bestStation: number | null = null
   let bestRun = 0
   let i = 0
   while (i < smooth.length) {
-    if (Number.isFinite(smooth[i]!) && target > smooth[i]!) {
+    if (scan[i] === 1 && Number.isFinite(smooth[i]!) && target > smooth[i]!) {
       let j = i
-      while (j < smooth.length && Number.isFinite(smooth[j]!) && target > smooth[j]!) j += 1
+      while (j < smooth.length && scan[j] === 1 && Number.isFinite(smooth[j]!) && target > smooth[j]!) j += 1
       if (j - i >= EDGE_RIM_RUN_MIN) {
         for (let t = i; t < j; t += 1) {
           const delta = target - smooth[t]!
@@ -4710,6 +4770,7 @@ function edgeRimReport(
     span: profile.span,
     coreStation: profile.coreStation,
     bareStations: profile.bareStations,
+    fringeStations: profile.fringeStations,
     light: {
       committed: edgeRimSurfaceBand(profile, profile.committedDark, profile.committedCount, 'light'),
       live: edgeRimSurfaceBand(profile, profile.liveDark, profile.liveCount, 'light'),
@@ -4746,6 +4807,8 @@ function edgeRimReport(
         liveDark: lateral.liveDark,
         liveChroma: lateral.liveChroma,
         cover: lateral.cover,
+        lateral: lateral.lateral,
+        aEff: lateral.aEff,
         committedCount: lateral.committedCount,
         liveCount: lateral.liveCount,
       },
@@ -4756,6 +4819,8 @@ function edgeRimReport(
         liveDark: tip.liveDark,
         liveChroma: tip.liveChroma,
         cover: tip.cover,
+        lateral: tip.lateral,
+        aEff: tip.aEff,
         committedCount: tip.committedCount,
         liveCount: tip.liveCount,
       },
