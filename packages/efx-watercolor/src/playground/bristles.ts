@@ -465,6 +465,46 @@ export function edgeFalloffExponent(bias: number): number {
   return clamp(2 ** (2 * clamp01(bias) - 1), 0.5, 2);
 }
 
+// ------------------------- Spec 11: the feather noise's band-relative scale -------------------------
+//
+//  The feather band is radius-relative, so at small brush sizes it is
+//  narrower than the paper's cloud features and the rim reads smooth.
+//  Feather noise mixes a brush-relative grain into the paper tooth, its
+//  feature size derived from the BAND (a fixed number of features across
+//  it), with a pixel floor so the specks stay visible on tiny brushes.
+//  These values are STARTING POINTS calibrated by the `feather-noise`
+//  probe — the shader reads them as uniforms and never re-types a literal,
+//  and the twins below are the one tested source of the period and the zoom.
+
+/** Spec 11: the number of grain features the band holds (the band's width / this = the period). */
+export const FEATHER_NOISE_FEATURES = 4;
+/** Spec 11: the grain's pixel floor — below it the band holds 1–2 lobes, accepted as the floor limit. */
+export const FEATHER_NOISE_MIN_PX = 2;
+/** Spec 11: the period ceiling — a wide brush never carries cloud-sized specks. */
+export const FEATHER_NOISE_MAX_PX = 16;
+/** Spec 11: the tooth's shortest period — the reference the zoom maps the derived period onto. */
+export const FEATHER_NOISE_REFERENCE_PX = 1.1;
+
+/**
+ * Spec 11: `period = clamp(bandPx / FEATURES, MIN, MAX)` — the grain's feature
+ * period in document px, derived from the feather band's width. A non-finite
+ * or non-positive band reads the floor: a tiny brush always gets visible
+ * specks, never a zero period.
+ */
+export function featherNoisePeriodPx(bandPx: number): number {
+  if (!Number.isFinite(bandPx) || bandPx <= 0) return FEATHER_NOISE_MIN_PX;
+  return clamp(bandPx / FEATHER_NOISE_FEATURES, FEATHER_NOISE_MIN_PX, FEATHER_NOISE_MAX_PX);
+}
+
+/**
+ * Spec 11: `rimScale = REFERENCE_PX / period` — the zoom the shader applies to
+ * the paper sampling coordinate, so the derived period is what the mark
+ * actually shows. Total and strictly positive: the period is never zero.
+ */
+export function featherNoiseScale(bandPx: number): number {
+  return FEATHER_NOISE_REFERENCE_PX / featherNoisePeriodPx(bandPx);
+}
+
 // ------------------------- the trace and edge formulas (64-23) -------------------------
 //
 //  Each function below is the tested twin of one expression in the gather's
