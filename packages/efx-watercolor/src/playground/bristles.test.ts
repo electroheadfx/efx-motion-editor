@@ -888,11 +888,9 @@ describe('bristleTouchValue — the touch refresh mix (64-24)', () => {
 // ============================================================
 //  261119-pod — the §3.3 smear.
 //
-//  Studio laws in the module's declared set: the §3.3 hash cell
-//  (`BRISTLE_SMEAR_PERIOD_PX`, 6 px), the §3.3 clamp (`BRISTLE_SMEAR_CAP`,
-//  raised to 1.0) and 261126-n20's size gate
-//  (`BRISTLE_SMEAR_SIZE_GATE_LO_PX` / `_HI_PX`, 75 / 100 px half-width).
-//  Each pure twin is the tested mirror of one expression in
+//  Two Studio laws join the module's declared set: the §3.3 hash cell
+//  (`BRISTLE_SMEAR_PERIOD_PX`, 6 px) and the §3.3 clamp (`BRISTLE_SMEAR_CAP`,
+//  0.8). Each pure twin is the tested mirror of one expression in
 //  `shaders.ts`: a literal that replaces a declared constant, or a second
 //  copy of a law, fails the pins below. `bristleSmearRate` IS the 1:1
 //  mapping (D-A): one knob, no second curve. Feather is the reference's
@@ -902,11 +900,8 @@ describe('bristleTouchValue — the touch refresh mix (64-24)', () => {
 const SMEAR = bristleModule as unknown as {
   BRISTLE_SMEAR_PERIOD_PX?: number
   BRISTLE_SMEAR_CAP?: number
-  BRISTLE_SMEAR_SIZE_GATE_LO_PX?: number
-  BRISTLE_SMEAR_SIZE_GATE_HI_PX?: number
   bristleSmearRate?: (pickup: number) => number
   bristleSmearWeight?: (rate: number, wet: number, hash: number) => number
-  bristleSmearSizeGate?: (halfWidthPx: number) => number
 }
 
 describe('the §3.3 smear constants and twins (261119-pod)', () => {
@@ -916,16 +911,9 @@ describe('the §3.3 smear constants and twins (261119-pod)', () => {
     // reference's 0.8 bind across the whole contact band; the artist's
     // maximum must read as a full wet-on-wet pull.
     expect(SMEAR.BRISTLE_SMEAR_CAP, '§3.3 clamp').toBe(1)
-    // 261126-n20 (issue 3): the size gate's edges — exactly 0 at half-width
-    // 75 px (size 150, the digest-identity control) and exactly 1 at 100 px
-    // (size 200, the artist's onset).
-    expect(SMEAR.BRISTLE_SMEAR_SIZE_GATE_LO_PX, 'the gate is 0 at or below').toBe(75)
-    expect(SMEAR.BRISTLE_SMEAR_SIZE_GATE_HI_PX, 'the gate is 1 at or above').toBe(100)
     for (const [name, literal] of [
       ['BRISTLE_SMEAR_PERIOD_PX', 'export const BRISTLE_SMEAR_PERIOD_PX = 6;'],
       ['BRISTLE_SMEAR_CAP', 'export const BRISTLE_SMEAR_CAP = 1.0;'],
-      ['BRISTLE_SMEAR_SIZE_GATE_LO_PX', 'export const BRISTLE_SMEAR_SIZE_GATE_LO_PX = 75;'],
-      ['BRISTLE_SMEAR_SIZE_GATE_HI_PX', 'export const BRISTLE_SMEAR_SIZE_GATE_HI_PX = 100;'],
     ] as const) {
       expect(
         (SOURCE.match(new RegExp(literal.replaceAll('.', '\\.'), 'g')) ?? []).length,
@@ -980,33 +968,6 @@ describe('the §3.3 smear constants and twins (261119-pod)', () => {
     }
     expect(SMEAR.bristleSmearWeight?.(1, 1, 1), 'never above the cap').toBeLessThanOrEqual(1)
     expect(SMEAR.bristleSmearWeight?.(Number.NaN, 1, 1), 'a missing rate drags nothing').toBe(0)
-  })
-
-  it('bristleSmearSizeGate is 0 at 75 and below, 1 at 100 and above, monotone between', () => {
-    expect(typeof SMEAR.bristleSmearSizeGate, 'bristleSmearSizeGate is exported').toBe('function')
-    // The digest-identity edge: every smaller footprint is byte-identical.
-    expect(SMEAR.bristleSmearSizeGate?.(75), 'exactly 0 at the low edge').toBe(0)
-    expect(SMEAR.bristleSmearSizeGate?.(60), '0 below the low edge').toBe(0)
-    expect(SMEAR.bristleSmearSizeGate?.(0), 'a degenerate footprint never smooths').toBe(0)
-    expect(SMEAR.bristleSmearSizeGate?.(-3), 'a negative half-width never smooths').toBe(0)
-    expect(SMEAR.bristleSmearSizeGate?.(Number.NaN), 'a missing half-width never smooths').toBe(0)
-    // The full-strength edge: the artist's onset (size 200) and above.
-    expect(SMEAR.bristleSmearSizeGate?.(100), 'exactly 1 at the high edge').toBe(1)
-    expect(SMEAR.bristleSmearSizeGate?.(250), '1 above the high edge').toBe(1)
-    // Strictly monotone across the ramp — a plateau or a dip would make the
-    // law non-size-monotone.
-    let previous = -1
-    for (const px of [75, 78, 81, 84, 87, 90, 93, 96, 99, 100]) {
-      const gate = SMEAR.bristleSmearSizeGate?.(px) ?? Number.NaN
-      expect(gate, `in [0, 1] at ${px} px`).toBeGreaterThanOrEqual(0)
-      expect(gate, `in [0, 1] at ${px} px`).toBeLessThanOrEqual(1)
-      expect(gate, `monotone at ${px} px`).toBeGreaterThanOrEqual(previous)
-      previous = gate
-    }
-    expect(SMEAR.bristleSmearSizeGate?.(87.5), 'the midpoint reads the smoothstep half').toBeCloseTo(
-      0.5,
-      12,
-    )
   })
 })
 

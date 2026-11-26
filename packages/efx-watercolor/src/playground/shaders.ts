@@ -1009,12 +1009,6 @@ uniform float uSmearCap;     // §3.3 clamp (BRISTLE_SMEAR_CAP 0.8)
 // under's pigment (the sheet path's per-dab under decay, Law 2,
 // bristleDepositFS). 0 keeps the sheet law's hash verbatim.
 uniform float uSmearSmooth;
-// 261126-n20 (issue 3): the SHEET path's size gate on the same smoothing —
-// 1 at a large footprint (where the along-hash bands read as worm stripes
-// across the contact band), 0 at small sizes (byte-identical). Bound from
-// bristleSmearSizeGate and combined with uSmearSmooth by max(), so the
-// layer arm's own switch (uSmearSmooth) is never lowered.
-uniform float uSmearSizeGate;
 uniform float uBodyFloor;    // the Body-0 cover ceiling (BRISTLE_BODY_ALPHA_FLOOR 0.5)
 uniform vec4 uPigmentA;      // the brush's palette absorbance 0..3 (same-paint gate)
 uniform vec3 uPigmentB;      // the brush's palette absorbance 4..6
@@ -1101,7 +1095,7 @@ float smoothSmearMean(float k, float cap){
 float smearWeight(int nearest, float alongPx, float wet){
   float k = uSmear * wet;
   float raw = clamp(k * hash21(vec2(float(nearest), floor(alongPx / uSmearPeriodPx))), 0.0, uSmearCap);
-  return mix(raw, smoothSmearMean(k, uSmearCap), max(uSmearSmooth, uSmearSizeGate));
+  return mix(raw, smoothSmearMean(k, uSmearCap), uSmearSmooth);
 }
 
 // §4.4 — the paper tooth as a threshold, in TWO coordinate systems:

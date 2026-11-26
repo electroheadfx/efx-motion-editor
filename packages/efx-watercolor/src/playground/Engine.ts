@@ -25,7 +25,6 @@ import {
   bristleContactPressure,
   bristleCount,
   bristleSampleScale,
-  bristleSmearSizeGate,
   gatherSoftness,
   LAST_TOUCH_DRY_SECONDS,
   makeBristles,
@@ -4048,10 +4047,6 @@ export class WatercolorEngine {
     // layer turns the smooth arm on after this bind. Default 0 keeps every
     // sheet-path program byte-identical.
     gl.uniform1f(p.u.uSmearSmooth!, 0);
-    // 261126-n20 (issue 3): the sheet path's size gate on the same smoothing.
-    // Exactly 0 at or below half-width 75 px (size 150), exactly 1 at or
-    // above 100 px (size 200) — small strokes stay byte-identical.
-    gl.uniform1f(p.u.uSmearSizeGate!, bristleSmearSizeGate(r * this.dh));
     // 2026-11-20: the same-paint gate's reference — the BRUSH's palette, so
     // the drag never weakens as the carried colour drifts toward the canvas.
     const pc = this.pigment.coeffs;
