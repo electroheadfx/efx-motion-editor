@@ -990,6 +990,12 @@ uniform sampler2D uSnapB;
 // samples them (uSmearSmooth 0); bindGather still binds a complete sampler set.
 uniform sampler2D uPrevA;
 uniform sampler2D uPrevB;
+// 261126 (edge-leg, Law 2): the layer's accumulated FILM OPACITY (layerFilm's
+// cover attachment). The layer arm attenuates the under by its own
+// transmittance 1 - cover, the exact analogue of the sheet path's per-dab
+// fixed <- fixed * (1 - a) — and the same weight the stroke-end merge uses
+// to attenuate the sheet under the stroke. The sheet path never samples it.
+uniform sampler2D uPrevCover;
 uniform sampler2D uTimes;    // the last-touch field's read half (R32F, D-24)
 uniform float uNow;          // SECONDS on the virtual clock — never a wall clock
 uniform float uWetSeconds;   // the paint's tack time (params.wetSeconds, >= 1)
@@ -997,9 +1003,9 @@ uniform float uSmear;        // the Pickup global, 0..1 (D-A: one knob, two laws
 uniform float uSmearPeriodPx;// §3.3 hash cell (BRISTLE_SMEAR_PERIOD_PX 6)
 uniform float uSmearCap;     // §3.3 clamp (BRISTLE_SMEAR_CAP 0.8)
 // 261126 (edge-leg): 1 on the STROKE LAYER's programs only — it selects the
-// hash's mean (see smearWeight) AND the layer's own previous film as the
-// deposit's smear reference (Law 2, bristleDepositFS), so the layer's drag
-// decays to the carried colour exactly as the sheet path's does. 0 keeps the
+// hash's mean (see smearWeight) AND the layer's own smear reference: its
+// previous film PLUS the under at its own transmittance (1 - cover_L), the
+// sheet path's per-dab under decay (Law 2, bristleDepositFS). 0 keeps the
 // sheet law's hash verbatim.
 uniform float uSmearSmooth;
 uniform float uBodyFloor;    // the Body-0 cover ceiling (BRISTLE_BODY_ALPHA_FLOOR 0.5)
@@ -1406,22 +1412,39 @@ void main(){
     // different paint's spectrum is the wet-on-wet drag, at full strength.
     vec4 snapA = texture(uSnapA, vUv);
     if (uSmearSmooth > 0.5) {
-      // 261126 (edge-leg, Law 2): on the stroke layer the reference is the
-      // LAYER's own previous film, never the untouched sheet. The sheet path's
-      // snapshot IS its own accumulated film, so its drag decays geometrically
-      // to the carried colour; the layer re-read the same under every dab and
-      // the drag became a steady state (measured: 73 % under against the
-      // sheet's 28 %). With the layer's own film as the reference the same
-      // decay holds: first contact sees the sheet (where the layer is still
-      // empty) and every later dab converges on the stroke's colour. The cover
-      // alpha stays the SHEET's: the solid/wet gate asks whether the paint the
-      // dab CROSSES is wet, not whether the layer has landed.
-      // A LOCAL OPTICAL AVERAGE of the picked colour: the bristle carrier's
+      // 261126 (edge-leg, Law 2): the sheet path's smear reference is its
+      // PRE-DAB CANVAS — the under's film PLUS the film the stroke has already
+      // laid on it, i.e. the composition the dab paints over. Crucially the
+      // sheet path DECAYS its under there: every dab attenuates the settled
+      // pool (fixed <- fixed * (1 - a)), so the under's share of the
+      // reference falls with the stroke's own opacity instead of surviving at
+      // full strength. The layer arm re-reads the same untouched sheet every
+      // dab, so its exact analogue is
+      //
+      //   reference = uSnap * (1 - cover_L) + prev (the layer's own film)
+      //
+      // where cover_L is the layer's accumulated film opacity (layerFilm's
+      // cover attachment) — the very weight the stroke-end merge uses to
+      // attenuate the sheet under the stroke. A constant additive under (the
+      // first cut of this law) saturated the body: the sum's fixed point is
+      // the carried colour PLUS the whole under, so the body read the under's
+      // spectrum at share 1.0 and went near-black (measured 2048).
+      //
+      // No presence threshold, no division, no normalization: both terms are
+      // deposits in the same coefficient space, and 1 - cover_L is a stable
+      // multiply. At the feathered tip the layer's own film is cap-faded, so
+      // the under dominates the reference, the samePaint gate opens and the
+      // blue drags in exactly as it does on the sheet path; over the body the
+      // layer's opacity attenuates the under the way the sheet path's dabs do,
+      // so the drag decays instead of freezing (the pale, pure-yellow tip
+      // halo). snapB.a stays the SHEET's: the solid/wet gate asks whether the
+      // paint the dab CROSSES is wet, not whether the layer has landed.
+      // A LOCAL OPTICAL AVERAGE of the layer's own film: the bristle carrier's
       // five-nearest average still leaves a per-bristle colour step (~1.1 px
       // at 1080p), and the layer's film holds it verbatim, so the artist reads
       // dots rather than a blend. Four bilinear taps at ±1.5 px (a ~3 px
-      // kernel, three bristle spacings) average the layer's own reference;
-      // the under is the artist's paint and is left untouched.
+      // kernel, three bristle spacings) average the layer's side of the
+      // reference; the under is the artist's paint and is left untouched.
       vec2 po = vec2(1.5) / uSheet;
       vec4 prevA = 0.2 * (texture(uPrevA, vUv)
         + texture(uPrevA, vUv + vec2(po.x, po.y))
@@ -1433,14 +1456,9 @@ void main(){
         + texture(uPrevB, vUv + vec2(-po.x, po.y))
         + texture(uPrevB, vUv + vec2(po.x, -po.y))
         + texture(uPrevB, vUv + vec2(-po.x, -po.y)));
-      // The layer's own film is the reference wherever it has landed; where it
-      // is still empty the sheet is — the sheet path's first dab sees exactly
-      // that under. The weight is the (averaged) film's own strength, so the
-      // two references meet continuously instead of at a hard threshold.
-      float prev2 = dot(prevA, prevA) + dot(prevB.xyz, prevB.xyz);
-      float prevW = smoothstep(1e-6, 1e-3, prev2);
-      snapA = mix(snapA, prevA, prevW);
-      snapB = vec4(mix(snapB.xyz, prevB.xyz, prevW), snapB.a);
+      float underW = 1.0 - clamp(texture(uPrevCover, vUv).r, 0.0, 1.0);
+      snapA = snapA * underW + prevA;
+      snapB = vec4(snapB.xyz * underW + prevB.xyz, snapB.a);
     }
     float own2 = dot(uPigmentA, uPigmentA) + dot(uPigmentB, uPigmentB);
     float can2 = dot(snapA, snapA) + dot(snapB.xyz, snapB.xyz);

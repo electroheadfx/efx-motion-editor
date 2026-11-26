@@ -4034,6 +4034,12 @@ export class WatercolorEngine {
     // default bind keeps every gather consumer's sampler set complete.
     gl.uniform1i(p.u.uPrevA!, g.bindTex(8, this.smearCanvas.tex[0]!));
     gl.uniform1i(p.u.uPrevB!, g.bindTex(9, this.smearCanvas.tex[1]!));
+    // 261126 (edge-leg, Law 2): the layer's accumulated film opacity on the
+    // free unit 10. Only the layer arm samples it (uSmearSmooth 1) — it
+    // attenuates the under by the layer's own transmittance, the sheet path's
+    // per-dab `fixed <- fixed * (1 - a)`. The default bind keeps every gather
+    // consumer's sampler set complete.
+    gl.uniform1i(p.u.uPrevCover!, g.bindTex(10, this.smearCanvas.tex[0]!));
     gl.uniform1f(p.u.uSmear!, this.pickupResponse(this.params.pickup));
     gl.uniform1f(p.u.uSmearPeriodPx!, BRISTLE_SMEAR_PERIOD_PX);
     gl.uniform1f(p.u.uSmearCap!, BRISTLE_SMEAR_CAP);
@@ -4258,9 +4264,12 @@ export class WatercolorEngine {
     // dab, so the sheet's per-bristle hash would freeze into the film as a
     // mosaic. The smooth arm keeps the hash's mean drag (smearWeight).
     gl.uniform1f(d.u.uSmearSmooth!, 1);
-    // The smear's layer reference: the read half (the film before this dab).
+    // The smear's layer reference: the read half (the film before this dab),
+    // plus the layer's accumulated film opacity — the under's transmittance
+    // `1 - cover_L` (the same weight the merge applies to the sheet).
     gl.uniform1i(d.u.uPrevA!, g.bindTex(8, layerInk.tex[0]!));
     gl.uniform1i(d.u.uPrevB!, g.bindTex(9, layerInk.tex[1]!));
+    gl.uniform1i(d.u.uPrevCover!, g.bindTex(10, this.layerFilm!.tex[0]!));
     gl.uniform1f(d.u.uScatter!, scatter);
     gl.enable(gl.BLEND);
     gl.blendEquation(gl.FUNC_ADD);
