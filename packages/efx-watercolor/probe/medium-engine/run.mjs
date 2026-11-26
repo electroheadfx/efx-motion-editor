@@ -860,6 +860,8 @@ for (const [key, kind] of [
   ['pngEnd', 'end'],
   ['pngEndPigment', 'end-pigment'],
   ['pngEndCoverage', 'end-coverage'],
+  // 261126-rov: the 1:1 mid-body crop beside the end crops.
+  ['pngMid', 'mid'],
 ]) {
   const url = result[key]
   if (typeof url !== 'string') continue

@@ -222,6 +222,9 @@ import {
 // quick 261126-n20 (issue 2): the centre-ridge detector — same pure-helper
 // pattern, one detector shared by the bristle-line surfaces and the end lanes.
 import { centreRidge } from './ridge'
+// quick 261126-rov: the band-straightness reading (report-only) beside the
+// ridge census — unchanged bars, one extra readout.
+import { alongCoherence, type AlongCoherence } from './ridge'
 // quick 261126-n20 (issue 3): the blend share-spectrum detector — same
 // pure-helper pattern; the blend readout projects each across station's
 // visible colour onto the under-to-stroke axis and reads its spectrum.
@@ -1809,6 +1812,20 @@ const LINE_PROFILE_X1 = 0.75
 const RIDGE_STATIONS = 24
 const RIDGE_X0 = 0.45
 const RIDGE_X1 = 0.65
+/** 261126-rov: the band-straightness readout — the mean along correlation at
+ *  8/16/32 document px, converted to stations with the scene's own station
+ *  spacing (`(ridgeX1 - ridgeX0) / (RIDGE_STATIONS - 1)`, at least 1). */
+function ridgeCoherenceSet(
+  profiles: readonly (readonly number[])[],
+  stationPx: number,
+): { lag8: AlongCoherence; lag16: AlongCoherence; lag32: AlongCoherence } {
+  const lag = (px: number): number => Math.max(1, Math.round(px / Math.max(stationPx, 1e-9)))
+  return {
+    lag8: alongCoherence(profiles, lag(8)),
+    lag16: alongCoherence(profiles, lag(16)),
+    lag32: alongCoherence(profiles, lag(32)),
+  }
+}
 /** 2026-11-22 (bristle-line gate): the halo's "pale ring" fraction — the run
  *  counts consecutive fringe rows whose darkness exceeds this fraction of the
  *  interior plateau (5 %, HALO_RUN_FRACTION in compare.mjs). */
@@ -6259,6 +6276,10 @@ function lineProfileSet(engine: WatercolorEngine): Record<string, unknown> {
   const ridgeCentreIndex = offsets.indexOf(0)
   const ridge =
     ridgeCentreIndex >= 0 ? centreRidge(ridgeProfiles, { centreIndex: ridgeCentreIndex }) : null
+  const ridgeCoherence = ridgeCoherenceSet(
+    ridgeProfiles,
+    (ridgeX1 - ridgeX0) / Math.max(1, RIDGE_STATIONS - 1),
+  )
 
   return {
     centreRow: centre,
@@ -6301,6 +6322,7 @@ function lineProfileSet(engine: WatercolorEngine): Record<string, unknown> {
     across: { cover, dark, ink },
     stations,
     ridge,
+    ridgeCoherence,
     tiling: {
       rows: tilingRows.map(({ darkHp: _darkHp, ...rest }) => rest),
       coherence,
@@ -7090,6 +7112,10 @@ function bristleEndMetrics(
     ridgeRowsLo <= centre && centre <= ridgeRowsHi
       ? centreRidge(ridgeProfiles, { centreIndex: centre - ridgeRowsLo })
       : null
+  const ridgeCoherence = ridgeCoherenceSet(
+    ridgeProfiles,
+    (ridgeX1 - ridgeX0) / Math.max(1, RIDGE_STATIONS - 1),
+  )
   // The visible-composite, carried-pigment, inked-fraction and raw-transparent
   // readings of the SAME two zones. `COVERAGE_INKED_THRESHOLD` is the coverage
   // raster's own 0.5 inked line; pigment and visible reuse the transparent
@@ -7153,6 +7179,7 @@ function bristleEndMetrics(
     endFine,
     endPreGap,
     ridge,
+    ridgeCoherence,
     density: {
       window: {
         lastTapX,
@@ -7167,9 +7194,15 @@ function bristleEndMetrics(
   }
 }
 
-/** A 2x nearest-neighbour crop of the transparent export on white, so the
- *  start/end silhouettes are a viewable artifact beside the numbers. */
-function endCrop(transparent: HTMLCanvasElement, xFrom: number, xTo: number): string {
+/** A nearest-neighbour crop of the transparent export on white, so the
+ *  start/end silhouettes (2x) and the mid-body texture (1x) are viewable
+ *  artifacts beside the numbers. */
+function endCrop(
+  transparent: HTMLCanvasElement,
+  xFrom: number,
+  xTo: number,
+  scale = 2,
+): string {
   const dh = transparent.height
   const centre = Math.round(END_LANE_Y * dh)
   const gyCentre = dh - 1 - centre
@@ -7178,14 +7211,22 @@ function endCrop(transparent: HTMLCanvasElement, xFrom: number, xTo: number): st
   const x0 = Math.max(0, Math.round(xFrom))
   const x1 = Math.min(transparent.width, Math.round(xTo))
   const out = document.createElement('canvas')
-  out.width = (x1 - x0) * 2
-  out.height = (y1 - y0) * 2
+  out.width = (x1 - x0) * scale
+  out.height = (y1 - y0) * scale
   const ctx = out.getContext('2d')!
   ctx.fillStyle = '#ffffff'
   ctx.fillRect(0, 0, out.width, out.height)
   ctx.imageSmoothingEnabled = false
   ctx.drawImage(transparent, x0, y0, x1 - x0, y1 - y0, 0, 0, out.width, out.height)
   return out.toDataURL('image/png')
+}
+
+/** 261126-rov: the 1:1 device-pixel crop of the stroke's mid-body on white —
+ *  the surface the artist judges the interior texture on (the END_CROP_W
+ *  window the end crops already use, LINE_BAND_PX band height, centred). */
+function midBodyCrop(transparent: HTMLCanvasElement): string {
+  const mid = Math.round(0.5 * transparent.width)
+  return endCrop(transparent, mid - END_CROP_W / 2, mid + END_CROP_W / 2, 1)
 }
 
 /** The crop windows: the last / first ~2.4 brush widths of travel. */
@@ -8028,6 +8069,8 @@ function run(
               ] as unknown) ?? null,
             pngTransparent: transparentCanvas.toDataURL('image/png'),
             pngCoverage: coverageCanvas.toDataURL('image/png'),
+            // 261126-rov: the 1:1 mid-body crop beside the blend numbers.
+            pngMid: midBodyCrop(transparentCanvas),
           }
         : {}
 
@@ -8080,6 +8123,8 @@ function run(
               pngTransparent: transparentCanvas.toDataURL('image/png'),
               pngCoverage: coverageCanvas.toDataURL('image/png'),
               pngPigment: pigmentCanvas.toDataURL('image/png'),
+              // 261126-rov: the 1:1 mid-body crop beside the end crops.
+              pngMid: midBodyCrop(transparentCanvas),
               pngStart: endCrop(transparentCanvas, ...endCropWindow(transparentCanvas.width).start),
               pngEnd: endCrop(transparentCanvas, ...endCropWindow(transparentCanvas.width).end),
               // The same end crop in the engine's own channels, so a terminal

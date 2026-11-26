@@ -51,6 +51,7 @@ import {
   RIDGE_MARGIN,
   RIDGE_SHOULDER_INNER,
   RIDGE_SHOULDER_OUTER,
+  alongCoherence,
   centreRidge,
 } from './ridge'
 import {
@@ -3155,5 +3156,82 @@ describe('the blend share-spectrum detector (261126-n20 task 3)', () => {
     expectContains(PROBE, 'alongSum += detrendedRms(series)')
     // The console report prints the blend line.
     expectContains(RUN, 'blend      : COMMITTED size')
+  })
+})
+
+// ============================================================
+//  quick 261126-rov task 1: the along-coherence reading.
+//
+//  The displacement law's success is judged partly by the eye, but the
+//  instrument that names what the eye sees is coherence ALONG the travel: a
+//  straight dark band repeats its across profile station after station, while
+//  a broken/organic texture does not. `alongCoherence` measures exactly that
+//  (mean Pearson correlation between each station's profile and the profile
+//  one lag further along). Report-only: no threshold here, the number is
+//  recorded and the bars stay the frozen ones. Pure, so it EXECUTES here on
+//  synthetic profiles before any capture trusts it.
+// ============================================================
+
+describe('the along-coherence detector (261126-rov task 1)', () => {
+  const BAND = 16
+  const row = (value: number): number[] => new Array<number>(64).fill(value)
+  const withBand = (): number[] => {
+    const r = row(0.4)
+    for (let i = BAND; i < BAND + 4; i += 1) r[i] = 0.75
+    return r
+  }
+
+  it('reads identical straight-band profiles as coherent at lag 1', () => {
+    const rows = Array.from({ length: 24 }, withBand)
+    const coherence = alongCoherence(rows, 1)
+    expect(coherence.corr).toBeGreaterThan(0.95)
+    // 24 stations, lag 1: every adjacent pair compares → 23 pairs.
+    expect(coherence.stations).toBe(23)
+  })
+
+  it('reads a diagonal band as incoherent at lag 1', () => {
+    // The band moves one across cell per along station — the "straight line"
+    // the artist sees is exactly this: a run lookup that never changes.
+    const rows = Array.from({ length: 24 }, (_, s) => {
+      const r = row(0.4)
+      r[BAND + s] = 0.75
+      return r
+    })
+    const coherence = alongCoherence(rows, 1)
+    expect(coherence.corr).toBeLessThanOrEqual(0.2)
+    expect(coherence.stations).toBe(23)
+  })
+
+  it('reads degenerate inputs as stations 0 and corr 0 without NaN', () => {
+    // Flat rows carry no across variance: nothing to correlate, never a NaN.
+    const flat = Array.from({ length: 24 }, () => row(0.5))
+    const flatRead = alongCoherence(flat, 1)
+    expect(flatRead.corr).toBe(0)
+    expect(flatRead.stations).toBe(0)
+    // Rows <= lag compare no pair; zero lag is invalid input.
+    const short = Array.from({ length: 3 }, withBand)
+    expect(alongCoherence(short, 3).stations).toBe(0)
+    expect(alongCoherence(short, 3).corr).toBe(0)
+    expect(alongCoherence([], 1)).toEqual({ corr: 0, stations: 0 })
+    expect(alongCoherence(Array.from({ length: 24 }, withBand), 0)).toEqual({
+      corr: 0,
+      stations: 0,
+    })
+  })
+
+  it('pins the readout on both ridge sites and the 1:1 mid-body crop', () => {
+    expectContains(PROBE, "import { alongCoherence, type AlongCoherence } from './ridge'")
+    expectContains(PROBE, 'function ridgeCoherenceSet(')
+    expectContains(PROBE, 'lag8: alongCoherence(profiles, lag(8)),')
+    expectContains(PROBE, 'lag16: alongCoherence(profiles, lag(16)),')
+    expectContains(PROBE, 'lag32: alongCoherence(profiles, lag(32)),')
+    // The readout rides BOTH ridge sites (the line surfaces and the end lanes).
+    expect(PROBE.split('ridgeCoherence,').length - 1).toBe(2)
+    // The 1:1 mid-body crop is additive: both scenes emit it, run.mjs writes
+    // the kind beside the end crops and strips the payload from the JSON.
+    expectContains(PROBE, 'pngMid: midBodyCrop(transparentCanvas),')
+    expect(PROBE.split('pngMid: midBodyCrop(transparentCanvas),').length - 1).toBe(2)
+    expectContains(PROBE, 'function midBodyCrop(transparent: HTMLCanvasElement): string {')
+    expectContains(RUN, "['pngMid', 'mid']")
   })
 })

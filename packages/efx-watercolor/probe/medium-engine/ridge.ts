@@ -139,3 +139,61 @@ export function centreRidge(
     share: round4(used > 0 ? clearing / used : 0),
   }
 }
+
+export interface AlongCoherence {
+  /** Mean Pearson correlation over the compared station pairs, 0 when none. */
+  corr: number
+  /** How many station pairs carried variance on both sides and compared. */
+  stations: number
+}
+
+/**
+ * 261126-rov's "is the band straight along the stroke" reading: the mean
+ * Pearson correlation between each across profile and the profile
+ * `lagStations` stations further along. Report-only — no threshold. Pairs
+ * with zero variance on either side (flat rows) are skipped, so a silent
+ * profile can never read as coherent; rows <= lag, zero or non-finite lag
+ * and empty input read { corr: 0, stations: 0 }.
+ */
+export function alongCoherence(
+  profiles: readonly (readonly number[])[],
+  lagStations: number,
+): AlongCoherence {
+  const lag = Math.floor(lagStations)
+  if (!Number.isFinite(lagStations) || lag < 1 || profiles.length <= lag) {
+    return { corr: 0, stations: 0 }
+  }
+  const corrs: number[] = []
+  for (let i = 0; i + lag < profiles.length; i += 1) {
+    const a = profiles[i]!
+    const b = profiles[i + lag]!
+    const n = Math.min(a.length, b.length)
+    if (n < 2) continue
+    let meanA = 0
+    let meanB = 0
+    for (let j = 0; j < n; j += 1) {
+      meanA += a[j]!
+      meanB += b[j]!
+    }
+    meanA /= n
+    meanB /= n
+    let cov = 0
+    let varA = 0
+    let varB = 0
+    for (let j = 0; j < n; j += 1) {
+      const da = a[j]! - meanA
+      const db = b[j]! - meanB
+      cov += da * db
+      varA += da * da
+      varB += db * db
+    }
+    if (varA <= 0 || varB <= 0) continue
+    const corr = cov / Math.sqrt(varA * varB)
+    if (!Number.isFinite(corr)) continue
+    corrs.push(corr)
+  }
+  return {
+    corr: round4(corrs.length > 0 ? corrs.reduce((s, v) => s + v, 0) / corrs.length : 0),
+    stations: corrs.length,
+  }
+}
