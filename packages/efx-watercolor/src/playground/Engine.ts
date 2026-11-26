@@ -4267,6 +4267,10 @@ export class WatercolorEngine {
     // The smear's layer reference: the read half (the film before this dab).
     gl.uniform1i(d.u.uPrevA!, g.bindTex(8, layerInk.tex[0]!));
     gl.uniform1i(d.u.uPrevB!, g.bindTex(9, layerInk.tex[1]!));
+    // 261126-hgl (the halo law): the film's own union presence (layerFilm
+    // attachment 0's G lane) on the free unit 10. The deposit divides its
+    // reference by this presence — the film is stored premultiplied by it.
+    gl.uniform1i(d.u.uPrevPresence!, g.bindTex(10, this.layerFilm!.tex[0]!));
     gl.uniform1f(d.u.uScatter!, scatter);
     gl.enable(gl.BLEND);
     gl.blendEquation(gl.FUNC_ADD);

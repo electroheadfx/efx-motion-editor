@@ -990,6 +990,11 @@ uniform sampler2D uSnapB;
 // samples them (uSmearSmooth 0); bindGather still binds a complete sampler set.
 uniform sampler2D uPrevA;
 uniform sampler2D uPrevB;
+// 261126-hgl: the same film's OWN union presence (layerFilm attachment 0's G
+// lane). The layer's storage is premultiplied by that presence, so the pickup
+// REFERENCE is the film divided by it (bristleDepositFS); the sheet path never
+// samples this lane (uSmearSmooth 0).
+uniform sampler2D uPrevPresence;
 uniform sampler2D uTimes;    // the last-touch field's read half (R32F, D-24)
 uniform float uNow;          // SECONDS on the virtual clock — never a wall clock
 uniform float uWetSeconds;   // the paint's tack time (params.wetSeconds, >= 1)
@@ -1423,22 +1428,34 @@ void main(){
       // kernel, three bristle spacings) average the layer's own reference;
       // the under is the artist's paint and is left untouched.
       vec2 po = vec2(1.5) / uSheet;
+      // 261126-hgl — the halo law: the film is stored PREMULTIPLIED by its
+      // own union presence (the cover pass accumulates G), so the REFERENCE
+      // is the film DIVIDED by that presence. Where the layer has landed the
+      // reference is the stroke's own colour at every occupancy, so the smear
+      // cannot drag the carried pigment toward a diluted film; the raw sheet
+      // enters only where the layer is truly empty (first contact), never at
+      // the feathered fringe. Presence is averaged over the SAME five taps.
+      float prevPresence = 0.2 * (texture(uPrevPresence, vUv).y
+        + texture(uPrevPresence, vUv + vec2(po.x, po.y)).y
+        + texture(uPrevPresence, vUv + vec2(-po.x, po.y)).y
+        + texture(uPrevPresence, vUv + vec2(po.x, -po.y)).y
+        + texture(uPrevPresence, vUv + vec2(-po.x, -po.y)).y);
+      float prevDen = max(prevPresence, 1e-4);
       vec4 prevA = 0.2 * (texture(uPrevA, vUv)
         + texture(uPrevA, vUv + vec2(po.x, po.y))
         + texture(uPrevA, vUv + vec2(-po.x, po.y))
         + texture(uPrevA, vUv + vec2(po.x, -po.y))
-        + texture(uPrevA, vUv + vec2(-po.x, -po.y)));
+        + texture(uPrevA, vUv + vec2(-po.x, -po.y))) / prevDen;
       vec4 prevB = 0.2 * (texture(uPrevB, vUv)
         + texture(uPrevB, vUv + vec2(po.x, po.y))
         + texture(uPrevB, vUv + vec2(-po.x, po.y))
         + texture(uPrevB, vUv + vec2(po.x, -po.y))
-        + texture(uPrevB, vUv + vec2(-po.x, -po.y)));
-      // The layer's own film is the reference wherever it has landed; where it
-      // is still empty the sheet is — the sheet path's first dab sees exactly
-      // that under. The weight is the (averaged) film's own strength, so the
-      // two references meet continuously instead of at a hard threshold.
-      float prev2 = dot(prevA, prevA) + dot(prevB.xyz, prevB.xyz);
-      float prevW = smoothstep(1e-6, 1e-3, prev2);
+        + texture(uPrevB, vUv + vec2(-po.x, -po.y))) / prevDen;
+      // The fallback gate is the layer's LANDED PRESENCE, not the film's
+      // absorbance magnitude: where the layer has landed (any presence) the
+      // reference is its own normalized colour, so the thin feathered fringe
+      // reads the stroke's own pigment instead of the under's pale film.
+      float prevW = smoothstep(1e-6, 1e-3, prevPresence);
       snapA = mix(snapA, prevA, prevW);
       snapB = vec4(mix(snapB.xyz, prevB.xyz, prevW), snapB.a);
     }

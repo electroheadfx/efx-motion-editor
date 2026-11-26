@@ -197,6 +197,31 @@ describe('stroke layer shaders (261125-kvl, SPIKE 006)', () => {
     expect(reliefUnion.includes('texture(uReliefS, uv).x + layerAEff(uv) * texture(uReliefL, uv).x')).toBe(true)
   })
 
+  it('reads the layer film as its own occupancy-normalized pickup reference (261126-hgl)', () => {
+    // The halo law: on the stroke layer the deposit's smear reference is the
+    // LAYER's own film DIVIDED BY ITS OWN OCCUPANCY (the presence lane), and
+    // the sheet fallback is gated on LANDED PRESENCE, not on the film's
+    // absorbance magnitude. At presence = 1 this is the shipped reference.
+    const deposit = exports.bristleDepositFS as string
+    const pin = (needle: string) =>
+      expect(deposit.includes(needle), `missing shader text: ${needle}`).toBe(true)
+    pin('uniform sampler2D uPrevPresence;')
+    pin('float prevPresence = 0.2 * (texture(uPrevPresence, vUv).y')
+    pin('float prevDen = max(prevPresence, 1e-4);')
+    pin('+ texture(uPrevA, vUv + vec2(-po.x, -po.y))) / prevDen;')
+    pin('+ texture(uPrevB, vUv + vec2(-po.x, -po.y))) / prevDen;')
+    pin('float prevW = smoothstep(1e-6, 1e-3, prevPresence);')
+    pin('snapA = mix(snapA, prevA, prevW);')
+    pin('snapB = vec4(mix(snapB.xyz, prevB.xyz, prevW), snapB.a);')
+    // The absorbance-magnitude gate is GONE: a thin film must read its own
+    // normalized colour, never the sheet.
+    expect(deposit.includes('prev2'), 'the retired prev2 magnitude gate must be gone').toBe(false)
+    // The law rides the layer arm only: the sheet path's block is the
+    // uSmearSmooth guard, and the sheet's own snapshot terms are untouched.
+    pin('if (uSmearSmooth > 0.5) {')
+    expect(deposit.includes('smoothstep(1e-6, 1e-3, prevPresence)'), 'the fallback gate is presence').toBe(true)
+  })
+
   it('writes the layer film as two attachments: the cover lerp and the MIN lateral field', () => {
     const pin = (needle: string) =>
       expect(cover.includes(needle), `missing shader text: ${needle}`).toBe(true)
