@@ -48,6 +48,14 @@
 //  full stroke and F1 opens the rim into dry specks. It never scales the
 //  film's depth — that law wrote the artist's pale lane (see the constant).
 //
+//  261126-n20 (follow-up) adds the centre-fibre de-bias: above a 133..151 px
+//  REAL footprint, the contiguous dark-header run cluster at the stroke's
+//  centre is lifted by its own mean level, and the |across| ≥ 0.55 rim pays
+//  the same total level back (Σ −ln v is preserved). No RNG draw is added, so
+//  every gate-0 stroke is byte-identical; below the gate the law is a strict
+//  no-op. The gate reads document texels, never the canonical Size: a 2K sheet
+//  scales both the stroke and its footprint.
+//
 //  THE §4.4 NAME COLLISION: `BRISTLE_GRAIN` (1.2) is the paint's paper-tooth
 //  scale from §6 — NOT `Brush.grain` (0..1, the dry re-threshold the engine's
 //  footprint mask has always read). They are different quantities that share
@@ -409,6 +417,111 @@ export function bristleCount(halfWidthPx: number): number {
   );
 }
 
+// ------------------------- the centre-fibre de-bias (261126-n20 follow-up) -------------------------
+
+/**
+ * ISSUE 2's real-footprint gate. Size 150 on a 1080-tall document is a
+ * 130.5 px half-width; Size 200 is 153.1 px. The artist's hard centre line is
+ * visible only above the accepted footprint, so the gate is exactly 0 at and
+ * below 133 px, exactly 1 at and above 151 px, and a smoothstep between. It
+ * reads the REAL footprint (`radiusValue × dh`), never the canonical Size: at
+ * 2K/4K the stroke and the defect scale with the document, and Size 150 there
+ * has the same pixels as Size 200 at 1080.
+ */
+export const BRISTLE_CENTRE_GATE_LO_PX = 133;
+export const BRISTLE_CENTRE_GATE_HI_PX = 151;
+
+/**
+ * The RUN-HEADER multiplier that marks a dark fibre run. `makeBristles` draws
+ * 18 % of runs at 0.80–0.92 and every other run at ≥0.96, so 0.94 is the
+ * clean gap. The per-bristle ±4 % jitter must NOT be used to find the run: a
+ * 0.96 base run with −4 % jitter reads 0.9216 — as dark as a dark run's
+ * brightest fibre. The header is the run's identity.
+ */
+export const BRISTLE_CENTRE_DARK_RUN = 0.94;
+
+/**
+ * The donor band: bristles at |across| ≥ 0.55 pay back the level removed from
+ * the dark centre cluster. 0.55 is the reference's own rim floor
+ * (`clamp(|across|, 0.55, 1)`), so the donation lands on the outer bristles,
+ * never on the ridge detector's 4..20 px shoulders.
+ */
+export const BRISTLE_CENTRE_RIM = 0.55;
+
+/**
+ * 261126-n20 (follow-up): the footprint gate as a 0..1 strength. A non-finite
+ * half-width reads as 0 (no law): a missing footprint must replay the known
+ * look, never an invented one.
+ */
+export function bristleCentreDebiasGate(halfWidthPx: number): number {
+  if (!Number.isFinite(halfWidthPx)) return 0;
+  return smoothstep(BRISTLE_CENTRE_GATE_LO_PX, BRISTLE_CENTRE_GATE_HI_PX, halfWidthPx);
+}
+
+/** One generated run: its bristle index range and its header multiplier. */
+export interface BristleRun {
+  readonly start: number;
+  /** Exclusive. */
+  readonly end: number;
+  /** The run header's value multiplier, before the per-bristle ±4 % jitter. */
+  readonly m: number;
+}
+
+/**
+ * ISSUE 2's ONE law. `level = −ln(valueJitter)` is absorbance, so a dark run
+ * at the stroke's centre is extra LEVEL on the axis the artist reads as a
+ * hard line. Lift the contiguous cluster of dark-header runs containing the
+ * centre-most bristle by the cluster's mean level: at gate 1 every cluster
+ * value becomes the cluster's geometric mean (≈1, i.e. neutral). The
+ * |across| ≥ 0.55 rim is darkened by the SAME total level spread over its
+ * bristles, so the whole set's Σ(−ln v) is preserved to float precision: the
+ * centre loses exactly what the rim gains, the stroke's mean darkness does
+ * not move, and the body's dark runs keep their texture. Run boundaries come
+ * from `makeBristles`' own generation records, never a value threshold —
+ * adjacent runs can share similar values. Gate 0 is a strict no-op
+ * (byte-identical data), which is the Size ≤ 150 identity contract. No RNG is
+ * drawn.
+ */
+export function deBiasCentreRuns(
+  data: Float32Array,
+  count: number,
+  runs: readonly BristleRun[],
+  gate: number,
+): void {
+  const g = Number.isFinite(gate) ? clamp01(gate) : 0;
+  if (g <= 0 || count <= 0 || runs.length === 0) return;
+  let centre = 0;
+  for (let i = 1; i < count; i += 1) {
+    if (Math.abs(data[i * 8]!) < Math.abs(data[centre * 8]!)) centre = i;
+  }
+  let at = 0;
+  while (at < runs.length - 1 && centre >= runs[at]!.end) at += 1;
+  if (centre < runs[at]!.start || runs[at]!.m >= BRISTLE_CENTRE_DARK_RUN) return;
+  let lo = at;
+  let hi = at;
+  while (lo > 0 && runs[lo - 1]!.m < BRISTLE_CENTRE_DARK_RUN) lo -= 1;
+  while (hi < runs.length - 1 && runs[hi + 1]!.m < BRISTLE_CENTRE_DARK_RUN) hi += 1;
+  const start = runs[lo]!.start;
+  const end = Math.min(runs[hi]!.end, count);
+  let total = 0;
+  for (let i = start; i < end; i += 1) {
+    const vj = data[i * 8 + 5]!;
+    if (vj > 0) total += -Math.log(vj);
+  }
+  if (total <= 0) return;
+  let rim = 0;
+  for (let i = 0; i < count; i += 1) {
+    if (Math.abs(data[i * 8]!) >= BRISTLE_CENTRE_RIM) rim += 1;
+  }
+  if (rim === 0) return;
+  const lift = Math.exp((g * total) / (end - start));
+  const drop = Math.exp((-g * total) / rim);
+  for (let i = start; i < end; i += 1) data[i * 8 + 5] = data[i * 8 + 5]! * lift;
+  for (let i = 0; i < count; i += 1) {
+    if (Math.abs(data[i * 8]!) >= BRISTLE_CENTRE_RIM) data[i * 8 + 5] = data[i * 8 + 5]! * drop;
+  }
+}
+
 /**
  * 64-22 (D-22): the gather's coverage band. The reference's 0.09 is a
  * constant: Feather never widens it (a wider band lowers the threshold and
@@ -647,11 +760,19 @@ export interface BristleSet {
  *
  * `rng` is the stroke's seeded generator. The call order is the determinism
  * contract (see the file header): changing it changes every bristle.
+ *
+ * `centreGate` (261126-n20 follow-up) is the real-footprint strength of the
+ * centre-fibre de-bias: 0 is a strict no-op (every existing call site and
+ * every Size ≤ 150 stroke stays byte-identical) and 1 lifts the dark centre
+ * cluster to neutral while the rim pays the level back. It draws NO RNG
+ * value; the stream and the run structure are identical at every gate.
  */
-export function makeBristles(count: number, rng: () => number): BristleSet {
+export function makeBristles(count: number, rng: () => number, centreGate = 0): BristleSet {
   const n = clamp(Math.trunc(count), BRISTLE_MIN, BRISTLE_CAP);
+  const gate = Number.isFinite(centreGate) ? clamp01(centreGate) : 0;
   const data = new Float32Array(n * 8);
   const spacing = 2 / n;
+  const runs: BristleRun[] | null = gate > 0 ? [] : null;
   let i = 0;
   while (i < n) {
     // §4.2 run header — ONE draw per field, even when the run is clipped.
@@ -664,6 +785,7 @@ export function makeBristles(count: number, rng: () => number): BristleSet {
     if (valuePick < 0.18) m = 0.8 + rng() * 0.12;
     else if (valuePick < 0.3) m = 1.04 + rng() * 0.08;
     else m = 0.96 + rng() * 0.08;
+    const start = i;
     for (let k = 0; k < run && i < n; k += 1, i += 1) {
       // §4.1: across-position jitter is ±30 % of one spacing — the difference
       // between a comb and a brush.
@@ -695,6 +817,8 @@ export function makeBristles(count: number, rng: () => number): BristleSet {
       data[base + 6] = initialLoad;
       data[base + 7] = 0;
     }
+    if (runs !== null) runs.push({ start, end: i, m });
   }
+  if (runs !== null) deBiasCentreRuns(data, n, runs, gate);
   return { count: n, data };
 }
