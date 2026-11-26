@@ -1297,176 +1297,6 @@ const EDGE_ENCODE_OVER = 0
  *  REPORTED — the prescribed blur order makes a byte-exact rim impossible, and
  *  UAT row 6 judges how the commit reads. All three must be real numbers. */
 const EDGE_POLISH_P95 = 1
-/** 261126-hgl — THE RIM BAR. The `edge-rim` layer arm is barred against its
- *  SAME-RECIPE `--edge 0` sheet control: the artist accepts Amount 0 as clean,
- *  so the sheet path is the accepted BASELINE (its residual is the
- *  yellow-over-blue KM crossing, not the halo — measured 3.41 lateral / 8.98
- *  tip light and 9.93 / 21.70 chroma at falloff 100). Per axis and surface
- *  the layer's `edgeRimLight*` / `edgeRimChroma*` must stay within one
- *  display step of the control's same field. The control has no layer, so its
- *  LIVE surface IS its committed one (the sheet path composites in the sheet;
- *  there is no separate live composite to reconstruct), and the live bar
- *  reads the control's committed reading. */
-const EDGE_RIM_PARITY_MAX = 1
-
-/** The eight rim readings, with the axis and surface each one names. */
-const EDGE_RIM_FIELDS = [
-  ['edgeRimLightLateralCommitted', 'Lateral', 'Committed'],
-  ['edgeRimLightTipCommitted', 'Tip', 'Committed'],
-  ['edgeRimChromaLateralCommitted', 'Lateral', 'Committed'],
-  ['edgeRimChromaTipCommitted', 'Tip', 'Committed'],
-  ['edgeRimLightLateralLive', 'Lateral', 'Live'],
-  ['edgeRimLightTipLive', 'Tip', 'Live'],
-  ['edgeRimChromaLateralLive', 'Lateral', 'Live'],
-  ['edgeRimChromaTipLive', 'Tip', 'Live'],
-]
-
-/** The sheet-path control's gate name for a rim gate: `<prefix>-p<pickup>-
- *  <f##>` → `<prefix>-ctl-<f##>` at the recipe's pickup 100, else
- *  `<prefix>-ctl<pickup>-<f##>` (the pickup-0 arm keeps its own recipe). A
- *  name outside that convention cannot resolve a control and fails by name. */
-function edgeRimControlGate(gateName) {
-  const match = /^(.*)-p(\d+)-(f\d+)$/.exec(gateName)
-  if (!match) return null
-  const [, prefix, pickup, falloff] = match
-  return pickup === '100' ? `${prefix}-ctl-${falloff}` : `${prefix}-ctl${pickup}-${falloff}`
-}
-
-/** The control capture, read once per process (a rim JSON carries the full
- *  profiles; the print path and the bar share one parse). */
-const rimControlCache = new Map()
-function edgeRimControl(gateName) {
-  const controlGate = edgeRimControlGate(gateName)
-  if (controlGate === null) return { controlGate: null, control: null, path: null }
-  const path = join(tmpDir, `${controlGate}.json`)
-  if (rimControlCache.has(path)) return { controlGate, control: rimControlCache.get(path), path }
-  if (!existsSync(path)) return { controlGate, control: null, path }
-  let control = null
-  try {
-    control = JSON.parse(readFileSync(path, 'utf8'))
-  } catch {
-    control = null
-  }
-  rimControlCache.set(path, control)
-  return { controlGate, control, path }
-}
-
-/** The rim invariant (261126-hgl): a control capture must carry its committed
- *  readings (and null live halves by construction), and a LAYER capture's
- *  eight rim readings must sit within EDGE_RIM_PARITY_MAX of its same-recipe
- *  `--edge 0` control. A missing or mismatched control fails by name — never
- *  read as a satisfied bar. */
-function edgeRimFailures(data) {
-  const failures = []
-  if (!Number.isFinite(data.edgeAmount) || data.edgeAmount < 0 || data.edgeAmount > 100) {
-    failures.push(`edgeAmount ${JSON.stringify(data.edgeAmount)} is not a 0..100 knob`)
-    return failures
-  }
-  const isControl = data.edgeAmount === 0
-  for (const [field, , surface] of EDGE_RIM_FIELDS) {
-    const value = data[field]
-    if (isControl && surface === 'Live') {
-      if (value !== null) {
-        failures.push(
-          `${field} ${JSON.stringify(value)} must be null on the sheet-path control ` +
-            '(no layer, no live composite to reconstruct)',
-        )
-      }
-      continue
-    }
-    if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
-      failures.push(`${field} ${JSON.stringify(value)} is not a non-negative 1/255 rim reading`)
-    }
-  }
-  if (isControl) return failures
-  const { controlGate, control, path } = edgeRimControl(gate)
-  if (controlGate === null) {
-    failures.push(
-      `cannot derive the sheet-path control gate from "${gate}" — a rim gate must be named ` +
-        '<prefix>-p<pickup>-<f##> so its control is <prefix>-ctl[-<pickup>]-<f##>',
-    )
-    return failures
-  }
-  if (control === null) {
-    failures.push(
-      `the rim parity control "${controlGate}" is missing at ${path} (or unreadable) — ` +
-        'run --scenario edge-rim --edge 0 with the same pickup / falloff / feather',
-    )
-    return failures
-  }
-  // The control must be the SAME recipe: a control from another pickup,
-  // falloff or feather arm would silently widen the bar.
-  for (const [field, expected] of [
-    ['scenario', 'edge-rim'],
-    ['edgeAmount', 0],
-    ['edgeFalloff', data.edgeFalloff],
-    ['edgePickupControl', data.edgePickupControl],
-    ['edgeFeatherControl', data.edgeFeatherControl],
-  ]) {
-    if (control[field] !== expected) {
-      failures.push(
-        `the rim parity control "${controlGate}" records ${field} ` +
-          `${JSON.stringify(control[field])}, not ${JSON.stringify(expected)} — ` +
-          'the control must be the same-recipe --edge 0 arm',
-      )
-    }
-  }
-  if (failures.length > 0) return failures
-  for (const [field, axis, surface] of EDGE_RIM_FIELDS) {
-    const value = data[field]
-    if (typeof value !== 'number') continue   // already reported above
-    // The control has no layer: its live surface IS its committed one.
-    const controlField = surface === 'Live' ? field.replace('Live', 'Committed') : field
-    const base = control[controlField]
-    if (typeof base !== 'number' || !Number.isFinite(base) || base < 0) {
-      failures.push(
-        `the rim parity control "${controlGate}" ${controlField} ${JSON.stringify(base)} is not a ` +
-          'non-negative 1/255 reading — the control cannot baseline this bar',
-      )
-      continue
-    }
-    if (value > base + EDGE_RIM_PARITY_MAX) {
-      failures.push(
-        `${field} ${value}/255 exceeds its same-recipe --edge 0 control ${base}/255 + ` +
-          `${EDGE_RIM_PARITY_MAX}/255 (${axis} ${surface.toLowerCase()}) — the layer arm still ` +
-          'carries a rim the accepted Amount-0 sheet does not',
-      )
-    }
-  }
-  return failures
-}
-
-/** Print each layer/control rim pair (261126-hgl), one line per axis/surface
- *  and channel. Printed, never compared — the bar is edgeRimFailures. */
-function printEdgeRim(data) {
-  if (data.scenario !== 'edge-rim') return
-  if (data.edgeAmount === 0) {
-    const readings = EDGE_RIM_FIELDS.filter(([field]) => typeof data[field] === 'number').map(
-      ([field]) => `${field.replace('edgeRim', '')} ${data[field]}`,
-    )
-    console.log(`rim       : sheet-path control (no layer; live null by construction) ${readings.join(' | ')}`)
-    console.log('')
-    return
-  }
-  const { controlGate, control } = edgeRimControl(gate)
-  console.log(`rim       : layer vs ${controlGate ?? '(no control gate)'}`)
-  for (const [field, axis, surface] of EDGE_RIM_FIELDS) {
-    const value = data[field]
-    const controlField = surface === 'Live' ? field.replace('Live', 'Committed') : field
-    const base = control === null ? undefined : control[controlField]
-    const channel = field.includes('Light') ? 'light' : 'chroma'
-    const delta =
-      typeof value === 'number' && typeof base === 'number'
-        ? `${(value - base).toFixed(2)}`
-        : '(n/a)'
-    console.log(
-      `rim       : ${axis.padEnd(7)} ${surface.padEnd(9)} ${channel.padEnd(6)} ` +
-        `${String(value).padStart(6)} | control ${String(base).padStart(6)} | delta ${delta} (bar +${EDGE_RIM_PARITY_MAX})`,
-    )
-  }
-  console.log('')
-}
-
 /** The printed-share reading at the band edge is REPORTED, not barred: the
  *  reverted film law's EDGE_PRINT_* floors were defined against `1 − amount·t^e`
  *  on the whole mark, and the layer law's raster mixes the base's own print
@@ -1518,8 +1348,8 @@ const EDGE_LAYER_READINGS = [
   // 261126-hgl: the halo readout on the `edge-layer` scene — a DIAGNOSTIC,
   // never a bar. The red-over-blue `edge-layer` pair pales by construction
   // (red's coefficient dominates the mix), so its dip score judges the scene,
-  // not the halo; the artist's halo is judged on `edge-rim` (yellow over the
-  // blue wash) by the rim block. Required so the reading stays emitted.
+  // not the halo; the artist's halo is measured on `edge-rim` (yellow over the
+  // blue wash) by the rim readings. Required so the reading stays emitted.
   'edgeFringeDipPaper',
   'edgeFringeDipUnder',
   'edgePrintRetentionPaper',
@@ -1876,8 +1706,8 @@ function edgeLayerFailures(data, reference) {
   // `edge-layer` pair is red over blue, which pales by construction (red's
   // coefficient dominates the mix), so a dip here cannot judge the halo; the
   // artist's halo is measured on `edge-rim` (yellow over the blue wash) by the
-  // rim block Task 4 registers (Task 3 emits the readings only). The values
-  // must still be real non-negative readings.
+  // rim readings, which are diagnostics too while the fix is re-planned. The
+  // values must still be real non-negative readings.
   for (const side of ['Paper', 'Under']) {
     const field = `edgeFringeDip${side}`
     const value = data[field]
@@ -2368,7 +2198,6 @@ const SCENARIO_INVARIANTS = {
   'bristle-line-over': bristleLineFailures,
   'bristle-tip': bristleTipFailures,
   'edge-layer': edgeLayerFailures,
-  'edge-rim': edgeRimFailures,
 }
 
 /** Run the scenario's invariant function, if it has one. `reference` is the
@@ -2573,7 +2402,7 @@ function printDurations(label, data) {
   }
   // 261126-hgl: the fringe's light-ring score per lateral axis — PRINTED as a
   // diagnostic, never barred. The red-over-blue `edge-layer` scene pales by
-  // construction; the artist's halo is judged on `edge-rim`.
+  // construction; the artist's halo is measured on `edge-rim`.
   if (typeof data.edgeFringeDipPaper === 'number' || typeof data.edgeFringeDipUnder === 'number') {
     console.log(
       `${label.padEnd(9)} : fringe dip paper ${data.edgeFringeDipPaper} | under ${data.edgeFringeDipUnder} (diagnostic — red-over-blue pales by construction)`,
@@ -2896,44 +2725,6 @@ if (mode === 'falloff-sweep') {
   process.exit(0)
 }
 
-// 261126-hgl: the rim parity relation is SELF-CONTAINED — the capture is
-// barred against its same-recipe `--edge 0` control (read from /tmp), not
-// against a committed baseline (there is none for this scene, and a baseline
-// would only freeze one engine's numbers while the control travels with the
-// recipe). The standard field compare takes over if a baseline is ever
-// committed; the invariant runs in every mode regardless.
-if (
-  mode === 'baseline' &&
-  actual.scenario === 'edge-rim' &&
-  !existsSync(join(here, 'baselines', `${gate}.json`))
-) {
-  console.log('============ medium-engine pixel-gate compare ============')
-  console.log('mode      : edge-rim parity relation (no committed baseline)')
-  console.log(`capture   : ${actualPath}`)
-  console.log('')
-  printDurations('capture', actual)
-  console.log('')
-  printEdgeRim(actual)
-  const lawFailures = alphaLawFailures(actual)
-  for (const line of lawFailures) console.log(`INVARIANT ${line}`)
-  const failures = edgeRimFailures(actual)
-  for (const line of failures) console.log(`RIM       ${line}`)
-  if (lawFailures.length > 0 || failures.length > 0) {
-    console.log(
-      `RESULT: FAIL — ${failures.length} rim parity failure(s), ` +
-        `${lawFailures.length} alpha law failure(s) (${gate})`,
-    )
-    console.log('=========================================================')
-    process.exit(1)
-  }
-  console.log(
-    `RESULT: PASS — every rim reading within ${EDGE_RIM_PARITY_MAX}/255 of its ` +
-      `same-recipe --edge 0 control (${gate})`,
-  )
-  console.log('=========================================================')
-  process.exit(0)
-}
-
 const reference = resolveReference()
 const referencePath = reference.path
 const refData = readJson(referencePath, reference.label)
@@ -3144,30 +2935,6 @@ if (mode === 'other' && EDGE_STUDIO_FIELDS.every((field) => field in actual && f
   }
 }
 
-// 261126-hgl: a re-capture of the same rim arm must replay its eight readings
-// field for field too — the same layer/control parity numbers, not only the
-// same digests. JSON comparison so a control arm's null live halves must also
-// match (a live reading appearing on the sheet path would differ). Compared
-// only when BOTH captures carry the keys, so every other scenario's shape is
-// unchanged.
-if (
-  mode === 'other' &&
-  actual.scenario === 'edge-rim' &&
-  refData.scenario === 'edge-rim' &&
-  EDGE_RIM_FIELDS.every(([field]) => field in actual && field in refData)
-) {
-  for (const [field] of EDGE_RIM_FIELDS) {
-    const a = JSON.stringify(actual[field])
-    const b = JSON.stringify(refData[field])
-    if (a !== b) {
-      differing += 1
-      console.log(`DIFFER    ${field.padEnd(18)} capture=${a} reference=${b}`)
-    } else {
-      console.log(`equal     ${field.padEnd(18)} ${a}`)
-    }
-  }
-}
-
 // WR-01: the standing gate (capture vs its own baseline, or a same-session
 // pair) asserts the same self-contained outcome invariants in every mode.
 const regionFailures = coverRegionFailures(actual)
@@ -3177,7 +2944,6 @@ printBristleWet(actual)
 printBristleTip(actual)
 printCoverLifecycle(actual)
 printEdgeStudio(actual)
-printEdgeRim(actual)
 // 64-31: the alpha-law blocks run in committed-baseline and same-session mode
 // too — every mode, before every verdict.
 const lawFailures = alphaLawFailures(actual)

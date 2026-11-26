@@ -1310,23 +1310,14 @@ describe('261119-pod — the §3.3 smear, the snapshot and the four-side Feather
     const g = gather()
     expectContains(g, 'uniform sampler2D uPrevA;')
     expectContains(g, 'uniform sampler2D uPrevB;')
-    // 261126-hgl (the halo law): the film is stored PREMULTIPLIED by its own
-    // union presence, so the reference is the film DIVIDED by that presence
-    // and the sheet fallback is gated on landed presence — never on the
-    // retired absorbance magnitude `prev2` (tiny at the feathered fringe,
-    // which let the pale sheet film in and drew the halo).
-    expectContains(g, 'uniform sampler2D uPrevPresence;')
     const d = deposit()
     expectContains(d, 'if (uSmearSmooth > 0.5) {')
     expectContains(d, 'vec2 po = vec2(1.5) / uSheet;')
-    expectContains(d, 'float prevPresence = 0.2 * (texture(uPrevPresence, vUv).y')
-    expectContains(d, 'float prevDen = max(prevPresence, 1e-4);')
     expectContains(d, 'vec4 prevA = 0.2 * (texture(uPrevA, vUv)')
     expectContains(d, 'vec4 prevB = 0.2 * (texture(uPrevB, vUv)')
-    expectContains(d, 'float prevW = smoothstep(1e-6, 1e-3, prevPresence);')
+    expectContains(d, 'float prevW = smoothstep(1e-6, 1e-3, prev2);')
     expectContains(d, 'snapA = mix(snapA, prevA, prevW);')
     expectContains(d, 'snapB = vec4(mix(snapB.xyz, prevB.xyz, prevW), snapB.a);')
-    expect(d.includes('prev2'), 'the retired prev2 magnitude gate must be gone').toBe(false)
     // The cover alpha stays the SHEET's: the solid/wet gate asks whether the
     // paint the dab CROSSES is wet, never whether the layer has landed.
     expectContains(d, 'smear *= smoothstep(0.55, 0.85, clamp(snapB.a / uBodyFloor, 0.0, 1.0));')
@@ -1335,9 +1326,6 @@ describe('261119-pod — the §3.3 smear, the snapshot and the four-side Feather
     const layer = sliceBetween(ENGINE_SOURCE, 'private bristleLayerInk(', 'private touch(')
     expectContains(layer, 'gl.uniform1i(d.u.uPrevA!, g.bindTex(8, layerInk.tex[0]!));')
     expectContains(layer, 'gl.uniform1i(d.u.uPrevB!, g.bindTex(9, layerInk.tex[1]!));')
-    // 261126-hgl: the presence lane rides the free unit 10, the layer film's
-    // attachment 0 (its G lane) — the same film whose RG the reference reads.
-    expectContains(layer, 'gl.uniform1i(d.u.uPrevPresence!, g.bindTex(10, this.layerFilm!.tex[0]!));')
     expectContains(layer, 'this.layerInk!.swap();')
   })
 

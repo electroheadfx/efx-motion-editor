@@ -653,16 +653,14 @@ export class WatercolorEngine {
    *
    * Edge transparency is a LAYER, not a dab law: while the flag is on and the
    * tool is the bristle Brush, every dab also lands on a stroke-sized film
-   * (`layerInk` halves + `layerFilm` [cover_L + union presence, MIN lateral]
-   * + `layerRelief`),
+   * (`layerInk` halves + `layerFilm` [cover_L, MIN lateral] + `layerRelief`),
    * and the stroke end merges that film into the sheet with the frozen 8-band
    * encoder. Amount 0 never allocates a target and never draws a merge, so
    * the shipped path stays byte-identical.
    *
    * The targets persist for the engine's life so a stroke never pays an
-   * allocation. 42 B/px over the live formats (261126-hgl: the film carries
-   * the presence lane): 46.72 MiB at 1080², 168 MiB at the 4K clamp (2049²),
-   * 672 MiB if 4096² were reachable.
+   * allocation. 40 B/px measured over the live formats (Task 5): 44.5 MiB at
+   * 1080², 160 MiB at the 4K clamp (2049²), 640 MiB if 4096² were reachable.
    */
   private layerInk: DoubleTarget | null = null;
   private layerFilm: Target | null = null;
@@ -992,22 +990,18 @@ export class WatercolorEngine {
     return this.params.edgeFade > 0 && s.tool === 'brush' && isBristleResponse(this.brush);
   }
 
-  /** Allocate the lazy layer targets (once per engine life, 42 B/px: the two
-   *  RGBA16F ink halves 32, the film 6 (RG16F 4 + R16F 2), the two R16F
-   *  reliefs 2 + 2). */
+  /** Allocate the lazy layer targets (once per engine life, 40 B/px: the two
+   *  RGBA16F ink halves 32, the film 4, the two R16F reliefs 2 + 2). */
   private ensureLayer() {
     if (this.layerAllocated && this.layerInk !== null && this.layerFilm !== null
       && this.layerRelief !== null && this.mergeRelief !== null) return;
     const { gl, g } = this;
     this.layerInk = g.double(this.dw, this.dh, [HALF_FLOAT_RGBA, HALF_FLOAT_RGBA], gl.LINEAR);
-    // Attachment 0 is RG16F: R = the layer's cover (`cover_L`, the alpha
-    // gate), G = the deposit's union PRESENCE (261126-hgl — the same
-    // (ONE, ONE_MINUS_SRC_ALPHA) blend accumulates it, `a` per dab, so the
-    // merge can normalize the premultiplied film by its own occupancy).
-    // Attachment 1 is the MIN of the lateral coordinate
-    // `clamp(|across| / uLayerEdge, 0, 1)` (1 at the stroke's visual edge,
-    // BRISTLE_LAYER_EDGE). NEAREST: the merge reads one texel per texel.
-    this.layerFilm = g.target(this.dw, this.dh, [HALF_FLOAT_RG, HALF_FLOAT_R], gl.NEAREST);
+    // Attachment 0 is the layer's cover (`cover_L`); attachment 1 is the MIN
+    // lateral coordinate `clamp(|across| / uLayerEdge, 0, 1)` (1 at the
+    // stroke's visual edge, BRISTLE_LAYER_EDGE). NEAREST: the merge reads one
+    // texel per texel.
+    this.layerFilm = g.target(this.dw, this.dh, [HALF_FLOAT_R, HALF_FLOAT_R], gl.NEAREST);
     this.layerRelief = g.target(this.dw, this.dh, [HALF_FLOAT_R], gl.LINEAR);
     this.mergeRelief = g.target(this.dw, this.dh, [HALF_FLOAT_R], gl.LINEAR);
     this.layerAllocated = true;
@@ -4267,10 +4261,6 @@ export class WatercolorEngine {
     // The smear's layer reference: the read half (the film before this dab).
     gl.uniform1i(d.u.uPrevA!, g.bindTex(8, layerInk.tex[0]!));
     gl.uniform1i(d.u.uPrevB!, g.bindTex(9, layerInk.tex[1]!));
-    // 261126-hgl (the halo law): the film's own union presence (layerFilm
-    // attachment 0's G lane) on the free unit 10. The deposit divides its
-    // reference by this presence — the film is stored premultiplied by it.
-    gl.uniform1i(d.u.uPrevPresence!, g.bindTex(10, this.layerFilm!.tex[0]!));
     gl.uniform1f(d.u.uScatter!, scatter);
     gl.enable(gl.BLEND);
     gl.blendEquation(gl.FUNC_ADD);

@@ -580,7 +580,7 @@ describe('the stroke layer opens at both stroke-creation sites (261125-kvl task 
     expectContains(ensure, 'if (this.layerAllocated && this.layerInk !== null && this.layerFilm !== null')
     expectContains(ensure, '&& this.layerRelief !== null && this.mergeRelief !== null) return;')
     expectContains(ensure, 'this.layerInk = g.double(this.dw, this.dh, [HALF_FLOAT_RGBA, HALF_FLOAT_RGBA], gl.LINEAR);')
-    expectContains(ensure, 'this.layerFilm = g.target(this.dw, this.dh, [HALF_FLOAT_RG, HALF_FLOAT_R], gl.NEAREST);')
+    expectContains(ensure, 'this.layerFilm = g.target(this.dw, this.dh, [HALF_FLOAT_R, HALF_FLOAT_R], gl.NEAREST);')
     expectContains(ensure, 'this.layerRelief = g.target(this.dw, this.dh, [HALF_FLOAT_R], gl.LINEAR);')
     expectContains(ensure, 'this.mergeRelief = g.target(this.dw, this.dh, [HALF_FLOAT_R], gl.LINEAR);')
     expectContains(ensure, 'this.layerAllocated = true;')

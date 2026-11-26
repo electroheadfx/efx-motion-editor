@@ -918,10 +918,9 @@ function baseCapture(scenario: string, gate: string): Record<string, unknown> {
   // 64-31: every compare mode now requires the alpha-law block, and a
   // bristle capture reports the visible-alpha check as skipped with its
   // reason (the display film blur makes RGB and alpha disagree at the fringe).
-  // Spec 10: the SAME predicate probe.ts and compare.mjs share —
-  // `edge-layer` is a bristle scene (bristle-round, Body 100), and
-  // 261126-hgl's `edge-rim` is the same brush on the artist's pair.
-  const bristle = scenario.startsWith('bristle-') || scenario === 'edge-layer' || scenario === 'edge-rim'
+  // Spec 10: the SAME two-clause predicate probe.ts and compare.mjs share —
+  // `edge-layer` is a bristle scene (bristle-round, Body 100).
+  const bristle = scenario.startsWith('bristle-') || scenario === 'edge-layer'
   return {
     scenario,
     gate,
@@ -2162,8 +2161,8 @@ describe('the edge-layer gate (Spec 10)', () => {
       edgeContinuityUnder: layer ? 0 : null,
       // 261126-hgl: the fringe light-ring score per lateral axis — a
       // DIAGNOSTIC now (the red-over-blue pair pales by construction; the
-      // artist's halo is judged on `edge-rim`). Absent at amount 0 — no
-      // layer, no ring readout. A test moves one to prove it never fails.
+      // artist's halo is measured on `edge-rim`). Absent at amount 0 — no
+      // layer, no ring readout. A test proves it never fails.
       edgeFringeDipPaper: layer ? 0 : null,
       edgeFringeDipUnder: layer ? 0 : null,
       edgePrintRetentionPaper: layer ? Math.max(0, 1 - amount / 100) : null,
@@ -2210,9 +2209,7 @@ describe('the edge-layer gate (Spec 10)', () => {
   }
 
   /** The Studio rows a real edge-layer capture carries (probe.ts
-   *  `edgeStudioRows`). 2048² at 42 B/px = 168 MiB exactly (261126-hgl: the
-   *  film is RG16F + R16F = 6 B/texel after the presence lane). The clamp and
-   *  4K rows are the same per-texel value at their dims, rounded to 2 dp. */
+   *  `edgeStudioRows`). 2048² at 40 B/px = 160 MiB exactly. */
   function edgeStudioFixture(layer: boolean): Record<string, unknown> {
     return {
       edgeMemoryDim: [2048, 2048],
@@ -2220,16 +2217,16 @@ describe('the edge-layer gate (Spec 10)', () => {
       edgeMemoryTargets: {
         layerInkRead: layer ? 2048 * 2048 * 16 : 0,
         layerInkWrite: layer ? 2048 * 2048 * 16 : 0,
-        layerFilm: layer ? 2048 * 2048 * 6 : 0,
+        layerFilm: layer ? 2048 * 2048 * 4 : 0,
         layerRelief: layer ? 2048 * 2048 * 2 : 0,
         mergeRelief: layer ? 2048 * 2048 * 2 : 0,
       },
-      edgeMemoryLayerBytes: layer ? 2048 * 2048 * 42 : 0,
-      edgeMemoryPerTexel: layer ? 42 : 0,
-      edgeMemoryMiB: layer ? 168 : 0,
+      edgeMemoryLayerBytes: layer ? 2048 * 2048 * 40 : 0,
+      edgeMemoryPerTexel: layer ? 40 : 0,
+      edgeMemoryMiB: layer ? 160 : 0,
       edgeMemoryClampDim: [2049, 2049],
-      edgeMemoryClampedMiB: layer ? 168.16 : 0,
-      edgeMemory4KRawMiB: layer ? 672 : 0,
+      edgeMemoryClampedMiB: layer ? 160 : 0,
+      edgeMemory4KRawMiB: layer ? 640 : 0,
       edgeG1DrawsBefore: 0,
       edgeG1DrawsAtCallback: layer ? 1 : 0,
       edgeG1MergeDraws: layer ? 1 : 0,
@@ -2347,7 +2344,7 @@ describe('the edge-layer gate (Spec 10)', () => {
       expectContains(PROBE, 'const EDGE_FRINGE_GAP = 3')
     })
 
-    it('keeps the fringe dip as a diagnostic and reads the presence lane (261126-hgl)', () => {
+    it('keeps the fringe dip as a diagnostic (261126-hgl)', () => {
       // 261126-hgl retired the dip bar: the red-over-blue `edge-layer` pair
       // pales by construction, so the dip can never judge the artist's halo
       // (that surface is `edge-rim`). The readings stay emitted as
@@ -2355,18 +2352,6 @@ describe('the edge-layer gate (Spec 10)', () => {
       expectNotContains(COMPARE, 'EDGE_FRINGE_DIP_MAX')
       expectContains(COMPARE, "'edgeFringeDipPaper',")
       expectContains(COMPARE, "'edgeFringeDipUnder',")
-      // The film's bytes: two textures of 4 + 2 B/texel cannot ride the
-      // uniform per-target stride.
-      expectContains(PROBE, 'const EDGE_LAYER_FILM_BYTES_PER_TEXEL = 6')
-      // The presence lane is read from attachment 0 ONCE, four channels.
-      expectContains(PROBE, 'const film0 = read(film.views[0]!, 4)')
-      // The probe mirrors the shader's normalized film weight, and the mix
-      // applies it on the LAYER side only (the sheet keeps aEff).
-      expectContains(
-        PROBE,
-        'function edgeLayerFilmWeight(lateral: number, coverL: number, presence: number): number {',
-      )
-      expectContains(PROBE, 'layerA[o + c]! * layerWeight')
     })
 
     it('registers the edge-rim scene and emits its eight rim readings (261126-hgl task 3)', () => {
@@ -2393,37 +2378,6 @@ describe('the edge-layer gate (Spec 10)', () => {
       // The coherence guard: a 5-station box smooth and a two-station floor.
       expectContains(PROBE, 'const EDGE_RIM_SMOOTH_STATIONS = 5')
       expectContains(PROBE, 'const EDGE_RIM_RUN_MIN = 2')
-    })
-
-    it('bars the rim against its same-recipe sheet control (261126-hgl task 4)', () => {
-      // The bar is exactly one display step, per axis and per surface, against
-      // the same-recipe `--edge 0` control — never a widened one.
-      expectContains(COMPARE, 'const EDGE_RIM_PARITY_MAX = 1')
-      expectContains(COMPARE, 'const EDGE_RIM_FIELDS = [')
-      expectContains(COMPARE, 'function edgeRimControlGate(gateName) {')
-      expectContains(COMPARE, 'function edgeRimFailures(data) {')
-      expectContains(COMPARE, "'edge-rim': edgeRimFailures,")
-      expectContains(COMPARE, 'value > base + EDGE_RIM_PARITY_MAX')
-      expectContains(COMPARE, 'the rim parity control')
-      expectContains(COMPARE, 'function printEdgeRim(data) {')
-      // The control has no layer: its LIVE surface IS its committed one, and
-      // the live bar reads the committed twin (never a null control reading).
-      expectContains(COMPARE, "field.replace('Live', 'Committed')")
-      // The rim captures carry no committed baseline; the relation is read
-      // from the capture and its control alone (the --relief-smooth
-      // precedent), and the standard field compare takes over if a baseline
-      // is ever committed.
-      expectContains(COMPARE, "actual.scenario === 'edge-rim' &&")
-      expectContains(COMPARE, "!existsSync(join(here, 'baselines', `${gate}.json`))")
-      // The law's presence lane is bound where the film is bound: unit 10,
-      // the layer film's attachment 0 (the G lane), beside uPrevA / uPrevB.
-      const ENGINE = stripComments(
-        readFileSync(resolve(HERE, '../../src/playground/Engine.ts'), 'utf8'),
-      )
-      expectContains(
-        ENGINE,
-        'gl.uniform1i(d.u.uPrevPresence!, g.bindTex(10, this.layerFilm!.tex[0]!))',
-      )
     })
 
     it('carries the same bristle predicate in probe.ts, compare.mjs and this file', () => {
@@ -2711,127 +2665,6 @@ describe('the edge-layer gate (Spec 10)', () => {
     })
   })
 
-  // 261126-hgl task 4: the rim parity bar is EXECUTED — a layer fixture
-  // mutated past its control (+1/255) must fail BY NAME, and a layer AT
-  // parity must pass. The control is a real file in /tmp, so the lookup, the
-  // same-recipe match and the live->committed twin mapping are all exercised,
-  // not merely pinned as text.
-  describe('the rim parity bar, executed on failing fixtures', () => {
-    function rimLayer(pickup: number, falloff: number): Record<string, unknown> {
-      return {
-        ...baseCapture('edge-rim', `nyquist-rim-p${pickup}-f${falloff}`),
-        edgeAmount: 100,
-        edgeFalloff: falloff,
-        edgePickupControl: pickup,
-        edgeFeatherControl: 100,
-        // Every reading inside the bar but no further than one step from it,
-        // so the arithmetic is exercised (a fixture far from the bar would
-        // pass for the wrong reason).
-        edgeRimLightLateralCommitted: 3.9,
-        edgeRimLightTipCommitted: 9.4,
-        edgeRimChromaLateralCommitted: 10.4,
-        edgeRimChromaTipCommitted: 22.2,
-        edgeRimLightLateralLive: 3.4,
-        edgeRimLightTipLive: 9.9,
-        edgeRimChromaLateralLive: 10.9,
-        edgeRimChromaTipLive: 22.7,
-        edgeRimBand: {},
-        edgeRimProfiles: {},
-      }
-    }
-    function rimControl(pickup: number, falloff: number): Record<string, unknown> {
-      return {
-        ...baseCapture('edge-rim', `nyquist-rim-ctl-f${falloff}`),
-        // The sheet path: no layer, so the live surface IS the committed one
-        // and the probe records its live halves as null.
-        edgeAmount: 0,
-        edgeFalloff: falloff,
-        edgePickupControl: pickup,
-        edgeFeatherControl: 100,
-        edgeRimLightLateralCommitted: 3.4,
-        edgeRimLightTipCommitted: 8.9,
-        edgeRimChromaLateralCommitted: 9.9,
-        edgeRimChromaTipCommitted: 21.7,
-        edgeRimLightLateralLive: null,
-        edgeRimLightTipLive: null,
-        edgeRimChromaLateralLive: null,
-        edgeRimChromaTipLive: null,
-        edgeRimBand: {},
-        edgeRimProfiles: {},
-      }
-    }
-    function rimRejects(
-      name: string,
-      layer: Record<string, unknown>,
-      control: Record<string, unknown>,
-    ): string {
-      writeCapture('nyquist-rim-ctl-f100', control)
-      const { status, output } = compareSynthetic(name, layer)
-      expect(status, lawVerdict(status, output)).toBe(1)
-      expect(output).toContain('RESULT: FAIL')
-      return output
-    }
-
-    it('passes a layer arm within one step of its same-recipe control', () => {
-      writeCapture('nyquist-rim-ctl-f100', rimControl(100, 100))
-      const { status, output } = compareSynthetic('nyquist-rim-p100-f100', rimLayer(100, 100))
-      expect(status, lawVerdict(status, output)).toBe(0)
-      expect(output).toContain('rim       : layer vs nyquist-rim-ctl-f100')
-      expect(output).toContain('delta 0.50 (bar +1)')
-    })
-
-    it('fails a committed reading past its control by more than one step', () => {
-      const output = rimRejects(
-        'nyquist-rim-p100-f100',
-        { ...rimLayer(100, 100), edgeRimLightLateralCommitted: 4.41 },
-        rimControl(100, 100),
-      )
-      expect(invariantLine(output)).toContain('edgeRimLightLateralCommitted')
-      expect(output).toContain('exceeds its same-recipe --edge 0 control')
-    })
-
-    it('bars the LIVE surface against the control\'s committed twin', () => {
-      // The layer's committed tip stays inside the bar; only its live tip
-      // crosses it. The control records null live halves, so a bar reading
-      // the control's live field could never pass — it must read the twin.
-      const output = rimRejects(
-        'nyquist-rim-p100-f100',
-        { ...rimLayer(100, 100), edgeRimLightTipLive: 10 },
-        rimControl(100, 100),
-      )
-      expect(invariantLine(output)).toContain('edgeRimLightTipLive')
-    })
-
-    it('fails by name when the same-recipe control is missing', () => {
-      const { status, output } = compareSynthetic(
-        'nyquist-rim-p100-f0',
-        { ...rimLayer(100, 0), edgeFalloff: 0 },
-      )
-      expect(status, lawVerdict(status, output)).toBe(1)
-      expect(invariantLine(output)).toContain('is missing at')
-      expect(invariantLine(output)).toContain('nyquist-rim-ctl-f0')
-    })
-
-    it('fails a control recorded on another falloff arm', () => {
-      const output = rimRejects(
-        'nyquist-rim-p100-f100',
-        rimLayer(100, 100),
-        { ...rimControl(100, 100), edgeFalloff: 0 },
-      )
-      expect(invariantLine(output)).toContain('must be the same-recipe --edge 0 arm')
-    })
-
-    it('fails a control capture that records a live rim reading', () => {
-      const { status, output } = compareSynthetic('nyquist-rim-ctl-f50', {
-        ...rimControl(100, 50),
-        edgeRimLightLateralLive: 3.4,
-      })
-      expect(status, lawVerdict(status, output)).toBe(1)
-      expect(invariantLine(output)).toContain('edgeRimLightLateralLive')
-      expect(invariantLine(output)).toContain('must be null')
-    })
-  })
-
   // 261125-kvl WR-01: the merge's last-touch stamp is EXECUTED — the fixtures
   // below mutate one valid capture into a failing one and assert the
   // comparator rejects it BY NAME. An unstamped merge leaves the pair EQUAL,
@@ -2951,7 +2784,6 @@ describe('the edge-layer gate (Spec 10)', () => {
       const unreadable = rejects('nyquist-fringe-null', { edgeFringeDipUnder: null })
       expect(invariantLine(unreadable)).toContain('edgeFringeDipUnder')
     })
-
     it('WR-02: fails a capture missing a Studio row', () => {
       const capture = validEdgeLayerCapture(100, 50)
       delete capture.edgeCreateReallocated
