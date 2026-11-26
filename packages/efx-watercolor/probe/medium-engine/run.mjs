@@ -903,6 +903,13 @@ if (typeof result.edgeRimLightLateralCommitted === 'number' || typeof result.edg
     `rim       : light L/T live ${fmt(result.edgeRimLightLateralLive)} / ${fmt(result.edgeRimLightTipLive)} | chroma ${fmt(result.edgeRimChromaLateralLive)} / ${fmt(result.edgeRimChromaTipLive)} (1/255)`,
   )
 }
+// 261126: the body's under-share, on whichever arm this capture runs — the
+// open layer's film on the layer path, the sheet's own film on --edge 0.
+if (typeof result.edgeBodyUnderShare === 'number') {
+  console.log(
+    `body      : under-share ${result.edgeBodyUnderShare} (${result.edgeBodyUnderSource}, ${result.edgeBodyTexels} texels, cover ${result.edgeBodyCover}) | deposit ${JSON.stringify(result.edgeBodyDepositRgb)} vs under ${JSON.stringify(result.edgeBodyUnderRgb)}`,
+  )
+}
 if (result.lineSurfaces && typeof result.lineSurfaces === 'object') {
   console.log(`params    : ${JSON.stringify(result.paramsEcho ?? null)}`)
   console.log(`body      : override ${result.lineBodyOverride} | record ${result.recordBody} (the record is NOT changed)`)

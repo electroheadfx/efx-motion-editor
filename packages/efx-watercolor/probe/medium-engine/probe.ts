@@ -4333,6 +4333,12 @@ const EDGE_RIM_RUN_MIN = 2
  *  the midpoint. */
 const EDGE_RIM_BARE_SHARE = 0.8
 const EDGE_RIM_TIP_BARE_PX = 30
+/** The body window (both axes, doc px): the foreground's core at its
+ *  mid-length, where many dabs have landed and the smear's drag is the
+ *  settled blend. `edgeBodyUnderShare` projects this window's deposited film
+ *  onto the under's spectrum in the SAME coefficient space the gather reads:
+ *  0 is "only the brush's own paint", 1 is "the under-paint's spectrum". */
+const EDGE_RIM_BODY_HALF_PX = 40
 
 /** The artist's wash: down-and-right through the sheet's centre, full
  *  pressure (the wash is the wide body the foreground sits on). */
@@ -4426,6 +4432,20 @@ function edgeRimBandRect(sheet: number, axis: 'lateral' | 'tip'): EdgeRect {
     x1: Math.min(sheet, Math.ceil(centre + (aMax + rowHalf) / sqrt2) + 2),
     y0: Math.max(0, Math.floor(centre + yLo) - 2),
     y1: Math.min(sheet, Math.ceil(centre + yHi) + 2),
+  }
+}
+
+/** The body window's rect (doc px, y-up): the rotated ±half square around the
+ *  docs's centre, its axis-aligned bound `(half + half)/√2` plus a 2 px
+ *  margin (the margin keeps every read inside the capture). */
+function edgeRimBodyRect(sheet: number): EdgeRect {
+  const centre = 0.5 * sheet
+  const reach = Math.ceil((2 * EDGE_RIM_BODY_HALF_PX) / Math.SQRT2) + 2
+  return {
+    x0: Math.max(0, Math.floor(centre - reach)),
+    x1: Math.min(sheet, Math.ceil(centre + reach)),
+    y0: Math.max(0, Math.floor(centre - reach)),
+    y1: Math.min(sheet, Math.ceil(centre + reach)),
   }
 }
 
@@ -4751,16 +4771,110 @@ function edgeRimSurfaceBand(
   }
 }
 
-/** The rim report — the eight scores, both bands' references and the
- *  per-station profiles. Only this scenario emits it, so every other report
- *  shape is unchanged. `null` scores mean the axis could not be judged
- *  (never a fabricated zero); the control's live halves are null by
- *  construction (no layer, no live composite). */
+/** The body window's readings: the under (the wash before the stroke) and the
+ *  film the stroke laid down — the open layer on the layer arm, the sheet
+ *  after the stroke on the `--edge 0` control, where no layer and no merge
+ *  exist. */
+interface EdgeRimBodyCapture {
+  readonly under: EdgeDocFields | null
+  readonly layer: EdgeLayerFields | null
+  readonly deposit: EdgeDocFields | null
+}
+
+/** One film's 7-coefficient mean over a rect, and its mean display RGB8 —
+ *  both in storage domain (`k = 1`), the domain the gather's reference
+ *  lives in. */
+function edgeBodyFilmMean(
+  a: Float32Array,
+  b: Float32Array,
+  cover: Float32Array,
+  texels: number,
+): { coeffs: Float64Array; rgb: [number, number, number]; cover: number } {
+  const coeffs = new Float64Array(7)
+  const rgb: [number, number, number] = [0, 0, 0]
+  let coverSum = 0
+  for (let i = 0; i < texels; i += 1) {
+    for (let c = 0; c < 4; c += 1) coeffs[c] = coeffs[c]! + a[i * 4 + c]!
+    for (let c = 0; c < 3; c += 1) coeffs[4 + c] = coeffs[4 + c]! + b[i * 4 + c]!
+    const bands = edgeTexelBands(a, b, i, 1)
+    const px = edgeBandsRgb8(bands)
+    for (let c = 0; c < 3; c += 1) rgb[c] = rgb[c]! + px[c]!
+    coverSum += cover[i]!
+  }
+  for (let c = 0; c < 7; c += 1) coeffs[c] = coeffs[c]! / texels
+  for (let c = 0; c < 3; c += 1) rgb[c] = round2(rgb[c]! / texels)
+  return { coeffs, rgb, cover: round4(coverSum / texels) }
+}
+
+/**
+ * The body's under-share — "how much of the under-paint's spectrum does the
+ * stroke's own deposited film carry at its core?".
+ *
+ * The coefficient-space projection the 261126 pickup readout uses: the film
+ * mean `L`, the under-paint mean `U` (the wash before the stroke) and the
+ * brush's own palette `P` (the engine's `uPigmentA/B`, the no-pickup
+ * reference) give `share = <L − P, U − P> / <U − P, U − P>`, clamped 0..1.
+ * 0 is "the brush's own paint only" (Pickup 0 reads exactly 0), 1 is "the
+ * under-paint's spectrum". It is the sheet path's own law on the sheet arm
+ * (the deposit is the sheet's film) and the layer's film on the layer arm, so
+ * the two arms are the same measurement of different surfaces.
+ *
+ * null when the window or the pigment is unavailable — never a fabricated 0.
+ */
+function edgeRimBodyReport(
+  engine: WatercolorEngine,
+  body: EdgeRimBodyCapture | null,
+): Record<string, unknown> {
+  const absent = {
+    edgeBodyUnderShare: null,
+    edgeBodyUnderSource: null,
+    edgeBodyTexels: null,
+    edgeBodyCover: null,
+    edgeBodyDepositRgb: null,
+    edgeBodyUnderRgb: null,
+  }
+  if (body === null || body.under === null) return absent
+  const texels = body.under.width * body.under.height
+  if (texels === 0) return absent
+  const pigment = (engine as unknown as EdgeLayerInternals).pigment?.coeffs ?? null
+  if (pigment === null) return absent
+  const under = edgeBodyFilmMean(body.under.a, body.under.b, body.under.cover, texels)
+  const deposit =
+    body.layer !== null
+      ? edgeBodyFilmMean(body.layer.a, body.layer.b, body.layer.cover, texels)
+      : body.deposit !== null
+        ? edgeBodyFilmMean(body.deposit.a, body.deposit.b, body.deposit.cover, texels)
+        : null
+  if (deposit === null) return absent
+  let dA2 = 0
+  let dAdB = 0
+  for (let c = 0; c < 7; c += 1) {
+    const dA = under.coeffs[c]! - pigment[c]!
+    const dB = deposit.coeffs[c]! - pigment[c]!
+    dA2 += dA * dA
+    dAdB += dA * dB
+  }
+  return {
+    edgeBodyUnderShare: dA2 > 1e-8 ? round4(Math.min(1, Math.max(0, dAdB / dA2))) : null,
+    edgeBodyUnderSource: body.layer !== null ? 'layer' : 'sheet',
+    edgeBodyTexels: texels,
+    edgeBodyCover: deposit.cover,
+    edgeBodyDepositRgb: deposit.rgb,
+    edgeBodyUnderRgb: under.rgb,
+  }
+}
+
+/** The rim report — the eight scores, both bands' references, the body's
+ *  under-share and the per-station profiles. Only this scenario emits it, so
+ *  every other report shape is unchanged. `null` scores mean the axis could
+ *  not be judged (never a fabricated zero); the control's live halves are
+ *  null by construction (no layer, no live composite). */
 function edgeRimReport(
   engine: WatercolorEngine,
   sheet: number,
   transparent: HTMLCanvasElement,
   capture: EdgeRimRectCapture | null,
+  body: EdgeRimBodyCapture | null,
 ): Record<string, unknown> {
   const granulation = (engine as unknown as EdgeLayerInternals).params.granulation
   const lateral = edgeRimProfile(engine, sheet, transparent, capture, 'lateral', granulation)
@@ -4798,6 +4912,7 @@ function edgeRimReport(
     edgeRimLightTipLive: pick(tipBand.light.live),
     edgeRimChromaLateralLive: pick(lateralBand.chroma.live),
     edgeRimChromaTipLive: pick(tipBand.chroma.live),
+    ...edgeRimBodyReport(engine, body),
     edgeRimBand: { lateral: lateralBand, tip: tipBand },
     edgeRimProfiles: {
       lateral: {
@@ -7295,10 +7410,19 @@ function run(
     // sides, and the merge's result is the committed one. One shot each, the
     // adapter's exact applyStroke verb, settle and fix — the Studio's bake.
     let edgeRimCapture: EdgeRimRectCapture | null = null
+    // The body window's readings (the under-share metric): the open layer and
+    // the sheet at the stroke-end merge on the layer arm; the sheet before and
+    // after the foreground stroke on the `--edge 0` control, where no layer
+    // exists and the merge hook never fires.
+    let edgeRimBody: EdgeRimBodyCapture | null = null
     if (scenario === 'edge-rim') {
       pinStrokeStart(engine)
       const rimLateral = edgeRimBandRect(sheet, 'lateral')
       const rimTip = edgeRimBandRect(sheet, 'tip')
+      const rimBody = edgeRimBodyRect(sheet)
+      let rimBodyUnder: EdgeDocFields | null = null
+      let rimBodyLayer: EdgeLayerFields | null = null
+      let rimBodyDeposit: EdgeDocFields | null = null
       const rimHost = engine as unknown as {
         mergeStrokeLayer: (rect: EdgeRect) => void
         dw: number
@@ -7321,6 +7445,8 @@ function run(
           lateral: readEdgeLayerFields(engine, sheet, rimLateral),
           tip: readEdgeLayerFields(engine, sheet, rimTip),
         }
+        rimBodyUnder = readEdgeDocFields(engine, sheet, rimBody)
+        rimBodyLayer = readEdgeLayerFields(engine, sheet, rimBody)
         rimBaseMerge(rect)
         const postSheet = {
           lateral: readEdgeDocFields(engine, sheet, rimLateral),
@@ -7328,12 +7454,23 @@ function run(
         }
         edgeRimCapture = { preSheet, preLayer, postSheet }
       }
+      let rimEntry = 0
       for (const entry of script) {
         adapter.applyStroke(makeStroke(entry))
         const settle = entry.settle ?? SETTLE_TICKS
         for (let tick = 0; tick <= settle; tick += 1) adapter.stepTick(tick)
         adapter.fix()
+        // The foreground (last entry) paints over the fixed wash: its pre-dab
+        // sheet is the body's under on both arms. The sheet path's deposit is
+        // the sheet after the stroke — the layer arm's is its open layer, read
+        // at the merge above.
+        if (rimEntry === 0) rimBodyUnder = readEdgeDocFields(engine, sheet, rimBody)
+        if (rimEntry === script.length - 1 && rimBodyLayer === null) {
+          rimBodyDeposit = readEdgeDocFields(engine, sheet, rimBody)
+        }
+        rimEntry += 1
       }
+      edgeRimBody = { under: rimBodyUnder, layer: rimBodyLayer, deposit: rimBodyDeposit }
     }
     script.forEach((entry, index) => {
       // Spec 10: the edge-layer visit drives its own split strokes above (the
@@ -7616,7 +7753,7 @@ function run(
             transparent.pixels,
           )
         : scenario === 'edge-rim'
-          ? edgeRimReport(engine, sheet, transparentCanvas, edgeRimCapture)
+          ? edgeRimReport(engine, sheet, transparentCanvas, edgeRimCapture, edgeRimBody)
           : {}
 
     writeResult({
