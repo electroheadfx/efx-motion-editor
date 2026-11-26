@@ -40,6 +40,12 @@ import {
   visibleAlphaCheck,
   visibleAlphaSkipped,
 } from './alphaLaw'
+import {
+  END_PRE_GAP_BRACKET_PX,
+  END_PRE_GAP_MARGIN,
+  END_PRE_GAP_STATION_PX,
+  enclosedPaleRun,
+} from './endGap'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 
@@ -2791,5 +2797,94 @@ describe('the edge-layer gate (Spec 10)', () => {
       expect(status, lawVerdict(status, output)).toBe(1)
       expect(invariantLine(output)).toContain('edgeCreateReallocated')
     })
+  })
+})
+
+// ============================================================
+//  quick 261126-n20 task 1: the terminal pre-gap detector and the widened
+//  `--stroke-size` ceiling.
+//
+//  The detector is pure (endGap.ts) and EXECUTES here on synthetic profiles:
+//  the bar that will read the captures must be proven alive on a profile that
+//  carries the defect before it is trusted on a capture that must not.
+// ============================================================
+
+describe('the terminal pre-gap detector (261126-n20 task 1)', () => {
+  const run = (profile: readonly number[], bodyLevel = 0.6) =>
+    enclosedPaleRun(profile, {
+      bodyLevel,
+      margin: END_PRE_GAP_MARGIN,
+      bracketPx: END_PRE_GAP_BRACKET_PX,
+      stationPx: END_PRE_GAP_STATION_PX,
+    })
+
+  it('pins the detector constants the bar mirrors', () => {
+    expect(END_PRE_GAP_MARGIN).toBe(0.03)
+    expect(END_PRE_GAP_BRACKET_PX).toBe(48)
+    expect(END_PRE_GAP_STATION_PX).toBe(2)
+  })
+
+  it('reads a 12 px dip of 0.12 between two 0.60 plateaus', () => {
+    const profile = [
+      ...Array<number>(8).fill(0.6),
+      ...Array<number>(6).fill(0.48),
+      ...Array<number>(8).fill(0.6),
+    ]
+    const gap = run(profile)
+    expect(gap.largestRunPx).toBe(12)
+    expect(gap.maxDepth).toBeCloseTo(0.12, 6)
+    expect(gap.bracketed).toBe(true)
+    expect(gap.atPx).toBe(16)
+    expect(gap.bodyLevel).toBe(0.6)
+    expect(gap.stationCount).toBe(profile.length)
+  })
+
+  it('reads 0 on a monotone terminal ramp with no outer bracket', () => {
+    const gap = run([0.6, 0.55, 0.52, 0.5, 0.45, 0.4, 0.35, 0.3, 0.25, 0.2])
+    expect(gap.largestRunPx).toBe(0)
+    expect(gap.bracketed).toBe(false)
+  })
+
+  it('reads 0 on a flat body', () => {
+    const gap = run(Array<number>(40).fill(0.6))
+    expect(gap.largestRunPx).toBe(0)
+    expect(gap.maxDepth).toBe(0)
+  })
+
+  it('reads 0 on a dip touching either profile edge', () => {
+    const left = run([0.48, 0.48, 0.48, 0.6, 0.6, 0.6])
+    expect(left.largestRunPx).toBe(0)
+    const right = run([0.6, 0.6, 0.6, 0.48, 0.48, 0.48])
+    expect(right.largestRunPx).toBe(0)
+  })
+
+  it('reports the widest bracketed run when several qualify', () => {
+    const profile = [
+      0.6, 0.6, 0.6, 0.48, 0.48, 0.6, 0.6, 0.6, 0.6, 0.48, 0.48, 0.48, 0.48, 0.6, 0.6, 0.6,
+    ]
+    const gap = run(profile)
+    expect(gap.largestRunPx).toBe(8)
+    expect(gap.maxDepth).toBeCloseTo(0.12, 6)
+  })
+})
+
+describe('the widened --stroke-size ceiling (261126-n20 task 1)', () => {
+  it('accepts 1..800 in run.mjs and in probe.ts with the same expected text', () => {
+    expectContains(RUN, 'value < 1 || value > 800')
+    expectContains(RUN, 'invalid --stroke-size "${strokeSizeRaw}" (expected 1..800)')
+    expectContains(RUN, '[--stroke-size <1..800>]')
+    expectContains(PROBE, 'value < 1 || value > 800')
+    expectContains(PROBE, 'invalid strokeSize "${raw}" (expected 1..800)')
+    expectNotContains(RUN, 'expected 1..400')
+    expectNotContains(PROBE, 'expected 1..400')
+  })
+
+  it('emits the census-anchored endPreGap readout from the pure detector', () => {
+    expectContains(PROBE, "import {\n  END_PRE_GAP_BRACKET_PX,")
+    expectContains(PROBE, 'END_PRE_GAP_STATION_PX,\n  enclosedPaleRun,\n} from')
+    expectContains(PROBE, 'endPreGap,')
+    expectContains(PROBE, '...enclosedPaleRun(gapProfile, {')
+    expectContains(PROBE, 'x0Px: bodyHi,')
+    expectContains(PROBE, 'bodyLevel: round4(preGapBodyLevel),')
   })
 })

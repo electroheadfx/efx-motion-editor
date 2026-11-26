@@ -210,6 +210,15 @@ import {
   visibleAlphaCheck,
   visibleAlphaSkipped,
 } from './alphaLaw'
+// quick 261126-n20: the terminal pre-gap detector — a pure profile walk so the
+// harness executes the SAME code on synthetic data in vitest (alphaLaw.ts
+// precedent). The readout below builds the profile it consumes.
+import {
+  END_PRE_GAP_BRACKET_PX,
+  END_PRE_GAP_MARGIN,
+  END_PRE_GAP_STATION_PX,
+  enclosedPaleRun,
+} from './endGap'
 import { WatercolorEngine, clampDocSize } from '../../src/playground/Engine'
 import { BRUSH_PRESETS } from '../../src/playground/brushes'
 import { PAPERS, type PaperPreset } from '../../src/playground/papers'
@@ -1961,13 +1970,15 @@ function readOver(): boolean {
 /** 2026-11-22: the bristle-line stroke's own `size` key — absent keeps
  *  STROKE_PARAMS' 12 so the first captures stay reproducible.
  *  quick 261125-rtc: the ceiling widens 200 -> 400 for the artist's five-size
- *  sweep (50/100/150/200/300); 300 is the 16x sampling cell. */
+ *  sweep (50/100/150/200/300); 300 is the 16x sampling cell.
+ *  quick 261126-n20: the ceiling widens 400 -> 800 for the artist's 600 and
+ *  the 450 onset cell; 261125-rtc's 400 ceiling is superseded. */
 function readStrokeSize(): number {
   const raw = new URLSearchParams(location.search).get('strokeSize')
   if (raw === null || raw === '') return STROKE_PARAMS['size']!
   const value = Number(raw)
-  if (!Number.isFinite(value) || value < 1 || value > 400) {
-    throw new Error(`invalid strokeSize "${raw}" (expected 1..400)`)
+  if (!Number.isFinite(value) || value < 1 || value > 800) {
+    throw new Error(`invalid strokeSize "${raw}" (expected 1..800)`)
   }
   return value
 }
@@ -6770,6 +6781,50 @@ function bristleEndMetrics(
   const radiusPx = round2(strokeSize / 2)
   const windowLo = Math.max(0, lastTapX - 2.4 * radiusPx)
   const windowHi = Math.min(dw - 1, lastTapX + 1.05 * radiusPx)
+
+  // quick 261126-n20: the terminal pre-gap readout. The visible-darkness
+  // along-profile runs over the stroke's CENTRAL HALF — every raster row
+  // within r/2 of the centreline, both sides averaged — from the body zone's
+  // outer edge to the census-anchored window hi, one station every
+  // END_PRE_GAP_STATION_PX px. The body level is the median of the OUTER 40
+  // percent of the body zone, i.e. the density just before the end window,
+  // never the whole body's. The emitted profile lets the end-gap bar re-run
+  // its own frozen detector over the same numbers.
+  const acrossHalf = Math.max(1, Math.round(radiusPx * 0.5))
+  const gapAcrossMean = (x: number): number => {
+    let sum = 0
+    let n = 0
+    for (let o = -acrossHalf; o <= acrossHalf; o += 1) {
+      const gy = centre + o
+      if (gy < 0 || gy >= dh) continue
+      sum += visibleDark(x, dh - 1 - gy)
+      n += 1
+    }
+    return n > 0 ? sum / n : 0
+  }
+  const gapProfile: number[] = []
+  for (let x = bodyHi; x <= Math.round(windowHi); x += END_PRE_GAP_STATION_PX) {
+    gapProfile.push(round4(gapAcrossMean(x)))
+  }
+  const bodyOuterLo = bodyLo + Math.round(0.6 * (bodyHi - bodyLo))
+  const bodyLevelSamples: number[] = []
+  for (let x = bodyOuterLo; x < bodyHi; x += 1) bodyLevelSamples.push(gapAcrossMean(x))
+  const preGapBodyLevel = bodyLevelSamples.length > 0 ? median(bodyLevelSamples) : 0
+  const endPreGap = {
+    ...enclosedPaleRun(gapProfile, {
+      bodyLevel: preGapBodyLevel,
+      margin: END_PRE_GAP_MARGIN,
+      bracketPx: END_PRE_GAP_BRACKET_PX,
+      stationPx: END_PRE_GAP_STATION_PX,
+      x0Px: bodyHi,
+    }),
+    bodyLevel: round4(preGapBodyLevel),
+    stationCount: gapProfile.length,
+    stationPx: END_PRE_GAP_STATION_PX,
+    x0Px: bodyHi,
+    windowHi: round2(windowHi),
+    profile: gapProfile,
+  }
   // The visible-composite, carried-pigment, inked-fraction and raw-transparent
   // readings of the SAME two zones. `COVERAGE_INKED_THRESHOLD` is the coverage
   // raster's own 0.5 inked line; pigment and visible reuse the transparent
@@ -6831,6 +6886,7 @@ function bristleEndMetrics(
     endAlongDark,
     startAlongDark,
     endFine,
+    endPreGap,
     density: {
       window: {
         lastTapX,

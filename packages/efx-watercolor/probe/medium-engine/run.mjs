@@ -158,11 +158,13 @@
 //                                     one straight bristle-flat stroke at the
 //                                     acrylic record (Body via --body, default
 //                                     0); three-field across profiles + PNGs
-//             [--stroke-size <1..400>]  bristle-line/bristle-end only: the
+//             [--stroke-size <1..800>]  bristle-line/bristle-end only: the
 //                                     stroke's `size` key (omitted keeps
 //                                     STROKE_PARAMS' 12; 261125-rtc widened
 //                                     the band from 200 for the artist's
-//                                     300-size end sweep)
+//                                     300-size end sweep; 261126-n20 widens
+//                                     it to the artist's 600 and the 450
+//                                     onset cell, 1..800)
 //             [--band <16..400>]      bristle-line only: the across-profile
 //                                     half-width in document px (default 140,
 //                                     the full brush — the artist-visible
@@ -318,7 +320,7 @@ const gateFlag = args.indexOf('--gate')
 const gate = gateFlag >= 0 ? args[gateFlag + 1] : undefined
 if (!gate) {
   console.error(
-    'usage: node run.mjs --gate <name> [--scenario cover|cover-over-wet|cover-advect|cover-lift|watercolor-50|white-over-blue|cover-textured|red-over-blue-50|bristle-edge|bristle-wet|bristle-line|bristle-end|bristle-tip|emboss-smooth|edge-layer|edge-rim] [--edge <0..100>] [--falloff <0..100>] [--pickup <0..100>] [--wet-under] [--emboss <-100..100>] [--body <0..100>] [--light <0..4>] [--size <32..4096>] [--brush <id>] [--wet-mode <0|1>] [--texture <mask id>] [--drive <stop|lift|decay|mouse|mouse-lift|bake>] [--stroke-size <1..400>] [--dry <0..100>] [--feather <0..100>] [--release <0..1>]   (e.g. neutral-identity; --feather also on --scenario edge-layer / edge-rim)',
+    'usage: node run.mjs --gate <name> [--scenario cover|cover-over-wet|cover-advect|cover-lift|watercolor-50|white-over-blue|cover-textured|red-over-blue-50|bristle-edge|bristle-wet|bristle-line|bristle-end|bristle-tip|emboss-smooth|edge-layer|edge-rim] [--edge <0..100>] [--falloff <0..100>] [--pickup <0..100>] [--wet-under] [--emboss <-100..100>] [--body <0..100>] [--light <0..4>] [--size <32..4096>] [--brush <id>] [--wet-mode <0|1>] [--texture <mask id>] [--drive <stop|lift|decay|mouse|mouse-lift|bake>] [--stroke-size <1..800>] [--dry <0..100>] [--feather <0..100>] [--release <0..1>]   (e.g. neutral-identity; --feather also on --scenario edge-layer / edge-rim)',
   )
   console.error(
     '       every operand except --gate is optional and additive; an omitted operand writes no key/value, so the neutral gate keeps reproducing the committed baseline',
@@ -494,13 +496,15 @@ if (brush !== undefined && (brush === '' || brush.startsWith('--'))) {
 // quick 261125-rtc: the band widens to 1..400 — the artist's end-block sweep
 // reaches the canonical Size 300 (effective 16x sampling), which the old
 // 200 ceiling refused.
+// quick 261126-n20: the band widens to 1..800 — the artist's 600 and the
+// 450 onset cell are real app sizes; 261125-rtc's 400 ceiling is superseded.
 const strokeSizeFlag = args.indexOf('--stroke-size')
 const strokeSizeRaw = strokeSizeFlag >= 0 ? args[strokeSizeFlag + 1] : undefined
 let strokeSize
 if (strokeSizeRaw !== undefined) {
   const value = Number(strokeSizeRaw)
-  if (!Number.isFinite(value) || value < 1 || value > 400) {
-    console.error(`invalid --stroke-size "${strokeSizeRaw}" (expected 1..400)`)
+  if (!Number.isFinite(value) || value < 1 || value > 800) {
+    console.error(`invalid --stroke-size "${strokeSizeRaw}" (expected 1..800)`)
     process.exit(1)
   }
   if (scenario !== 'bristle-line' && scenario !== 'bristle-end') {
