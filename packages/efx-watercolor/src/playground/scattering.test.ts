@@ -1274,12 +1274,14 @@ describe('261119-pod — the §3.3 smear, the snapshot and the four-side Feather
     expect((SHADERS_SOURCE.match(/float smearWeight\(/g) ?? []).length, 'one smear helper').toBe(1)
     const g = gather()
     expectContains(g, 'float smearWeight(int nearest, float alongPx, float wet){')
-    // 261126 (edge-leg): the hash arm is the shipped sheet law, kept verbatim
-    // (uSmearSmooth defaults to 0 there). The layer programs turn on the
-    // mean-preserving arm — the layer re-reads the same untouched sheet every
-    // dab, so the hash froze into the accumulated film as a mosaic.
+    // 261126 (edge-leg): the layer programs turn on the mean-preserving arm —
+    // the layer re-reads the same untouched sheet every dab, so the hash froze
+    // into the accumulated film as a mosaic. 261126-n20 (issue 3): the SHEET
+    // path turns the same arm on through the size gate, whose large-footprint
+    // along-hash bands read as worm stripes across the contact band; the two
+    // switches combine by max(), so the layer's own 1 is never lowered.
     expectContains(g, 'float raw = clamp(k * hash21(vec2(float(nearest), floor(alongPx / uSmearPeriodPx))), 0.0, uSmearCap);')
-    expectContains(g, 'return mix(raw, smoothSmearMean(k, uSmearCap), uSmearSmooth);')
+    expectContains(g, 'return mix(raw, smoothSmearMean(k, uSmearCap), max(uSmearSmooth, uSmearSizeGate));')
     expectContains(g, 'float k = uSmear * wet;')
     // The smooth arm is the hash's own mean E[min(k·h, cap)] for h uniform:
     // k/2 below the cap, cap − cap²/(2k) above — the tuned mean drag is
@@ -1290,14 +1292,22 @@ describe('261119-pod — the §3.3 smear, the snapshot and the four-side Feather
     expectContains(g, 'uniform float uSmearPeriodPx;')
     expectContains(g, 'uniform float uSmearCap;')
     expectContains(g, 'uniform float uSmearSmooth;')
+    expectContains(g, 'uniform float uSmearSizeGate;')
   })
 
-  it('smooths the smear on the STROKE LAYER only, never the sheet path', () => {
-    // Default 0 in the shared bind: every sheet-path program keeps the hash.
+  it('smooths the smear on the STROKE LAYER always and on the sheet path through the size gate', () => {
+    // Default 0 in the shared bind: the sheet path's smoothing is the size
+    // gate, exactly 0 at small footprints (byte-identical) and exactly 1 at
+    // the artist's onset and above.
     expect(ENGINE_SOURCE).toMatch(/gl\.uniform1f\(p\.u\.uSmearSmooth!, 0\)/)
+    expect(ENGINE_SOURCE).toMatch(
+      /gl\.uniform1f\(p\.u\.uSmearSizeGate!, bristleSmearSizeGate\(r \* this\.dh\)\)/,
+    )
     const layer = sliceBetween(ENGINE_SOURCE, 'private bristleLayerInk(', 'private touch(')
-    // ...and the layer's two gather consumers turn it on after the bind.
+    // ...and the layer's two gather consumers turn the layer switch on after
+    // the bind (the size gate only ever ADDS smoothing).
     expect(layer.match(/gl\.uniform1f\([dc]\.u\.uSmearSmooth!, 1\)/g) ?? []).toHaveLength(2)
+    expect((ENGINE_SOURCE.match(/gl\.uniform1f\([dc]\.u\.uSmearSizeGate!/g) ?? [])).toHaveLength(0)
   })
 
   it('reads the LAYER OWN film plus the under at its own transmittance as the smear reference', () => {
@@ -1611,6 +1621,9 @@ describe('261119-pod — the §3.3 smear, the snapshot and the four-side Feather
     expectContains(bind, 'gl.uniform1f(p.u.uSmear!, this.pickupResponse(this.params.pickup));')
     expectContains(bind, 'gl.uniform1f(p.u.uSmearPeriodPx!, BRISTLE_SMEAR_PERIOD_PX);')
     expectContains(bind, 'gl.uniform1f(p.u.uSmearCap!, BRISTLE_SMEAR_CAP);')
+    // 261126-n20 (issue 3): the sheet path's size gate on the smear field's
+    // smoothing, from the SAME half-width the gather records.
+    expectContains(bind, 'gl.uniform1f(p.u.uSmearSizeGate!, bristleSmearSizeGate(r * this.dh));')
     expectContains(bind, 'gl.uniform1f(p.u.uNow!, this.nowSec());')
     expectContains(bind, 'gl.uniform1f(p.u.uWetSeconds!, this.params.wetSeconds);')
     // The gather has one wetness law: no A/B mode rides it.

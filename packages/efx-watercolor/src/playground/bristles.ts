@@ -387,6 +387,20 @@ export const BRISTLE_SMEAR_PERIOD_PX = 6;
  */
 export const BRISTLE_SMEAR_CAP = 1.0;
 
+/**
+ * 261126-n20 (issue 3): the footprint half-width (document px — the gather
+ * binds the same argument as `uHalfWidthPx`) at or below which the smear
+ * field is left EXACTLY as shipped. The RED set measured the worm stripes
+ * from size 200 (half-width 100 px) upward; size 150 (half-width 75) is the
+ * digest-identity control, so the gate is exactly 0 there.
+ */
+export const BRISTLE_SMEAR_SIZE_GATE_LO_PX = 75;
+/**
+ * 261126-n20 (issue 3): the half-width at and above which the smear field's
+ * smoothing is at full strength — the artist's onset (size 200).
+ */
+export const BRISTLE_SMEAR_SIZE_GATE_HI_PX = 100;
+
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 const clamp01 = (v: number) => clamp(v, 0, 1);
 const smoothstep = (a: number, b: number, x: number) => {
@@ -617,6 +631,22 @@ export function bristleTouchValue(prev: number, now: number, mask: number): numb
  */
 export function bristleSmearRate(pickup: number): number {
   return Number.isFinite(pickup) ? clamp01(pickup) : 0;
+}
+
+/**
+ * 261126-n20 (issue 3): the size gate on the smear field's smoothing. The
+ * worm stripes are the raw hash BANDS (`floor(along / period)`) projecting
+ * across a large contact band; the cure reuses the anti-mosaic law
+ * (539160b0b): mix the raw weight toward its own expectation
+ * `smoothSmearMean`, which preserves the field's mean by construction (the
+ * pickup mean is what the artist sees). The gate is EXACTLY 0 at or below
+ * BRISTLE_SMEAR_SIZE_GATE_LO_PX (small strokes stay byte-identical) and
+ * EXACTLY 1 at or above BRISTLE_SMEAR_SIZE_GATE_HI_PX. A non-finite or
+ * non-positive half-width reads 0 — a missing value never smooths.
+ */
+export function bristleSmearSizeGate(halfWidthPx: number): number {
+  if (!Number.isFinite(halfWidthPx) || halfWidthPx <= 0) return 0;
+  return smoothstep(BRISTLE_SMEAR_SIZE_GATE_LO_PX, BRISTLE_SMEAR_SIZE_GATE_HI_PX, halfWidthPx);
 }
 
 /**
