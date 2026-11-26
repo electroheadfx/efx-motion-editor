@@ -30,6 +30,7 @@ import { describe, expect, it } from 'vitest'
 // The namespace cast keeps a not-yet-exported symbol a clean per-test
 // assertion failure instead of a module-load error for the whole suite.
 import * as bristleModule from './bristles'
+import { BRISTLE_GATHER, bristleCarrierFS } from './shaders'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const SRC_ROOT = resolve(HERE, '..')
@@ -146,5 +147,97 @@ describe('the one exponent map', () => {
     expect(declarations[0], 'edgeFalloffExponent is declared in playground/bristles.ts').toBe(
       'playground/bristles.ts',
     )
+  })
+})
+
+// ============================================================
+//  The law's source pins (Task 2). The pure twins above prove the
+//  arithmetic; these prove the GLSL and the ONE gather binder carry the
+//  same law: six uniforms declared and bound, the shaped opening with the
+//  falloff-50 pow skip, the guarded falloff-profile grain mix, the shipped
+//  threshold anchors untouched, and no Spec 11 uniform in the carrier.
+// ============================================================
+
+const SIX_FEATHER_UNIFORMS = [
+  'uFeatherFalloff',
+  'uFeatherNoise',
+  'uFeatherNoiseFeatures',
+  'uFeatherNoiseMinPx',
+  'uFeatherNoiseMaxPx',
+  'uFeatherNoiseRefPx',
+] as const
+
+const ENGINE_SOURCE =
+  PACKAGE_SOURCES.find(({ file }) => file === 'playground/Engine.ts')?.text ?? ''
+
+describe('the Spec 11 law in BRISTLE_GATHER', () => {
+  it('declares the six uniforms beside the shipped feather anchors', () => {
+    for (const name of SIX_FEATHER_UNIFORMS) {
+      expect(BRISTLE_GATHER.includes(`uniform float ${name};`), `${name} is declared`).toBe(true)
+    }
+  })
+
+  it('binds every uniform from the ONE gather binder (params + bristles.ts constants)', () => {
+    expect(ENGINE_SOURCE).toContain(
+      'gl.uniform1f(p.u.uFeatherFalloff!, clamp(this.params.featherFalloff, 0, 1));',
+    )
+    expect(ENGINE_SOURCE).toContain(
+      'gl.uniform1f(p.u.uFeatherNoise!, clamp(this.params.featherNoise, 0, 1));',
+    )
+    expect(ENGINE_SOURCE).toContain(
+      'gl.uniform1f(p.u.uFeatherNoiseFeatures!, FEATHER_NOISE_FEATURES);',
+    )
+    expect(ENGINE_SOURCE).toContain('gl.uniform1f(p.u.uFeatherNoiseMinPx!, FEATHER_NOISE_MIN_PX);')
+    expect(ENGINE_SOURCE).toContain('gl.uniform1f(p.u.uFeatherNoiseMaxPx!, FEATHER_NOISE_MAX_PX);')
+    expect(ENGINE_SOURCE).toContain(
+      'gl.uniform1f(p.u.uFeatherNoiseRefPx!, FEATHER_NOISE_REFERENCE_PX);',
+    )
+  })
+
+  it('shapes the opening with the shipped exponent map and SKIPS pow at falloff 50', () => {
+    // The one shape language: 2^(2b-1) — the tested twin edgeFalloffExponent's
+    // expression, never a second table.
+    expect(BRISTLE_GATHER).toContain('float e = exp2(2.0 * uFeatherFalloff - 1.0);')
+    // pow(x, 1.0) is not guaranteed exact: the neutral half skips it so the
+    // shipped bytes survive byte-identically.
+    expect(BRISTLE_GATHER).toContain('float shaped = (uFeatherFalloff == 0.5) ? s : pow(s, e);')
+    expect(BRISTLE_GATHER).toContain('float featherShift = uFeather * uFeatherShift * shaped;')
+  })
+
+  it('evaluates the second grainHeight sample only inside the w guard (noise 0 skips it)', () => {
+    // amount x Feather x the falloff profile — the grain speaks the Edge
+    // transparency language, so falloff 0 reaches deep and 100 hugs the rim.
+    expect(BRISTLE_GATHER).toContain('float w = uFeatherNoise * uFeather * bodyW;')
+    const guard = /if \(w > ([^)]+)\) \{/.exec(BRISTLE_GATHER)
+    expect(guard, 'the grain mix is guarded by w').not.toBeNull()
+    const start = guard!.index + guard![0].length
+    const block = BRISTLE_GATHER.slice(start, BRISTLE_GATHER.indexOf('}', start))
+    expect(block).toContain(
+      'float periodPx = clamp(bandPx / uFeatherNoiseFeatures, uFeatherNoiseMinPx, uFeatherNoiseMaxPx);',
+    )
+    expect(block).toContain('float rimScale = uFeatherNoiseRefPx / periodPx;')
+    expect(block).toContain('float rimGrain = grainHeight(css * rimScale, uAxis);')
+    // mix, never replace: the paper stays visible at every setting.
+    expect(block).toContain('height = mix(heightPaper, rimGrain, w);')
+  })
+
+  it('keeps the shipped threshold expression and its anchors byte-identical', () => {
+    expect(BRISTLE_GATHER).toContain(
+      'float featherStart = uFeatherEdge * (1.0 - mix(uFeatherMin, uFeatherReach, uFeather));',
+    )
+    // The paper height keeps its shipped EXPRESSION; only its identifier moved.
+    expect(BRISTLE_GATHER).toContain(
+      'float heightPaper = mix(grainHeight(css, uAxis), 0.5, rimCalm);',
+    )
+    expect(BRISTLE_GATHER).toContain('float height = heightPaper;')
+    expect(BRISTLE_GATHER).toContain(
+      'float threshold = uGrain * (1.0 - height) - 0.25 + featherShift;',
+    )
+  })
+
+  it('keeps bristleCarrierFS free of the six Spec 11 uniforms', () => {
+    for (const name of SIX_FEATHER_UNIFORMS) {
+      expect(bristleCarrierFS.includes(name), `${name} never reaches the carrier`).toBe(false)
+    }
   })
 })

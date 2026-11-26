@@ -207,6 +207,42 @@ describe('toEngineParams', () => {
     expect(DEFAULT_PARAMS.edgeFalloff).toBe(0.5);
   });
 
+  // Spec 11 (feather noise and feather falloff): two canonical 0..100 globals
+  // through the same clamp01 table every Phase 64 medium key obeys. Noise 0
+  // is neutral (the second grainHeight sample is never evaluated); falloff 50
+  // is the shipped opening (pow is skipped).
+  it('maps the Feather noise and Feather falloff globals 0..100 onto the 0..1 medium bag', () => {
+    expect(toEngineParams({ featherNoise: 0 }).featherNoise).toBe(0);
+    expect(toEngineParams({ featherNoise: 50 }).featherNoise).toBe(0.5);
+    expect(toEngineParams({ featherNoise: 100 }).featherNoise).toBe(1);
+    // T-64-01: out-of-track values are clamped in the ONE mapping.
+    expect(toEngineParams({ featherNoise: 250 }).featherNoise).toBe(1);
+    expect(toEngineParams({ featherNoise: -40 }).featherNoise).toBe(0);
+    expect(toEngineParams({ featherFalloff: 0 }).featherFalloff).toBe(0);
+    expect(toEngineParams({ featherFalloff: 50 }).featherFalloff).toBe(0.5);
+    expect(toEngineParams({ featherFalloff: 100 }).featherFalloff).toBe(1);
+    expect(toEngineParams({ featherFalloff: 250 }).featherFalloff).toBe(1);
+    expect(toEngineParams({ featherFalloff: -40 }).featherFalloff).toBe(0);
+  });
+
+  it('replays a stroke without the feather-noise keys at the neutral defaults (noise 0, falloff 50)', () => {
+    expect(toEngineParams({ water: 50 }).featherNoise).toBe(0);
+    expect(toEngineParams(undefined).featherNoise).toBe(0);
+    expect(toEngineParams({ featherNoise: Number.NaN }).featherNoise).toBe(0);
+    expect(toEngineParams({ featherNoise: Number.POSITIVE_INFINITY }).featherNoise).toBe(0);
+    expect(toEngineParams({ water: 50 }).featherFalloff).toBe(0.5);
+    expect(toEngineParams(undefined).featherFalloff).toBe(0.5);
+    expect(toEngineParams({ featherFalloff: Number.NaN }).featherFalloff).toBe(0.5);
+    expect(toEngineParams({ featherFalloff: Number.NEGATIVE_INFINITY }).featherFalloff).toBe(0.5);
+  });
+
+  it('declares Feather noise 0 and Feather falloff 50 in the canonical and engine bags', () => {
+    expect(DEFAULT_CANONICAL_PARAMS.featherNoise).toBe(0);
+    expect(DEFAULT_CANONICAL_PARAMS.featherFalloff).toBe(50);
+    expect(DEFAULT_PARAMS.featherNoise).toBe(0);
+    expect(DEFAULT_PARAMS.featherFalloff).toBe(0.5);
+  });
+
   // Phase 64 (v2.2.0): the medium bag's first key. 0 is neutral — an absent
   // key must replay a pre-milestone stroke byte-identically.
   it('maps the Viscosity global 0..100 onto the 0..1 medium bag', () => {
