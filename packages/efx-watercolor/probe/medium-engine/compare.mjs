@@ -140,6 +140,17 @@
 //  BOTH captures carry them, so an a/b replay of the negative stroke is
 //  proven to reproduce its numbers, not just its digests.
 //
+//  quick 261126-n20 (issue 3) adds `'bristle-blend'` to SCENARIO_INVARIANTS
+//  and a second self-contained mode:
+//        node compare.mjs <gate> --blend-bar
+//  The judged stroke over a solid wet under must not carry worm stripes: the
+//  across share profile's detrended AC energy inside the declared 4..32 px
+//  band stays at most BLEND_WORM_SHARE_MAX and the pickup mean stays inside
+//  BLEND_MEAN_TOL of the declared BLEND_SHARE_MEAN — barred ONLY at or above
+//  BLEND_ONSET_PX with pickup on (the size gate's reach). The bar is frozen
+//  from the RED set (see the constants block); the three line surfaces must
+//  agree on the stripe readings, so the blend cannot be live-only.
+//
 //  Exit codes: 0 = pass, 1 = fail or missing data, 2 = bad usage.
 //  Unknown flags are rejected loudly — a later plan adding an operand must
 //  teach this parser about it rather than have it silently misparse.
@@ -1078,6 +1089,139 @@ function bristleLineFailures(data) {
       failures.push(
         `${name}: tiling.enclosed.maxRunPx ${enclosed.maxRunPx} exceeds ${ENCLOSED_MAX_RUN_PX} px ` +
           '(an enclosed lane, not an enclosed dot)',
+      )
+    }
+  }
+  return failures
+}
+
+/**
+ * 261126-n20 (issue 3): the blend-worm bar, declared from the RED set and
+ * frozen BEFORE the law shipped.
+ *
+ * RED set (HEAD ae8fcfa60, /tmp/medium-engine/n20-blend-pre-*):
+ *   size/seed         mean    across AC  worm(4..32)  peak  aniso
+ *   150 mut1          0.1536  0.1485     0.1104       27    3.30
+ *   150 mut2          0.1440  0.1466     0.1986       26    3.85
+ *   200 mut1          0.1138  0.0978     0.1821       30    2.94
+ *   200 mut2          0.1059  0.0862     0.1801       14    3.03
+ *   400 mut1          0.0728  0.1027     0.0939       27    8.81
+ *   400 mut2          0.0620  0.0750     0.0916       21    6.45
+ *   600 mut1          0.1076  0.1426     0.0589       32   12.51
+ *   600 mut2          0.0796  0.0979     0.0695       18    7.64
+ *   400 mut1 pickup 0 0.0042  0.0047     0.0473       27    0.49
+ *   600 mut1 pickup 0 0.0048  0.0064     0.0111       19    0.67
+ *
+ * The stripe peaks (14..32 px) sit inside the band the detector declared
+ * BEFORE these captures (blend.ts, 4..32 px), so the band is frozen at the
+ * declared value and a capture whose echoed band moved cannot borrow this
+ * bar. The under's own across dome is the envelope at 65..139 px; a 41 px
+ * moving-mean envelope read alone leaves 0.006..0.044 of this band in every
+ * 400/600 cell, so the maximum is frozen strictly below the pre minimum
+ * across 400/600 (0.0589) and above the envelope-only leakage. The bar
+ * applies only where the size gate can act (BLEND_ONSET_PX 200, the
+ * smoothstep's top = the artist's onset); the 150 control is report-only
+ * because the law is exactly 0 there and its capture must stay
+ * digest-identical.
+ *
+ * The mean bar is the law's own promise: smoothSmearMean preserves
+ * E[min(k*h, cap)], so the pickup mean must not move. The pre set spans
+ * 0.0620..0.1138 at >= 200; the declared value is the midpoint (0.088) and
+ * the tolerance the half-span rounded out (0.03).
+ *
+ * `--pickup 0` captures are report-only: uSmear = 0 skips the smear block
+ * entirely (the operand is unreachable by law), so their job is digest
+ * identity, not the band.
+ */
+const BLEND_WORM_BAND_PX = [4, 32]
+const BLEND_WORM_SHARE_MAX = 0.05
+const BLEND_SHARE_MEAN = 0.088
+const BLEND_MEAN_TOL = 0.03
+const BLEND_ONSET_PX = 200
+/** The three surfaces' blocked readings must agree to one round4 step plus
+ *  slack: the law is not live-only, so postApply/postSettle/postFix may not
+ *  disagree about the stripe energy beyond the readout's own quantization. */
+const BLEND_SURFACE_TOL = 0.002
+
+function bristleBlendFailures(data) {
+  const blend = data.blend
+  if (blend === null || typeof blend !== 'object' || Array.isArray(blend)) {
+    return ['capture is missing blend; re-run the bristle-blend probe (--scenario bristle-blend)']
+  }
+  const fields = [
+    'strokeSize',
+    'supportPx',
+    'blendShareMean',
+    'blendAcrossAc',
+    'wormBandShare',
+    'wormPeakPx',
+    'blendAnisotropy',
+  ]
+  const missing = fields.filter((field) => !(typeof blend[field] === 'number' && Number.isFinite(blend[field])))
+  if (missing.length > 0) return [`blend is missing ${missing.join(', ')}`]
+  const failures = []
+  const band = blend.wormBandPx
+  if (
+    !Array.isArray(band) ||
+    band.length !== 2 ||
+    band[0] !== BLEND_WORM_BAND_PX[0] ||
+    band[1] !== BLEND_WORM_BAND_PX[1]
+  ) {
+    failures.push(
+      `blend.wormBandPx ${JSON.stringify(band)} does not match the frozen band ` +
+        `${JSON.stringify(BLEND_WORM_BAND_PX)} (a moved band cannot borrow this bar)`,
+    )
+  }
+  if (!(blend.supportPx > 0)) {
+    failures.push(
+      `blend.supportPx ${blend.supportPx} is not positive (the judged stroke deposited no support; a null profile cannot pass)`,
+    )
+  }
+  const surfaces = data.lineSurfaces
+  if (surfaces === null || typeof surfaces !== 'object' || Array.isArray(surfaces)) {
+    failures.push('capture is missing lineSurfaces (the three-surface set the blend readout rides)')
+  } else {
+    for (const name of LINE_SURFACES) {
+      const surface = surfaces[name]
+      const surfaceBlend = surface && surface.blend
+      if (surfaceBlend === null || typeof surfaceBlend !== 'object') {
+        failures.push(`lineSurfaces.${name}.blend is missing (the blend readout never ran on ${name})`)
+        continue
+      }
+      for (const field of ['blendShareMean', 'blendAcrossAc', 'wormBandShare']) {
+        const value = surfaceBlend[field]
+        if (typeof value !== 'number') {
+          failures.push(`lineSurfaces.${name}.blend is missing ${field}`)
+          continue
+        }
+        if (Math.abs(value - blend[field]) > BLEND_SURFACE_TOL) {
+          failures.push(
+            `lineSurfaces.${name}.blend.${field} ${value} does not agree with the committed ` +
+              `${blend[field]} (tolerance ${BLEND_SURFACE_TOL}); the blend is not live-only`,
+          )
+        }
+      }
+    }
+  }
+  const pickup =
+    data.paramsEcho && typeof data.paramsEcho.pickup === 'number' ? data.paramsEcho.pickup : null
+  if (pickup === null) {
+    failures.push('paramsEcho.pickup is missing (the capture does not echo the judged bag)')
+  }
+  const pickupOff = pickup !== null && pickup <= 0
+  if (blend.strokeSize >= BLEND_ONSET_PX && !pickupOff) {
+    if (!(blend.wormBandShare <= BLEND_WORM_SHARE_MAX)) {
+      failures.push(
+        `blend.wormBandShare ${blend.wormBandShare} exceeds BLEND_WORM_SHARE_MAX ` +
+          `${BLEND_WORM_SHARE_MAX} at size ${blend.strokeSize} (the worm stripes are still ` +
+          `in the film; peak ${blend.wormPeakPx} px)`,
+      )
+    }
+    const deviation = Math.abs(blend.blendShareMean - BLEND_SHARE_MEAN)
+    if (!(deviation <= BLEND_MEAN_TOL)) {
+      failures.push(
+        `blend.blendShareMean ${blend.blendShareMean} is ${deviation} from the declared ` +
+          `${BLEND_SHARE_MEAN} (tolerance ${BLEND_MEAN_TOL}; the pickup mean moved)`,
       )
     }
   }
@@ -2234,6 +2378,7 @@ const SCENARIO_INVARIANTS = {
   'bristle-line': bristleLineFailures,
   'bristle-line-over': bristleLineFailures,
   'bristle-tip': bristleTipFailures,
+  'bristle-blend': bristleBlendFailures,
   'edge-layer': edgeLayerFailures,
 }
 
@@ -2266,6 +2411,45 @@ function printBristleEdge(data) {
   // shrinking sample never goes unnoticed.
   if (Array.isArray(data.edgeSkippedStations) && data.edgeSkippedStations.length > 0) {
     console.log(`edge skips: ${data.edgeSkippedStations.length} station(s) in dash gaps`)
+  }
+  console.log('')
+}
+
+/** 261126-n20 (issue 3): print the blend worm readings a capture recorded. */
+function printBlend(data) {
+  if (data.scenario !== 'bristle-blend') return
+  const blend = data.blend
+  if (blend === null || typeof blend !== 'object' || Array.isArray(blend)) {
+    console.log('blend     : (no blend block recorded)')
+    console.log('')
+    return
+  }
+  const pickup =
+    data.paramsEcho && typeof data.paramsEcho.pickup === 'number' ? data.paramsEcho.pickup : '?'
+  const pickupOff = typeof pickup === 'number' && pickup <= 0
+  const barred =
+    typeof blend.strokeSize === 'number' && blend.strokeSize >= BLEND_ONSET_PX && !pickupOff
+  const barNote = barred ? '' : ` — report-only (onset ${BLEND_ONSET_PX} px, pickup ${pickup})`
+  console.log(
+    `blend     : size ${blend.strokeSize} | pickup ${pickup} | support ${blend.supportPx} px | ` +
+      `mean ${blend.blendShareMean} (declared ${BLEND_SHARE_MEAN} ± ${BLEND_MEAN_TOL}) | ` +
+      `across AC ${blend.blendAcrossAc} | aniso ${blend.blendAnisotropy}`,
+  )
+  console.log(
+    `blend worm: ${blend.wormBandShare} in ${JSON.stringify(blend.wormBandPx)} px @ peak ` +
+      `${blend.wormPeakPx} px (max ${BLEND_WORM_SHARE_MAX})${barNote}`,
+  )
+  const surfaces = data.lineSurfaces
+  if (surfaces !== null && typeof surfaces === 'object' && !Array.isArray(surfaces)) {
+    for (const name of LINE_SURFACES) {
+      const surfaceBlend = surfaces[name] && surfaces[name].blend
+      if (!surfaceBlend || typeof surfaceBlend.wormBandShare !== 'number') continue
+      console.log(
+        `blend ${name.padEnd(9)}: mean ${surfaceBlend.blendShareMean} | across AC ` +
+          `${surfaceBlend.blendAcrossAc} | worm ${surfaceBlend.wormBandShare} @ ` +
+          `${surfaceBlend.wormPeakPx} px`,
+      )
+    }
   }
   console.log('')
 }
@@ -2367,7 +2551,7 @@ function printCoverRegions(actualData, refData) {
 function usage(message) {
   console.error(`compare: ${message}`)
   console.error(
-    'usage: node compare.mjs <gate> [--other <otherGate> | --differs-from <name> | --relief-smooth | --edge-structural | --falloff-sweep <linear> <rim>]',
+    'usage: node compare.mjs <gate> [--other <otherGate> | --differs-from <name> | --relief-smooth | --edge-structural | --blend-bar | --falloff-sweep <linear> <rim>]',
   )
   process.exit(2)
 }
@@ -2378,7 +2562,8 @@ if (!gate || gate.startsWith('--')) usage('missing <gate> operand')
 
 // mode: 'baseline' (mode 1), 'other' (mode 2), 'differs' (mode 3),
 // 'relief-smooth' (quick 261123-hr5, a self-contained relation on the capture),
-// 'edge-structural' (Spec 10, the allocate/merge counters on one capture) and
+// 'edge-structural' (Spec 10, the allocate/merge counters on one capture),
+// 'blend-bar' (261126-n20, the blend worm bar on one capture) and
 // 'falloff-sweep' (Spec 10, the strict mid-alpha ordering across three
 // same-amount captures — the only cross-capture ordering gate).
 let mode = 'baseline'
@@ -2392,6 +2577,9 @@ if (args.length > 1) {
   } else if (args[1] === '--edge-structural') {
     if (args.length > 2) usage(`unexpected extra argument "${args[2]}"`)
     mode = 'edge-structural'
+  } else if (args[1] === '--blend-bar') {
+    if (args.length > 2) usage(`unexpected extra argument "${args[2]}"`)
+    mode = 'blend-bar'
   } else if (args[1] === '--falloff-sweep') {
     for (const extra of args.slice(2)) {
       if (!extra || extra.startsWith('--')) usage(`--falloff-sweep needs two gate names (got "${extra}")`)
@@ -2560,6 +2748,43 @@ if (mode === 'edge-structural') {
     process.exit(1)
   }
   console.log(`RESULT: PASS — the structural relation holds (${gate})`)
+  console.log('=========================================================')
+  process.exit(0)
+}
+
+// 261126-n20 (issue 3): the blend worm bar on ONE capture. The stripe band
+// and the pickup mean are barred only where the size gate can act (>= onset,
+// pickup on); the below-onset and pickup-0 cells are report-only by design
+// (their job is digest identity). No baseline and no second capture is read
+// (the --relief-smooth precedent); the alpha law still runs.
+if (mode === 'blend-bar') {
+  console.log('============ medium-engine pixel-gate compare ============')
+  console.log('mode      : blend worm bar (--blend-bar)')
+  console.log(`capture   : ${actualPath}`)
+  console.log('')
+  printDurations('capture', actual)
+  console.log('')
+  if (actual.scenario !== 'bristle-blend') {
+    console.log(
+      `RESULT: FAIL — --blend-bar reads a bristle-blend capture (scenario "${actual.scenario}")`,
+    )
+    console.log('=========================================================')
+    process.exit(1)
+  }
+  printBlend(actual)
+  const lawFailures = alphaLawFailures(actual)
+  for (const line of lawFailures) console.log(`INVARIANT ${line}`)
+  const failures = bristleBlendFailures(actual)
+  for (const line of failures) console.log(`BLEND     ${line}`)
+  if (lawFailures.length > 0 || failures.length > 0) {
+    console.log(
+      `RESULT: FAIL — ${failures.length} blend failure(s), ` +
+        `${lawFailures.length} alpha law failure(s) (${gate})`,
+    )
+    console.log('=========================================================')
+    process.exit(1)
+  }
+  console.log(`RESULT: PASS — the blend bar holds (${gate})`)
   console.log('=========================================================')
   process.exit(0)
 }
@@ -2979,6 +3204,7 @@ printCoverRegions(actual, refData)
 printBristleEdge(actual)
 printBristleWet(actual)
 printBristleTip(actual)
+printBlend(actual)
 printCoverLifecycle(actual)
 printEdgeStudio(actual)
 // 64-31: the alpha-law blocks run in committed-baseline and same-session mode
