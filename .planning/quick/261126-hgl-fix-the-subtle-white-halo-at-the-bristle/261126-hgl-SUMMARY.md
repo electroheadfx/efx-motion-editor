@@ -16,7 +16,7 @@ withdrawn:
   - "d14b986dc — occupancy-normalized layer film in the merge and displayLayerFS; moved the fringe <1/255 and cost a presence lane"
   - "0f19b29ff — occupancy-normalized pickup reference; closed the tip rim (46.68 -> 4.81/255) but lightened the lateral fringe (0.805 -> 0.880 at station -166 vs the sheet path's 0.786)"
   - "both withdrawn in a81d874d8; engine source is byte-identical to a96602803"
-affects: [the fringe-halo re-plan — the probe now has the artist's exact surface, recipe and controls; no fix is shipped]
+affects: [closed — the fix shipped in 4279c7337 + c818c7983 and is UAT-approved; the edge-rim scene and the rim instrument remain the reusable deliverables]
 actuals:
   tokens: 33182
   tasks: 4
@@ -122,7 +122,7 @@ coverage:
     rationale: "The rim bar is sheet-path parity by the plan's own re-scope. The tip half is met and improved; the lateral half is not reachable by the pickup-reference law — measured diagnosis in the Task 4 section. Halted, not re-scoped."
 duration: 95min
 completed: 2026-11-26
-status: halted
+status: complete
 plan_head_before: 741e40a1cb8953813c31fb355c03f5501a9ee483
 plan_head_after: 0f19b29ff6a7874d1bbe75f88166b165a5587017
 ---
@@ -604,3 +604,17 @@ Commit `a81d874d8` reverts `d14b986dc` and `0f19b29ff`. Engine source (`packages
 - The rendered surfaces for the artist: `/tmp/cmp-rim-p100-f100-big.png` (pre-law), `/tmp/cmp-rim2-p100-f100-big.png` (post-law), `/tmp/crop-rim2-ctl-f100-big.png` (sheet baseline).
 
 **Status: halted.** No fix is claimed; the live UAT row is not offered. The next quick starts from the `edge-rim` scene and the corrected fringe-band metric.
+
+---
+
+## Close-out — 2026-11-26 (UAT APPROVED)
+
+The fix was delivered after the halt, on top of the withdrawn state (`a81d874d8`), in two commits, and the artist approved the live UAT on 2026-11-26.
+
+**`4279c7337` — the layer's smear reference.** On the layer arm the reference is `uSnap·(1 − cover_L) + prev` — the under at the layer's own transmittance, plus the layer's own previous film (5-tap ±1.5 px; `uPrevCover` bound to `layerFilm`'s cover; `snapB.a` stays the sheet's for the wet/solid gate). Probe at the `edge-rim` scene (pickup 100 / falloff 100): tip rim 46.87 → 0 against the sheet control's 8.98; tip fringe darkness 0.44 → 0.70 (control 0.69); chroma 0.25 → 0.36–0.45 (control 0.37–0.43); falloff 0/50/100 15.72/34.63/46.87 → 0/0/0. Body under-share 0.399 → 0.429 (sheet 0.267 — not demonstrated). Pickup 0, both `--edge 0` controls and the amount-0 digests byte-identical; live = committed.
+
+**`c818c7983` — the amplification (the artist: "amplify the correction a bit").** `underW = 1 − cover_L·sqrt(cover_L)` (the 1.5 exponent; written as a sqrt because the deposit fragment bans `pow`). Measured at 2048, tip window against the `--edge 0` control: veil texels (lighter by >2/255 with lower chroma) −3.6 %; texels darker by >4/255 +5.4 %; gamma 2 reads −6.0 % / +8.8 %, so 1.5 halves gamma 2's effect on both sides. Body under-share 0.429 → 0.430. A second colour pair (red under, green stroke) reads the same clean 0/0 rim — the law is colour-agnostic. Pickup 0 / Edge 0 / amount 0 never reach the arm (`uSmear` guard; no layer).
+
+**Gates on `c818c7983`:** package 1103 passed / 8 skipped; app 9876 passed / 4 skipped / 96 todo; both tsc clean; probe rim 0/0 committed and live on the artist's recipe.
+
+**Residual (accepted).** The remaining part of the veil is the smoothed-mean fringe film — the anti-mosaic law — not the under share; the presence/occupancy laws were not retried. The `edge-rim` scene, the rim instrument (fringe-band scan) and the sheet-path control remain the reusable deliverables.
