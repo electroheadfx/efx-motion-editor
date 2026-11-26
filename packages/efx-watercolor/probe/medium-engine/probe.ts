@@ -2504,6 +2504,14 @@ const EDGE_PICKUP_ABSENT: Record<string, unknown> = {
   edgePickupLayerHighPass: null,
   edgePickupMergedChromaStd: null,
   edgePickupMergedHighPass: null,
+  // 261126 (edge-leg): the density-INVARIANT texture. Every display-space
+  // read above moves with the film's concentration (a thinner texel reads a
+  // weaker chroma; the KM decode shifts even the normalised chromaticity), so
+  // the coefficient DIRECTION is the only hue-only carrier. Absent without a
+  // layer because the layer is the surface it isolates.
+  edgePickupLayerDirHighPass: null,
+  edgePickupSheetDirHighPass: null,
+  edgePickupDirCos: null,
 }
 
 /** The per-texel chroma (max − min channel) standard deviation of an RGB grid
@@ -2600,6 +2608,82 @@ function edgeGridHueHighPass(grid: Float32Array, width: number, height: number):
     }
   }
   return n > 0 ? Math.sqrt(sum2 / n) : 0
+}
+
+/**
+ * 261126 (edge-leg): the density-INVARIANT hue texture — the instrument the
+ * display-space high-passes above cannot be. The film's coefficients are a
+ * 7-vector; the SAME pigment at a different concentration is a SCALED vector,
+ * so only the vector's DIRECTION carries the hue. Normalise every texel's
+ * 7-vector exactly (below `DIR_FLOOR` a direction is meaningless noise: NaN)
+ * and take the same 3x3 residual:
+ *
+ *     d(texel) = unit(coeffs),  r = |d(texel) − mean(d(3x3))|
+ *
+ * A legitimate bristle-density texture leaves this at 0 — dense and thin
+ * texels of one pigment share their direction. A pick that varies texel to
+ * texel cannot hide in it: two pigments mixed at different ratios have
+ * different directions. The GPU-domain mirror of "smooth optical blend".
+ */
+function edgeGridDirHighPass(
+  a: Float32Array,
+  b: Float32Array,
+  width: number,
+  height: number,
+): number | null {
+  if (width < 3 || height < 3) return null
+  const DIR_FLOOR = 1e-3
+  const dir = new Float32Array(width * height * 7)
+  dir.fill(Number.NaN)
+  for (let i = 0; i < width * height; i += 1) {
+    const o = i * 4
+    let norm = 0
+    const v = [a[o]!, a[o + 1]!, a[o + 2]!, a[o + 3]!, b[o]!, b[o + 1]!, b[o + 2]!]
+    for (let c = 0; c < 7; c += 1) norm += v[c]! * v[c]!
+    norm = Math.sqrt(norm)
+    if (!(norm > DIR_FLOOR)) continue
+    for (let c = 0; c < 7; c += 1) dir[i * 7 + c] = v[c]! / norm
+  }
+  let sum2 = 0
+  let n = 0
+  for (let y = 1; y < height - 1; y += 1) {
+    for (let x = 1; x < width - 1; x += 1) {
+      const i = y * width + x
+      if (!Number.isFinite(dir[i * 7]!)) continue
+      const mean = new Float64Array(7)
+      let count = 0
+      for (let dy = -1; dy <= 1; dy += 1) {
+        for (let dx = -1; dx <= 1; dx += 1) {
+          const j = (y + dy) * width + (x + dx)
+          if (!Number.isFinite(dir[j * 7]!)) continue
+          for (let c = 0; c < 7; c += 1) mean[c] = mean[c]! + dir[j * 7 + c]!
+          count += 1
+        }
+      }
+      if (count === 0) continue
+      for (let c = 0; c < 7; c += 1) {
+        const residual = dir[i * 7 + c]! - mean[c]! / count
+        sum2 += residual * residual
+        n += 1
+      }
+    }
+  }
+  return n > 0 ? Math.sqrt(sum2 / n) : null
+}
+
+/** The cosine between two 7-vectors — 1 is the same pigment, 0 orthogonal.
+ *  `null` when either vector is too thin to have a direction. */
+function edgeDirCos(a: ArrayLike<number>, b: ArrayLike<number>): number | null {
+  let dot = 0
+  let na = 0
+  let nb = 0
+  for (let c = 0; c < 7; c += 1) {
+    dot += a[c]! * b[c]!
+    na += a[c]! * a[c]!
+    nb += b[c]! * b[c]!
+  }
+  if (!(na > 1e-8 && nb > 1e-8)) return null
+  return dot / Math.sqrt(na * nb)
 }
 
 /** The RMS 3x3 high-pass of a per-texel scalar grid, NaN-aware (mixGrid is
@@ -2793,6 +2877,13 @@ function edgePickupReadout(
     acc.map((v) => round2(v / n)) as [number, number, number]
   const mixStd = mixGrid === null ? null : edgeGridScalarStd(mixGrid)
   const mixHighPass = mixGrid === null ? null : edgeGridScalarHighPass(mixGrid, gw, gh)
+  // 261126 (edge-leg): the hue-only pair. `DirHighPass` is the coefficient
+  // DIRECTION texture (immune to legitimate density); the sheet's own value is
+  // the control — if the under's direction field is already flat, any layer
+  // direction texture was manufactured by the layer path.
+  const layerDirHighPass = layer === null ? null : edgeGridDirHighPass(layer.a, layer.b, width, height)
+  const sheetDirHighPass = edgeGridDirHighPass(doc.a, doc.b, width, height)
+  const dirCos = layer === null ? null : edgeDirCos(filmL, filmS)
   return {
     edgePickupTexels: n,
     edgePickupLayerRgb: layerRgb === null ? null : meanRgb(layerRgb),
@@ -2822,6 +2913,12 @@ function edgePickupReadout(
       layerGrid === null ? null : round2(edgeGridHighPass(layerGrid, gw, gh)),
     edgePickupMergedChromaStd: round2(edgeGridChromaStd(mergedGrid)),
     edgePickupMergedHighPass: round2(edgeGridHighPass(mergedGrid, gw, gh)),
+    // Hue-only, density-invariant: the 7-vector direction texture of the
+    // layer and of the under it mixed with, plus the mean direction cosine
+    // between them (1 = the carried film IS the under's pigment).
+    edgePickupLayerDirHighPass: layerDirHighPass === null ? null : round4(layerDirHighPass),
+    edgePickupSheetDirHighPass: sheetDirHighPass === null ? null : round4(sheetDirHighPass),
+    edgePickupDirCos: dirCos === null ? null : round4(dirCos),
   }
 }
 
@@ -3102,6 +3199,17 @@ function edgeHueStep(profile: EdgeProfile): { max: number | null; at: number | n
   let prev: { station: number; chroma: [number, number, number] } | null = null
   for (let i = 0; i < profile.offsets.length; i += 1) {
     if (profile.dark[i]! < 0.03) {
+      prev = null
+      continue
+    }
+    // 261126 (edge-leg): with a layer, only ITS stations belong to the band.
+    // The crossing window sits inside stroke A's wash, whose darkness clears
+    // the gate on every station — including columns stroke B never touched,
+    // whose steps are the under's own texture, not the transition under
+    // test. The layer's own cover is the band: it spans B's dab footprint
+    // (the falloff lives in the MERGE weight, not in cover_L), exactly the
+    // extent the artist judges.
+    if (profile.cover !== null && !(profile.cover[i]! > 0)) {
       prev = null
       continue
     }
