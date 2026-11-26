@@ -403,7 +403,10 @@ if (scenarioRaw !== undefined) {
 // path against the sheet path at the same stroke; 261126-hgl adds `edge-rim`,
 // the artist's short stroke on the blue wash: any other scenario is refused
 // here first, never silently ignored.
-const LAYER_SCENES = ['edge-layer', 'edge-rim', 'bristle-end']
+// 261126-n20 (issue 2): `bristle-line` joins as the ridge task's layer arm —
+// the lateral MIN field exists only on the layer path, so a ridge that appears
+// only there is a different mechanism from the sheet path the artist used.
+const LAYER_SCENES = ['edge-layer', 'edge-rim', 'bristle-end', 'bristle-line']
 const layerScene = LAYER_SCENES.includes(scenario)
 const edgeFlag = args.indexOf('--edge')
 const edgeRaw = edgeFlag >= 0 ? args[edgeFlag + 1] : undefined
@@ -415,7 +418,7 @@ if (edgeRaw !== undefined) {
     process.exit(1)
   }
   if (!layerScene) {
-    console.error('--edge is only valid with --scenario edge-layer, edge-rim or bristle-end')
+    console.error('--edge is only valid with --scenario edge-layer, edge-rim, bristle-end or bristle-line')
     process.exit(1)
   }
   edge = value
@@ -431,7 +434,7 @@ if (falloffRaw !== undefined) {
     process.exit(1)
   }
   if (!layerScene) {
-    console.error('--falloff is only valid with --scenario edge-layer, edge-rim or bristle-end')
+    console.error('--falloff is only valid with --scenario edge-layer, edge-rim, bristle-end or bristle-line')
     process.exit(1)
   }
   falloff = value
@@ -452,7 +455,7 @@ if (pickupRaw !== undefined) {
     process.exit(1)
   }
   if (!layerScene) {
-    console.error('--pickup is only valid with --scenario edge-layer, edge-rim or bristle-end')
+    console.error('--pickup is only valid with --scenario edge-layer, edge-rim, bristle-end or bristle-line')
     process.exit(1)
   }
   pickup = value

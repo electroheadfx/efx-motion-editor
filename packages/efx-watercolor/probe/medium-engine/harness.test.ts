@@ -46,6 +46,13 @@ import {
   END_PRE_GAP_STATION_PX,
   enclosedPaleRun,
 } from './endGap'
+import {
+  RIDGE_CENTRE_WIDTH,
+  RIDGE_MARGIN,
+  RIDGE_SHOULDER_INNER,
+  RIDGE_SHOULDER_OUTER,
+  centreRidge,
+} from './ridge'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 
@@ -1210,6 +1217,7 @@ interface LineSurfaceFixture {
   interior: { span: [number, number]; dark: { max: number } }
   rim: { down: LineSideFixture; up: LineSideFixture }
   halo: { down: LineHaloFixture; up: LineHaloFixture }
+  ridge: { peakExcess: number; ridgeWidthPx: number; asymmetry: number; share: number }
   tiling: {
     rows: unknown[]
     coherence: { mean: number; fracHigh: number; pairs: number }
@@ -1235,6 +1243,7 @@ function validLineSurface(): LineSurfaceFixture {
       down: { peakRel: 0.31, mean: 0.08, run: 2, peakAt: -18 },
       up: { peakRel: 0.33, mean: 0.09, run: 2, peakAt: 19 },
     },
+    ridge: { peakExcess: 0, ridgeWidthPx: 0, asymmetry: 0, share: 0 },
     tiling: {
       rows: [],
       coherence: { mean: 0, fracHigh: 0, pairs: 0 },
@@ -1280,9 +1289,11 @@ describe('the bristle-line rim/halo/enclosure gate (64-29 task 1)', () => {
       expectContains(PROBE, 'const LINE_OVER_Y = 0.52')
       expectContains(PROBE, 'load: LINE_OVER_LOAD')
       expectContains(PROBE, 'fixAfter: false,')
+      // 261126-n20 moved this call to pass the layer arm's overrides; the
+      // --over flag still rides the same position.
       expectContains(
         PROBE,
-        'bristleLineScript(body ?? 0, strokeSize, readMut(), readOver())',
+        'bristleLineScript(\n                              body ?? 0,\n                              strokeSize,\n                              readMut(),\n                              readOver(),\n                              readLineOverrides(),\n                            )',
       )
       expectContains(PROBE, 'function readOver(): boolean {')
       expectContains(PROBE, 'invalid over "${raw}" (expected 1)')
@@ -1385,6 +1396,30 @@ describe('the bristle-line rim/halo/enclosure gate (64-29 task 1)', () => {
 
       expect(status, lineVerdict(status, output)).toBe(1)
       expectOutputHas(output, 'HALO_RUN_MAX 2')
+    })
+
+    it('fails a dark centre ridge and names its surface', () => {
+      const capture = validLineCapture()
+      capture.lineSurfaces.postSettle.ridge = {
+        peakExcess: 0.05,
+        ridgeWidthPx: 3,
+        asymmetry: 0,
+        share: 1,
+      }
+      const { status, output } = compareSynthetic('nyquist-line-ridge', capture)
+
+      expect(status, lineVerdict(status, output)).toBe(1)
+      expectOutputHas(output, 'postSettle: ridge.peakExcess 0.05 exceeds RIDGE_EXCESS_MAX')
+      expectOutputHas(output, 'ridge.share 1 exceeds RIDGE_ALONG_SHARE_MAX 0')
+    })
+
+    it('fails an absent ridge block by name', () => {
+      const capture = validLineCapture()
+      delete (capture.lineSurfaces.postApply as Partial<LineSurfaceFixture>).ridge
+      const { status, output } = compareSynthetic('nyquist-line-noridge', capture)
+
+      expect(status, lineVerdict(status, output)).toBe(1)
+      expectOutputHas(output, 'postApply: ridge is missing')
     })
 
     it('fails a capture with no lineSurfaces block by name', () => {
@@ -2301,9 +2336,13 @@ describe('the edge-layer gate (Spec 10)', () => {
 
     it('refuses the two knobs on every other scenario, in both files', () => {
       // 261126 (the cap leg): the same knobs are the bristle-end scene's
-      // layer operands; 261126-hgl's `edge-rim` reads them too, so the
-      // refusal names all three scenes.
-      expectContains(PROBE, '`--${name} is only valid with --scenario edge-layer, edge-rim or bristle-end`')
+      // layer operands; 261126-hgl's `edge-rim` reads them too, and
+      // 261126-n20 adds `bristle-line` (the ridge layer arm), so the refusal
+      // names all four scenes.
+      expectContains(
+        PROBE,
+        '`--${name} is only valid with --scenario edge-layer, edge-rim, bristle-end or bristle-line`',
+      )
       expectContains(
         PROBE,
         "scenario === 'edge-rim' ? EDGE_RIM_DEFAULT_AMOUNT : EDGE_LAYER_DEFAULT_AMOUNT",
@@ -2312,10 +2351,26 @@ describe('the edge-layer gate (Spec 10)', () => {
         PROBE,
         "scenario === 'edge-rim' ? EDGE_RIM_DEFAULT_FALLOFF : EDGE_LAYER_DEFAULT_FALLOFF",
       )
-      expectContains(RUN, '--edge is only valid with --scenario edge-layer, edge-rim or bristle-end')
-      expectContains(RUN, '--falloff is only valid with --scenario edge-layer, edge-rim or bristle-end')
+      expectContains(
+        RUN,
+        '--edge is only valid with --scenario edge-layer, edge-rim, bristle-end or bristle-line',
+      )
+      expectContains(
+        RUN,
+        '--falloff is only valid with --scenario edge-layer, edge-rim, bristle-end or bristle-line',
+      )
       expectContains(RUN, '`&edge=${edge}`')
       expectContains(RUN, '`&falloff=${falloff}`')
+    })
+
+    it('reads the layer knobs on bristle-line only with --edge as the switch', () => {
+      expectContains(RUN, "const LAYER_SCENES = ['edge-layer', 'edge-rim', 'bristle-end', 'bristle-line']")
+      expectContains(PROBE, 'readLineOverrides(),')
+      expectContains(
+        PROBE,
+        "throw new Error('--falloff / --pickup on bristle-line need --edge as the layer switch')",
+      )
+      expectContains(PROBE, 'params: bristleLineParams(body, strokeSize, overrides),')
     })
 
     it('reads the layer knobs on bristle-end as one operand set, only with --edge', () => {
@@ -2326,7 +2381,12 @@ describe('the edge-layer gate (Spec 10)', () => {
       // The report echoes the trio so a capture can never be misread as a
       // different bag; a null amount is the sheet-path control.
       expectContains(PROBE, 'amount: endSetup.edge,')
-      expectContains(RUN, "const LAYER_SCENES = ['edge-layer', 'edge-rim', 'bristle-end']")
+      // 261126-n20 adds `bristle-line` as the ridge layer arm; the literal
+      // moved with the operand law, never silently.
+      expectContains(
+        RUN,
+        "const LAYER_SCENES = ['edge-layer', 'edge-rim', 'bristle-end', 'bristle-line']",
+      )
     })
 
     it('accepts --feather on the two layer scenes and reads the fringe dip (261126-hgl)', () => {
@@ -2886,5 +2946,78 @@ describe('the widened --stroke-size ceiling (261126-n20 task 1)', () => {
     expectContains(PROBE, '...enclosedPaleRun(gapProfile, {')
     expectContains(PROBE, 'x0Px: bodyHi,')
     expectContains(PROBE, 'bodyLevel: round4(preGapBodyLevel),')
+  })
+})
+
+describe('the centre-ridge detector (261126-n20 task 2)', () => {
+  // 41 stations, the centre band at offset 0 (index 20) and its two rows.
+  const CENTRE = 20
+  const row = (value: number): number[] => new Array<number>(41).fill(value)
+
+  it('reads a flat profile as excess 0 and share 0', () => {
+    const flat = Array.from({ length: 24 }, () => row(0.55))
+    const ridge = centreRidge(flat, { centreIndex: CENTRE })
+    expect(ridge.peakExcess).toBe(0)
+    expect(ridge.share).toBe(0)
+    expect(ridge.ridgeWidthPx).toBe(0)
+    expect(ridge.asymmetry).toBe(0)
+  })
+
+  it('reads a 2 px +0.10 spike at the centreline as excess 0.10 and share 1', () => {
+    const spiked = Array.from({ length: 24 }, () => {
+      const r = row(0.55)
+      r[CENTRE] = 0.65
+      r[CENTRE + 1] = 0.65
+      return r
+    })
+    const ridge = centreRidge(spiked, { centreIndex: CENTRE })
+    expect(ridge.peakExcess).toBeCloseTo(0.1, 6)
+    expect(ridge.share).toBe(1)
+    expect(ridge.ridgeWidthPx).toBe(2)
+    expect(ridge.asymmetry).toBe(0)
+  })
+
+  it('reads a one-side step as asymmetry above the symmetric case', () => {
+    const step = Array.from({ length: 24 }, () => {
+      const r = row(0.55)
+      for (let i = CENTRE + RIDGE_CENTRE_WIDTH; i < 41; i += 1) r[i] = 0.45
+      return r
+    })
+    const symmetric = centreRidge(
+      Array.from({ length: 24 }, () => row(0.55)),
+      { centreIndex: CENTRE },
+    )
+    const ridge = centreRidge(step, { centreIndex: CENTRE })
+    expect(ridge.asymmetry).toBeGreaterThan(symmetric.asymmetry)
+    expect(ridge.asymmetry).toBeCloseTo(0.1, 6)
+  })
+
+  it('reports a wider ridge when the centre run is wider', () => {
+    const wide = Array.from({ length: 24 }, () => {
+      const r = row(0.55)
+      for (let i = CENTRE - 2; i <= CENTRE + 3; i += 1) r[i] = 0.61
+      return r
+    })
+    const ridge = centreRidge(wide, { centreIndex: CENTRE })
+    expect(ridge.ridgeWidthPx).toBe(6)
+    expect(ridge.share).toBe(1)
+  })
+
+  it('pins the declared detector constants', () => {
+    expect(RIDGE_CENTRE_WIDTH).toBe(2)
+    expect(RIDGE_MARGIN).toBeCloseTo(1 / 255, 12)
+    expect(RIDGE_SHOULDER_INNER).toBe(4)
+    expect(RIDGE_SHOULDER_OUTER).toBe(20)
+  })
+
+  it('emits the ridge readout on the line surfaces and the end lanes', () => {
+    expectContains(PROBE, "import { centreRidge } from './ridge'")
+    expectContains(PROBE, 'const RIDGE_STATIONS = 24')
+    expectContains(PROBE, 'const ridge =\n    ridgeCentreIndex >= 0 ? centreRidge(ridgeProfiles, { centreIndex: ridgeCentreIndex }) : null')
+    expectContains(PROBE, 'ridge,')
+    expectContains(COMPARE, 'const RIDGE_EXCESS_MAX = 1 / 255')
+    expectContains(COMPARE, 'const RIDGE_ALONG_SHARE_MAX = 0')
+    expectContains(COMPARE, 'ridge.peakExcess > RIDGE_EXCESS_MAX')
+    expectContains(COMPARE, 'ridge.share > RIDGE_ALONG_SHARE_MAX')
   })
 })

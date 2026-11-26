@@ -219,6 +219,9 @@ import {
   END_PRE_GAP_STATION_PX,
   enclosedPaleRun,
 } from './endGap'
+// quick 261126-n20 (issue 2): the centre-ridge detector — same pure-helper
+// pattern, one detector shared by the bristle-line surfaces and the end lanes.
+import { centreRidge } from './ridge'
 import { WatercolorEngine, clampDocSize } from '../../src/playground/Engine'
 import { BRUSH_PRESETS } from '../../src/playground/brushes'
 import { PAPERS, type PaperPreset } from '../../src/playground/papers'
@@ -1795,6 +1798,13 @@ const LINE_STATION_HALF = 16
 /** The along-stroke span the across profile averages, as doc uv x. */
 const LINE_PROFILE_X0 = 0.25
 const LINE_PROFILE_X1 = 0.75
+/** 261126-n20 (issue 2): the centre-ridge sampling — 24 along stations over
+ *  the stroke's mid-body window, each station one across profile. Both the
+ *  bristle-line surfaces and the end lanes read the SAME detector
+ *  (`ridge.ts`) over this window. */
+const RIDGE_STATIONS = 24
+const RIDGE_X0 = 0.45
+const RIDGE_X1 = 0.65
 /** 2026-11-22 (bristle-line gate): the halo's "pale ring" fraction — the run
  *  counts consecutive fringe rows whose darkness exceeds this fraction of the
  *  interior plateau (5 %, HALO_RUN_FRACTION in compare.mjs). */
@@ -1922,20 +1932,44 @@ function bristleLineOverEntry(): ScriptEntry {
   }
 }
 
+/** 261126-n20 (issue 2): bristle-line's layer arm — the Spec 10 knobs on the
+ *  line stroke, read ONLY when `--edge` was given (the layer switch), so every
+ *  committed bristle-line baseline keeps the record's exact bag. `--falloff` /
+ *  `--pickup` without `--edge` are refused: a half-set layer is a different
+ *  scene, never a silent one. */
+function readLineOverrides(): {
+  edge: number | null
+  falloff: number | null
+  pickup: number | null
+} {
+  const params = new URLSearchParams(location.search)
+  const edge = params.get('edge')
+  if (edge === null || edge === '') {
+    if (params.get('falloff') !== null || params.get('pickup') !== null) {
+      throw new Error('--falloff / --pickup on bristle-line need --edge as the layer switch')
+    }
+    return { edge: null, falloff: null, pickup: null }
+  }
+  return { edge: EDGE_LAYER_AMOUNT, falloff: EDGE_LAYER_FALLOFF, pickup: EDGE_LAYER_PICKUP }
+}
+
 /** ONE straight bristle-round stroke at the artist's parameters. `--over`
  *  prepends the understory; the judged entry is always last and alone carries
- *  `captureLine`, so the profile captures never include the bare understory. */
+ *  `captureLine`, so the profile captures never include the bare understory.
+ *  261126-n20: `overrides` carries the layer arm's knobs (see
+ *  `readLineOverrides`); absent keeps the record's exact bag. */
 function bristleLineScript(
   body: number,
   strokeSize: number,
   mut: number = LINE_MUTATION_ID,
   over: boolean = false,
+  overrides?: { edge: number | null; falloff: number | null; pickup: number | null },
 ): readonly ScriptEntry[] {
   const judged: ScriptEntry = {
     color: LINE_COLOR,
     points: straightLine(LINE_Y),
     mutationId: mut,
-    params: bristleLineParams(body, strokeSize),
+    params: bristleLineParams(body, strokeSize, overrides),
     brushId: 'bristle-round',
     captureLine: true,
   }
@@ -2151,15 +2185,23 @@ const EDGE_POINTER_PRESS = 0.7
 const EDGE_4K_REQUEST = 4096
 
 /** Spec 10: the two edge operands. Valid on `edge-layer` (the layer's own
- *  scene) and — from 261126, the cap leg — `bristle-end`, whose end census
- *  judges the LAYER path against the sheet path at the same stroke. A value on
- *  any other scenario is refused, never silently ignored. Absent keeps the
- *  canonical defaults 0 / 50. */
+ *  scene), `edge-rim`, `bristle-end` (261126's cap leg, whose end census
+ *  judges the LAYER path against the sheet path at the same stroke) and
+ *  `bristle-line` (261126-n20's ridge layer arm — the lateral MIN field
+ *  exists only on the layer path). A value on any other scenario is refused,
+ *  never silently ignored. Absent keeps the canonical defaults 0 / 50. */
 function readEdgeKnob(name: 'edge' | 'falloff', scenario: string, fallback: number): number {
   const raw = new URLSearchParams(location.search).get(name)
   if (raw === null || raw === '') return fallback
-  if (scenario !== 'edge-layer' && scenario !== 'edge-rim' && scenario !== 'bristle-end') {
-    throw new Error(`--${name} is only valid with --scenario edge-layer, edge-rim or bristle-end`)
+  if (
+    scenario !== 'edge-layer' &&
+    scenario !== 'edge-rim' &&
+    scenario !== 'bristle-end' &&
+    scenario !== 'bristle-line'
+  ) {
+    throw new Error(
+      `--${name} is only valid with --scenario edge-layer, edge-rim, bristle-end or bristle-line`,
+    )
   }
   const value = Number(raw)
   if (!Number.isInteger(value) || value < 0 || value > 100) {
@@ -2184,8 +2226,15 @@ function readEdgeWetUnder(scenario: string): boolean {
 function readEdgePickup(scenario: string): number | null {
   const raw = new URLSearchParams(location.search).get('pickup')
   if (raw === null || raw === '') return null
-  if (scenario !== 'edge-layer' && scenario !== 'edge-rim' && scenario !== 'bristle-end') {
-    throw new Error('--pickup is only valid with --scenario edge-layer, edge-rim or bristle-end')
+  if (
+    scenario !== 'edge-layer' &&
+    scenario !== 'edge-rim' &&
+    scenario !== 'bristle-end' &&
+    scenario !== 'bristle-line'
+  ) {
+    throw new Error(
+      '--pickup is only valid with --scenario edge-layer, edge-rim, bristle-end or bristle-line',
+    )
   }
   const value = Number(raw)
   if (!Number.isInteger(value) || value < 0 || value > 100) {
@@ -6014,6 +6063,22 @@ function lineProfileSet(engine: WatercolorEngine): Record<string, unknown> {
     up: lineSideWalk(offsets, dark, interiorSpan, 1),
   }
 
+  // 261126-n20 (issue 2): the centre-ridge readout. 24 along stations over the
+  // mid-body window; each station's across profile is the visible darkness of
+  // the same rows the across profile above already reads (no new raster tap).
+  const ridgeProfiles: number[][] = []
+  const ridgeX0 = Math.round(RIDGE_X0 * dw)
+  const ridgeX1 = Math.round(RIDGE_X1 * dw)
+  for (let s = 0; s < RIDGE_STATIONS; s += 1) {
+    const x = ridgeX0 + Math.round(((ridgeX1 - ridgeX0) * s) / Math.max(1, RIDGE_STATIONS - 1))
+    const column: number[] = []
+    for (const o of offsets) column.push(darkAt(o)[x - px0] ?? 0)
+    ridgeProfiles.push(column)
+  }
+  const ridgeCentreIndex = offsets.indexOf(0)
+  const ridge =
+    ridgeCentreIndex >= 0 ? centreRidge(ridgeProfiles, { centreIndex: ridgeCentreIndex }) : null
+
   return {
     centreRow: centre,
     peakCover: round4(peakCover),
@@ -6054,6 +6119,7 @@ function lineProfileSet(engine: WatercolorEngine): Record<string, unknown> {
     offsets,
     across: { cover, dark, ink },
     stations,
+    ridge,
     tiling: {
       rows: tilingRows.map(({ darkHp: _darkHp, ...rest }) => rest),
       coherence,
@@ -6825,6 +6891,24 @@ function bristleEndMetrics(
     windowHi: round2(windowHi),
     profile: gapProfile,
   }
+  // 261126-n20 (issue 2): the SAME centre-ridge detector on the visible raster
+  // over the stroke's middle travel, so the bristle-line and bristle-end lanes
+  // agree on one detector and one window.
+  const ridgeRowsLo = Math.max(0, centre - LINE_BAND_PX)
+  const ridgeRowsHi = Math.min(dh - 1, centre + LINE_BAND_PX)
+  const ridgeProfiles: number[][] = []
+  const ridgeX0 = Math.round(RIDGE_X0 * dw)
+  const ridgeX1 = Math.round(RIDGE_X1 * dw)
+  for (let s = 0; s < RIDGE_STATIONS; s += 1) {
+    const x = ridgeX0 + Math.round(((ridgeX1 - ridgeX0) * s) / Math.max(1, RIDGE_STATIONS - 1))
+    const column: number[] = []
+    for (let gy = ridgeRowsLo; gy <= ridgeRowsHi; gy += 1) column.push(visibleDark(x, dh - 1 - gy))
+    ridgeProfiles.push(column)
+  }
+  const ridge =
+    ridgeRowsLo <= centre && centre <= ridgeRowsHi
+      ? centreRidge(ridgeProfiles, { centreIndex: centre - ridgeRowsLo })
+      : null
   // The visible-composite, carried-pigment, inked-fraction and raw-transparent
   // readings of the SAME two zones. `COVERAGE_INKED_THRESHOLD` is the coverage
   // raster's own 0.5 inked line; pigment and visible reuse the transparent
@@ -6887,6 +6971,7 @@ function bristleEndMetrics(
     startAlongDark,
     endFine,
     endPreGap,
+    ridge,
     density: {
       window: {
         lastTapX,
@@ -7212,7 +7297,13 @@ function run(
                       : scenario === 'bristle-wet'
                         ? bristleWetScript()
                         : scenario === 'bristle-line'
-                          ? bristleLineScript(body ?? 0, strokeSize, readMut(), readOver())
+                          ? bristleLineScript(
+                              body ?? 0,
+                              strokeSize,
+                              readMut(),
+                              readOver(),
+                              readLineOverrides(),
+                            )
                           : scenario === 'bristle-tip'
                             ? bristleTipScript()
                             : scenario === 'bristle-end'

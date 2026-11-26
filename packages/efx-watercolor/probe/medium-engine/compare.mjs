@@ -921,6 +921,18 @@ const ENCLOSED_MEAN_MAX_PCT = 0.5
 const ENCLOSED_FRAC_MAX_PCT = 25
 const ENCLOSED_MAX_RUN_PX = 16
 
+/**
+ * 261126-n20 (issue 2): the centre-ridge bar, declared from the RED set and
+ * frozen before any law. A committed bristle stroke must carry no dark line
+ * down its axis: the centre band's strongest excess over the body-level
+ * shoulders stays at or under one luma step of 255, and NO along station may
+ * clear that margin — a single coherent station is the beginning of a line,
+ * not fibre noise. Both are absolute and self-contained; the detector is
+ * `ridge.ts` and every bristle-line surface plus the end lanes must carry it.
+ */
+const RIDGE_EXCESS_MAX = 1 / 255
+const RIDGE_ALONG_SHARE_MAX = 0
+
 const LINE_SURFACES = ['postApply', 'postSettle', 'postFix']
 
 function bristleLineFailures(data) {
@@ -1010,6 +1022,31 @@ function bristleLineFailures(data) {
           `${name}: halo.${side}.run ${halo.run} exceeds HALO_RUN_MAX ${HALO_RUN_MAX} rows ` +
             `above ${HALO_RUN_FRACTION} of the plateau (a halo band, not a fibre)`,
         )
+      }
+    }
+    const ridge = surface.ridge
+    if (ridge === null || typeof ridge !== 'object') {
+      failures.push(
+        `${name}: ridge is missing (the centre-ridge readout never ran; a null readout cannot pass)`,
+      )
+    } else {
+      const ridgeFields = ['peakExcess', 'ridgeWidthPx', 'asymmetry', 'share']
+      const ridgeMissing = ridgeFields.filter((field) => typeof ridge[field] !== 'number')
+      if (ridgeMissing.length > 0) {
+        failures.push(`${name}: ridge is missing ${ridgeMissing.join(', ')}`)
+      } else {
+        if (ridge.peakExcess > RIDGE_EXCESS_MAX) {
+          failures.push(
+            `${name}: ridge.peakExcess ${ridge.peakExcess} exceeds RIDGE_EXCESS_MAX ${RIDGE_EXCESS_MAX} ` +
+              `(a dark centre line ${ridge.ridgeWidthPx} px wide)`,
+          )
+        }
+        if (ridge.share > RIDGE_ALONG_SHARE_MAX) {
+          failures.push(
+            `${name}: ridge.share ${ridge.share} exceeds RIDGE_ALONG_SHARE_MAX ${RIDGE_ALONG_SHARE_MAX} ` +
+              '(the centre excess is coherent along the stroke, not fibre noise)',
+          )
+        }
       }
     }
     const enclosed = surface.tiling && surface.tiling.enclosed
