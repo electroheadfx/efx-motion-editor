@@ -127,12 +127,14 @@ describe('stroke layer shaders (261125-kvl, SPIKE 006)', () => {
     expect(typeof merge, 'strokeLayerMergeFS must be a string').toBe('string')
     const pin = (needle: string) =>
       expect(merge.includes(needle), `missing shader text: ${needle}`).toBe(true)
-    // The law: film_out = mix(sheet film, layer film, aEff), in storage form.
-    // The sheet's film is `ink + fixed`; subtracting `fixed` back leaves the
-    // storage untouched at aEff 0.
-    pin('oA = mix(inkA + fixedA, layerA, aEff) - fixedA;')
-    pin('mix(inkB.rgb + fixedB.rgb, layerB.rgb, aEff) - fixedB.rgb,')
-    pin('max(mix(inkB.a + fixedB.a, layerB.a, aEff) - fixedB.a, 0.0)')
+    // The law (261126-hgl): the layer film is occupancy-normalized, so the
+    // composite is `(1 - aEff)·film_S + (aEff / presence)·film_L` — the two
+    // weights total exactly 1. The sheet's film is `ink + fixed`;
+    // subtracting `fixed` back leaves the storage untouched at aEff 0.
+    pin('float wl = layerFilmWeight(uv);')
+    pin('oA = (inkA + fixedA) * (1.0 - aEff) + layerA * wl - fixedA;')
+    pin('(inkB.rgb + fixedB.rgb) * (1.0 - aEff) + layerB.rgb * wl - fixedB.rgb,')
+    pin('max((inkB.a + fixedB.a) * (1.0 - aEff) + layerB.a * wl - fixedB.a, 0.0));')
     // The exact endpoints survive, including the S floor at the layer side.
     pin('if (aEff >= 1.0 - 1e-4){')
     pin('oA = layerA - fixedA;')
@@ -169,6 +171,12 @@ describe('stroke layer shaders (261125-kvl, SPIKE 006)', () => {
       pin('float e = exp2(2.0 * falloff - 1.0);')
       pin('return 1.0 - amount * pow(clamp(u, 0.0, 1.0), e);')
       pin('return clamp(lateralWeight(u, uEdgeFade, uEdgeFalloff) * coverL, 0.0, 1.0);')
+      // 261126-hgl: the occupancy normalization rides the SAME snippet — the
+      // merge and the live display cannot disagree on the film weight.
+      pin('float layerPresence(vec2 uv){')
+      pin('return clamp(texture(uCoverL, uv).y, 0.0, 1.0);')
+      pin('float layerFilmWeight(vec2 uv){')
+      pin('return layerAEff(uv) / max(layerPresence(uv), 1e-4);')
     }
     // ONE declaration of the weight in the module, and every program that
     // APPLIES the law carries that exact snippet — the live display variant
@@ -194,7 +202,9 @@ describe('stroke layer shaders (261125-kvl, SPIKE 006)', () => {
       expect(cover.includes(needle), `missing shader text: ${needle}`).toBe(true)
     pin('layout(location=0) out vec4 o0;')
     pin('layout(location=1) out vec4 o1;')
-    pin('o0 = vec4(target, 0.0, 0.0, a);')
+    // 261126-hgl: G carries the deposit's union presence (the same blend
+    // accumulates it); `.a` stays `a` for the fallback's SRC_ALPHA blendFunc.
+    pin('o0 = vec4(target, a, 0.0, a);')
     // 261126: the field's anchor is the VISUAL edge (BRISTLE_LAYER_EDGE), not
     // the display feather's 0.66 silhouette — u must reach the visible deposit.
     pin('uniform float uLayerEdge;')
@@ -221,11 +231,14 @@ describe('stroke layer shaders (261125-kvl, SPIKE 006)', () => {
     // The frozen lateral law, through the SAME shared function the merge uses.
     pin('float layerU = texture(uLayerLateral, uv).x;')
     pin('layerAeff = clamp(lateralWeight(layerU, uEdgeFade, uEdgeFalloff) * layerCover, 0.0, 1.0);')
-    // THE live law: the same coefficient mix the merge commits, applied to
-    // the display's own film states (blur, then k) BEFORE the reconstruction.
-    pin('a = mix(a, layerInk, layerAeff);')
-    pin('b = mix(b, layerBands, layerAeff);')
-    pin('scatter = mix(scatter, layerScatter, layerAeff);')
+    // THE live law: the same occupancy-normalized coefficient mix the merge
+    // commits (261126-hgl), applied to the display's own film states (blur,
+    // then k) BEFORE the reconstruction.
+    pin('float layerPresence = max(texture(uLayerCover, uv).y, 1e-4);')
+    pin('float layerW = layerAeff / layerPresence;')
+    pin('a = a * (1.0 - layerAeff) + layerInk * layerW;')
+    pin('b = b * (1.0 - layerAeff) + layerBands * layerW;')
+    pin('scatter = scatter * (1.0 - layerAeff) + layerScatter * layerW;')
     // The skip guard: no layer mix where the layer never covered.
     pin('if (layerCover > 1e-4){')
     // ONE reconstruction (the shipped basis block, verbatim), none for the
@@ -236,7 +249,7 @@ describe('stroke layer shaders (261125-kvl, SPIKE 006)', () => {
     expect(count(displayFS), 'the shipped basis block appears exactly once').toBe(1)
     expect(displayLayerFS.includes('displayBasisBands')).toBe(false)
     // The mix is the field the reconstruction reads: layer mix -> rgb -> basis.
-    const mixAt = displayLayerFS.indexOf('a = mix(a, layerInk, layerAeff);')
+    const mixAt = displayLayerFS.indexOf('a = a * (1.0 - layerAeff) + layerInk * layerW;')
     const rgbAt = displayLayerFS.indexOf('vec3 rgb = vec3(0.0);')
     expect(mixAt).toBeGreaterThanOrEqual(0)
     expect(rgbAt).toBeGreaterThan(mixAt)

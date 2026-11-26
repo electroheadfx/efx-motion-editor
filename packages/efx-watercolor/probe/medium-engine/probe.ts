@@ -2338,8 +2338,12 @@ interface EdgeDocFields {
 
 /** The open stroke's own layer over one rect. */
 interface EdgeLayerFields {
-  /** layerFilm attachment 0 — cover_L (the alpha gate). */
+  /** layerFilm attachment 0, R lane — cover_L (the alpha gate). */
   readonly cover: Float32Array
+  /** layerFilm attachment 0, G lane — the deposit's UNION PRESENCE
+   *  (`1 − prod(1 − a_i)`, 261126-hgl): the occupancy the premultiplied film
+   *  is normalized by in the merge and the live display. */
+  readonly presence: Float32Array
   /** layerFilm attachment 1 — the MIN-blended |across| / uFeatherEdge field. */
   readonly lateral: Float32Array
   readonly a: Float32Array
@@ -2450,8 +2454,19 @@ function readEdgeLayerFields(
   if (!film || !ink || !relief) return null
   const read = (fb: WebGLFramebuffer, channels: 1 | 4) =>
     edgeDecodeHalf(it.g.readHalf(fb, sheet, sheet, channels, rect))
+  // 261126-hgl: attachment 0 is RG16F (R = cover_L, G = union presence) —
+  // read ONCE with four channels and split the two lanes.
+  const film0 = read(film.views[0]!, 4)
+  const texels = film0.length / 4
+  const cover = new Float32Array(texels)
+  const presence = new Float32Array(texels)
+  for (let i = 0; i < texels; i += 1) {
+    cover[i] = film0[i * 4]!
+    presence[i] = film0[i * 4 + 1]!
+  }
   return {
-    cover: read(film.views[0]!, 1),
+    cover,
+    presence,
     lateral: read(film.views[1]!, 1),
     a: read(ink.read.views[0]!, 4),
     b: read(ink.read.views[1]!, 4),
@@ -2505,6 +2520,17 @@ function edgeLayerAEff(lateral: number, coverL: number): number {
   const bias = EDGE_LAYER_FALLOFF / 100
   const e = Math.pow(2, 2 * bias - 1)
   return Math.min(1, Math.max(0, (1 - amount * Math.pow(u, e)) * coverL))
+}
+
+/**
+ * 261126-hgl: the shader's `layerFilmWeight` — the layer film is stored
+ * premultiplied by the deposit's own union presence, so the weight on the
+ * layer's COLOUR is `aEff / presence`. The `1e-4` floor is the shader's own
+ * guard for the never-covered texel (aEff is 0 there, so the weight is too).
+ */
+function edgeLayerFilmWeight(lateral: number, coverL: number, presence: number): number {
+  const aEff = edgeLayerAEff(lateral, coverL)
+  return aEff / Math.max(presence, 1e-4)
 }
 
 /** 261126-hgl (the halo readout): the painted band's 5 %-cover floor. */
@@ -3129,10 +3155,17 @@ function edgeTexelBands(
   return out
 }
 
-/** The coefficient-mix law's band array at texel `i`: the SAME pointwise
- *  component mix the merge writes (`mix(sheet, layer, weight)` in raw
- *  storage), then the display's k and reconstruction. No blur, no band
- *  average, no fit — the identity the committed storage must reproduce. */
+/**
+ * The coefficient-mix law's band array at texel `i`: the SAME pointwise
+ * component mix the merge writes, in raw storage, then the display's k and
+ * reconstruction. No blur, no band average, no fit — the identity the
+ * committed storage must reproduce.
+ *
+ * 261126-hgl: the SHEET side keeps the frozen `aEff`; the LAYER side rides
+ * `layerWeight = aEff / presence` — the layer's storage is premultiplied by
+ * the deposit's own union presence, so the two weights total exactly 1.
+ * `layerWeight` defaults to `weight` for the shipped presence-1 callers.
+ */
 function edgeMixedBands(
   sheetA: Float32Array,
   sheetB: Float32Array,
@@ -3141,15 +3174,38 @@ function edgeMixedBands(
   i: number,
   weight: number,
   k: number,
+  layerWeight = weight,
 ): Float64Array {
   const o = i * 4
   const a = new Float32Array(4)
   const b = new Float32Array(4)
   for (let c = 0; c < 4; c += 1) {
-    a[c] = sheetA[o + c]! * (1 - weight) + layerA[o + c]! * weight
-    b[c] = sheetB[o + c]! * (1 - weight) + layerB[o + c]! * weight
+    a[c] = sheetA[o + c]! * (1 - weight) + layerA[o + c]! * layerWeight
+    b[c] = sheetB[o + c]! * (1 - weight) + layerB[o + c]! * layerWeight
   }
   return edgeTexelBands(a, b, 0, k)
+}
+
+/** 261126-hgl: one texel's 4+4 coefficients multiplied by `scale`, decoded
+ *  through `edgeTexelBands` — the NORMALIZED layer film's display bands. The
+ *  stored film is premultiplied by its occupancy (`L = presence · C`), so the
+ *  normalized appearance divides the occupancy back out (`scale = 1 /
+ *  presence`); it is the merge's layer ENDPOINT, never the merge weight. */
+function edgeScaledBands(
+  a: Float32Array,
+  b: Float32Array,
+  i: number,
+  k: number,
+  scale: number,
+): Float64Array {
+  const o = i * 4
+  const sa = new Float32Array(4)
+  const sb = new Float32Array(4)
+  for (let c = 0; c < 4; c += 1) {
+    sa[c] = a[o + c]! * scale
+    sb[c] = b[o + c]! * scale
+  }
+  return edgeTexelBands(sa, sb, 0, k)
 }
 
 /** The linear sRGB of a band array — the display's own weight sum. */
@@ -3847,9 +3903,22 @@ function edgeSideReadings(
       // Raw states, scaled by the display's own k — exactly the field the
       // compositor reconstructs from the committed storage.
       const bands_s = edgeTexelBands(sheetFields.a, sheetFields.b, fi, k[fi]!)
-      const bands_l = edgeTexelBands(layer.a, layer.b, fi, k[fi]!)
-      const bands_o = edgeTexelBands(merged.a, merged.b, fi, k[fi]!)
+      // 261126-hgl: the layer's storage is premultiplied by its occupancy
+      // (`L = presence · C`), so the NORMALIZED reference appearance is the
+      // film divided by its presence (`C = L / presence`) — the merge mixes
+      // the sheet's film and THAT colour with weights (1 - aEff, aEff), and
+      // the envelope must be the two ENDPOINT appearances. Scaling by the
+      // merge weight instead (aEff / presence) puts the layer endpoint at
+      // aEff · C, a much dimmer appearance the committed mix legitimately
+      // leaves wherever the layer is the lighter side (measured 261126: 77-92
+      // stations per under profile before this correction).
+      // `bands_l_raw` is the raw storage the exact endpoint writes
+      // (coreExact's reference).
       const c = layerCover[fi]!
+      const normalized = 1 / Math.max(layer.presence[fi]!, 1e-4)
+      const bands_l_raw = edgeTexelBands(layer.a, layer.b, fi, k[fi]!)
+      const bands_l = edgeScaledBands(layer.a, layer.b, fi, k[fi]!, normalized)
+      const bands_o = edgeTexelBands(merged.a, merged.b, fi, k[fi]!)
       const aEff = edgeLayerAEff(layer.lateral[fi]!, c)
       const atCore = aEff >= EDGE_LAYER_CORE_AEFF
       const envS = bands_s
@@ -3883,7 +3952,9 @@ function edgeSideReadings(
         // re-adds in RGBA16F — a sub-byte band deviation, never a law change.
         coreSeen = true
         const gotRgb = edgeBandsRgb8(bands_o)
-        const wantRgb = edgeBandsRgb8(envL)
+        // The endpoint writes the layer's RAW storage, never the normalized
+        // film: the identity is unchanged (its doc).
+        const wantRgb = edgeBandsRgb8(bands_l_raw)
         for (let ch = 0; ch < 3; ch += 1) {
           rowCore = Math.max(rowCore, Math.abs(gotRgb[ch]! - wantRgb[ch]!))
         }
@@ -3998,11 +4069,14 @@ function edgeEncodeResidual(
       const fi = axis === 'y' ? rowIndex * width + j : j * width + rowIndex
       // The composite weight is the FROZEN aEff = A·cover_L, never cover_L
       // alone: the lateral fade inside the footprint lowers the weight and the
-      // expected mix follows it, not the cover. Judged against the RAW states
-      // — the merge is pointwise, so a pre-blur would measure itself.
+      // expected mix follows it, not the cover. 261126-hgl: the layer side of
+      // the mix rides aEff / presence (its storage is occupancy-premultiplied).
+      // Judged against the RAW states — the merge is pointwise, so a pre-blur
+      // would measure itself.
       const mixWeight = edgeLayerAEff(layer.lateral[fi]!, layer.cover[fi]!)
+      const filmWeight = edgeLayerFilmWeight(layer.lateral[fi]!, layer.cover[fi]!, layer.presence[fi]!)
       const wantRgb = edgeBandsRgb8(
-        edgeMixedBands(sheetFields.a, sheetFields.b, layer.a, layer.b, fi, mixWeight, k[fi]!),
+        edgeMixedBands(sheetFields.a, sheetFields.b, layer.a, layer.b, fi, mixWeight, k[fi]!, filmWeight),
       )
       const gotRgb = edgeBandsRgb8(edgeTexelBands(merged.a, merged.b, fi, k[fi]!))
       const texelWorst = Math.max(
@@ -4038,8 +4112,9 @@ function edgeEncodeResidual(
     for (let x = 1; x < width - 1; x += 1) {
       const fi = y * width + x
       const mixWeight = edgeLayerAEff(layer.lateral[fi]!, layer.cover[fi]!)
+      const filmWeight = edgeLayerFilmWeight(layer.lateral[fi]!, layer.cover[fi]!, layer.presence[fi]!)
       const live = edgeBandsRgb8(
-        edgeMixedBands(sheetBlur.a, sheetBlur.b, layerBlur.a, layerBlur.b, fi, mixWeight, k[fi]!),
+        edgeMixedBands(sheetBlur.a, sheetBlur.b, layerBlur.a, layerBlur.b, fi, mixWeight, k[fi]!, filmWeight),
       )
       const committed = edgeBandsRgb8(edgeTexelBands(mergedBlur.a, mergedBlur.b, fi, k[fi]!))
       polish.push(
@@ -4392,13 +4467,15 @@ function edgePixelDelta(a: Uint8ClampedArray, b: Uint8ClampedArray): { max: numb
 
 /** The layer set's declared formats (Engine.ensureLayer — the five allocations
  *  are pinned against the source by coverageLifecycle.test.ts): RGBA16F is
- *  8 B/texel, R16F is 2. WebGL2 exposes no per-level format query
+ *  8 B/texel, RG16F is 4, R16F is 2. WebGL2 exposes no per-level format query
  *  (`getTexLevelParameter` is not in the API — `lib.dom.d.ts` is right to omit
  *  it), so the texture COUNT and dimensions are read from the live targets and
  *  the stride comes from the engine's own declaration. */
 const EDGE_LAYER_INK_STRIDE = 8
-const EDGE_LAYER_FILM_STRIDE = 2
 const EDGE_LAYER_RELIEF_STRIDE = 2
+/** 261126-hgl: the film is TWO textures of different formats (RG16F 4 +
+ *  R16F 2 = 6 B/texel), so the uniform per-target stride cannot express it. */
+const EDGE_LAYER_FILM_BYTES_PER_TEXEL = 6
 
 /** The exact bytes one target's textures hold, from its LIVE shape. */
 function edgeTargetBytes(
@@ -4518,7 +4595,9 @@ function edgeStudioRows(
   const layerInk = it.layerInk ?? null
   const inkReadBytes = layerInk ? edgeTargetBytes(layerInk.read, EDGE_LAYER_INK_STRIDE) : 0
   const inkWriteBytes = layerInk ? edgeTargetBytes(layerInk.write, EDGE_LAYER_INK_STRIDE) : 0
-  const filmBytes = it.layerFilm ? edgeTargetBytes(it.layerFilm, EDGE_LAYER_FILM_STRIDE) : 0
+  const filmBytes = it.layerFilm
+    ? it.layerFilm.w * it.layerFilm.h * EDGE_LAYER_FILM_BYTES_PER_TEXEL
+    : 0
   const reliefBytes = it.layerRelief ? edgeTargetBytes(it.layerRelief, EDGE_LAYER_RELIEF_STRIDE) : 0
   const mergeReliefBytes = it.mergeRelief ? edgeTargetBytes(it.mergeRelief, EDGE_LAYER_RELIEF_STRIDE) : 0
   const layerBytes = inkReadBytes + inkWriteBytes + filmBytes + reliefBytes + mergeReliefBytes

@@ -1294,6 +1294,12 @@ const EDGE_ENCODE_OVER = 0
  *  REPORTED — the prescribed blur order makes a byte-exact rim impossible, and
  *  UAT row 6 judges how the commit reads. All three must be real numbers. */
 const EDGE_POLISH_P95 = 1
+/** 261126-hgl: the fringe's light-ring score in 1/255 units — a station
+ *  inside the painted band that is lighter than the painted stations on BOTH
+ *  sides of it, measured on the committed display profile of each lateral
+ *  axis. The pre-fix artist arm read 6.89-11.23/255 on the under axis; the
+ *  occupancy-normalized merge must leave at most one display step. */
+const EDGE_FRINGE_DIP_MAX = 1
 /** The printed-share reading at the band edge is REPORTED, not barred: the
  *  reverted film law's EDGE_PRINT_* floors were defined against `1 − amount·t^e`
  *  on the whole mark, and the layer law's raster mixes the base's own print
@@ -1342,6 +1348,10 @@ const EDGE_LAYER_READINGS = [
   'edgeCoreExactUnder',
   'edgeContinuityPaper',
   'edgeContinuityUnder',
+  // 261126-hgl: the halo readout — the light-ring score on both lateral axes.
+  // Required once the layer path runs; the bar is `EDGE_FRINGE_DIP_MAX`.
+  'edgeFringeDipPaper',
+  'edgeFringeDipUnder',
   'edgePrintRetentionPaper',
   'edgePrintRetentionUnder',
   'edgeEncodeMax',
@@ -1691,6 +1701,21 @@ function edgeLayerFailures(data, reference) {
   }
   if (!Number.isInteger(data.edgePolishOver) || data.edgePolishOver < 0) {
     failures.push(`edgePolishOver ${data.edgePolishOver} is not a non-negative texel count`)
+  }
+  // 261126-hgl: the fringe's light ring, barred on BOTH lateral axes. The
+  // committed display must never carry a station lighter than the painted
+  // stations on both sides of it — the artist's pale halo.
+  for (const side of ['Paper', 'Under']) {
+    const field = `edgeFringeDip${side}`
+    const value = data[field]
+    if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+      failures.push(`${field} ${JSON.stringify(value)} is not a non-negative 1/255 reading`)
+    } else if (value > EDGE_FRINGE_DIP_MAX) {
+      failures.push(
+        `${field} ${value}/255 exceeds ${EDGE_FRINGE_DIP_MAX}/255 — a light ring at the fringe: ` +
+          'a station inside the painted band is lighter than the painted stations on BOTH sides of it',
+      )
+    }
   }
   failures.push(...edgeStudioFailures(data))
   return failures
@@ -2375,6 +2400,16 @@ function printDurations(label, data) {
     const over = data.edgePolishP95 > EDGE_POLISH_P95 ? ` — OVER the ${EDGE_POLISH_P95}/255 p95 bar` : ''
     console.log(
       `${label.padEnd(9)} : polish max ${data.edgePolishMax} | p95 ${data.edgePolishP95} | over ${data.edgePolishOver} (p95 bar ${EDGE_POLISH_P95}/255)${over}`,
+    )
+  }
+  // 261126-hgl: the fringe's light-ring score per lateral axis (bar 1/255).
+  if (typeof data.edgeFringeDipPaper === 'number' || typeof data.edgeFringeDipUnder === 'number') {
+    const dip = (value) =>
+      typeof value === 'number' && value > EDGE_FRINGE_DIP_MAX
+        ? `${value} — OVER the ${EDGE_FRINGE_DIP_MAX}/255 bar`
+        : `${value}`
+    console.log(
+      `${label.padEnd(9)} : fringe dip paper ${dip(data.edgeFringeDipPaper)} | under ${dip(data.edgeFringeDipUnder)} (bar ${EDGE_FRINGE_DIP_MAX}/255)`,
     )
   }
 }

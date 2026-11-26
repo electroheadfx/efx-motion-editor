@@ -2159,6 +2159,11 @@ describe('the edge-layer gate (Spec 10)', () => {
       edgeCoreExactUnder: layer ? 0 : null,
       edgeContinuityPaper: layer ? 0 : null,
       edgeContinuityUnder: layer ? 0 : null,
+      // 261126-hgl: the fringe light-ring score per lateral axis, barred at
+      // 1/255 (`EDGE_FRINGE_DIP_MAX`). Absent at amount 0 — no layer, no ring
+      // readout. A test moves one to prove the bar.
+      edgeFringeDipPaper: layer ? 0 : null,
+      edgeFringeDipUnder: layer ? 0 : null,
       edgePrintRetentionPaper: layer ? Math.max(0, 1 - amount / 100) : null,
       edgePrintRetentionUnder: layer ? Math.max(0, 1 - amount / 100) : null,
       edgeEncodeMax: layer ? 2 : null,
@@ -2203,7 +2208,9 @@ describe('the edge-layer gate (Spec 10)', () => {
   }
 
   /** The Studio rows a real edge-layer capture carries (probe.ts
-   *  `edgeStudioRows`). 2048² at 40 B/px = 160 MiB exactly. */
+   *  `edgeStudioRows`). 2048² at 42 B/px = 168 MiB exactly (261126-hgl: the
+   *  film is RG16F + R16F = 6 B/texel after the presence lane). The clamp and
+   *  4K rows are the same per-texel value at their dims, rounded to 2 dp. */
   function edgeStudioFixture(layer: boolean): Record<string, unknown> {
     return {
       edgeMemoryDim: [2048, 2048],
@@ -2211,16 +2218,16 @@ describe('the edge-layer gate (Spec 10)', () => {
       edgeMemoryTargets: {
         layerInkRead: layer ? 2048 * 2048 * 16 : 0,
         layerInkWrite: layer ? 2048 * 2048 * 16 : 0,
-        layerFilm: layer ? 2048 * 2048 * 4 : 0,
+        layerFilm: layer ? 2048 * 2048 * 6 : 0,
         layerRelief: layer ? 2048 * 2048 * 2 : 0,
         mergeRelief: layer ? 2048 * 2048 * 2 : 0,
       },
-      edgeMemoryLayerBytes: layer ? 2048 * 2048 * 40 : 0,
-      edgeMemoryPerTexel: layer ? 40 : 0,
-      edgeMemoryMiB: layer ? 160 : 0,
+      edgeMemoryLayerBytes: layer ? 2048 * 2048 * 42 : 0,
+      edgeMemoryPerTexel: layer ? 42 : 0,
+      edgeMemoryMiB: layer ? 168 : 0,
       edgeMemoryClampDim: [2049, 2049],
-      edgeMemoryClampedMiB: layer ? 160 : 0,
-      edgeMemory4KRawMiB: layer ? 640 : 0,
+      edgeMemoryClampedMiB: layer ? 168.16 : 0,
+      edgeMemory4KRawMiB: layer ? 672 : 0,
       edgeG1DrawsBefore: 0,
       edgeG1DrawsAtCallback: layer ? 1 : 0,
       edgeG1MergeDraws: layer ? 1 : 0,
@@ -2329,6 +2336,25 @@ describe('the edge-layer gate (Spec 10)', () => {
       expectContains(PROBE, 'edgeFringeDipUnder: underReadings.fringeDip,')
       expectContains(PROBE, 'function edgeFringeDip(profile: EdgeProfile): number | null {')
       expectContains(PROBE, 'const EDGE_FRINGE_GAP = 3')
+    })
+
+    it('bars the fringe dip and reads the presence lane (261126-hgl, the one law)', () => {
+      // The comparator's bar and its two required readings.
+      expectContains(COMPARE, 'const EDGE_FRINGE_DIP_MAX = 1')
+      expectContains(COMPARE, "'edgeFringeDipPaper',")
+      expectContains(COMPARE, "'edgeFringeDipUnder',")
+      // The film's bytes: two textures of 4 + 2 B/texel cannot ride the
+      // uniform per-target stride.
+      expectContains(PROBE, 'const EDGE_LAYER_FILM_BYTES_PER_TEXEL = 6')
+      // The presence lane is read from attachment 0 ONCE, four channels.
+      expectContains(PROBE, 'const film0 = read(film.views[0]!, 4)')
+      // The probe mirrors the shader's normalized film weight, and the mix
+      // applies it on the LAYER side only (the sheet keeps aEff).
+      expectContains(
+        PROBE,
+        'function edgeLayerFilmWeight(lateral: number, coverL: number, presence: number): number {',
+      )
+      expectContains(PROBE, 'layerA[o + c]! * layerWeight')
     })
 
     it('carries the same bristle predicate in probe.ts, compare.mjs and this file', () => {
@@ -2715,6 +2741,19 @@ describe('the edge-layer gate (Spec 10)', () => {
     it('WR-02: fails a memory reading outside the measured set', () => {
       const output = rejects('nyquist-studio-memory', { edgeMemoryLayerBytes: 1 })
       expect(invariantLine(output)).toContain('edgeMemoryLayerBytes')
+    })
+
+    it('261126-hgl: fails a fringe light ring over 1/255 on either axis', () => {
+      // The base capture (dip 0 on both axes) must still pass; one axis moved
+      // over the bar must fail BY NAME — the halo is the surface this quick
+      // exists for, so the bar is EXECUTED, never merely pinned.
+      const base = compareSynthetic('nyquist-fringe-pass', validEdgeLayerCapture(100, 50))
+      expect(base.status, lawVerdict(base.status, base.output)).toBe(0)
+      const output = rejects('nyquist-fringe-dip', { edgeFringeDipUnder: 2 })
+      expect(invariantLine(output)).toContain('edgeFringeDipUnder')
+      expect(output).toContain('light ring')
+      const paper = rejects('nyquist-fringe-dip-paper', { edgeFringeDipPaper: 3 })
+      expect(invariantLine(paper)).toContain('edgeFringeDipPaper')
     })
 
     it('WR-02: fails a capture missing a Studio row', () => {

@@ -1598,8 +1598,9 @@ void main(){
 //  pale fringe, no pickup, smoothed feather noise and rectangular patches).
 //
 //  The layer owns three targets: its ink pair (the same two RGBA16F
-//  attachments a sheet's ink has), its film pair (cover at attachment 0, the
-//  MIN lateral coordinate at attachment 1) and its thickness. Nothing here
+//  attachments a sheet's ink has), its film pair (cover_L and the union
+//  presence in attachment 0's RG lanes, the MIN lateral coordinate at
+//  attachment 1) and its thickness. Nothing here
 //  edits displayFS / bristleCoverFS / bristleDepositFS: the shipped compositor
 //  is byte-identical at amount 0 by construction, and the amount-0 bypass is a
 //  branch in the Engine, never a value in these shaders.
@@ -1636,6 +1637,14 @@ float lateralWeight(float u, float amount, float falloff){
  * union passes, so the three can never disagree. `uCoverL` / `uLateral` are
  * layerFilm's two attachments; `uEdgeFade` is the amount (0 neutral) and
  * `uEdgeFalloff` the shape bias. The lateral factor itself is LATERAL_WEIGHT.
+ *
+ * 261126-hgl — THE OCCUPANCY NORMALIZATION. The layer film is stored
+ * premultiplied by the deposit's own union occupancy (`presence`, the G lane
+ * of attachment 0), so the weight on the layer's COLOUR is
+ * `layerFilmWeight = aEff / presence`. The weight is bounded: `aEff <=
+ * cover_L <= presence` (the cover write is `a·uCoverTarget·g.alpha` blended
+ * source-over, a subset of the bare `a` union), so `layerFilmWeight <=
+ * lateralWeight <= 1`. The `1e-4` floor only guards the never-covered texel.
  */
 const STROKE_LAYER_ALPHA = `${LATERAL_WEIGHT}
 uniform sampler2D uCoverL, uLateral;
@@ -1644,12 +1653,19 @@ float layerAEff(vec2 uv){
   float u = texture(uLateral, uv).x;
   float coverL = clamp(texture(uCoverL, uv).x, 0.0, 1.0);
   return clamp(lateralWeight(u, uEdgeFade, uEdgeFalloff) * coverL, 0.0, 1.0);
+}
+float layerPresence(vec2 uv){
+  return clamp(texture(uCoverL, uv).y, 0.0, 1.0);
+}
+float layerFilmWeight(vec2 uv){
+  return layerAEff(uv) / max(layerPresence(uv), 1e-4);
 }`;
 
 /**
- * The layer film's reset at stroke start: cover 0, lateral 1. `clearTarget`
- * cannot be reused — it zeroes every attachment, and a lateral field of 0
- * would read every texel as "core" (u = 0) before the first dab covers it.
+ * The layer film's reset at stroke start: cover 0 AND presence 0 in
+ * attachment 0, lateral 1. `clearTarget` cannot be reused — it zeroes every
+ * attachment, and a lateral field of 0 would read every texel as "core"
+ * (u = 0) before the first dab covers it.
  */
 export const strokeLayerClearFS = `${HEADER}
 layout(location=0) out vec4 o0;
@@ -1661,9 +1677,13 @@ void main(){
 
 /**
  * The layer's ONE coverage write per dab, in TWO attachments:
- *   0: the shipped cover lerp's payload — `vec4(target, 0, 0, a)` blended
- *      (ONE, ONE_MINUS_SRC_ALPHA), byte-for-byte the law bristleCoverFS
- *      applies to the sheet;
+ *   0: R = the shipped cover lerp's payload (`target`, blended
+ *      (ONE, ONE_MINUS_SRC_ALPHA) — byte-for-byte the law bristleCoverFS
+ *      applies to the sheet); G = the deposit's UNION PRESENCE, the SAME
+ *      blend accumulating the bare `a` across the stroke's dabs
+ *      (`G <- a + G·(1 − a)` = `1 − prod(1 − a_i)`, the occupancy the film's
+ *      premultiplied storage is normalized by — 261126-hgl). `.a` stays `a`
+ *      because the fallback path's blendFunc reads SRC_ALPHA from it.
  *   1: the lateral coordinate `clamp(|across| / uLayerEdge, 0, 1)` blended
  *      with (MIN), so the layer keeps the MINIMUM over its covering dabs.
  *      `uLayerEdge` is BRISTLE_LAYER_EDGE (0.9 of the nominal footprint): the
@@ -1708,7 +1728,7 @@ void main(){
     smear *= 1.0 - smoothstep(0.975, 0.995, samePaint);
     target = mix(target, a * uCoverTarget * snapB.a, smear);
   }
-  o0 = vec4(target, 0.0, 0.0, a);
+  o0 = vec4(target, a, 0.0, a);
   // The lateral field: the dab's across coordinate in VISUAL-EDGE units, so
   // u = 1 lands where the deposit's cover ends (uLayerEdge · uRadius).
   o1 = vec4(clamp(abs(q.x) / max(uLayerEdge, 1e-4), 0.0, 1.0));
@@ -1722,8 +1742,14 @@ void main(){
  * `lateralWeight(u, amount, b)·cover_L`, u = 0 on the centre line, 1 at the
  * visual edge), and writes the COMPONENT-WISE coefficient mix
  *
- *     t_out = mix(t_sheet, t_L, aEff)        t = (absorbs 0..3, 4..6, S)
- *     ink   = t_out − fixed
+ *     t_out = (1 − aEff)·t_sheet + (aEff / presence)·t_L
+ *     ink   = t_out − fixed        t = (absorbs 0..3, 4..6, S)
+ *
+ * The `aEff / presence` weight is 261126-hgl's ONE law: the layer film is
+ * stored premultiplied by the deposit's own occupancy, so dividing it out
+ * makes the composite a CONVEX combination of the under's film and the
+ * stroke's own colour — the pale fringe ring cannot exist. At `presence = 1`
+ * it is byte-identical to the shipped `mix(t_sheet, t_L, aEff)`.
  *
  * This is the engine's ONE subtractive lerp: averaging the ABSORBANCE
  * coefficients is what makes yellow over blue read green. The retired encoder
@@ -1770,14 +1796,19 @@ void main(){
     return;
   }
 
-  // ONE component-wise lerp in pigment space: the film the sheet will show is
-  // mix(sheet film, layer film, aEff), written back in storage form. S is
-  // clamped at its floor (it is the deposit's scattering, never a display
-  // band). At aEff 1 / 0 the endpoints above already returned.
-  oA = mix(inkA + fixedA, layerA, aEff) - fixedA;
+  // The film is OCCUPANCY-NORMALIZED (261126-hgl): the layer's storage is
+  // premultiplied by the deposit's own union presence, so the weight on the
+  // layer's COLOUR is aEff / presence and the two weights total exactly 1.
+  // The premultiplied form let the under leak at partial occupancy by
+  // aEff·(1 - presence) of the under's film — a pale ring, lighter than the
+  // paint on both sides of it. S is clamped at its floor (it is the deposit's
+  // scattering, never a display band). At aEff 1 / 0 the endpoints above
+  // already returned.
+  float wl = layerFilmWeight(uv);
+  oA = (inkA + fixedA) * (1.0 - aEff) + layerA * wl - fixedA;
   oB = vec4(
-    mix(inkB.rgb + fixedB.rgb, layerB.rgb, aEff) - fixedB.rgb,
-    max(mix(inkB.a + fixedB.a, layerB.a, aEff) - fixedB.a, 0.0));
+    (inkB.rgb + fixedB.rgb) * (1.0 - aEff) + layerB.rgb * wl - fixedB.rgb,
+    max((inkB.a + fixedB.a) * (1.0 - aEff) + layerB.a * wl - fixedB.a, 0.0));
 }`;
 
 /** The merge's coverage union: `cover_out = 1 − (1 − cover_S)·(1 − aEff)`. */
@@ -2147,10 +2178,11 @@ void main(){
  * compositor — every export and the entire amount-0 path — and stays
  * byte-identical to the pre-change source. `displayLayerFS` is the LIVE
  * variant drawn only while an Edge stroke's layer is open: it adds the layer's
- * five samplers, mixes the two films' coefficients by `layerAeff` and then
- * reconstructs ONCE — the SAME coefficient composite the stroke-end merge
- * commits. The layer text is injected as empty strings into the shipped
- * variant, so the two can never drift structurally.
+ * five samplers, mixes the two films' coefficients by `layerAeff` on the sheet
+ * side and `layerAeff / presence` on the layer side (261126-hgl's occupancy
+ * normalization) and then reconstructs ONCE — the SAME coefficient composite
+ * the stroke-end merge commits. The layer text is injected as empty strings
+ * into the shipped variant, so the two can never drift structurally.
  */
 function displaySource(layer: boolean): string {
   // The layer-only samplers/uniforms. Column-aligned to the shared block.
@@ -2165,12 +2197,13 @@ uniform float uEdgeFade, uEdgeFalloff; // the frozen lateral law: amount, shape 
   // The live layer block, inserted BEFORE the single display reconstruction.
   const layerMix = layer
     ? `
-  // THE LIVE STROKE LAYER (261125-kvl, SPIKE 006; coefficient mix 261125).
-  // While an Edge stroke is open its dabs live in layerInk / layerFilm /
-  // layerRelief instead of the sheet, and this block shows the composite the
-  // stroke-end merge commits — the SAME law, in the same space:
+  // THE LIVE STROKE LAYER (261125-kvl, SPIKE 006; coefficient mix 261125;
+  // occupancy normalization 261126-hgl). While an Edge stroke is open its dabs
+  // live in layerInk / layerFilm / layerRelief instead of the sheet, and this
+  // block shows the composite the stroke-end merge commits — the SAME law, in
+  // the same space:
   //
-  //     film = mix(sheet film, layer film, layerAeff)   component-wise
+  //     film = (1 − layerAeff)·sheet film + (layerAeff / presence)·layer film
   //
   // and then ONE reconstruction through displayBasisGLSL() below. Mixing the
   // ABSORBANCE COEFFICIENTS (never the reconstructed bands) is the engine's
@@ -2205,9 +2238,14 @@ uniform float uEdgeFade, uEdgeFalloff; // the frozen lateral law: amount, shape 
       // centre line, 1 at the visual edge, no interior plateau.
       float layerU = texture(uLayerLateral, uv).x;
       layerAeff = clamp(lateralWeight(layerU, uEdgeFade, uEdgeFalloff) * layerCover, 0.0, 1.0);
-      a = mix(a, layerInk, layerAeff);
-      b = mix(b, layerBands, layerAeff);
-      scatter = mix(scatter, layerScatter, layerAeff);
+      // The SAME occupancy normalization the merge commits (261126-hgl): the
+      // colour weight is aEff / presence, so the live surface is what the
+      // stroke end will store. The two weights total 1.
+      float layerPresence = max(texture(uLayerCover, uv).y, 1e-4);
+      float layerW = layerAeff / layerPresence;
+      a = a * (1.0 - layerAeff) + layerInk * layerW;
+      b = b * (1.0 - layerAeff) + layerBands * layerW;
+      scatter = scatter * (1.0 - layerAeff) + layerScatter * layerW;
     }
   }`
     : '';
