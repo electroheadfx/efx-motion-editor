@@ -1248,10 +1248,12 @@ function reliefSmoothFailures(data) {
 //    capture — the amount-0 bypass is a BRANCH, so its proof is structural,
 //    never a pixel comparison).
 //
-// The FROZEN law (spike 006, do not re-derive here):
+// The law (Spec 10 v2, 261125):
 //   u = clamp(|across| / uFeatherEdge, 0, 1); t = clamp((u - 0.30)/0.70, 0, 1);
 //   e = 2^(2b - 1); A = 1 - amount·t^e; A_eff = A·cover_L;
-//   band_out = A_eff·band_L + (1 - A_eff)·band_S.
+//   film_out = mix(film_S, film_L, A_eff)   component-wise, in ABSORBANCE
+//   coefficients (the engine's subtractive pigment lerp). No band average, no
+//   fit, no pre-blur, no granulation division — the commit is pointwise.
 // Every bar below names the number the law predicts at its station.
 
 /** The amount-0 identity row tolerance: the profile arrays are recorded at
@@ -1263,18 +1265,24 @@ const EDGE_SILHOUETTE_MIN_PX = 8
 const EDGE_START = 0.3
 /** The dissolve band's midpoint in silhouette units: (START + 1) / 2 = 0.65. */
 const EDGE_MID_U = (EDGE_START + 1) / 2
-/** The encoder residual bars, in 1/255 (spike 006 Q4). */
+/** The coefficient-mix identity bars, in 1/255 (spike 006 Q4's bar, kept):
+ *  the committed film must reproduce the pointwise `mix(film_S, film_L, aEff)`
+ *  through the display's own k; only the half-float storage round-trip is
+ *  expected to move. */
 const EDGE_ENCODE_MAX = 2
 const EDGE_ENCODE_P95 = 1
 const EDGE_ENCODE_OVER = 0
-/** The display's second film-blur on the stored field (`edgePolishDelta`):
- *  REPORTED as max / p95 / count over this 2/255 line, never barred. The plan
- *  (261125-kvl Task 4 / gate 5) delegates the settle to UAT row 6, and the
- *  raw-state fallback was measured — it did not shrink the delta, so the
- *  display-domain target stands. A p95 over this line prints a report note. */
-const EDGE_POLISH_P95 = 2
-/** The 50 %-over-white reading in LINEAR light (DESIGN 6.5; spike 0.08/255). */
-const EDGE_LINEAR_HALF_MAX = 1
+/** The live-vs-committed display settle (`edgePolishDelta`): the live
+ *  compositor softens each film and then mixes; the committed display softens
+ *  the stored mix. Both run the SAME coefficient law, so they agree wherever
+ *  aEff is locally constant and differ only at the lateral stations (blur and
+ *  mix do not commute there). The p95 is BARRED at one display step: the live
+ *  state must match the committed state on at least 95 % of the interior
+ *  texels (measured 0 on every cell; the retired band encoder measured 2–3,
+ *  so this bar is the old settle's RED). The rim MAX and the over-count stay
+ *  REPORTED — the prescribed blur order makes a byte-exact rim impossible, and
+ *  UAT row 6 judges how the commit reads. All three must be real numbers. */
+const EDGE_POLISH_P95 = 1
 /** The printed-share reading at the band edge is REPORTED, not barred: the
  *  reverted film law's EDGE_PRINT_* floors were defined against `1 − amount·t^e`
  *  on the whole mark, and the layer law's raster mixes the base's own print
@@ -1310,7 +1318,6 @@ const EDGE_LAYER_READINGS = [
   'edgePolishMax',
   'edgePolishP95',
   'edgePolishOver',
-  'linearHalfOnWhite',
   // WR-01: the first merge's last-touch pair — required at amount > 0 (the
   // merge must stamp), absent at amount 0 (no merge runs).
   'edgeMergedTouchBefore',
@@ -1413,17 +1420,21 @@ function edgeIdentityFailures(data, reference) {
  * At `edgeAmount === 0` it runs ONLY the identity block. At `edgeAmount > 0`
  * it requires every layer reading by name (a null at amount>0 is a capture
  * that never ran the layer path) and then applies the law's bars:
- *  - `edgeCoreExact*` = 0: over the stations whose layer cover_L reaches the
- *    encoder's exact-endpoint set, the committed band IS the layer's band;
- *  - `edgeContinuity*` = 0: no station leaves the [band_S, band_L] envelope,
- *    so the band cannot show a pale fringe or a washed-out mark;
- *  - the encoder residual max <= 2, p95 <= 1, zero over (1/255);
- *  - `edgePolishDelta` (max / p95 / count over 2/255) is REPORTED, never
- *    barred: the display's second film-blur on the stored field is a spatial
- *    pre-filter that cannot be inverted pointwise, and UAT row 6 judges the
- *    settle. The readings must be real numbers; a p95 over the attention line
- *    prints a report note instead of failing the capture;
- *  - `linearHalfOnWhite` <= 1/255 in LINEAR light;
+ *  - `edgeCoreExact*` <= 1/255: over the stations whose `aEff` reaches the
+ *    merge's exact-endpoint set, the committed band IS the layer's band. The
+ *    merge's write is exact (`layer − fixed`); the readback re-adds a nonzero
+ *    fixed pool after RGBA16F storage, so one display step is the storage
+ *    floor, never a bar to beat. A mix instead of the identity reads far over
+ *    it;
+ *  - `edgeContinuity*` = 0: no station leaves the [band_S, band_L] envelope
+ *    (the coefficient decode must not overshoot the two endpoints);
+ *  - the coefficient-mix identity max <= 2, p95 <= 1, zero over (1/255);
+ *  - `edgePolishDelta`: the p95 must stay <= 1/255 (both displays run the
+ *    same coefficient law; the retired band encoder settled 2–3). The rim
+ *    max / over-count are REPORTED only — the prescribed blur order makes a
+ *    byte-exact rim impossible (blur and mix do not commute at the lateral
+ *    stations), and UAT row 6 judges how the commit reads. All three
+ *    readings must be real numbers;
  *  - `edgePrintRetention*` is a measured share in [0, 1] (reported, not
  *    barred — the film law's EDGE_PRINT_* floors do not transfer to the layer
  *    law; see the constant's note).
@@ -1523,20 +1534,26 @@ function edgeLayerFailures(data, reference) {
       }
       // NOT RUN otherwise: this scene's deposit never saturates on this side
       // (the reach is reported by debugMaxAeff*), so there is no identity to
-      // read. The interior encoder bar still governs every fitted texel.
-    } else if (core !== 0) {
+      // read. The coefficient-mix bar still governs every interior texel.
+    } else if (!(core <= 1)) {
+      // The endpoint identity is exact in the merge's write; the display
+      // readback re-adds a nonzero fixed pool over RGBA16F storage, which
+      // costs at most one 8-bit display step. The paper side measures 0
+      // today; the under side's denser pool measures 1. More than one step
+      // means the merge averaged instead of replacing.
       failures.push(
-        `edgeCoreExact${side} ${core} is not 0/255 — over the texels whose merge ` +
-          'aEff reaches the encoder\'s exact-endpoint set the committed band must BE ' +
-          'the layer\'s band (an identity, not a fit)',
+        `edgeCoreExact${side} ${core} exceeds 1/255 — over the texels whose merge ` +
+          'aEff reaches the exact-endpoint set the committed band must BE ' +
+          'the layer\'s band (an identity, not a mix; one step is the RGBA16F ' +
+          'round trip through the fixed pool)',
       )
     }
     const continuity = data[`edgeContinuity${side}`]
     if (continuity !== 0) {
       failures.push(
         `edgeContinuity${side} ${continuity} station(s) leave the [band_S, band_L] envelope — ` +
-          'the band must stay a between-mix of the sheet and the layer (a pale fringe or a ' +
-          'washed-out mark fails here)',
+          'the coefficient decode must stay between the two endpoint appearances (a pale ' +
+          'fringe or a washed-out mark fails here)',
       )
     }
     const retention = data[`edgePrintRetention${side}`]
@@ -1562,12 +1579,12 @@ function edgeLayerFailures(data, reference) {
   if (!(data.edgeEncodeMax <= EDGE_ENCODE_MAX)) {
     failures.push(
       `edgeEncodeMax ${data.edgeEncodeMax} exceeds ${EDGE_ENCODE_MAX}/255 — the committed ` +
-        'sheet must reproduce the live band mix within the frozen encoder bar',
+        'sheet must reproduce the pointwise coefficient mix (storage round-trip only)',
     )
   }
   if (!(data.edgeEncodeP95 <= EDGE_ENCODE_P95)) {
     failures.push(
-      `edgeEncodeP95 ${data.edgeEncodeP95} exceeds ${EDGE_ENCODE_P95}/255 (the encoder's p95 bar)`,
+      `edgeEncodeP95 ${data.edgeEncodeP95} exceeds ${EDGE_ENCODE_P95}/255 (the mix identity's p95 bar)`,
     )
   }
   if (data.edgeEncodeOver !== EDGE_ENCODE_OVER) {
@@ -1576,26 +1593,26 @@ function edgeLayerFailures(data, reference) {
         `over ${EDGE_ENCODE_MAX}/255`,
     )
   }
-  // The display's second film-blur (edgePolishDelta): REPORTED, not barred
-  // (261125-kvl task 4 / gate 5: UAT row 6 judges the settle). The readings
-  // must be real numbers, but a p95 over the 2/255 attention line never fails
-  // the capture — it prints a note beside the numbers instead. The blur is a
-  // spatial pre-filter, never a pointwise error, so the gate must not ask for
-  // byte equality.
+  // The live-vs-committed display settle (edgePolishDelta): its p95 is BARRED
+  // at one step (both states run the same coefficient law; the retired band
+  // encoder measured 2–3). The rim MAX and over-count are REPORTED only — the
+  // prescribed blur order (live mixes the softened films, committed softens
+  // the stored mix) makes a byte-exact rim impossible, and UAT row 6 judges
+  // how the commit reads. All three readings must be real numbers.
   if (typeof data.edgePolishMax !== 'number' || !Number.isFinite(data.edgePolishMax) || data.edgePolishMax < 0) {
     failures.push(`edgePolishMax ${data.edgePolishMax} is not a non-negative 1/255 reading`)
   }
   if (typeof data.edgePolishP95 !== 'number' || !Number.isFinite(data.edgePolishP95) || data.edgePolishP95 < 0) {
     failures.push(`edgePolishP95 ${data.edgePolishP95} is not a non-negative 1/255 reading`)
+  } else if (data.edgePolishP95 > EDGE_POLISH_P95) {
+    failures.push(
+      `edgePolishP95 ${data.edgePolishP95} exceeds ${EDGE_POLISH_P95}/255 — the live and committed ` +
+        'displays run the same coefficient law and must agree on at least 95% of the interior ' +
+        'without a step (the retired band encoder settle)',
+    )
   }
   if (!Number.isInteger(data.edgePolishOver) || data.edgePolishOver < 0) {
     failures.push(`edgePolishOver ${data.edgePolishOver} is not a non-negative texel count`)
-  }
-  if (!(data.linearHalfOnWhite <= EDGE_LINEAR_HALF_MAX)) {
-    failures.push(
-      `linearHalfOnWhite ${data.linearHalfOnWhite} exceeds ${EDGE_LINEAR_HALF_MAX}/255 — the ` +
-        '50 % station must read the 0.5·layer + 0.5 mix in LINEAR light (DESIGN 6.5)',
-    )
   }
   failures.push(...edgeStudioFailures(data))
   return failures
@@ -1794,7 +1811,7 @@ function edgeStudioFailures(data) {
     failures.push(
       `edgeReplayMaxDelta ${data.edgeReplayMaxDelta} exceeds ${replayBar}/255 at amount ${data.edgeAmount} — ` +
         (amountOn
-          ? 'the seeded replay must reproduce the visit within the encoder bar'
+          ? 'the seeded replay must reproduce the visit within the coefficient-mix bar'
           : 'amount 0 must reproduce the visit BYTE for byte'),
     )
   }
@@ -2195,12 +2212,13 @@ function printDurations(label, data) {
   if (typeof data.bakeMs === 'number') parts.push(`bake ${data.bakeMs} ms`)
   if (typeof data.renderMs === 'number') parts.push(`render ${data.renderMs} ms`)
   console.log(`${label.padEnd(9)} : ${parts.length > 0 ? parts.join(' | ') : '(none recorded)'}`)
-  // 261125-kvl: edgePolishDelta is REPORTED here (max / p95 / count over the
-  // 2/255 attention line) — UAT row 6 judges the settle, so it never fails.
+  // 261125: edgePolishDelta prints here; its p95 is BARRED at one step, the
+  // rim max / over-count are REPORTED (the live/committed blur order at a
+  // moving lateral weight, and UAT row 6 judges the settle).
   if (typeof data.edgePolishP95 === 'number') {
-    const over = data.edgePolishP95 > EDGE_POLISH_P95 ? ` — over the ${EDGE_POLISH_P95}/255 attention line (reported; UAT row 6 judges the settle)` : ''
+    const over = data.edgePolishP95 > EDGE_POLISH_P95 ? ` — OVER the ${EDGE_POLISH_P95}/255 p95 bar` : ''
     console.log(
-      `${label.padEnd(9)} : polish max ${data.edgePolishMax} | p95 ${data.edgePolishP95} | over ${data.edgePolishOver} (2/255)${over}`,
+      `${label.padEnd(9)} : polish max ${data.edgePolishMax} | p95 ${data.edgePolishP95} | over ${data.edgePolishOver} (p95 bar ${EDGE_POLISH_P95}/255)${over}`,
     )
   }
 }

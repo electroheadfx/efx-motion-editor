@@ -1973,19 +1973,17 @@ function readStrokeSize(): number {
 //   e     = 2^(2b - 1)                                  b = edgeFalloff 0..1
 //   A     = 1 - amount * t^e                            amount = edgeFade 0..1
 //   A_eff = A * cover_L
-//   band_out,i = A_eff * band_L,i + (1 - A_eff) * band_S,i      (S_out likewise)
+//   film_out = mix(film_S, film_L, A_eff)    film = (absorbs 0..3, 4..6, S)
 //
-// `band_*` is the DISPLAY band value — Kubelka-Munk reflectance over white when
-// S > SCATTER_EPSILON, the legacy exp(-k) otherwise. Never a transmittance: the
-// exp/ln round trip fails the design's own 50 %-over-white test on Gouache by
-// 28.95/255 (spike 006, Q1).
-//
-// The commit encodes (band_out, S_out) back into the sheet's seven
-// coefficients with the frozen encoder: 8 compiled bands [1,3,5,7,9,10,11,13],
-// a rank-one Jacobian, 4 LM iterations, a seed mix(base, layer, aEff), the
-// residual judged through all 16 bands, and the in-place write-back
-// `ink = fit/k - fixed` (k is the display's own granulation step — the storage
-// domain form of the frozen `fit - fixed`).
+// The composite is ONE component-wise lerp of the ABSORBANCE coefficients — the
+// engine's subtractive pigment mix (yellow over blue reads green). The retired
+// band encoder mixed DISPLAY REFLECTANCE (nonlinear Kubelka-Munk) bands, refit
+// the seven coefficients with a bounded LM solve, pre-blurred both films and
+// divided by the display's granulation k; averaging reflectance is what
+// produced the pale fringe, no pickup, smoothed feather noise and rectangular
+// patches. The merge is now POINTWISE: no band target, no fit, no pre-blur, no
+// k division. The display's own film soften and k are applied once, by the
+// compositor, to whatever the merge stores.
 //
 // Amount 0 is a BRANCH, not a value: no layer target is allocated, no merge
 // draw is submitted, the shipped deposit path renders byte-identically
@@ -2035,36 +2033,37 @@ const EDGE_LAYER_UNDER_Y1 = 0.53
  *  only flags it), so the end-cap dab and the merge have not run, and both
  *  windows (A's near its start, B's at the crossing) are stamped. */
 const EDGE_LAYER_PARTIAL = 1
-/** The encoder's exact-endpoint set: a texel whose FROZEN band alpha `aEff`
+/** The merge's exact-endpoint set: a texel whose FROZEN lateral alpha `aEff`
  *  reaches this is an identity (the merge writes the layer's raw storage),
- *  not a fit — so `coreExact` may require 0/255 there. cover_L alone is NOT
- *  the endpoint set: `aEff = (1 − amount·t^e)·cover_L` falls below 1 wherever
- *  the lateral fade is active even at a full cover. */
+ *  not a mix — so `coreExact` reads 0 there (1/255 is the readback's RGBA16F
+ *  floor, never a bar to beat). cover_L alone is NOT the endpoint set:
+ *  `aEff = (1 − amount·t^e)·cover_L` falls below 1 wherever the lateral fade
+ *  is active even at a full cover. */
 const EDGE_LAYER_CORE_AEFF = 1 - 1e-4
 /** The merge's two exact endpoints (`aEff >= 1 − 1e-4` / `<= 1e-4`): they
  *  write the layer's raw storage / copy the sheet through, so the expected
- *  bands at those texels are the UNPOLISHED states — the only place the film
- *  polish does not enter (the endpoint is a storage-domain identity). */
+ *  bands at those texels are the RAW states (a storage-domain identity). */
 const EDGE_LAYER_ENDPOINT = 1e-4
 const EDGE_LAYER_SILHOUETTE_MIN_PX = 8
-/** The encoder bar, in 1/255 units (spike 006 Q4: max 2, p95 1, zero over). */
+/** The coefficient-mix identity bar, in 1/255 units (the retired encoder's
+ *  spike-006 bar, unchanged: max 2, p95 1, zero over). The committed storage
+ *  must reproduce the pointwise mix `mix(sheet, layer, aEff)`; the only
+ *  expected residual is half-float storage rounding. */
 const EDGE_LAYER_FIT_MAX = 2
 const EDGE_LAYER_FIT_P95 = 1
 const EDGE_LAYER_FIT_OVER = 0
 /** Mirrors BRISTLE_FILM_BLUR (bristles.ts:244): the display's 5-tap paint-film
- *  polish, on for every bristle sheet (`bristleContent`). The merge builds its
- *  target T from the SAME polished states — T is a display-domain value
- *  (`band(mix(blur(S), blur(L), aEff))`, DESIGN 3.3) — so the probe must
- *  polish the read-back states before comparing, or it measures the polish
- *  instead of the encoder. The display polishes the COMMITTED storage again;
- *  that second pass is a spatial pre-filter that cannot be inverted pointwise
- *  and is reported separately (edgePolishDelta, Task 4), never hidden here. */
+ *  polish, on for every bristle sheet (`bristleContent`). The merge no longer
+ *  reads it — the commit is pointwise — but the probe's live-vs-committed
+ *  settle reproduces both display states with it: displayLayerFS softens the
+ *  sheet and layer separately and then mixes; the committed display softens
+ *  the stored mix. */
 const EDGE_LAYER_FILM_BLUR = 0.35
-/** The display's SECOND film-blur reading (`edgePolishDelta`, Task 4): the
- *  live frame shows the polished states mixed; after the merge the same
- *  display polishes the STORED field once more, so the committed sheet's
- *  on-screen band moves by a pointwise-uninvertible 5-tap. Reported as
- *  max / p95 / count over this 2/255 line, in the display's own RGB8 space. */
+/** The live-vs-committed display settle (`edgePolishDelta`, redefined 261125):
+ *  both states run the SAME coefficient law and ONE 5-tap film soften, so the
+ *  readings can differ only where `aEff` varies inside the neighbourhood
+ *  (blur and mix do not commute there). Reported as max / p95 / count over
+ *  this 2/255 line, in the display's own RGB8 space. */
 const EDGE_POLISH_MAX = 2
 
 /** Spec 10 Task 5: the live-pointer row's stroke — a vertical drag at x = 0.5
@@ -2351,10 +2350,10 @@ function readEdgePaperG(engine: WatercolorEngine, fields: EdgeDocFields): Float3
  * `gran = 1 + uGranulation * (0.5 - paper.g) * 2.2`) at the LIVE compositor
  * (`uFlat = 0`) with `uEdgeDarken = 0` (the stroke's first dab set
  * `bristleContent`, so the density edge term is inert). `uGranulation` is
- * `params.granulation * 0.55` (`Engine.drawDisplay`). The merge writes
- * `ink = fit / k - fixed`, so `k * (ink + fixed) = fit` — the frozen
- * display-band identity — and the probe decodes the committed sheet through
- * this same scalar.
+ * `params.granulation * 0.55` (`Engine.drawDisplay`). The merge no longer
+ * divides by this scalar (the commit is pointwise); it is the display's own
+ * step, so the probe decodes both the expected mix and the committed film
+ * through it.
  */
 function edgeGranulationK(paperG: number, granulation: number): number {
   return Math.max(1e-3, 1 + granulation * 0.55 * (0.5 - paperG) * 2.2)
@@ -2420,6 +2419,29 @@ function edgeTexelBands(
   return out
 }
 
+/** The coefficient-mix law's band array at texel `i`: the SAME pointwise
+ *  component mix the merge writes (`mix(sheet, layer, weight)` in raw
+ *  storage), then the display's k and reconstruction. No blur, no band
+ *  average, no fit — the identity the committed storage must reproduce. */
+function edgeMixedBands(
+  sheetA: Float32Array,
+  sheetB: Float32Array,
+  layerA: Float32Array,
+  layerB: Float32Array,
+  i: number,
+  weight: number,
+  k: number,
+): Float64Array {
+  const o = i * 4
+  const a = new Float32Array(4)
+  const b = new Float32Array(4)
+  for (let c = 0; c < 4; c += 1) {
+    a[c] = sheetA[o + c]! * (1 - weight) + layerA[o + c]! * weight
+    b[c] = sheetB[o + c]! * (1 - weight) + layerB[o + c]! * weight
+  }
+  return edgeTexelBands(a, b, 0, k)
+}
+
 /** The linear sRGB of a band array — the display's own weight sum. */
 function edgeBandsLinear(bands: Float64Array): [number, number, number] {
   const out: [number, number, number] = [0, 0, 0]
@@ -2439,10 +2461,10 @@ function edgeCompand(x: number): number {
 
 /**
  * The 16 bands' DISPLAY BYTES — the spike's `bandRgb8`: the weight sum, the
- * compand, rounded to the 8-bit channel the compositor writes. The encoder
- * bar (max 2 / p95 1 / over 0) lives in THESE units, never in band
- * coefficients: the fit has 8 unknowns for 3 displayed channels, so a band
- * residual is not a display residual (spike 006 Q4 judged the bar here).
+ * compand, rounded to the 8-bit channel the compositor writes. The
+ * coefficient-mix bar (max 2 / p95 1 / over 0) lives in THESE units: the
+ * display is what the artist judges, and the storage round-trip is exactly a
+ * display-byte question (spike 006 Q4 judged the bar here).
  */
 function edgeBandsRgb8(bands: Float64Array): [number, number, number] {
   const lin = edgeBandsLinear(bands)
@@ -2452,12 +2474,12 @@ function edgeBandsRgb8(bands: Float64Array): [number, number, number] {
 }
 
 /**
- * displayFS's 5-tap film soften over a rect plane, the merge's own
+ * displayFS's 5-tap film soften over a rect plane, the compositor's own
  * `uFilmBlur` step: `v' = mix(v, (v + N + S + E + W) / 5, w)` per channel.
- * The merge reads the real doc plane; here the neighbour outside the rect is
- * the clamped edge texel — the profile windows sit inside the rect, and both
- * fields are smooth there (bare paper, empty layer), so the clamp never
- * enters a reading.
+ * Used ONLY by the live-vs-committed settle (the merge itself is pointwise).
+ * The settle reads interior texels only (the caller excludes the border
+ * ring), so every tap is a real capture texel — the clamp never enters a
+ * reading.
  */
 function edgeBlurFilm(
   a: Float32Array,
@@ -2596,11 +2618,11 @@ function edgeLayerProfile(
 /**
  * Spec 10: the ONE merge's own instrument — the sheet and the layer read
  * immediately BEFORE and immediately AFTER `mergeStrokeLayer`, i.e. the exact
- * pair the encoder gate must compare:
- *  - `postSheet` decodes to the encoder's output `fit` (the write-back is
- *    `fit/k − fixed`, so `k·(ink+fixed) = fit`);
- *  - `preSheet` / `preLayer` are the merge's own inputs (`aEff·band_L +
- *    (1−aEff)·band_S`).
+ * pair the coefficient-mix identity must compare:
+ *  - `postSheet` is the committed film `mix(film_S, film_L, aEff)` (the merge
+ *    writes `mix(ink+fixed, layer, aEff) − fixed` and this read sums the pools
+ *    back);
+ *  - `preSheet` / `preLayer` are the merge's own raw inputs.
  *
  * Reading the mid-stroke capture instead would carry two known stalenesses the
  * gate must not measure: the end-cap catch-up dab lands between the capture
@@ -2714,20 +2736,25 @@ const EDGE_SIDE_ABSENT: EdgeSideReadings = {
  * Spec 10: one side's layer-domain bars, over the profile's stations.
  *
  * At the band's midpoint station (`u = (START + 1) / 2 = 0.65`) it recovers
- * the band alpha `aEff` the merge actually applied — `band_out` decoded from
- * the COMMITTED sheet (through the display's own `k`), `band_S` from the
- * untouched pre-merge sheet and `band_L` from the layer — as the per-band
- * least-squares `(band_out - band_S) / (band_L - band_S)`, averaged over the
- * bands whose denominator is resolvable. That is a measurement of the
- * composite, not a re-evaluation of the law.
+ * a DISPLAY-DOMAIN alpha — `band_out` decoded from the COMMITTED sheet
+ * (through the display's own `k`), `band_S` from the untouched pre-merge sheet
+ * and `band_L` from the layer — as the per-band
+ * `(band_out - band_S) / (band_L - band_S)`, averaged over the bands whose
+ * denominator is resolvable. That is a measurement of the composite, not a
+ * re-evaluation of the law (the coefficient mix is the law; this number is
+ * what the eye reads back).
  *
- * `coreExact` is the encoder's identity at its exact-endpoint set: over the
- * stations whose layer cover_L reaches `EDGE_LAYER_CORE_COVER`, the largest
- * per-band deviation (1/255) between the committed sheet's decoded band and
- * the layer's own band. `continuity` counts in-band stations whose committed
- * band leaves the closed envelope `[min(band_S, band_L), max(...)]` by more
- * than 1/255 — a pale fringe or a washed-out mark. `printRetention` is the
- * layer's print share at the silhouette station (the design's 95-96 %).
+ * `coreExact` is the merge's exact-endpoint identity, in the display's own
+ * bytes: over the stations whose `aEff` reaches 1 − 1e-4, the largest
+ * per-channel RGB8 deviation between the committed film and the layer's own
+ * film (the storage write is `layer − fixed`, so a nonzero fixed pool re-adds
+ * in RGBA16F and can move a band by up to one 8-bit step — the measurement's
+ * floor, not a second law). `continuity` counts
+ * in-band stations whose committed band leaves the closed envelope
+ * `[min(band_S, band_L), max(...)]` by more than 1/255 — the law's decode path
+ * must not overshoot the two endpoint appearances (a pale fringe or a
+ * washed-out mark). `printRetention` is the layer's print share at the
+ * silhouette station (the design's 95-96 %).
  */
 function edgeSideReadings(
   engine: WatercolorEngine,
@@ -2765,11 +2792,9 @@ function edgeSideReadings(
   const docCentreX = Math.round((sheetRect.x0 + sheetRect.x1 - 1) / 2)
   const k = new Float32Array(width * height)
   for (let i = 0; i < k.length; i += 1) k[i] = edgeGranulationK(paperG[i]!, granulation)
-  // The envelope and the recovered alpha are judged in the MERGE's domain —
-  // the polished states (`uFilmBlur`). The core identity is the one storage-
-  // domain reading and stays on the RAW states.
-  const sheetBlur = edgeBlurFilm(sheetFields.a, sheetFields.b, width, height, EDGE_LAYER_FILM_BLUR)
-  const layerBlur = edgeBlurFilm(layer.a, layer.b, width, height, EDGE_LAYER_FILM_BLUR)
+  // The envelope and the recovered alpha are judged on the RAW read-back
+  // states: the merge is pointwise (no display-domain film soften, no fit), so
+  // the committed storage must be the between-mix of exactly these.
   const layerCover = layer.cover
   // Per-station aggregation, over the same rows the profile averages.
   let alphaSum = 0
@@ -2801,25 +2826,16 @@ function edgeSideReadings(
     let rowOutside = 0
     for (let j = 0; j < rowCount; j += 1) {
       const fi = axis === 'y' ? rowIndex * width + j : j * width + rowIndex
-      const bands_s = edgeTexelBands(sheetBlur.a, sheetBlur.b, fi, k[fi]!)
-      // The merge multiplies the LAYER's state by the same display step `k`
-      // before its band reconstruction (`la *= k`), so the layer's display
-      // band is `band(layer · k)` — a k = 1 read would measure the scaling.
-      const bands_l = edgeTexelBands(layerBlur.a, layerBlur.b, fi, k[fi]!)
+      // Raw states, scaled by the display's own k — exactly the field the
+      // compositor reconstructs from the committed storage.
+      const bands_s = edgeTexelBands(sheetFields.a, sheetFields.b, fi, k[fi]!)
+      const bands_l = edgeTexelBands(layer.a, layer.b, fi, k[fi]!)
       const bands_o = edgeTexelBands(merged.a, merged.b, fi, k[fi]!)
       const c = layerCover[fi]!
       const aEff = edgeLayerAEff(layer.lateral[fi]!, c)
-      // The envelope follows the SAME piecewise domain as the merge: the exact
-      // endpoints are storage identities on the RAW states (the polish cannot
-      // enter), the interior is judged on the polished states.
       const atCore = aEff >= EDGE_LAYER_CORE_AEFF
-      const atPass = aEff <= EDGE_LAYER_ENDPOINT
-      let envS = bands_s
-      let envL = bands_l
-      if (atCore || atPass) {
-        envS = edgeTexelBands(sheetFields.a, sheetFields.b, fi, k[fi]!)
-        envL = atCore ? edgeTexelBands(layer.a, layer.b, fi, k[fi]!) : envS
-      }
+      const envS = bands_s
+      const envL = bands_l
       if (aEff > maxAeff) {
         maxAeff = aEff
         maxAeffAt = {
@@ -2843,10 +2859,15 @@ function edgeSideReadings(
         // Seen even when the deviation is exactly 0 — the endpoint is an
         // IDENTITY, so a perfect read is the expected result, never absence.
         // The endpoint writes the layer's RAW storage (never the polished
-        // film), so the reference is the unblurred layer band.
+        // film), so the reference is the unblurred layer. Judged in the
+        // display's OWN bytes, like every identity here: the storage write is
+        // `layer − fixed`, and reading it back through a NONZERO fixed pool
+        // re-adds in RGBA16F — a sub-byte band deviation, never a law change.
         coreSeen = true
-        for (let bi = 0; bi < bands_o.length; bi += 1) {
-          rowCore = Math.max(rowCore, Math.abs(bands_o[bi]! - envL[bi]!) * 255)
+        const gotRgb = edgeBandsRgb8(bands_o)
+        const wantRgb = edgeBandsRgb8(envL)
+        for (let ch = 0; ch < 3; ch += 1) {
+          rowCore = Math.max(rowCore, Math.abs(gotRgb[ch]! - wantRgb[ch]!))
         }
       }
       if (isMid) {
@@ -2882,14 +2903,21 @@ function edgeSideReadings(
 }
 
 /**
- * Spec 10: the encoder-residual readings — the committed sheet's decoded band
- * values against the LIVE band mix computed from the read-back layer + sheet,
- * in 1/255. Reported per side's rect (the paper side is the bare-paper scene,
- * the under side the same-visit one) and pooled for the report's
- * `edgeEncodeMax` / `edgeEncodeP95` / `edgeEncodeOver`. Also the
- * 50 %-over-white reading (DESIGN 6.5): over bare paper, at the station whose
- * recovered aEff is nearest 0.5, the max per-channel |displayed linear RGB −
- * (0.5 · layerLinear + 0.5)| in 1/255, in LINEAR light.
+ * Spec 10: the coefficient-mix identity and the live-vs-committed settle.
+ *
+ *  - `residual` (the `edgeEncode*` bars): per texel, the committed film's
+ *    decoded display bands against `edgeMixedBands` — the merge's own law,
+ *    `mix(film_S, film_L, aEff)` in raw storage, scaled by the display's k.
+ *    The exact endpoints are the same expression at weight 0 / 1, so the
+ *    only expected residual is the RGBA16F storage round-trip: no band
+ *    target, no fit and no pre-blur enters the expectation.
+ *  - `polish` (`edgePolish*`): the live-vs-committed display settle. The live
+ *    compositor softens the sheet film and the layer film SEPARATELY and then
+ *    mixes them at the texel; the committed display softens the MIXED film.
+ *    Blur and the coefficient mix commute wherever `aEff` is locally
+ *    constant, so this reading isolates the lateral stations where the law
+ *    moves — measured per interior rect texel (the 5-tap stays inside the
+ *    capture), in the display's own order and RGB8 bytes.
  */
 function edgeEncodeResidual(
   engine: WatercolorEngine,
@@ -2900,7 +2928,6 @@ function edgeEncodeResidual(
   axis: 'x' | 'y',
 ): {
   residual: number[]
-  halfOnWhite: number | null
   polish: number[]
   kMin: number | null
   kMax: number | null
@@ -2908,7 +2935,7 @@ function edgeEncodeResidual(
 } {
   const layer = capture.merge ? capture.merge.preLayer : capture.layer
   if (layer === null || profile.cover === null) {
-    return { residual: [], halfOnWhite: null, polish: [], kMin: null, kMax: null, debug: {} }
+    return { residual: [], polish: [], kMin: null, kMax: null, debug: {} }
   }
   const sheetFields = capture.merge ? capture.merge.preSheet : capture.sheet
   const { width, height, rect } = sheetFields
@@ -2921,18 +2948,8 @@ function edgeEncodeResidual(
     if (k[i]! < kMin) kMin = k[i]!
     if (k[i]! > kMax) kMax = k[i]!
   }
-  // The merge builds its target on the POLISHED states (displayFS's 5-tap
-  // soften, `uFilmBlur` = BRISTLE_FILM_BLUR on a bristle sheet), so the
-  // expected mix must be computed on the same states — otherwise the
-  // comparison measures the polish instead of the encoder.
-  const sheetBlur = edgeBlurFilm(sheetFields.a, sheetFields.b, width, height, EDGE_LAYER_FILM_BLUR)
-  const layerBlur = edgeBlurFilm(layer.a, layer.b, width, height, EDGE_LAYER_FILM_BLUR)
   const residual: number[] = []
   const decodeDebug: Record<string, number> = {}
-  // The half-on-white scan needs the station whose aEff is nearest 0.5; the
-  // value is recovered per texel and averaged over the station row.
-  let bestDistance = Number.POSITIVE_INFINITY
-  let bestHalf: number | null = null
   const docCentre = Math.round((rect.y0 + rect.y1 - 1) / 2)
   const docCentreX = Math.round((rect.x0 + rect.x1 - 1) / 2)
   for (let oi = 0; oi < profile.offsets.length; oi += 1) {
@@ -2950,40 +2967,17 @@ function edgeEncodeResidual(
       rowIndex = local
       rowCount = height
     }
-    let rowHalf = 0
-    let rowHalfCount = 0
     for (let j = 0; j < rowCount; j += 1) {
       const fi = axis === 'y' ? rowIndex * width + j : j * width + rowIndex
-      const bandsO = edgeTexelBands(merged.a, merged.b, fi, k[fi]!)
-      // The merge multiplies the layer's state by k before encoding (the
-      // storage write-back divides it out), so the layer's bands decode at
-      // the SAME k the sheet's do.
-      const bandsS = edgeTexelBands(sheetBlur.a, sheetBlur.b, fi, k[fi]!)
-      const bandsL = edgeTexelBands(layerBlur.a, layerBlur.b, fi, k[fi]!)
       // The composite weight is the FROZEN aEff = A·cover_L, never cover_L
       // alone: the lateral fade inside the footprint lowers the weight and the
-      // expected mix must follow it, not the cover.
+      // expected mix follows it, not the cover. Judged against the RAW states
+      // — the merge is pointwise, so a pre-blur would measure itself.
       const mixWeight = edgeLayerAEff(layer.lateral[fi]!, layer.cover[fi]!)
-      // The expected band is PIECEWISE, exactly as the merge's own source is:
-      // the two exact endpoints are STORAGE identities (aEff >= 1 − 1e-4
-      // writes the RAW layer, aEff <= 1e-4 copies the RAW sheet through — the
-      // only texels the film polish cannot enter), and the interior is the
-      // display-domain polish of both states. Judging a passthrough texel
-      // against the polished sheet would measure the polish.
-      const wantBands = new Float64Array(bandsO.length)
-      if (mixWeight >= EDGE_LAYER_CORE_AEFF) {
-        const rawL = edgeTexelBands(layer.a, layer.b, fi, k[fi]!)
-        wantBands.set(rawL)
-      } else if (mixWeight <= EDGE_LAYER_ENDPOINT) {
-        const rawS = edgeTexelBands(sheetFields.a, sheetFields.b, fi, k[fi]!)
-        wantBands.set(rawS)
-      } else {
-        for (let bi = 0; bi < bandsO.length; bi += 1) {
-          wantBands[bi] = mixWeight * bandsL[bi]! + (1 - mixWeight) * bandsS[bi]!
-        }
-      }
-      const gotRgb = edgeBandsRgb8(bandsO)
-      const wantRgb = edgeBandsRgb8(wantBands)
+      const wantRgb = edgeBandsRgb8(
+        edgeMixedBands(sheetFields.a, sheetFields.b, layer.a, layer.b, fi, mixWeight, k[fi]!),
+      )
+      const gotRgb = edgeBandsRgb8(edgeTexelBands(merged.a, merged.b, fi, k[fi]!))
       const texelWorst = Math.max(
         Math.abs(gotRgb[0] - wantRgb[0]),
         Math.abs(gotRgb[1] - wantRgb[1]),
@@ -2991,7 +2985,7 @@ function edgeEncodeResidual(
       )
       residual.push(texelWorst)
       // Debug: where the tail lives — an endpoint identity, a passthrough, or
-      // the fitted interior (the only place the encoder can miss).
+      // the mixed interior.
       const bucket =
         mixWeight >= EDGE_LAYER_CORE_AEFF
           ? 'Core'
@@ -3003,55 +2997,35 @@ function edgeEncodeResidual(
       decodeDebug[`max${bucket}`] = Math.max(decodeDebug[`max${bucket}`] ?? 0, texelWorst)
       decodeDebug[`n${bucket}`] = (decodeDebug[`n${bucket}`] ?? 0) + 1
       if (texelWorst > EDGE_LAYER_FIT_MAX) decodeDebug[`over${bucket}`] = (decodeDebug[`over${bucket}`] ?? 0) + 1
-      // The recovered aEff at this texel (band-averaged, guarded).
-      let alpha = 0
-      let alphaCount = 0
-      for (let bi = 0; bi < bandsO.length; bi += 1) {
-        const den = bandsL[bi]! - bandsS[bi]!
-        if (Math.abs(den) < 1e-4) continue
-        alpha += Math.min(1, Math.max(0, (bandsO[bi]! - bandsS[bi]!) / den))
-        alphaCount += 1
-      }
-      if (alphaCount === 0) continue
-      const aEff = alpha / alphaCount
-      const distance = Math.abs(aEff - 0.5)
-      if (distance >= bestDistance) continue
-      // The expected 50 % mix of the layer and bare white, in linear light.
-      const layerLinear = edgeBandsLinear(bandsL)
-      const displayed = edgeBandsLinear(bandsO)
-      let worst = 0
-      for (let ch = 0; ch < 3; ch += 1) {
-        const expected = 0.5 * layerLinear[ch]! + 0.5
-        worst = Math.max(worst, Math.abs(displayed[ch]! - expected) * 255)
-      }
-      bestDistance = distance
-      rowHalf = worst
-      rowHalfCount = 1
     }
-    if (rowHalfCount > 0) bestHalf = rowHalf
   }
-  // The display's SECOND film-blur on the stored field (edgePolishDelta): the
-  // live frame mixes the polished PRE-merge states; after the merge the same
-  // display polishes the STORED field once more, and that 5-tap is a spatial
-  // pre-filter that cannot be inverted pointwise. Measured here on the merged
-  // storage itself, in the display's own order (blur the storage, then k,
-  // then bands) and its own RGB8 bytes — the settle's magnitude, never hidden.
+  // The live-vs-committed settle, in the display's own order: soften each
+  // film (the layer block mixes the softened films; the committed display
+  // softens the stored mix), then k, then the band reconstruction. The rect's
+  // border ring is excluded so every 5-tap stays inside the capture.
+  const sheetBlur = edgeBlurFilm(sheetFields.a, sheetFields.b, width, height, EDGE_LAYER_FILM_BLUR)
+  const layerBlur = edgeBlurFilm(layer.a, layer.b, width, height, EDGE_LAYER_FILM_BLUR)
   const mergedBlur = edgeBlurFilm(merged.a, merged.b, width, height, EDGE_LAYER_FILM_BLUR)
   const polish: number[] = []
-  for (let i = 0; i < width * height; i += 1) {
-    const rawRgb = edgeBandsRgb8(edgeTexelBands(merged.a, merged.b, i, k[i]!))
-    const softRgb = edgeBandsRgb8(edgeTexelBands(mergedBlur.a, mergedBlur.b, i, k[i]!))
-    polish.push(
-      Math.max(
-        Math.abs(rawRgb[0] - softRgb[0]),
-        Math.abs(rawRgb[1] - softRgb[1]),
-        Math.abs(rawRgb[2] - softRgb[2]),
-      ),
-    )
+  for (let y = 1; y < height - 1; y += 1) {
+    for (let x = 1; x < width - 1; x += 1) {
+      const fi = y * width + x
+      const mixWeight = edgeLayerAEff(layer.lateral[fi]!, layer.cover[fi]!)
+      const live = edgeBandsRgb8(
+        edgeMixedBands(sheetBlur.a, sheetBlur.b, layerBlur.a, layerBlur.b, fi, mixWeight, k[fi]!),
+      )
+      const committed = edgeBandsRgb8(edgeTexelBands(mergedBlur.a, mergedBlur.b, fi, k[fi]!))
+      polish.push(
+        Math.max(
+          Math.abs(live[0] - committed[0]),
+          Math.abs(live[1] - committed[1]),
+          Math.abs(live[2] - committed[2]),
+        ),
+      )
+    }
   }
   return {
     residual,
-    halfOnWhite: bestHalf === null ? null : round4(bestHalf),
     polish,
     kMin: k.length > 0 ? round4(kMin) : null,
     kMax: k.length > 0 ? round4(kMax) : null,
@@ -3101,11 +3075,11 @@ function edgeLayerReport(
       : edgeSideReadings(engine, captures.b, mergedUnder, granulation, underProfile, 'x')
   const paperResidual =
     captures.a === null
-      ? { residual: [], halfOnWhite: null, polish: [], kMin: null, kMax: null, debug: {} }
+      ? { residual: [], polish: [], kMin: null, kMax: null, debug: {} }
       : edgeEncodeResidual(engine, captures.a, mergedPaper, granulation, paperProfile, 'y')
   const underResidual =
     captures.b === null
-      ? { residual: [], halfOnWhite: null, polish: [], kMin: null, kMax: null, debug: {} }
+      ? { residual: [], polish: [], kMin: null, kMax: null, debug: {} }
       : edgeEncodeResidual(engine, captures.b, mergedUnder, granulation, underProfile, 'x')
   const residual = [...paperResidual.residual, ...underResidual.residual].sort((a, b) => a - b)
   const encodeMax = residual.length > 0 ? round4(residual[residual.length - 1]!) : null
@@ -3114,10 +3088,10 @@ function edgeLayerReport(
       ? round4(residual[Math.min(residual.length - 1, Math.floor(residual.length * 0.95))]!)
       : null
   const encodeOver = residual.length > 0 ? residual.filter((v) => v > EDGE_LAYER_FIT_MAX).length : null
-  // Task 4's edgePolishDelta, pooled over both sides' rects: the display's
-  // second film-blur on the merged storage. REPORTED, never barred — the
-  // count over 2/255 is reported beside the p95, and UAT row 6 judges the
-  // settle (the raw-state merge fallback was measured and did not shrink it).
+  // The live-vs-committed settle, pooled over both sides' rects: each film
+  // softened separately (live) against the stored mix softened (committed).
+  // The two agree wherever aEff is locally constant, so this measures only
+  // the lateral stations — max / p95 / count over 2/255, never hidden.
   const polish = [...paperResidual.polish, ...underResidual.polish].sort((a, b) => a - b)
   const polishMax = polish.length > 0 ? round4(polish[polish.length - 1]!) : null
   const polishP95 =
@@ -3125,9 +3099,9 @@ function edgeLayerReport(
       ? round4(polish[Math.min(polish.length - 1, Math.floor(polish.length * 0.95))]!)
       : null
   const polishOver = polish.length > 0 ? polish.filter((v) => v > EDGE_POLISH_MAX).length : null
-  // The merge's `k` range over the visited rects: the display's granulation
-  // step the write-back divides out (`fit / k - fixed`), measured on the live
-  // paper bytes — never a re-derived constant.
+  // The display's `k` range over the visited rects: the granulation step the
+  // coefficient-mix identity is decoded through, measured on the live paper
+  // bytes — never a re-derived constant.
   const kMins = [paperResidual.kMin, underResidual.kMin].filter((v): v is number => v !== null)
   const kMaxes = [paperResidual.kMax, underResidual.kMax].filter((v): v is number => v !== null)
   const counters = captures.b ?? captures.a
@@ -3171,7 +3145,6 @@ function edgeLayerReport(
     edgePolishMax: polishMax,
     edgePolishP95: polishP95,
     edgePolishOver: polishOver,
-    linearHalfOnWhite: paperResidual.halfOnWhite,
     edgeKMin: kMins.length > 0 ? Math.min(...kMins) : null,
     edgeKMax: kMaxes.length > 0 ? Math.max(...kMaxes) : null,
     debugEncodePaper: paperResidual.debug,

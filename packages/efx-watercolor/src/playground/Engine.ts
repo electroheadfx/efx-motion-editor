@@ -1117,16 +1117,17 @@ export class WatercolorEngine {
   }
 
   /**
-   * THE STROKE-END MERGE (SPIKE 006, the frozen encoder) — three passes into
-   * the WRITE halves, then a copy back over `rect` only. The read halves stay
-   * authoritative: a swap would leave the read half stale outside the merge
-   * rect (lastAdvectRect minus mergeRect), so it is never done.
+   * THE STROKE-END MERGE — three passes into the WRITE halves, then a copy
+   * back over `rect` only. The read halves stay authoritative: a swap would
+   * leave the read half stale outside the merge rect (lastAdvectRect minus
+   * mergeRect), so it is never done.
    */
   private mergeStrokeLayer(rect: Rect) {
     const { gl, g } = this;
     this.mergeDraws++;
-    // Pass 1: encode `aEff·band_L + (1−aEff)·band_S` back into the sheet's
-    // seven coefficients + S, in storage form `fit/k − fixed` (.a = S).
+    // Pass 1: ONE component-wise coefficient lerp,
+    // `film = mix(sheet film, layer film, aEff)`, written back in storage
+    // form (`ink = film − fixed`). No band target, no fit, no k division.
     const m = this.programs.strokeLayerMerge;
     m.bind();
     gl.disable(gl.BLEND);
@@ -1138,20 +1139,7 @@ export class WatercolorEngine {
     gl.uniform1i(m.u.uLayerB!, g.bindTex(5, this.layerInk!.read.tex[1]!));
     gl.uniform1i(m.u.uCoverL!, g.bindTex(6, this.layerFilm!.tex[0]!));
     gl.uniform1i(m.u.uLateral!, g.bindTex(7, this.layerFilm!.tex[1]!));
-    gl.uniform1i(m.u.uPaper!, g.bindTex(8, this.paper.tex[0]!));
     gl.uniform2f(m.u.uOutSize!, this.dw, this.dh);
-    gl.uniform2f(m.u.uTexel!, 1 / this.dw, 1 / this.dh);
-    // The display's OWN granulation step (see the merge shader's header): the
-    // live compositor runs uFlat 0, and `bristleContent` is already true at
-    // THIS stroke's first dab, so k reduces to `gran` with the display's
-    // 0.55-scaled granulation.
-    gl.uniform1f(m.u.uGranulation!, this.params.granulation * 0.55);
-    // The SAME polish displayFS applies: T is a display-domain band value
-    // (`band(mix(blur(S), blur(L), aEff))`), so the merge must read the film
-    // the compositor renders, not the raw store. The raw-state fallback was
-    // measured (Task 4) and did not shrink edgePolishDelta — see the SUMMARY.
-    gl.uniform1f(m.u.uFilmBlur!, this.bristleContent ? BRISTLE_FILM_BLUR : 0);
-    gl.uniform1i(m.u.uMaxIter!, 4);
     this.bindLayerAlpha(m);
     g.draw(this.ink.write, rect);
     // Pass 2: `cover_out = 1 − (1 − cover_S)·(1 − aEff)`.

@@ -234,11 +234,12 @@
 //  (`edgeAcrossPaper` for A's band over paper, `edgeAcross` for B's band over
 //  the same-visit A), the per-side readings the sweep orders
 //  (`edgeMidAlpha*` / `edgeMidCover*` / `edgeCoreExact*` / `edgeContinuity*` /
-//  `edgePrintRetention*`), the encoder residual (`edgeEncodeMax` / `P95` /
-//  `Over`), `linearHalfOnWhite`, the structural counters
-//  (`layerAllocated` / `mergeDraws` / `mergeDrawsFirst`), the capture round
-//  trip and the split-vs-one-shot replay digest. Every layer-domain reading is
-//  ABSENT (null) on a tree without the layer; the comparator fails it by name.
+//  `edgePrintRetention*`), the coefficient-mix identity (`edgeEncodeMax` /
+//  `P95` / `Over`), the live-vs-committed settle (`edgePolishMax` / `P95`), the
+//  structural counters (`layerAllocated` / `mergeDraws` / `mergeDrawsFirst`),
+//  the capture round trip and the split-vs-one-shot replay digest. Every
+//  layer-domain reading is ABSENT (null) on a tree without the layer; the
+//  comparator fails it by name.
 //             [--scenario edge-layer]
 //                                     spike 006's two-stroke layer scene
 //             [--edge <0..100>]       edge-layer only: the layer alpha amount
@@ -804,10 +805,10 @@ if (typeof result.edgeAmount === 'number') {
     `edge      : sweep midAlpha paper ${result.edgeMidAlphaPaper ?? 'absent'} / under ${result.edgeMidAlphaUnder ?? 'absent'} | core ${result.edgeCoreExactPaper ?? 'absent'} / ${result.edgeCoreExactUnder ?? 'absent'} | continuity ${result.edgeContinuityPaper ?? 'absent'} / ${result.edgeContinuityUnder ?? 'absent'}`,
   )
   console.log(
-    `edge      : encode max ${result.edgeEncodeMax ?? 'absent'} | p95 ${result.edgeEncodeP95 ?? 'absent'} | over ${result.edgeEncodeOver ?? 'absent'} (1/255) | linearHalfOnWhite ${result.linearHalfOnWhite ?? 'absent'}`,
+    `edge      : encode max ${result.edgeEncodeMax ?? 'absent'} | p95 ${result.edgeEncodeP95 ?? 'absent'} | over ${result.edgeEncodeOver ?? 'absent'} (1/255, coefficient mix)`,
   )
   console.log(
-    `edge      : polish max ${result.edgePolishMax ?? 'absent'} | p95 ${result.edgePolishP95 ?? 'absent'} | over ${result.edgePolishOver ?? 'absent'} (2/255, REPORTED — UAT row 6 judges the settle)`,
+    `edge      : polish max ${result.edgePolishMax ?? 'absent'} | p95 ${result.edgePolishP95 ?? 'absent'} | over ${result.edgePolishOver ?? 'absent'} (p95 bar 1/255; rim max/over reported — UAT row 6 judges the settle)`,
   )
   console.log(
     `edge      : capture round trip ${result.edgeCaptureRoundTrip ?? 'absent'} | replay identical ${result.edgeReplayIdentical ?? 'absent'} | print ${result.edgePrintRetentionPaper ?? 'absent'} / ${result.edgePrintRetentionUnder ?? 'absent'}`,

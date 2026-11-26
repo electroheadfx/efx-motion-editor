@@ -2142,13 +2142,13 @@ describe('the edge-layer gate (Spec 10)', () => {
       edgeEncodeMax: layer ? 2 : null,
       edgeEncodeP95: layer ? 1 : null,
       edgeEncodeOver: layer ? 0 : null,
-      // edgePolishDelta is REPORTED, never barred (UAT row 6 judges the
-      // settle); the fixture carries real readings so the required-by-name
-      // check passes and a test can still move one to prove the report.
+      // edgePolishDelta: the p95 is BARRED at one step (both displays run the
+      // same coefficient law); the rim max / over-count are REPORTED (UAT
+      // row 6 judges the settle). The fixture carries real readings so the
+      // required-by-name check passes and tests can move one to prove a bar.
       edgePolishMax: layer ? 2 : null,
       edgePolishP95: layer ? 1 : null,
       edgePolishOver: layer ? 0 : null,
-      linearHalfOnWhite: layer ? 0.08 : null,
       // WR-01: the FIRST merge's last-touch pair over its own rect — the
       // cleared one-week sentinel before the merge, the stroke-end clock
       // after. A merge that writes no touch leaves the pair EQUAL.
@@ -2279,6 +2279,13 @@ describe('the edge-layer gate (Spec 10)', () => {
       expectNotContains(COMPARE, 'const EDGE_STATION_TOLERANCE')
       expectNotContains(COMPARE, 'const EDGE_INK_CORE_TOLERANCE')
       expectNotContains(COMPARE, 'threshold dissolve')
+      // The retired band-mix encoder readings: the comparator must carry no
+      // half-on-white mix field and no bar for it.
+      expectNotContains(COMPARE, 'linearHalfOnWhite')
+      expectNotContains(COMPARE, 'EDGE_LINEAR_HALF_MAX')
+      expectNotContains(PROBE, 'linearHalfOnWhite')
+      // The live display now mixes coefficients, not bands.
+      expectNotContains(PROBE, 'displayBasisBands')
     })
 
     it('teaches the parser both new operands and rejects unknown flags', () => {
@@ -2337,7 +2344,7 @@ describe('the edge-layer gate (Spec 10)', () => {
       const { status, output } = compareSynthetic('nyquist-edgelayer-red', capture)
       expect(status, lawVerdict(status, output)).toBe(1)
       expect(invariantLine(output)).toContain('edgeMidAlphaPaper')
-      expect(invariantLine(output)).toContain('linearHalfOnWhite')
+      expect(invariantLine(output)).toContain('edgePolishMax')
       expect(invariantLine(output)).toContain('absent')
     })
 
@@ -2350,12 +2357,14 @@ describe('the edge-layer gate (Spec 10)', () => {
       expect(invariantLine(output)).toContain('is missing')
     })
 
-    it('fails a core that is not exact, a continuity break, an over-residual and a pale half', () => {
+    it('fails a core that is not exact, a continuity break, an over-residual and a settled p95', () => {
       const cases: Array<[string, Record<string, unknown>, string]> = [
         ['core', { edgeCoreExactPaper: 2 }, 'edgeCoreExactPaper'],
         ['continuity', { edgeContinuityUnder: 3 }, 'edgeContinuityUnder'],
         ['over', { edgeEncodeOver: 1 }, 'edgeEncodeOver'],
-        ['half', { linearHalfOnWhite: 3 }, 'linearHalfOnWhite'],
+        ['polish', { edgePolishP95: -1 }, 'edgePolishP95'],
+        // The retire-encoder RED: a p95 over one display step is the settle.
+        ['polish-bar', { edgePolishP95: 2 }, 'edgePolishP95'],
         ['p95', { edgeEncodeP95: 4 }, 'edgeEncodeP95'],
       ]
       for (const [label, patch, needle] of cases) {

@@ -11,7 +11,7 @@
 import { describe, expect, it } from 'vitest'
 import { displayFS, displayLayerFS, liftFS, stampFS } from './shaders'
 import * as shaderModule from './shaders'
-import { displayBasisFnGLSL, displayBasisGLSL, STROKE_LAYER_BANDS } from './spectral'
+import { displayBasisGLSL } from './spectral'
 
 const ROTATION_FORMULA = 'vec2 tq = vec2(q.x * cos(a) - q.y * sin(a), q.x * sin(a) + q.y * cos(a));'
 
@@ -105,12 +105,13 @@ describe('coverage composite shaders (SPIKE 001)', () => {
 // ============================================================
 //  261125-kvl (SPIKE 006) — the per-stroke stroke layer.
 //
-//  The layer's law is frozen: the lateral alpha `A = 1 - amount·t^e`, the
-//  composite's `aEff = A·cover_L`, the 8-band rank-one LM encoder and the
-//  storage write-back `fit/k - fixed`. The shipped compositor must not have
-//  learned anything about the layer (the amount-0 path is the shipped path),
-//  and the merge's compiled band list must stay exactly the spike's eight
-//  indices — a uniform mask would shrink nothing.
+//  The layer's law is ONE component-wise coefficient mix:
+//    A_eff = (1 - amount·t^e)·cover_L;  film_out = mix(film_S, film_L, A_eff)
+//  The retired encoder mixed display-reflectance bands and refit the sheet's
+//  coefficients with a Levenberg-Marquardt solve; it is gone, with its band
+//  table, its pre-blur and its granulation division. The shipped compositor
+//  must not have learned anything about the layer (the amount-0 path is the
+//  shipped path).
 // ============================================================
 describe('stroke layer shaders (261125-kvl, SPIKE 006)', () => {
   const exports = shaderModule as Record<string, unknown>
@@ -120,18 +121,36 @@ describe('stroke layer shaders (261125-kvl, SPIKE 006)', () => {
   const coverUnion = exports.strokeLayerCoverFS as string
   const reliefUnion = exports.strokeLayerReliefFS as string
 
-  it('compiles the merge against exactly the eight frozen display bands', () => {
-    expect(STROKE_LAYER_BANDS).toEqual([1, 3, 5, 7, 9, 10, 11, 13])
+  it('commits ONE component-wise coefficient mix with exact endpoints', () => {
     expect(typeof merge, 'strokeLayerMergeFS must be a string').toBe('string')
     const pin = (needle: string) =>
       expect(merge.includes(needle), `missing shader text: ${needle}`).toBe(true)
-    pin('const int BANDS = 8;')
-    // Eight basis entries in each compiled array — a 16-entry block is the
-    // uniform-mask design the spike rejected.
-    const b4 = merge.match(/const vec4 B4\[BANDS\] = vec4\[BANDS\]\(([^;]*)\);/)?.[1] ?? ''
-    const b3 = merge.match(/const vec3 B3\[BANDS\] = vec3\[BANDS\]\(([^;]*)\);/)?.[1] ?? ''
-    expect(b4.split('vec4(').length - 1, 'eight B4 entries').toBe(8)
-    expect(b3.split('vec3(').length - 1, 'eight B3 entries').toBe(8)
+    // The law: film_out = mix(sheet film, layer film, aEff), in storage form.
+    // The sheet's film is `ink + fixed`; subtracting `fixed` back leaves the
+    // storage untouched at aEff 0.
+    pin('oA = mix(inkA + fixedA, layerA, aEff) - fixedA;')
+    pin('mix(inkB.rgb + fixedB.rgb, layerB.rgb, aEff) - fixedB.rgb,')
+    pin('max(mix(inkB.a + fixedB.a, layerB.a, aEff) - fixedB.a, 0.0)')
+    // The exact endpoints survive, including the S floor at the layer side.
+    pin('if (aEff >= 1.0 - 1e-4){')
+    pin('oA = layerA - fixedA;')
+    pin('oB = vec4(layerB.rgb - fixedB.rgb, max(layerB.a, 0.0) - fixedB.a);')
+    pin('if (aEff <= 1e-4){')
+    pin('oA = inkA;')
+    pin('oB = inkB;')
+  })
+
+  it('carries no band target, no LM fit, no pre-blur and no granulation division', () => {
+    // The retired encoder's whole vocabulary: display bands, the compiled
+    // 8-band table, the rank-one LM solve, the seeded coefficients, the
+    // film pre-blur and the `fit/k` write-back. None may return.
+    for (const needle of [
+      'uPaper', 'uGranulation', 'uFilmBlur', 'uMaxIter', 'uTexel',
+      'BANDS', 'bandOf', 'solve8', 'costAt', 'maxResid', 'seedA',
+      'displayBasis', 'strokeLayerBands',
+    ]) {
+      expect(merge.includes(needle), `the retired encoder text "${needle}" must be gone`).toBe(false)
+    }
   })
 
   it('carries the frozen lateral law in the merge and both union passes', () => {
@@ -149,20 +168,6 @@ describe('stroke layer shaders (261125-kvl, SPIKE 006)', () => {
     }
     expect(coverUnion.includes('1.0 - (1.0 - texture(uCoverS, uv).x) * (1.0 - layerAEff(uv))')).toBe(true)
     expect(reliefUnion.includes('texture(uReliefS, uv).x + layerAEff(uv) * texture(uReliefL, uv).x')).toBe(true)
-  })
-
-  it('keeps the encoder frozen: rank-one Jacobian, seed mix, bounded LM, exact endpoints, /k write-back', () => {
-    const pin = (needle: string) =>
-      expect(merge.includes(needle), `missing shader text: ${needle}`).toBe(true)
-    pin('float ha = max(1e-5, abs(x[0]) * 1e-4);')
-    pin('vec4 seedA = mix(sa, la, aEff);')
-    pin('if (it >= uMaxIter) break;')
-    pin('if (maxResid(ca, cb, cs, tgt) < 1e-5) break;')
-    pin('if (aEff >= 1.0 - 1e-4){')
-    pin('if (aEff <= 1e-4){')
-    pin('oA = vec4(x[0], x[1], x[2], x[3]) / k - fixedA;')
-    pin('oB = vec4(x[4], x[5], x[6], max(x[7], 0.0)) / k - fixedB;')
-    pin('float k = max(1.0 + uGranulation * (0.5 - texture(uPaper, uv).g) * 2.2, 1e-3);')
   })
 
   it('writes the layer film as two attachments: the cover lerp and the MIN lateral field', () => {
@@ -183,17 +188,7 @@ describe('stroke layer shaders (261125-kvl, SPIKE 006)', () => {
     expect(clear.includes('o1 = vec4(1.0);')).toBe(true)
   })
 
-  it('emits displayLayerFS from the same band tuples, with the shipped displayFS untouched', () => {
-    // The two basis emitters read the same tables through one generator; the
-    // numeric tuple list must be identical per band (16 bands × the vec4 +
-    // vec3 basis + vec3 weights each band emits).
-    const tuples = (src: string) =>
-      [...src.matchAll(/vec([34])\(([^)]*)\)/g)].map((match) => match[2]!.trim())
-    const shipped = tuples(displayBasisGLSL())
-    // Six tuples per band: the scattered and the legacy branch each carry the
-    // vec4 basis, the vec3 basis and the vec3 RGB weight (16 x 6).
-    expect(shipped.length, 'sixteen bands x six tuples').toBe(96)
-    expect(tuples(displayBasisFnGLSL()).filter((tuple) => tuple !== '0.0')).toEqual(shipped)
+  it('mixes the two films\' coefficients once, before the single reconstruction', () => {
     const pin = (needle: string) =>
       expect(displayLayerFS.includes(needle), `displayLayerFS is missing shader text: ${needle}`).toBe(true)
     pin('uniform sampler2D uLayerA, uLayerB;')
@@ -201,14 +196,32 @@ describe('stroke layer shaders (261125-kvl, SPIKE 006)', () => {
     pin('uniform sampler2D uLayerLateral;')
     pin('uniform sampler2D uLayerRelief;')
     pin('uniform float uEdgeFade, uEdgeStart, uEdgeFalloff;')
-    // The frozen lateral law, the exact band mix and the two union fields.
+    // The frozen lateral law.
     pin('float layerT = clamp((layerU - uEdgeStart) / max(1.0 - uEdgeStart, 1e-4), 0.0, 1.0);')
     pin('layerAeff = clamp((1.0 - uEdgeFade * pow(layerT, layerE)) * layerCover, 0.0, 1.0);')
-    pin('rgb = mix(rgb, displayBasisBands(layerInk, layerBands, layerScatter), layerAeff);')
+    // THE live law: the same coefficient mix the merge commits, applied to
+    // the display's own film states (blur, then k) BEFORE the reconstruction.
+    pin('a = mix(a, layerInk, layerAeff);')
+    pin('b = mix(b, layerBands, layerAeff);')
+    pin('scatter = mix(scatter, layerScatter, layerAeff);')
+    // The skip guard: no layer mix where the layer never covered.
+    pin('if (layerCover > 1e-4){')
+    // ONE reconstruction (the shipped basis block, verbatim), none for the
+    // layer — the retired `displayBasisBands` per-layer band array is gone.
+    const basis = displayBasisGLSL()
+    const count = (src: string) => src.split(basis).length - 1
+    expect(count(displayLayerFS), 'the shipped basis block appears exactly once').toBe(1)
+    expect(count(displayFS), 'the shipped basis block appears exactly once').toBe(1)
+    expect(displayLayerFS.includes('displayBasisBands')).toBe(false)
+    // The mix is the field the reconstruction reads: layer mix -> rgb -> basis.
+    const mixAt = displayLayerFS.indexOf('a = mix(a, layerInk, layerAeff);')
+    const rgbAt = displayLayerFS.indexOf('vec3 rgb = vec3(0.0);')
+    expect(mixAt).toBeGreaterThanOrEqual(0)
+    expect(rgbAt).toBeGreaterThan(mixAt)
+    expect(displayLayerFS.indexOf(basis)).toBeGreaterThan(rgbAt)
+    // The two committed union fields stay on the same weight.
     pin('float cov = clamp(1.0 - (1.0 - texture(uCover, uv).x) * (1.0 - layerAeff), 0.0, 1.0);')
     pin('texture(uRelief, uv).x + layerAeff * texture(uLayerRelief, uv).x')
-    // The skip guard: no layer reconstruction where the layer never covered.
-    pin('if (layerCover > 1e-4){')
   })
 
   it('leaves the shipped displayFS and gather programs free of the layer', () => {
