@@ -2044,6 +2044,7 @@ function readStrokeSize(): number {
 // is the film the artist judges.
 const BLEND_UNDER_COLOR = '#f9e01c'
 const BLEND_UNDER_RGB: readonly [number, number, number] = [0.976, 0.878, 0.110]
+const BLEND_UNDER_BODY = 100
 const BLEND_STROKE_COLOR = '#1469e8'
 const BLEND_STROKE_RGB: readonly [number, number, number] = [0.078, 0.412, 0.910]
 const BLEND_PROFILE_X0 = 0.45
@@ -2059,11 +2060,18 @@ function bristleBlendScript(
   mut: number,
   pickup: number | null,
 ): readonly ScriptEntry[] {
+  // The understory must be the artist's REAL yellow base: the deposit's
+  // solid-paint gate (smoothstep 0.55..0.85 of snapB.a / uBodyFloor) keeps the
+  // smear off a thin film by design, so the pale-line `--over` whisper (load 0,
+  // body 0) can never pick up — measured 2026-11-26: share 0.0069, worm band
+  // 0.055 at s600. A record-body, full-load pass at the light touch keeps the
+  // base mobile and solid enough for the gate, while the judged stroke stays
+  // the artist's Body-0 bag.
   const under: ScriptEntry = {
     color: BLEND_UNDER_COLOR,
     points: understoryLine(LINE_OVER_Y),
     mutationId: LINE_OVER_MUTATION_ID,
-    params: { ...bristleLineParams(0, LINE_OVER_SIZE), load: LINE_OVER_LOAD, feather: 100 },
+    params: { ...bristleLineParams(BLEND_UNDER_BODY, LINE_OVER_SIZE), feather: 100 },
     brushId: 'bristle-round',
     fixAfter: false,
   }
