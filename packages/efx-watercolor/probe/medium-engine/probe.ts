@@ -1968,10 +1968,9 @@ function readStrokeSize(): number {
 // independent of the underlayer. So the stroke is composited ONCE, as a layer,
 // over the sheet at stroke end (DESIGN 3.1-3.4):
 //
-//   u     = clamp(MIN over covering dabs of |across| / uFeatherEdge, 0, 1)
-//   t     = clamp((u - 0.30) / 0.70, 0, 1)
+//   u     = clamp(MIN over covering dabs of |across| / uLayerEdge, 0, 1)
 //   e     = 2^(2b - 1)                                  b = edgeFalloff 0..1
-//   A     = 1 - amount * t^e                            amount = edgeFade 0..1
+//   A     = lateralWeight(u, amount, b) = 1 - amount*u^e   amount = edgeFade 0..1
 //   A_eff = A * cover_L
 //   film_out = mix(film_S, film_L, A_eff)    film = (absorbs 0..3, 4..6, S)
 //
@@ -2018,11 +2017,35 @@ let EDGE_LAYER_PICKUP: number | null = null
  *  fix after the FIRST stroke only, keeping A's stroke-end merge stamp alive:
  *  the wet-under arm the live defect reports. */
 let EDGE_LAYER_WET_UNDER = false
-/** Mirrors BRISTLE_EDGE_START (DESIGN 3.3 pins 0.30) and the comparator's
- *  EDGE_START: where the lateral band begins, in silhouette units. */
-const EDGE_LAYER_START = 0.3
-/** The band's midpoint in silhouette units: (START + 1) / 2. */
-const EDGE_LAYER_MID_U = (EDGE_LAYER_START + 1) / 2
+/** 261126 (Spec 10 falloff leg): the law's midpoint station — `lateralWeight`'s
+ *  half-weight coordinate, u = 0.5 of the layer's OWN lateral field (whose
+ *  u = 1 is the stroke's visible edge, `uLayerEdge`). The station is FOUND in
+ *  the stored field (the offset whose row-mean lateral is closest to 0.5), so
+ *  it is independent of the anchor constant and reads the same anchor the
+ *  shader wrote. */
+const EDGE_LAYER_MID = 0.5
+/** The mid station must actually exist in the field: the closest row-mean
+ *  lateral must be within this of 0.5 (a field that jumps across the
+ *  half-weight coordinate in one station — a 1 px field or a saturated one —
+ *  has no mid to read, and the readings are then absent, never fabricated).
+ *  The new law's field moves ~0.02 per station at 2048, so 0.05 accepts the
+ *  real mid while refusing a cliff. */
+const EDGE_LAYER_MID_TOLERANCE = 0.05
+/** The visible stroke edge as a share of the cover_L peak: the outermost
+ *  station whose row-mean cover reaches it. The anchor is right when the
+ *  lateral field saturates AT or BEYOND this station (the brief's
+ *  "u must reach the visual stroke edge" check). */
+const EDGE_LAYER_REACH_SHARE = 0.05
+/** The half-cover station's share of the peak — the stroke's visual
+ *  half-width, the denominator the solid band is judged against. */
+const EDGE_LAYER_HALF_SHARE = 0.5
+/** The brief's SOLID band: stations whose frozen `aEff` reaches this are
+ *  near-opaque (the law's coefficient weight x cover_L). The band must be
+ *  contiguous from the centreline; its width is the measured plateau. */
+const EDGE_LAYER_SOLID_AEFF = 0.9
+/** The lateral field is recorded at four decimals; a texel counts as
+ *  SATURATED (the clamp's u = 1) when its row mean is this close to 1. */
+const EDGE_LAYER_LATERAL_SAT = 0.999
 /** Spike 006's two strokes: A horizontal (`#1d3f7a`), B vertical (`#c2402a`),
  *  so they cross and B's outboard band sits over A's paint. */
 const EDGE_LAYER_A_COLOR = '#1d3f7a'
@@ -2429,18 +2452,19 @@ function edgeGranulationK(paperG: number, granulation: number): number {
 /**
  * Spec 10: the frozen lateral law's band alpha `aEff` at one texel, from the
  * layer's OWN lateral field and the scenario's two knobs —
- * `A = 1 − amount·t^e`, `aEff = clamp(A·cover_L, 0, 1)` with
- * `t = clamp((u − START)/(1 − START), 0, 1)` and `e = 2^(2·bias − 1)`.
- * This is the weight the MERGE applied; the committed sheet's own recovery is
- * a separate measurement (`midAlpha`), never this law re-read.
+ * `A = lateralWeight(u, amount, bias) = 1 − amount·u^e`,
+ * `aEff = clamp(A·cover_L, 0, 1)` with `e = 2^(2·bias − 1)`.
+ * `u` is the STORED field: 0 on the stroke's centre line, 1 at its visual
+ * edge (`BRISTLE_LAYER_EDGE` of the nominal footprint). This is the weight the
+ * MERGE applied; the committed sheet's own recovery is a separate measurement
+ * (`midAlpha`), never this law re-read.
  */
 function edgeLayerAEff(lateral: number, coverL: number): number {
   const u = Math.min(1, Math.max(0, lateral))
   const amount = EDGE_LAYER_AMOUNT / 100
   const bias = EDGE_LAYER_FALLOFF / 100
-  const t = Math.min(1, Math.max(0, (u - EDGE_LAYER_START) / Math.max(1 - EDGE_LAYER_START, 1e-4)))
   const e = Math.pow(2, 2 * bias - 1)
-  return Math.min(1, Math.max(0, (1 - amount * Math.pow(t, e)) * coverL))
+  return Math.min(1, Math.max(0, (1 - amount * Math.pow(u, e)) * coverL))
 }
 
 // ---------------------------------------------------------------------------
@@ -2738,6 +2762,9 @@ function edgeBlurFilm(
 interface EdgeProfile {
   readonly offsets: number[]
   readonly cover: number[] | null
+  /** 261126 (falloff leg): each station's row-mean of the layer's stored
+   *  lateral field (layerFilm attachment 1) — the coordinate the law reads. */
+  readonly lateral: number[] | null
   readonly dark: number[]
   readonly ink: number[]
   readonly print: number[] | null
@@ -2767,12 +2794,14 @@ function edgeLayerProfile(
   const dark: number[] = []
   const ink: number[] = []
   const cover: number[] = []
+  const lateral: number[] = []
   const print: number[] = []
   // The print share: each row's fraction of texels at or above half the
   // profile's peak, read from the SHEET's coverage raster — the merge writes
   // `cover = 1 - (1-cover_S)(1 - A·cover_L)`, so this raster is where the
   // dissolve is visible (the layer's own cover_L is the deposit and does not
-  // read the falloff).
+  // read the falloff; on the under profile it moves only through the
+  // carrier's pickup of stroke A's falloff-weighted committed cover).
   let peak = 0
   for (let i = 0; i < fields.cover.length; i += 1) peak = Math.max(peak, fields.cover[i]!)
   const printFloor = peak > 0 ? peak * 0.5 : Number.POSITIVE_INFINITY
@@ -2796,6 +2825,7 @@ function edgeLayerProfile(
       count = height
     }
     let cSum = 0
+    let lSum = 0
     let dSum = 0
     let iSum = 0
     let printed = 0
@@ -2817,6 +2847,7 @@ function edgeLayerProfile(
         7
       if (layer !== null) {
         cSum += layer.cover[fi]!
+        lSum += layer.lateral[fi]!
         if (fields.cover[fi]! >= printFloor) printed += 1
       }
     }
@@ -2825,12 +2856,14 @@ function edgeLayerProfile(
     ink.push(round4(iSum / count))
     if (layer !== null) {
       cover.push(round4(cSum / count))
+      lateral.push(round4(lSum / count))
       print.push(round4(printed / count))
     }
   }
   return {
     offsets,
     cover: layer === null ? null : cover,
+    lateral: layer === null ? null : lateral,
     dark,
     ink,
     print: layer === null ? null : print,
@@ -2963,6 +2996,24 @@ function digestSheetSnapshot(snapshot: unknown): string {
 interface EdgeSideReadings {
   readonly midAlpha: number | null
   readonly midCover: number | null
+  /** The mid station's row-mean lateral field — the coordinate the law read.
+   *  The station is FOUND at u = EDGE_LAYER_MID (0.5), so this is ~0.5 by
+   *  construction and witnesses that the stored field spans to the anchor. */
+  readonly midLateral: number | null
+  /** The outermost station whose row-mean lateral is still below the clamp
+   *  (u < 1): the lateral field's own reach. The anchor is right when this
+   *  reaches the visual edge (`coverReach`), not the old 0.66 silhouette. */
+  readonly lateralSat: number | null
+  /** The outermost station at half the cover_L peak — the stroke's visual
+   *  half-width. */
+  readonly coverHalf: number | null
+  /** The outermost station at EDGE_LAYER_REACH_SHARE of the cover_L peak —
+   *  the stroke's VISUAL EDGE (the fringe beyond it is under 5 % cover). */
+  readonly coverReach: number | null
+  /** The near-opaque band: the outermost |offset| of the contiguous-from-
+   *  centre run whose frozen `aEff` reaches EDGE_LAYER_SOLID_AEFF. The
+   *  artist's solid core; the falloff law must shrink it. */
+  readonly solidHalf: number | null
   readonly coreExact: number | null
   readonly continuity: number | null
   readonly printRetention: number | null
@@ -2977,6 +3028,11 @@ interface EdgeSideReadings {
 const EDGE_SIDE_ABSENT: EdgeSideReadings = {
   midAlpha: null,
   midCover: null,
+  midLateral: null,
+  lateralSat: null,
+  coverHalf: null,
+  coverReach: null,
+  solidHalf: null,
   coreExact: null,
   continuity: null,
   printRetention: null,
@@ -2987,14 +3043,23 @@ const EDGE_SIDE_ABSENT: EdgeSideReadings = {
 /**
  * Spec 10: one side's layer-domain bars, over the profile's stations.
  *
- * At the band's midpoint station (`u = (START + 1) / 2 = 0.65`) it recovers
- * a DISPLAY-DOMAIN alpha — `band_out` decoded from the COMMITTED sheet
- * (through the display's own `k`), `band_S` from the untouched pre-merge sheet
- * and `band_L` from the layer — as the per-band
- * `(band_out - band_S) / (band_L - band_S)`, averaged over the bands whose
- * denominator is resolvable. That is a measurement of the composite, not a
- * re-evaluation of the law (the coefficient mix is the law; this number is
- * what the eye reads back).
+ * At the band's midpoint station (the offset whose row-mean LATERAL FIELD is
+ * closest to u = 0.5 — the law's half-weight coordinate, found in the stored
+ * field so it is anchor-independent) it recovers a DISPLAY-DOMAIN alpha —
+ * `band_out` decoded from the COMMITTED sheet (through the display's own `k`),
+ * `band_S` from the untouched pre-merge sheet and `band_L` from the layer —
+ * as the per-band `(band_out - band_S) / (band_L - band_S)`, averaged over
+ * the bands whose denominator is resolvable. That is a measurement of the
+ * composite, not a re-evaluation of the law (the coefficient mix is the law;
+ * this number is what the eye reads back).
+ *
+ * The three GEOMETRIC readings (`lateralSat`, `coverHalf`, `coverReach`) judge
+ * the anchor: the lateral field saturates at `uLayerEdge` (its reach), the
+ * coverage half and reach are measured from the layer's own cover rows. The
+ * brief's bar is `lateralSat >= coverReach` (within a station's tolerance) —
+ * the old field saturated at 0.66 of the nominal footprint, INSIDE the
+ * visible deposit (measured 2048: saturations 36 px, half-cover 39.5 px,
+ * reach 46 px). `solidHalf` is the near-opaque band the falloff law shrinks.
  *
  * `coreExact` is the merge's exact-endpoint identity, in the display's own
  * bytes: over the stations whose `aEff` reaches 1 − 1e-4, the largest
@@ -3019,7 +3084,9 @@ function edgeSideReadings(
   // The merge's own inputs when the instrument ran (Task 3+): the mid-stroke
   // capture is the fallback for the pre-change tree only.
   const layer = capture.merge ? capture.merge.preLayer : capture.layer
-  if (layer === null || profile.cover === null || profile.print === null) return EDGE_SIDE_ABSENT
+  if (layer === null || profile.cover === null || profile.lateral === null || profile.print === null) {
+    return EDGE_SIDE_ABSENT
+  }
   const sheetFields = capture.merge ? capture.merge.preSheet : capture.sheet
   const { width, height } = sheetFields
   const paperG = readEdgePaperG(engine, sheetFields)
@@ -3042,6 +3109,61 @@ function edgeSideReadings(
     }
   }
   if (silhouette < EDGE_LAYER_SILHOUETTE_MIN_PX) return EDGE_SIDE_ABSENT
+  // The outermost station whose row-mean cover reaches `share` of the peak.
+  // `coverHalf` is the stroke's visual half-width; `coverReach` is its
+  // visible edge (the fringe beyond it is under 5 % cover, the anchor's
+  // target). Both read the layer's own cover_L rows, never the display.
+  const outerCover = (share: number): number => {
+    let found = 0
+    for (let i = profile.cover!.length - 1; i >= 0; i -= 1) {
+      if (profile.cover![i]! >= share * peak) {
+        found = Math.abs(profile.offsets[i]!)
+        break
+      }
+    }
+    return found
+  }
+  const coverHalf = outerCover(EDGE_LAYER_HALF_SHARE)
+  const coverReach = outerCover(EDGE_LAYER_REACH_SHARE)
+  // The lateral field's reach: the outermost station still below the clamp.
+  const lateralProfile = profile.lateral
+  let lateralSat = 0
+  for (let i = lateralProfile.length - 1; i >= 0; i -= 1) {
+    if (lateralProfile[i]! < EDGE_LAYER_LATERAL_SAT) {
+      lateralSat = Math.abs(profile.offsets[i]!)
+      break
+    }
+  }
+  // The mid station: the offset whose row-mean lateral is closest to the
+  // law's half-weight coordinate. Guarded — a field that never nears 0.5 has
+  // no mid to read (the readings are then absent, never fabricated).
+  let midStation: number | null = null
+  let midLateralClosest = Number.POSITIVE_INFINITY
+  let midLateralValue = 0
+  for (let i = 0; i < lateralProfile.length; i += 1) {
+    const difference = Math.abs(lateralProfile[i]! - EDGE_LAYER_MID)
+    if (difference < midLateralClosest) {
+      midLateralClosest = difference
+      midStation = Math.abs(profile.offsets[i]!)
+      midLateralValue = lateralProfile[i]!
+    }
+  }
+  if (!(midLateralClosest <= EDGE_LAYER_MID_TOLERANCE)) midStation = null
+  // The near-opaque solid band: the contiguous-from-centre run of stations
+  // whose frozen aEff reaches EDGE_LAYER_SOLID_AEFF, per |offset| (the
+  // smaller of the two sides' row means — the band is the stroke's core).
+  const solidAt = new Map<number, number>()
+  for (let i = 0; i < profile.offsets.length; i += 1) {
+    const offset = Math.abs(profile.offsets[i]!)
+    const aEff = edgeLayerAEff(profile.lateral[i]!, profile.cover[i]!)
+    const seen = solidAt.get(offset)
+    solidAt.set(offset, seen === undefined ? aEff : Math.min(seen, aEff))
+  }
+  let solidHalf = 0
+  for (const offset of [...solidAt.keys()].sort((a, b) => a - b)) {
+    if (solidAt.get(offset)! >= EDGE_LAYER_SOLID_AEFF) solidHalf = offset
+    else break
+  }
   // The rects are built symmetric about the profiled stroke's centreline, so
   // the centre row/column is the rect's middle.
   const sheetRect = sheetFields.rect
@@ -3076,7 +3198,7 @@ function edgeSideReadings(
       rowIndex = local
       rowCount = height
     }
-    const isMid = Math.abs(o - Math.round(EDGE_LAYER_MID_U * silhouette)) <= 1
+    const isMid = midStation !== null && Math.abs(Math.abs(o) - midStation) <= 1
     let rowAlpha = 0
     let rowAlphaCount = 0
     let rowCore = 0
@@ -3144,13 +3266,19 @@ function edgeSideReadings(
       alphaCount += 1
     }
   }
-  const midIndex = profile.offsets.findIndex(
-    (o) => Math.abs(o - Math.round(EDGE_LAYER_MID_U * silhouette)) <= 1,
-  )
+  const midIndex =
+    midStation === null
+      ? -1
+      : profile.offsets.findIndex((o) => Math.abs(Math.abs(o) - midStation) <= 1)
   const rimIndex = profile.offsets.findIndex((o) => Math.abs(o) === silhouette)
   return {
     midAlpha: alphaCount > 0 ? round4(alphaSum / alphaCount) : null,
     midCover: midIndex >= 0 ? round4(profile.cover[midIndex]!) : null,
+    midLateral: midStation === null ? null : round4(midLateralValue),
+    lateralSat,
+    coverHalf,
+    coverReach,
+    solidHalf,
     coreExact: coreSeen ? round4(coreMax) : null,
     continuity: outside,
     printRetention: rimIndex >= 0 ? round4(profile.print[rimIndex]!) : null,
@@ -3377,6 +3505,7 @@ function edgeLayerReport(
       cover: underProfile.cover,
       dark: underProfile.dark,
       ink: underProfile.ink,
+      lateral: underProfile.lateral,
       print: underProfile.print,
     },
     edgeAcrossPaper: {
@@ -3384,12 +3513,27 @@ function edgeLayerReport(
       cover: paperProfile.cover,
       dark: paperProfile.dark,
       ink: paperProfile.ink,
+      lateral: paperProfile.lateral,
       print: paperProfile.print,
     },
     edgeMidAlphaPaper: paperReadings.midAlpha,
     edgeMidAlphaUnder: underReadings.midAlpha,
     edgeMidCoverPaper: paperReadings.midCover,
     edgeMidCoverUnder: underReadings.midCover,
+    // 261126 (Spec 10 falloff leg): the anchor and the band geometry — the
+    // lateral field's reach (`lateralSat`, where u clamps at 1), the stroke's
+    // own half-cover and 5 %-cover stations, and the near-opaque solid band.
+    // `edgeAcross*.lateral` carries the stored field beside them.
+    edgeMidLateralPaper: paperReadings.midLateral,
+    edgeMidLateralUnder: underReadings.midLateral,
+    edgeLateralSatPaper: paperReadings.lateralSat,
+    edgeLateralSatUnder: underReadings.lateralSat,
+    edgeCoverHalfPaper: paperReadings.coverHalf,
+    edgeCoverHalfUnder: underReadings.coverHalf,
+    edgeCoverReachPaper: paperReadings.coverReach,
+    edgeCoverReachUnder: underReadings.coverReach,
+    edgeSolidHalfPaper: paperReadings.solidHalf,
+    edgeSolidHalfUnder: underReadings.solidHalf,
     edgeCoreExactPaper: paperReadings.coreExact,
     edgeCoreExactUnder: underReadings.coreExact,
     edgeContinuityPaper: paperReadings.continuity,

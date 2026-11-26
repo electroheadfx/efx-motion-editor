@@ -2088,8 +2088,15 @@ describe('the alpha-law blocks discriminate (64-31 task 2, executed)', () => {
 //      allocation and no merge draw at 0; one allocation and one merge per
 //      stroke above 0. A missing counter fails by name.
 //  38. `--falloff-sweep` is the only cross-capture ordering gate: strict
-//      broad < linear < rim on both sides, and the layer's own cover_L rows
-//      agree to one 8-bit step (the deposit does not read the falloff).
+//      broad < linear < rim on both sides (midpoint alpha), strict on the
+//      near-opaque band on the paper side (261126), and the layer's own
+//      cover_L rows agree to one 8-bit step on the PAPER profile (the one
+//      whose cover_L is the deposit alone). The under profile's cover_L drift
+//      is REPORTED, never barred — stroke A's committed cover reads the
+//      falloff by the merge law and stroke B's carrier lifts it through
+//      `wetAt` -> pickup -> load -> body -> coverage (a measured by-design
+//      coupling, present under the retired 0.66-anchor law too: 0.0363 /
+//      0.0576 between f0 and f50/f100).
 describe('the edge-layer gate (Spec 10)', () => {
   const EDGE_LAYER_OFFSETS = Array.from({ length: 41 }, (_, i) => i - 20)
 
@@ -2133,6 +2140,21 @@ describe('the edge-layer gate (Spec 10)', () => {
       edgeMidAlphaUnder: midAlpha,
       edgeMidCoverPaper: layer ? 0.98 : null,
       edgeMidCoverUnder: layer ? 0.7 : null,
+      // 261126 (the full-span falloff law): the mid station's lateral
+      // coordinate, the field's anchor reach vs the deposit's visible edge,
+      // and the near-opaque band. The profile fixture is a flat ±20 px
+      // deposit, so half-cover and 5 % reach are both 20 and the band widens
+      // with the falloff (broad < linear < rim) inside the half-cover.
+      edgeMidLateralPaper: layer ? 0.5 : null,
+      edgeMidLateralUnder: layer ? 0.5 : null,
+      edgeLateralSatPaper: layer ? 20 : null,
+      edgeLateralSatUnder: layer ? 20 : null,
+      edgeCoverHalfPaper: layer ? 20 : null,
+      edgeCoverHalfUnder: layer ? 20 : null,
+      edgeCoverReachPaper: layer ? 20 : null,
+      edgeCoverReachUnder: layer ? 20 : null,
+      edgeSolidHalfPaper: layer ? 2 + (falloff / 100) * 10 : null,
+      edgeSolidHalfUnder: layer ? 2 + (falloff / 100) * 10 : null,
       edgeCoreExactPaper: layer ? 0 : null,
       edgeCoreExactUnder: layer ? 0 : null,
       edgeContinuityPaper: layer ? 0 : null,
@@ -2288,8 +2310,13 @@ describe('the edge-layer gate (Spec 10)', () => {
       expectContains(COMPARE, "'edge-layer': edgeLayerFailures,")
       expectContains(COMPARE, 'function edgeLayerFailures(data, reference) {')
       expectContains(COMPARE, 'const EDGE_IDENTITY_TOLERANCE = 2e-4')
-      expectContains(COMPARE, 'const EDGE_MID_U = (EDGE_START + 1) / 2')
-      expectContains(COMPARE, 'const EDGE_START = 0.3')
+      // 261126: the plateau anchor and its derived mid station are gone; the
+      // mid station is FOUND in the stored field, the anchor is barred, and
+      // the near-opaque band must sit inside the stroke's half-cover.
+      expectNotContains(COMPARE, 'const EDGE_START = 0.3')
+      expectNotContains(COMPARE, 'EDGE_MID_U')
+      expectContains(COMPARE, 'const EDGE_LATERAL_ANCHOR_TOL_PX = 3')
+      expectContains(COMPARE, 'const EDGE_SOLID_SHRINK_AMOUNT = 0.5')
       expectContains(COMPARE, 'function edgeIdentityFailures(data, reference) {')
       // The stray-rejected parameter-law constants must not come back.
       expectNotContains(COMPARE, 'const EDGE_CORE_TOLERANCE')
@@ -2530,14 +2557,28 @@ describe('the edge-layer gate (Spec 10)', () => {
       expect(missing.output).toContain('edgeMidAlphaUnder')
     })
 
-    it('fails a cover_L row that moved past one 8-bit step', () => {
+    it('fails a paper-side cover_L row that moved past one 8-bit step', () => {
       const { status, output } = sweepTriple('nyquist-sweep-cover', [
+        {},
+        {},
+        { edgeAcrossPaper: edgeLayerProfileFixture(0.02) },
+      ])
+      expect(status, lawVerdict(status, output)).toBe(1)
+      expect(output).toContain('the layer deposit does not read the falloff')
+    })
+
+    it('REPORTS the under-side cover drift instead of barring it', () => {
+      // The under profile's cover_L moves with the falloff through the
+      // carrier's pickup of stroke A's falloff-weighted committed cover; it is
+      // a scene diagnostic, and the sweep must not read it as an identity.
+      const { status, output } = sweepTriple('nyquist-sweep-under', [
         {},
         {},
         { edgeAcross: edgeLayerProfileFixture(0.02) },
       ])
-      expect(status, lawVerdict(status, output)).toBe(1)
-      expect(output).toContain('the layer deposit does not read the falloff')
+      expect(status, lawVerdict(status, output)).toBe(0)
+      expect(output).toContain('cover    Under:')
+      expect(output).not.toContain('does not read the falloff')
     })
   })
 

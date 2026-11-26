@@ -106,7 +106,9 @@ describe('coverage composite shaders (SPIKE 001)', () => {
 //  261125-kvl (SPIKE 006) — the per-stroke stroke layer.
 //
 //  The layer's law is ONE component-wise coefficient mix:
-//    A_eff = (1 - amount·t^e)·cover_L;  film_out = mix(film_S, film_L, A_eff)
+//    A_eff = lateralWeight(u, amount, b)·cover_L;  film_out = mix(film_S, film_L, A_eff)
+//  where `lateralWeight` is the ONE shared GLSL function (261126): u = 0 on
+//  the centre line, u = 1 at the visual edge, no interior plateau.
 //  The retired encoder mixed display-reflectance bands and refit the sheet's
 //  coefficients with a Levenberg-Marquardt solve; it is gone, with its band
 //  table, its pre-blur and its granulation division. The shipped compositor
@@ -162,10 +164,27 @@ describe('stroke layer shaders (261125-kvl, SPIKE 006)', () => {
       const pin = (needle: string) =>
         expect(src!.includes(needle), `${name} is missing shader text: ${needle}`).toBe(true)
       pin('float layerAEff(vec2 uv){')
-      pin('float t = clamp((u - uEdgeStart) / max(1.0 - uEdgeStart, 1e-4), 0.0, 1.0);')
-      pin('float e = exp2(2.0 * uEdgeFalloff - 1.0);')
-      pin('return clamp((1.0 - uEdgeFade * pow(t, e)) * coverL, 0.0, 1.0);')
+      // The ONE shared weight, verbatim (261126): no plateau, no uEdgeStart.
+      pin('float lateralWeight(float u, float amount, float falloff){')
+      pin('float e = exp2(2.0 * falloff - 1.0);')
+      pin('return 1.0 - amount * pow(clamp(u, 0.0, 1.0), e);')
+      pin('return clamp(lateralWeight(u, uEdgeFade, uEdgeFalloff) * coverL, 0.0, 1.0);')
     }
+    // ONE declaration of the weight in the module, and every program that
+    // APPLIES the law carries that exact snippet — the live display variant
+    // included. The cover pass is the exception and must stay one: it writes
+    // the deposit's cover_L and the lateral coordinate, and the deposit does
+    // not read the falloff (the sweep bars that identity on the paper profile).
+    const weight = exports.LATERAL_WEIGHT as string
+    expect(typeof weight, 'LATERAL_WEIGHT is exported').toBe('string')
+    for (const src of [merge, coverUnion, reliefUnion]) {
+      expect(src.includes(weight), 'each layer program carries the shared lateralWeight').toBe(true)
+    }
+    expect(cover.includes('lateralWeight(')).toBe(false)
+    expect(cover.includes('uEdgeFade')).toBe(false)
+    expect(cover.includes('uEdgeFalloff')).toBe(false)
+    expect((displayLayerFS.match(/float lateralWeight\(/g) ?? []).length).toBe(1)
+    expect(displayLayerFS.includes(weight)).toBe(true)
     expect(coverUnion.includes('1.0 - (1.0 - texture(uCoverS, uv).x) * (1.0 - layerAEff(uv))')).toBe(true)
     expect(reliefUnion.includes('texture(uReliefS, uv).x + layerAEff(uv) * texture(uReliefL, uv).x')).toBe(true)
   })
@@ -176,7 +195,10 @@ describe('stroke layer shaders (261125-kvl, SPIKE 006)', () => {
     pin('layout(location=0) out vec4 o0;')
     pin('layout(location=1) out vec4 o1;')
     pin('o0 = vec4(target, 0.0, 0.0, a);')
-    pin('o1 = vec4(clamp(abs(q.x) / max(uFeatherEdge, 1e-4), 0.0, 1.0));')
+    // 261126: the field's anchor is the VISUAL edge (BRISTLE_LAYER_EDGE), not
+    // the display feather's 0.66 silhouette — u must reach the visible deposit.
+    pin('uniform float uLayerEdge;')
+    pin('o1 = vec4(clamp(abs(q.x) / max(uLayerEdge, 1e-4), 0.0, 1.0));')
     // The gather is read ONCE and the shipped guard is kept verbatim; the
     // fragment needs the record itself for `g.alpha` and the smear, so it
     // names it in a local (the structure is never widened).
@@ -195,10 +217,10 @@ describe('stroke layer shaders (261125-kvl, SPIKE 006)', () => {
     pin('uniform sampler2D uLayerCover;')
     pin('uniform sampler2D uLayerLateral;')
     pin('uniform sampler2D uLayerRelief;')
-    pin('uniform float uEdgeFade, uEdgeStart, uEdgeFalloff;')
-    // The frozen lateral law.
-    pin('float layerT = clamp((layerU - uEdgeStart) / max(1.0 - uEdgeStart, 1e-4), 0.0, 1.0);')
-    pin('layerAeff = clamp((1.0 - uEdgeFade * pow(layerT, layerE)) * layerCover, 0.0, 1.0);')
+    pin('uniform float uEdgeFade, uEdgeFalloff;')
+    // The frozen lateral law, through the SAME shared function the merge uses.
+    pin('float layerU = texture(uLayerLateral, uv).x;')
+    pin('layerAeff = clamp(lateralWeight(layerU, uEdgeFade, uEdgeFalloff) * layerCover, 0.0, 1.0);')
     // THE live law: the same coefficient mix the merge commits, applied to
     // the display's own film states (blur, then k) BEFORE the reconstruction.
     pin('a = mix(a, layerInk, layerAeff);')
@@ -226,7 +248,8 @@ describe('stroke layer shaders (261125-kvl, SPIKE 006)', () => {
 
   it('leaves the shipped displayFS and gather programs free of the layer', () => {
     for (const needle of [
-      'uLayerA', 'uLayerB', 'uLayer', 'uCoverL', 'uLateral', 'uEdgeFade', 'uEdgeStart', 'uEdgeFalloff',
+      'uLayerA', 'uLayerB', 'uLayer', 'uCoverL', 'uLateral', 'uEdgeFade', 'uEdgeFalloff',
+      'lateralWeight',
     ]) {
       expect(displayFS.includes(needle), `displayFS must not carry ${needle}`).toBe(false)
     }

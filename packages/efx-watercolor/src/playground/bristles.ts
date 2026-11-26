@@ -270,13 +270,24 @@ export const BRISTLE_LANDING = 1.6;
 //
 //  Edge transparency (amount, 0..1) and Edge falloff (shape bias, 0..1) shape
 //  ONE lateral factor on the per-stroke translucent LAYER's alpha — the
-//  stroke's own deposited paint, never the gather film — computed in
-//  SILHOUETTE units: 1 is the visible rim (BRISTLE_FEATHER_EDGE of the
-//  nominal footprint), not the footprint's own edge. The engine binds the
-//  start anchor as a uniform, and the shape bias's exponent is the tested
-//  twin `edgeFalloffExponent` below.
-/** Where the fade starts, in silhouette units (0.30, DESIGN 3.3): the core keeps layer alpha 1. */
-export const BRISTLE_EDGE_START = 0.3;
+//  stroke's own deposited paint, never the gather film. The factor spans the
+//  WHOLE lateral coordinate, from the centre line (u = 0, weight 1) to the
+//  stroke's VISUAL edge (u = 1, weight 1 − amount) — there is no opaque
+//  plateau: at amount 100 only the centre line retains full alpha. The shape
+//  bias's exponent is the tested twin `edgeFalloffExponent` below.
+/** The lateral field's anchor, in nominal-footprint units (0.9): the engine
+ *  writes `u = clamp(|across| / (uRadius · BRISTLE_LAYER_EDGE), 0, 1)` into
+ *  layerFilm attachment 1, so u = 1 is the stroke's visible edge.
+ *
+ *  261126: measured at 2048 on the shipped edge-layer scene (radius 55 px),
+ *  the layer's own cover_L rows read a plateau to ~33 px, the 0.9-of-peak
+ *  silhouette at ~35 px, half-cover at ~39.5 px, 5 % at ~46 px and zero at
+ *  ~50-52 px. The old anchor (BRISTLE_FEATHER_EDGE, 0.66 ⇒ saturation at
+ *  36 px) clamped to u = 1 INSIDE the visible deposit, then applied a 0.30
+ *  start plateau on top — two plateaus at once, which is the solid core the
+ *  artist reported. 0.9 places u = 1 at the coverage's visible end, where the
+ *  fringe is under 2-5 % cover, so the fade spans the full mark. */
+export const BRISTLE_LAYER_EDGE = 0.9;
 
 // ------------------------- the contact pressure law (spike 004) -------------------------
 //

@@ -1510,14 +1510,18 @@ void main(){
 //  TRANSIENT layer instead of the sheet and commits ONCE at stroke end through
 //  the frozen composite (DESIGN-stroke-layer-transparency §3.3):
 //
-//    u     = MIN over covering dabs of clamp(|across| / uFeatherEdge, 0, 1)
-//    t     = clamp((u - START) / (1 - START), 0, 1)
+//    u     = MIN over covering dabs of clamp(|across| / (uRadius · uLayerEdge), 0, 1)
 //    e     = 2^(2·falloff - 1)
-//    A     = 1 - amount · t^e
+//    A     = lateralWeight(u, amount, falloff) = 1 - amount · u^e
 //    aEff  = A · cover_L
 //    film_out = mix(film_S, film_L, aEff)      film = (absorbs, absorbs, S)
 //    cover_out  = 1 - (1 - cover_S) · (1 - aEff)
 //    relief_out = relief_S + aEff · relief_L
+//
+//  261126: u spans the WHOLE lateral coordinate — 0 on the centre line (A = 1)
+//  to 1 at the stroke's VISUAL edge (A = 1 − amount) — with no interior
+//  plateau. uLayerEdge is bound from BRISTLE_LAYER_EDGE (0.9 of the nominal
+//  footprint; measured at 2048 to be where the deposit's cover falls to 2-5 %).
 //
 //  The film composite is a coefficient-space lerp — the engine's one
 //  subtractive pigment mix — never a mix of display reflectances (261125: the
@@ -1533,21 +1537,44 @@ void main(){
 // ============================================================
 
 /**
+ * Spec 10: ONE lateral falloff weight, shared verbatim by the layer's alpha
+ * (through `STROKE_LAYER_ALPHA`) and the live display variant, so the commit
+ * and the live composite cannot disagree. `u` is the layer's own lateral
+ * coordinate — 0 on the stroke's centre line, 1 at its VISUAL edge
+ * (`bristleCoverLayerFS` writes `|across| / (uRadius · uLayerEdge)`, capped at
+ * 1). `amount` is Edge transparency and `falloff` the shape bias
+ * (0 broad, 0.5 linear, 1 rim — `e = 2^(2b − 1)`).
+ *
+ *     weight = 1 − amount · u^e
+ *
+ * The weight is 1 on the centre line and falls monotonically to 1 − amount at
+ * the visual edge: at amount 100 the edge is fully transparent and there is NO
+ * opaque plateau. The artist's solid core was the retired
+ * `t = (u − uEdgeStart) / (1 − uEdgeStart)` interior plateau (uEdgeStart 0.30)
+ * compounded with a 0.66-of-footprint anchor that saturated at 36 px INSIDE
+ * the visible deposit (measured 2048: half-cover 39.5 px, 5 % reach 46 px).
+ * Amount 0 never reaches here — the Engine's amount-0 branch allocates no
+ * layer — and evaluates to 1 everywhere if it did.
+ */
+export const LATERAL_WEIGHT = `
+float lateralWeight(float u, float amount, float falloff){
+  float e = exp2(2.0 * falloff - 1.0);
+  return 1.0 - amount * pow(clamp(u, 0.0, 1.0), e);
+}`;
+
+/**
  * The lateral alpha law — ONE snippet shared verbatim by the merge and the two
  * union passes, so the three can never disagree. `uCoverL` / `uLateral` are
- * layerFilm's two attachments; `uEdgeFade` is the amount (0 neutral),
- * `uEdgeStart` the fade's start anchor (BRISTLE_EDGE_START) and `uEdgeFalloff`
- * the shape bias (0 broad, 0.5 linear, 1 rim).
+ * layerFilm's two attachments; `uEdgeFade` is the amount (0 neutral) and
+ * `uEdgeFalloff` the shape bias. The lateral factor itself is LATERAL_WEIGHT.
  */
-const STROKE_LAYER_ALPHA = `
+const STROKE_LAYER_ALPHA = `${LATERAL_WEIGHT}
 uniform sampler2D uCoverL, uLateral;
-uniform float uEdgeFade, uEdgeStart, uEdgeFalloff;
+uniform float uEdgeFade, uEdgeFalloff;
 float layerAEff(vec2 uv){
-  float u = clamp(texture(uLateral, uv).x, 0.0, 1.0);
+  float u = texture(uLateral, uv).x;
   float coverL = clamp(texture(uCoverL, uv).x, 0.0, 1.0);
-  float t = clamp((u - uEdgeStart) / max(1.0 - uEdgeStart, 1e-4), 0.0, 1.0);
-  float e = exp2(2.0 * uEdgeFalloff - 1.0);
-  return clamp((1.0 - uEdgeFade * pow(t, e)) * coverL, 0.0, 1.0);
+  return clamp(lateralWeight(u, uEdgeFade, uEdgeFalloff) * coverL, 0.0, 1.0);
 }`;
 
 /**
@@ -1568,8 +1595,11 @@ void main(){
  *   0: the shipped cover lerp's payload — `vec4(target, 0, 0, a)` blended
  *      (ONE, ONE_MINUS_SRC_ALPHA), byte-for-byte the law bristleCoverFS
  *      applies to the sheet;
- *   1: the lateral coordinate `clamp(|across| / uFeatherEdge, 0, 1)` blended
+ *   1: the lateral coordinate `clamp(|across| / uLayerEdge, 0, 1)` blended
  *      with (MIN), so the layer keeps the MINIMUM over its covering dabs.
+ *      `uLayerEdge` is BRISTLE_LAYER_EDGE (0.9 of the nominal footprint): the
+ *      coordinate reaches 1 at the stroke's VISUAL edge, not at the old 0.66
+ *      silhouette — measured at 2048, 0.66 saturated inside the deposit.
  *
  * A copy of bristleCoverFS's body — the gather and its guard included — that
  * recomputes the dab frame in main(): `struct Gathered` is never widened (it
@@ -1579,6 +1609,7 @@ export const bristleCoverLayerFS = `${HEADER}${BRISTLE_GATHER}
 layout(location=0) out vec4 o0;
 layout(location=1) out vec4 o1;
 uniform float uCoverTarget;       // bristleBodyAlpha · carried alpha
+uniform float uLayerEdge;         // the lateral field's anchor (BRISTLE_LAYER_EDGE)
 void main(){
   vec2 p = vUv - uPoint;
   p.x *= uSheetAspect;
@@ -1602,9 +1633,9 @@ void main(){
     target = mix(target, a * uCoverTarget * snapB.a, smear);
   }
   o0 = vec4(target, 0.0, 0.0, a);
-  // The lateral field: the dab's across coordinate in footprint units, capped
-  // at the silhouette the display law's fade starts from (uFeatherEdge).
-  o1 = vec4(clamp(abs(q.x) / max(uFeatherEdge, 1e-4), 0.0, 1.0));
+  // The lateral field: the dab's across coordinate in VISUAL-EDGE units, so
+  // u = 1 lands where the deposit's cover ends (uLayerEdge · uRadius).
+  o1 = vec4(clamp(abs(q.x) / max(uLayerEdge, 1e-4), 0.0, 1.0));
 }`;
 
 /**
@@ -1612,7 +1643,8 @@ void main(){
  *
  * Per texel it reads the sheet's film (`ink + fixed`), the layer's film (its
  * two ink attachments) and the frozen lateral alpha `aEff` (STROKE_LAYER_ALPHA:
- * `(1 − amount·t^e)·cover_L`), and writes the COMPONENT-WISE coefficient mix
+ * `lateralWeight(u, amount, b)·cover_L`, u = 0 on the centre line, 1 at the
+ * visual edge), and writes the COMPONENT-WISE coefficient mix
  *
  *     t_out = mix(t_sheet, t_L, aEff)        t = (absorbs 0..3, 4..6, S)
  *     ink   = t_out − fixed
@@ -2052,7 +2084,7 @@ uniform sampler2D uLayerA, uLayerB;   // the open stroke's ink pair (absorbs, rg
 uniform sampler2D uLayerCover;        // layerFilm attachment 0: cover_L
 uniform sampler2D uLayerLateral;      // layerFilm attachment 1: the MIN lateral field
 uniform sampler2D uLayerRelief;       // the open stroke's thickness
-uniform float uEdgeFade, uEdgeStart, uEdgeFalloff; // the frozen lateral law`
+uniform float uEdgeFade, uEdgeFalloff; // the frozen lateral law: amount, shape bias`
     : '';
   // The live layer block, inserted BEFORE the single display reconstruction.
   const layerMix = layer
@@ -2093,10 +2125,10 @@ uniform float uEdgeFade, uEdgeStart, uEdgeFalloff; // the frozen lateral law`
       layerInk *= k;
       layerBands *= k;
       layerScatter *= k;
-      float layerU = clamp(texture(uLayerLateral, uv).x, 0.0, 1.0);
-      float layerT = clamp((layerU - uEdgeStart) / max(1.0 - uEdgeStart, 1e-4), 0.0, 1.0);
-      float layerE = exp2(2.0 * uEdgeFalloff - 1.0);
-      layerAeff = clamp((1.0 - uEdgeFade * pow(layerT, layerE)) * layerCover, 0.0, 1.0);
+      // The SAME lateralWeight the merge's layerAEff calls: u = 0 on the
+      // centre line, 1 at the visual edge, no interior plateau.
+      float layerU = texture(uLayerLateral, uv).x;
+      layerAeff = clamp(lateralWeight(layerU, uEdgeFade, uEdgeFalloff) * layerCover, 0.0, 1.0);
       a = mix(a, layerInk, layerAeff);
       b = mix(b, layerBands, layerAeff);
       scatter = mix(scatter, layerScatter, layerAeff);
@@ -2116,7 +2148,7 @@ uniform float uEdgeFade, uEdgeStart, uEdgeFalloff; // the frozen lateral law`
   const coverRead = layer
     ? 'clamp(1.0 - (1.0 - texture(uCover, uv).x) * (1.0 - layerAeff), 0.0, 1.0)'
     : 'clamp(texture(uCover, uv).x, 0.0, 1.0)';
-  return `${HEADER}
+  return `${HEADER}${layer ? LATERAL_WEIGHT : ''}
 out vec4 o;
 uniform sampler2D uInkA, uInkB, uFixedA, uFixedB, uWet, uPaper;
 uniform sampler2D uRelief; // Phase 64: paint thickness field (one channel)

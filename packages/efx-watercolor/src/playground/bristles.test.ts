@@ -378,8 +378,8 @@ const TRACES = bristleModule as unknown as {
   bristleEdgeBias?: (across: number) => number
   bristleBody?: (wide: number, local: number, presence: number, hairs: number) => number
   bristleCoverage?: (body: number, pressure: number, edgeBias: number) => number
-  // Spec 10: the stroke layer's lateral fade and its shape-bias exponent.
-  BRISTLE_EDGE_START?: number
+  // Spec 10: the stroke layer's lateral anchor and its shape-bias exponent.
+  BRISTLE_LAYER_EDGE?: number
   edgeFalloffExponent?: (bias: number) => number
 }
 
@@ -717,9 +717,10 @@ describe('bristleCoverage — §4.5 / §5.5', () => {
 //  The engine shapes the per-stroke layer's alpha through ONE lateral
 //  factor in SILHOUETTE units. Only the shape bias's exponent lives here as
 //  a pure twin; the fade itself is evaluated in GLSL against the layer's
-//  own coverage (Task 3), never in TypeScript. `BRISTLE_EDGE_START` is the
-//  anchor the engine binds as a uniform — DESIGN 3.3 pins 0.30, so the
-//  fade reaches mid-width and the core keeps the full layer alpha.
+//  own coverage (Task 3), never in TypeScript. `BRISTLE_LAYER_EDGE` is the
+//  anchor the engine binds as a uniform: the lateral coordinate reaches 1 at
+//  the stroke's VISUAL edge (0.9 of the nominal footprint, measured at 2048),
+//  and the weight `1 − amount·u^e` spends that whole span — no plateau.
 // ============================================================
 
 describe('edgeFalloffExponent — the Spec 10 shape bias', () => {
@@ -751,18 +752,23 @@ describe('edgeFalloffExponent — the Spec 10 shape bias', () => {
 })
 
 describe('the Spec 10 edge constant', () => {
-  it('pins the start anchor at DESIGN 3.3s 0.30', () => {
-    expect(TRACES.BRISTLE_EDGE_START, 'the fade starts at 0.30 of the silhouette').toBe(0.3)
+  it('pins the lateral anchor at the deposit\'s visual edge (0.9 of the footprint)', () => {
+    expect(TRACES.BRISTLE_LAYER_EDGE, 'u = 1 at 0.9 of the nominal footprint').toBe(0.9)
   })
 
   it('declares the anchor once in the package — a second copy fails the build', () => {
     const declarations = PACKAGE_SOURCES.filter(({ text }) =>
-      /export const BRISTLE_EDGE_START\b/.test(text),
+      /export const BRISTLE_LAYER_EDGE\b/.test(text),
     ).map(({ file }) => file)
-    expect(declarations.length, 'BRISTLE_EDGE_START is declared once in the package').toBe(1)
-    expect(declarations[0], 'BRISTLE_EDGE_START is declared in playground/bristles.ts').toBe(
+    expect(declarations.length, 'BRISTLE_LAYER_EDGE is declared once in the package').toBe(1)
+    expect(declarations[0], 'BRISTLE_LAYER_EDGE is declared in playground/bristles.ts').toBe(
       'playground/bristles.ts',
     )
+  })
+
+  it('retires the plateau anchor — the old 0.30 start must not come back', () => {
+    const stale = PACKAGE_SOURCES.filter(({ text }) => /BRISTLE_EDGE_START\b/.test(text))
+    expect(stale.map(({ file }) => file), 'no package source names the retired anchor').toEqual([])
   })
 })
 

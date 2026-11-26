@@ -5,7 +5,6 @@ import {
   BRISTLE_DRY_CAP_FLOOR,
   BRISTLE_DRY_CAP_FULL,
   BRISTLE_DRY_EDGE,
-  BRISTLE_EDGE_START,
   BRISTLE_FEATHER_CAP,
   BRISTLE_FEATHER_EDGE,
   BRISTLE_FEATHER_MIN,
@@ -15,6 +14,7 @@ import {
   BRISTLE_GRAIN,
   BRISTLE_HAIRS,
   BRISTLE_LANDING,
+  BRISTLE_LAYER_EDGE,
   BRISTLE_RIM_CONTACT,
   BRISTLE_SMEAR_CAP,
   BRISTLE_SMEAR_PERIOD_PX,
@@ -989,8 +989,9 @@ export class WatercolorEngine {
     const { gl, g } = this;
     this.layerInk = g.double(this.dw, this.dh, [HALF_FLOAT_RGBA, HALF_FLOAT_RGBA], gl.LINEAR);
     // Attachment 0 is the layer's cover (`cover_L`); attachment 1 is the MIN
-    // lateral coordinate `clamp(|across| / uFeatherEdge, 0, 1)`. NEAREST: the
-    // merge reads one texel per texel.
+    // lateral coordinate `clamp(|across| / uLayerEdge, 0, 1)` (1 at the
+    // stroke's visual edge, BRISTLE_LAYER_EDGE). NEAREST: the merge reads one
+    // texel per texel.
     this.layerFilm = g.target(this.dw, this.dh, [HALF_FLOAT_R, HALF_FLOAT_R], gl.NEAREST);
     this.layerRelief = g.target(this.dw, this.dh, [HALF_FLOAT_R], gl.LINEAR);
     this.mergeRelief = g.target(this.dw, this.dh, [HALF_FLOAT_R], gl.LINEAR);
@@ -1066,11 +1067,11 @@ export class WatercolorEngine {
     this.discardLayer();
   }
 
-  /** The three lateral-law uniforms every layer shader reads. */
+  /** The two lateral-law uniforms every layer shader reads (amount, shape
+   *  bias). The lateral field's anchor is a gather-time uniform (uLayerEdge). */
   private bindLayerAlpha(p: Program) {
     const { gl } = this;
     gl.uniform1f(p.u.uEdgeFade!, clamp(this.params.edgeFade, 0, 1));
-    gl.uniform1f(p.u.uEdgeStart!, BRISTLE_EDGE_START);
     gl.uniform1f(p.u.uEdgeFalloff!, clamp(this.params.edgeFalloff, 0, 1));
   }
 
@@ -3967,10 +3968,11 @@ export class WatercolorEngine {
     gl.uniform1f(p.u.uFeatherMin!, BRISTLE_FEATHER_MIN);
     gl.uniform1f(p.u.uFeatherShift!, BRISTLE_FEATHER_SHIFT);
     // Spec 10: the stroke layer's lateral alpha. Bound unconditionally so
-    // every consumer of the ONE gather program receives the same three
-    // values; the start anchor is the constant, the two knobs are Params
-    // members. Inert on any program that does not declare them.
-    gl.uniform1f(p.u.uEdgeStart!, BRISTLE_EDGE_START);
+    // every consumer of the ONE gather program receives the same values;
+    // the lateral field's anchor is the constant (the layer's own cover
+    // write divides by it), the two knobs are Params members. Inert on any
+    // program that does not declare them (missing locations are null).
+    gl.uniform1f(p.u.uLayerEdge!, BRISTLE_LAYER_EDGE);
     gl.uniform1f(p.u.uEdgeFade!, clamp(this.params.edgeFade, 0, 1));
     gl.uniform1f(p.u.uEdgeFalloff!, clamp(this.params.edgeFalloff, 0, 1));
     // The end's takeoff is the same threshold mechanism on the leading
@@ -4206,7 +4208,7 @@ export class WatercolorEngine {
    * its ONE coverage write, retargeted at the open layer. The layer has no
    * settled pool, so the `fixed` draw is skipped; the cover write becomes the
    * TWO-attachment `bristleCoverLayerFS` (the shipped cover lerp at location
-   * 0, the lateral coordinate `clamp(|across| / uFeatherEdge, 0, 1)` kept as
+   * 0, the lateral coordinate `clamp(|across| / uLayerEdge, 0, 1)` kept as
    * a MIN at location 1) with per-attachment blend state.
    *
    * The caller has already run `touch(rect)` and the Pickup snapshot, exactly
@@ -4709,10 +4711,10 @@ export class WatercolorEngine {
     gl.uniform1f(p.u.uDpr, this.dpr);
     if (layerLive) {
       // The open stroke's own film, units 10-14 (0-9 are taken). The lateral
-      // law's three uniforms ride here too — the shared bindGather push never
+      // law's two uniforms ride here too — the shared bindGather push never
       // reaches a display program, and the merge binds them through
       // bindLayerAlpha at the same values, so the display and the commit read
-      // ONE law.
+      // ONE law (the shader's shared lateralWeight).
       gl.uniform1i(p.u.uLayerA, g.bindTex(10, this.layerInk!.read.tex[0]));
       gl.uniform1i(p.u.uLayerB, g.bindTex(11, this.layerInk!.read.tex[1]));
       gl.uniform1i(p.u.uLayerCover, g.bindTex(12, this.layerFilm!.tex[0]));

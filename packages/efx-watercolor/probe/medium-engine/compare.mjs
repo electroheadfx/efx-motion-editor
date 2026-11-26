@@ -1244,27 +1244,38 @@ function reliefSmoothFailures(data) {
 //    it requires every layer reading BY NAME and then applies the bars.
 //  - two operands: `--falloff-sweep` (the strict mid-alpha ordering across
 //    three same-amount captures, plus the falloff-independence of the layer's
-//    own deposit) and `--edge-structural` (the allocate/merge counters on one
-//    capture — the amount-0 bypass is a BRANCH, so its proof is structural,
-//    never a pixel comparison).
+//    own deposit — read on the PAPER profile, the one whose cover_L is the
+//    deposit alone) and `--edge-structural` (the allocate/merge counters on
+//    one capture — the amount-0 bypass is a BRANCH, so its proof is
+//    structural, never a pixel comparison).
 //
-// The law (Spec 10 v2, 261125):
-//   u = clamp(|across| / uFeatherEdge, 0, 1); t = clamp((u - 0.30)/0.70, 0, 1);
-//   e = 2^(2b - 1); A = 1 - amount·t^e; A_eff = A·cover_L;
+// The law (Spec 10, 261125; full-span weight 261126):
+//   u = clamp(MIN(|across|) / (uRadius · 0.9), 0, 1); e = 2^(2b - 1);
+//   A = lateralWeight(u, amount, b) = 1 - amount·u^e; A_eff = A·cover_L;
 //   film_out = mix(film_S, film_L, A_eff)   component-wise, in ABSORBANCE
-//   coefficients (the engine's subtractive pigment lerp). No band average, no
-//   fit, no pre-blur, no granulation division — the commit is pointwise.
-// Every bar below names the number the law predicts at its station.
+//   coefficients (the engine's subtractive pigment lerp). No band plateau, no
+//   band average, no fit, no pre-blur, no granulation division — the commit is
+//   pointwise. u = 0 is the centre line (A = 1), u = 1 the VISUAL edge
+//   (A = 1 − amount). Every bar below names the number the law predicts at its
+//   station.
 
 /** The amount-0 identity row tolerance: the profile arrays are recorded at
  *  four decimals, so a row may move by one rounding step under GPU ULP drift.
  *  A real amount-0 change moves whole rows far past this. */
 const EDGE_IDENTITY_TOLERANCE = 2e-4
 const EDGE_SILHOUETTE_MIN_PX = 8
-/** Mirrors BRISTLE_EDGE_START: where the lateral dissolve begins. */
-const EDGE_START = 0.3
-/** The dissolve band's midpoint in silhouette units: (START + 1) / 2 = 0.65. */
-const EDGE_MID_U = (EDGE_START + 1) / 2
+/** The anchor bar, in profile stations: the stored lateral field's own reach
+ *  (`edgeLateralSat`, where u clamps at 1) must meet the stroke's VISUAL edge
+ *  (`edgeCoverReach`, the outermost station at 5 % of the cover_L peak). The
+ *  retired 0.66 anchor saturated at 36 px while the 5 % edge reached 44-47 px
+ *  (measured 2048) — the fade died inside the deposit. One or two stations of
+ *  slack cover the row-mean's shoulder and the field's 1e-3-floor spread. */
+const EDGE_LATERAL_ANCHOR_TOL_PX = 3
+/** The solid-band shrink bar applies from this amount up: the near-opaque
+ *  band (aEff >= 0.9) must sit inside the stroke's half-cover station — the
+ *  artist's solid core must be a core, not the mark. At amount 0 there is no
+ *  layer and the band is not read. */
+const EDGE_SOLID_SHRINK_AMOUNT = 0.5
 /** The coefficient-mix identity bars, in 1/255 (spike 006 Q4's bar, kept):
  *  the committed film must reproduce the pointwise `mix(film_S, film_L, aEff)`
  *  through the display's own k; only the half-float storage round-trip is
@@ -1291,7 +1302,16 @@ const EDGE_POLISH_P95 = 1
  *  must be a fraction in [0, 1]; the bristle-gap survival is UAT row 9. */
 const EDGE_PRINT_TOLERANCE = 0.12
 /** The layer deposit does not read the falloff, so the three sweep captures'
- *  cover_L rows must agree to one 8-bit step (they are recorded at 4 dp). */
+ *  cover_L rows must agree to one 8-bit step (they are recorded at 4 dp).
+ *  BARRED ON THE PAPER PROFILE ONLY (`edgeAcrossPaper`, stroke A over bare
+ *  paper): that is the one profile whose cover_L is the deposit and nothing
+ *  else. On the under profile (stroke B over A) the carrier legitimately lifts
+ *  the committed sheet — `wetAt` reads uTimes/uCover, and pickup moves load ->
+ *  body -> coverage — and stroke A's committed cover is the merge union
+ *  `1 - (1-cover_S)(1 - A*cover_L)`, which reads the falloff BY LAW. Measured
+ *  under the RETIRED 0.66-anchor law: the same under-side drift (0.0363 /
+ *  0.0576 between f0 and f50/f100), so the coupling predates the full-span
+ *  weight; it is deterministic, by design, and REPORTED, never an identity. */
 const EDGE_COVER_ROW_TOLERANCE = 1 / 255
 
 /** The two profile families every amount-0 capture must carry, and the four
@@ -1306,6 +1326,18 @@ const EDGE_LAYER_READINGS = [
   'edgeMidAlphaUnder',
   'edgeMidCoverPaper',
   'edgeMidCoverUnder',
+  // 261126 (the full-span falloff law): the mid station's lateral coordinate
+  // and the band geometry the anchor and the plateau are judged on.
+  'edgeMidLateralPaper',
+  'edgeMidLateralUnder',
+  'edgeLateralSatPaper',
+  'edgeLateralSatUnder',
+  'edgeCoverHalfPaper',
+  'edgeCoverHalfUnder',
+  'edgeCoverReachPaper',
+  'edgeCoverReachUnder',
+  'edgeSolidHalfPaper',
+  'edgeSolidHalfUnder',
   'edgeCoreExactPaper',
   'edgeCoreExactUnder',
   'edgeContinuityPaper',
@@ -1577,13 +1609,49 @@ function edgeLayerFailures(data, reference) {
     const cover = data[`edgeMidCover${side}`]
     if (!(typeof cover === 'number' && cover > 0)) {
       failures.push(
-        `edgeMidCover${side} ${cover} is not a positive cover_L at the u = ${EDGE_MID_U} ` +
+        `edgeMidCover${side} ${cover} is not a positive cover_L at the u = 0.5 ` +
           'station — the deposit must reach the mid station or the ordering is vacuous',
       )
     }
     const alpha = data[`edgeMidAlpha${side}`]
     if (!(typeof alpha === 'number' && alpha >= 0 && alpha <= 1)) {
       failures.push(`edgeMidAlpha${side} ${alpha} is not a recovered alpha in [0, 1]`)
+    }
+    // The anchor: the lateral field must reach the stroke's VISUAL edge.
+    const sat = data[`edgeLateralSat${side}`]
+    const reach = data[`edgeCoverReach${side}`]
+    if (!(typeof sat === 'number' && Number.isFinite(sat) && sat >= 0)) {
+      failures.push(`edgeLateralSat${side} ${sat} is not a station in px`)
+    } else if (!(typeof reach === 'number' && Number.isFinite(reach) && reach > 0)) {
+      failures.push(`edgeCoverReach${side} ${reach} is not a station in px`)
+    } else if (sat < reach - EDGE_LATERAL_ANCHOR_TOL_PX) {
+      failures.push(
+        `edgeLateralSat${side} ${sat} px ends before the stroke's visible edge (${reach} px ` +
+          `at 5 % of the cover peak, tolerance ${EDGE_LATERAL_ANCHOR_TOL_PX} px) — u must reach ` +
+          'the visual stroke edge (BRISTLE_LAYER_EDGE), not saturate inside the deposit',
+      )
+    }
+    // The plateau: the near-opaque band must sit inside the stroke's
+    // half-cover station — no interior plateau at a visible Edge amount.
+    const solid = data[`edgeSolidHalf${side}`]
+    const half = data[`edgeCoverHalf${side}`]
+    if (!(typeof solid === 'number' && Number.isFinite(solid) && solid >= 0)) {
+      failures.push(`edgeSolidHalf${side} ${solid} is not a band width in px`)
+    } else if (!(typeof half === 'number' && Number.isFinite(half) && half > 0)) {
+      failures.push(`edgeCoverHalf${side} ${half} is not a half-cover station in px`)
+    } else if (amount >= EDGE_SOLID_SHRINK_AMOUNT && !(solid < half)) {
+      failures.push(
+        `edgeSolidHalf${side} ${solid} px is not inside the stroke's half-cover ${half} px ` +
+          `at amount ${data.edgeAmount} — the lateral law must span the whole coordinate from ` +
+          'the centre line (no opaque plateau)',
+      )
+    }
+    const midLateral = data[`edgeMidLateral${side}`]
+    if (!(typeof midLateral === 'number' && Math.abs(midLateral - 0.5) <= 0.05)) {
+      failures.push(
+        `edgeMidLateral${side} ${midLateral} is not ~0.5 — the mid station is found where the ` +
+          'stored field crosses the law\'s half-weight coordinate',
+      )
     }
   }
   if (!(data.edgeEncodeMax <= EDGE_ENCODE_MAX)) {
@@ -2481,8 +2549,14 @@ if (mode === 'falloff-sweep') {
     // (a) the layer's own deposit does not read the falloff: identical
     // offsets, and every cover_L row agreeing to one 8-bit step across all
     // three captures. Without this the ordering could be an artefact of a
-    // different scene or a different deposit.
-    const profiles = captures.map((data) => edgeProfileOf(data, 'edgeAcross'))
+    // different scene or a different deposit. Read on `edgeAcrossPaper` —
+    // stroke A over bare paper, whose cover_L IS the deposit. The under
+    // profile (stroke B over A) is NOT barred: stroke A's committed cover is
+    // the falloff-weighted merge union and B's carrier lifts it through
+    // `wetAt` -> pickup -> load -> body -> coverage, so its cover_L rows move
+    // by design (the retired law drifted the same 0.0363 / 0.0576 there).
+    // That drift is printed below as a scene diagnostic.
+    const profiles = captures.map((data) => edgeProfileOf(data, 'edgeAcrossPaper'))
     for (let i = 0; i < profiles.length; i += 1) {
       if (profiles[i].error) failures.push(`"${sweepGates[i]}": ${profiles[i].error}`)
     }
@@ -2490,7 +2564,7 @@ if (mode === 'falloff-sweep') {
       const base = profiles[0].profile
       const baseCover = base.cover
       if (baseCover === null) {
-        failures.push('the broad capture carries no edgeAcross.cover (the layer\'s own cover_L)')
+        failures.push('the broad capture carries no edgeAcrossPaper.cover (the layer\'s own cover_L)')
       } else {
         for (let i = 1; i < profiles.length; i += 1) {
           const other = profiles[i].profile
@@ -2499,14 +2573,14 @@ if (mode === 'falloff-sweep') {
             other.offsets.some((value, index) => value !== base.offsets[index])
           ) {
             failures.push(
-              `"${sweepGates[i]}" edgeAcross.offsets does not match "${sweepGates[0]}" ` +
+              `"${sweepGates[i]}" edgeAcrossPaper.offsets does not match "${sweepGates[0]}" ` +
                 '(the profile geometry moved; the ordering is not comparable)',
             )
             continue
           }
           const cover = other.cover
           if (cover === null) {
-            failures.push(`"${sweepGates[i]}" carries no edgeAcross.cover`)
+            failures.push(`"${sweepGates[i]}" carries no edgeAcrossPaper.cover`)
             continue
           }
           let worst = 0
@@ -2520,10 +2594,32 @@ if (mode === 'falloff-sweep') {
           }
           if (worst > EDGE_COVER_ROW_TOLERANCE) {
             failures.push(
-              `"${sweepGates[i]}" edgeAcross.cover differs from "${sweepGates[0]}" by up to ` +
+              `"${sweepGates[i]}" edgeAcrossPaper.cover differs from "${sweepGates[0]}" by up to ` +
                 `${worst.toFixed(6)} at ${worstAt} px (tolerance ${EDGE_COVER_ROW_TOLERANCE.toFixed(6)}) — ` +
                 'the layer deposit does not read the falloff, so the cover_L rows must agree',
             )
+          }
+        }
+      }
+      // (a') the under-side drift, REPORTED: the carrier's pickup lifts stroke
+      // A's falloff-weighted committed cover, so this number is expected to be
+      // nonzero and non-monotone in nothing but the law. It must be real.
+      {
+        const under = captures.map((data) => edgeProfileOf(data, 'edgeAcross'))
+        const baseUnder = under[0].profile
+        if (!under.some((entry) => entry.error) && baseUnder && baseUnder.cover !== null) {
+          const parts = []
+          for (let i = 1; i < under.length; i += 1) {
+            const other = under[i].profile
+            if (!other || other.cover === null) continue
+            let worst = 0
+            for (let k = 0; k < other.cover.length && k < baseUnder.cover.length; k += 1) {
+              worst = Math.max(worst, Math.abs(other.cover[k] - baseUnder.cover[k]))
+            }
+            parts.push(`${sweepGates[i]} ${worst.toFixed(4)}`)
+          }
+          if (parts.length > 0) {
+            console.log(`cover    Under: ${parts.join(' | ')} (|dcov| vs ${sweepGates[0]}; pickup, reported)`)
           }
         }
       }
@@ -2549,6 +2645,33 @@ if (mode === 'falloff-sweep') {
             `${key} is not STRICTLY increasing broad < linear < rim ` +
               `(${values[0]} / ${values[1]} / ${values[2]}) — falloff 0 / 50 / 100 must order the ` +
               'midpoint alpha by the law `(1 - amount·0.5^e)·cover_L`',
+          )
+        }
+      }
+      // (c) the solid-band ordering (261126): the near-opaque band is widest
+      // under the rim bias and narrowest under the broad bias — the falloff
+      // chooses how fast the weight leaves the centre line. Barred on the
+      // PAPER side only: its deposit saturates (cover_L ~1 in the plateau),
+      // while the under side carries the pickup smear and can legitimately
+      // sit below the band's floor on all three captures. Both are reported.
+      for (const side of ['Paper', 'Under']) {
+        const key = `edgeSolidHalf${side}`
+        const values = captures.map((data) => data[key])
+        console.log(
+          `solid    ${side.padEnd(5)}: broad ${values[0]} | linear ${values[1]} | rim ${values[2]} ` +
+            '(aEff >= 0.9, px)',
+        )
+        if (side !== 'Paper') continue
+        const bad = values.filter((value) => typeof value !== 'number')
+        if (bad.length > 0) {
+          failures.push(`${key} is missing on ${bad.length} of 3 captures — the band ordering cannot be read`)
+          continue
+        }
+        if (!(values[0] < values[1] && values[1] < values[2])) {
+          failures.push(
+            `${key} is not STRICTLY increasing broad < linear < rim ` +
+              `(${values[0]} / ${values[1]} / ${values[2]}) — the full-span weight ` +
+              '`1 - amount·u^e` widens the near-opaque core with the exponent',
           )
         }
       }

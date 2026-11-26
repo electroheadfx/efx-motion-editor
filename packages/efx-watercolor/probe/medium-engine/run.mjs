@@ -842,6 +842,9 @@ if (typeof result.edgeAmount === 'number') {
     `edge      : sweep midAlpha paper ${result.edgeMidAlphaPaper ?? 'absent'} / under ${result.edgeMidAlphaUnder ?? 'absent'} | core ${result.edgeCoreExactPaper ?? 'absent'} / ${result.edgeCoreExactUnder ?? 'absent'} | continuity ${result.edgeContinuityPaper ?? 'absent'} / ${result.edgeContinuityUnder ?? 'absent'}`,
   )
   console.log(
+    `edge      : lateral u=1 at ${result.edgeLateralSatPaper ?? 'absent'} / ${result.edgeLateralSatUnder ?? 'absent'} px | cover half ${result.edgeCoverHalfPaper ?? 'absent'} / ${result.edgeCoverHalfUnder ?? 'absent'} | cover 5% ${result.edgeCoverReachPaper ?? 'absent'} / ${result.edgeCoverReachUnder ?? 'absent'} | solid band ${result.edgeSolidHalfPaper ?? 'absent'} / ${result.edgeSolidHalfUnder ?? 'absent'} (aEff >= 0.9; paper/under)`,
+  )
+  console.log(
     `edge      : encode max ${result.edgeEncodeMax ?? 'absent'} | p95 ${result.edgeEncodeP95 ?? 'absent'} | over ${result.edgeEncodeOver ?? 'absent'} (1/255, coefficient mix)`,
   )
   console.log(
