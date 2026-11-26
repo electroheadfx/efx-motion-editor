@@ -1443,9 +1443,10 @@ void main(){
       // worst on a dark saturated under. The artist's read: "amplify the
       // correction a bit". Measured at 2048 on edge-rim (yellow over blue,
       // layer vs the "--edge 0" sheet control, tip window): the veil texels
-      // (lighter than the control by >2/255 with lower chroma) fall 6.4 %,
-      // against 8.8 % more over-darkened texels at gamma 2 — so 1.5 takes
-      // most of the gain at about half the over-darkening. The body is
+      // (lighter than the control by >2/255 with lower chroma) fall 3.6 %
+      // and texels darker than the control by >4/255 rise 5.4 %; gamma 2
+      // reads -6.0 % / +8.8 %, so 1.5 halves gamma 2's effect on both sides
+      // — the "a bit" the artist asked for, UAT-approved live. The body is
       // untouched (cover_L ~ 1 there: under-share 0.429 -> 0.430, the sheet
       // control 0.267); the law is colour-agnostic — green over red reads the
       // same rim scores as yellow over blue. No presence threshold, no

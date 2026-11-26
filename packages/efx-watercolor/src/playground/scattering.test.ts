@@ -1311,8 +1311,9 @@ describe('261119-pod — the §3.3 smear, the snapshot and the four-side Feather
     // applies to the sheet), amplified to cover_L^1.5 so the partial-cover
     // fringe's smoothed film keeps the under's pigment (2026-11-26: the
     // linear weight left a milky tip apron; measured at 2048 the 1.5
-    // exponent cuts the veil texels 6.4 % at about half of gamma 2's
-    // over-darkening, body share 0.429 -> 0.430). No presence threshold, no
+    // exponent cuts the veil texels 3.6 % with 5.4 % more over-darkened
+    // texels, gamma 2: 6.0 % / 8.8 %, body share 0.429 -> 0.430; the artist
+    // approved live). No presence threshold, no
     // division, no normalization. Measured 2048 tip fringe (the sheet
     // control in parentheses): darkness 0.70 (0.69), the 46.87/255 ring at
     // 0; the constant additive under (the SUM) saturated the body to share
