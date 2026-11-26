@@ -2022,6 +2022,11 @@ let EDGE_LAYER_FALLOFF = EDGE_LAYER_DEFAULT_FALLOFF
  *  the `--pickup 0` capture is the no-pickup control the readout is judged
  *  against. */
 let EDGE_LAYER_PICKUP: number | null = null
+/** 261126-hgl (the feathered-fringe leg): the acrylic record's own Feather key
+ *  over the SAME scene. `null` keeps the record's canonical 85 (every committed
+ *  capture); the artist's `--feather 100` is the override that opens the
+ *  gossamer fringe where the pale halo reads. */
+let EDGE_LAYER_FEATHER: number | null = null
 /** 261126 (Spec 10 pickup leg): the WET-under control. The shipped scene runs
  *  `fix()` after each stroke, and an explicit fix CLEARS the last-touch pair
  *  by law (Engine.fix → clearLastTouch), so stroke A is DRY when B crosses it
@@ -2178,6 +2183,22 @@ function readEdgePickup(scenario: string): number | null {
   return value
 }
 
+/** 261126-hgl: the feather operand — null keeps the acrylic record's own
+ *  Feather 85. Valid on `edge-layer` and (the cap leg) `bristle-end`, refused
+ *  elsewhere, never silently ignored. */
+function readEdgeFeather(scenario: string): number | null {
+  const raw = new URLSearchParams(location.search).get('feather')
+  if (raw === null || raw === '') return null
+  if (scenario !== 'edge-layer' && scenario !== 'bristle-end') {
+    throw new Error('--feather is only valid with --scenario edge-layer or bristle-end')
+  }
+  const value = Number(raw)
+  if (!Number.isInteger(value) || value < 0 || value > 100) {
+    throw new Error(`invalid feather "${raw}" (expected an integer 0..100)`)
+  }
+  return value
+}
+
 /** Spec 10: spike 006's stroke A — a horizontal drag across the sheet. */
 function edgeLayerPointsA(): readonly AquarellePoint[] {
   return [
@@ -2209,6 +2230,10 @@ function edgeLayerScript(): readonly ScriptEntry[] {
   // The pickup override rides the SAME canonical bag (0..100); absent leaves
   // the acrylic record's 100, so the committed capture is unchanged.
   if (EDGE_LAYER_PICKUP !== null) params['pickup'] = EDGE_LAYER_PICKUP
+  // 261126-hgl: the feather override rides the same bag too; absent leaves the
+  // acrylic record's 85 (every committed capture). `--feather 100` is the
+  // gossamer fringe the halo reads on.
+  if (EDGE_LAYER_FEATHER !== null) params['feather'] = EDGE_LAYER_FEATHER
   return [
     {
       color: EDGE_LAYER_A_COLOR,
@@ -2480,6 +2505,74 @@ function edgeLayerAEff(lateral: number, coverL: number): number {
   const bias = EDGE_LAYER_FALLOFF / 100
   const e = Math.pow(2, 2 * bias - 1)
   return Math.min(1, Math.max(0, (1 - amount * Math.pow(u, e)) * coverL))
+}
+
+/** 261126-hgl (the halo readout): the painted band's 5 %-cover floor. */
+const EDGE_FRINGE_COVER_FLOOR = 0.05
+/** 261126-hgl: the station gap either side of a candidate — a multi-station
+ *  ring must not hide inside its own plateau. */
+const EDGE_FRINGE_GAP = 3
+
+/**
+ * 261126-hgl: the fringe's light-ring score, in 1/255 units, from the
+ * COMMITTED display profile of one lateral axis.
+ *
+ * The halo the artist reports is a station inside the painted band that is
+ * LIGHTER than the painted stations on BOTH sides of it. The score is exactly
+ * that: over the contiguous painted band (the layer's own cover row at or
+ * above `EDGE_FRINGE_COVER_FLOOR` of its peak, walked outward from the centre
+ * on each direction), every station whose 3-station-smoothed DISPLAY darkness
+ * is lighter than the darkest-adjacent inner run AND the darkest-adjacent
+ * outer run, by more than `EDGE_FRINGE_GAP` stations either way. A monotone
+ * fade scores 0 on the side that fades to white (there is no outer painted
+ * station to be lighter than), and the premultiplied film's pale ring scores
+ * its depth against the darker core and the darker under.
+ *
+ * The row mean already averaged the stroke's WIDTH, so the halo is a
+ * station-scale structure along the lateral axis, and the smoothing is 3
+ * stations of `offsets` (1 doc pixel apart). `null` when the profile has no
+ * cover rows or too few stations to judge — never a fabricated zero.
+ */
+function edgeFringeDip(profile: EdgeProfile): number | null {
+  if (profile.cover === null) return null
+  const n = profile.offsets.length
+  const centre = profile.offsets.indexOf(0)
+  if (n < 2 * EDGE_FRINGE_GAP + 5 || centre < 0) return null
+  let peak = 0
+  for (const value of profile.cover) peak = Math.max(peak, value)
+  if (!(peak > 0)) return null
+  const floor = peak * EDGE_FRINGE_COVER_FLOOR
+  // 3-station box smooth of the committed display darkness: the halo is a
+  // STATION-SCALE structure; the row mean already averaged the stroke's width.
+  const smooth = new Float64Array(n)
+  for (let i = 0; i < n; i += 1) {
+    const a = profile.dark[Math.max(0, i - 1)]!
+    const b = profile.dark[i]!
+    const c = profile.dark[Math.min(n - 1, i + 1)]!
+    smooth[i] = (a + b + c) / 3
+  }
+  let score = 0
+  for (const dir of [-1, 1] as const) {
+    // The contiguous painted band on this side: from the centre outward while
+    // the LAYER's own cover row stays at or above the floor.
+    const band: number[] = []
+    for (let step = 0; ; step += 1) {
+      const i = centre + dir * step
+      if (i < 0 || i >= n) break
+      if (profile.cover[i]! < floor) break
+      band.push(i)
+    }
+    if (band.length < 2 * EDGE_FRINGE_GAP + 3) continue
+    for (let j = EDGE_FRINGE_GAP; j < band.length - EDGE_FRINGE_GAP; j += 1) {
+      let innerMax = 0
+      for (let t = 0; t <= j - EDGE_FRINGE_GAP; t += 1) innerMax = Math.max(innerMax, smooth[band[t]!]!)
+      let outerMax = 0
+      for (let t = j + EDGE_FRINGE_GAP; t < band.length; t += 1) outerMax = Math.max(outerMax, smooth[band[t]!]!)
+      const v = smooth[band[j]!]!
+      score = Math.max(score, Math.min(innerMax - v, outerMax - v))
+    }
+  }
+  return round2(Math.max(0, score) * 255)
 }
 
 // ---------------------------------------------------------------------------
@@ -3564,6 +3657,10 @@ interface EdgeSideReadings {
   readonly maxAeff: number | null
   /** Debug: where that texel is and why (doc x/y, lateral, cover_L, u). */
   readonly maxAeffAt: Record<string, number> | null
+  /** 261126-hgl: the light-ring score in 1/255 units, computed from the
+   *  COMMITTED display profile — the deepest station that is lighter than the
+   *  painted stations on BOTH sides of it (0 = no ring). */
+  readonly fringeDip: number | null
 }
 
 const EDGE_SIDE_ABSENT: EdgeSideReadings = {
@@ -3579,6 +3676,7 @@ const EDGE_SIDE_ABSENT: EdgeSideReadings = {
   printRetention: null,
   maxAeff: null,
   maxAeffAt: null,
+  fringeDip: null,
 }
 
 /**
@@ -3825,6 +3923,9 @@ function edgeSideReadings(
     printRetention: rimIndex >= 0 ? round4(profile.print[rimIndex]!) : null,
     maxAeff: round4(maxAeff),
     maxAeffAt,
+    // 261126-hgl: the halo readout — judged on the committed display rows
+    // (the profile is this side's own), independent of the layer's storage.
+    fringeDip: edgeFringeDip(profile),
   }
 }
 
@@ -4101,6 +4202,13 @@ function edgeLayerReport(
     edgeContinuityUnder: underReadings.continuity,
     edgePrintRetentionPaper: paperReadings.printRetention,
     edgePrintRetentionUnder: underReadings.printRetention,
+    // 261126-hgl: the fringe's light-ring score on each lateral axis, in
+    // 1/255 units — a station inside the painted band lighter than the
+    // painted stations on BOTH sides of it. The artist's shape is the UNDER
+    // axis (a stroke over a different-colour under); the paper axis fades to
+    // white and legitimately scores ~0.
+    edgeFringeDipPaper: paperReadings.fringeDip,
+    edgeFringeDipUnder: underReadings.fringeDip,
     edgeEncodeMax: encodeMax,
     edgeEncodeP95: encodeP95,
     edgeEncodeOver: encodeOver,
@@ -4144,6 +4252,7 @@ function edgeLayerReport(
     // a pickup capture has an image beside its numbers.
     ...edgePickupReadout(engine, captures.b, transparent, sheet),
     edgePickupControl: EDGE_LAYER_PICKUP,
+    edgeFeatherControl: EDGE_LAYER_FEATHER,
     edgeWetUnder: EDGE_LAYER_WET_UNDER,
     pngTransparent: transparent.toDataURL('image/png'),
   }
@@ -7040,6 +7149,7 @@ function main(): void {
     EDGE_LAYER_AMOUNT = readEdgeKnob('edge', scenario, EDGE_LAYER_DEFAULT_AMOUNT)
     EDGE_LAYER_FALLOFF = readEdgeKnob('falloff', scenario, EDGE_LAYER_DEFAULT_FALLOFF)
     EDGE_LAYER_PICKUP = readEdgePickup(scenario)
+    EDGE_LAYER_FEATHER = readEdgeFeather(scenario)
     EDGE_LAYER_WET_UNDER = readEdgeWetUnder(scenario)
     sheet = readSize()
     brush = readBrush()

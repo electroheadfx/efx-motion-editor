@@ -2310,6 +2310,27 @@ describe('the edge-layer gate (Spec 10)', () => {
       expectContains(RUN, "const LAYER_SCENES = ['edge-layer', 'bristle-end']")
     })
 
+    it('accepts --feather on the two layer scenes and reads the fringe dip (261126-hgl)', () => {
+      // The feather reader widened: --feather rides the layer scenes, --dry and
+      // --release stay bristle-end only. The scenario test is the allowed-list,
+      // so a new scene must opt in explicitly.
+      expectContains(RUN, "const feather = readEndPercent('--feather', LAYER_SCENES)")
+      expectContains(RUN, "const readEndPercent = (flagName, scenes = ['bristle-end']) => {")
+      expectContains(RUN, 'if (!scenes.includes(scenario)) {')
+      // The operand is read, folded into the SAME canonical params bag the
+      // layer script drives, and echoed so a capture can never be misread.
+      expectContains(PROBE, 'EDGE_LAYER_FEATHER = readEdgeFeather(scenario)')
+      expectContains(PROBE, "if (EDGE_LAYER_FEATHER !== null) params['feather'] = EDGE_LAYER_FEATHER")
+      expectContains(PROBE, 'edgeFeatherControl: EDGE_LAYER_FEATHER,')
+      // The halo readout: one score per lateral axis, from the committed
+      // display profile — a station lighter than the painted stations on BOTH
+      // sides of it (0 = no ring).
+      expectContains(PROBE, 'edgeFringeDipPaper: paperReadings.fringeDip,')
+      expectContains(PROBE, 'edgeFringeDipUnder: underReadings.fringeDip,')
+      expectContains(PROBE, 'function edgeFringeDip(profile: EdgeProfile): number | null {')
+      expectContains(PROBE, 'const EDGE_FRINGE_GAP = 3')
+    })
+
     it('carries the same bristle predicate in probe.ts, compare.mjs and this file', () => {
       expectContains(PROBE, "scenario.startsWith('bristle-') || scenario === 'edge-layer'")
       expectContains(COMPARE, "String(data.scenario).startsWith('bristle-') || data.scenario === 'edge-layer'")

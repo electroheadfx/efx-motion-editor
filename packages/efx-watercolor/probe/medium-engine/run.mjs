@@ -191,7 +191,9 @@
 //                                     (omitted is stop; bake rides the
 //                                     adapter's scripted replay)
 //             [--dry <0..100>]        bristle-end only: the acrylic Dry key
-//             [--feather <0..100>]    bristle-end only: the acrylic Feather key
+//             [--feather <0..100>]    edge-layer / bristle-end: the acrylic
+//                                     Feather key (261126-hgl: the layer
+//                                     scene's feathered-fringe operand)
 //             [--release <0..1>]      bristle-end only: the LAST authored
 //                                     sample's pressure (stop and bake only;
 //                                     the default stop authors 0.75)
@@ -296,7 +298,7 @@ const gateFlag = args.indexOf('--gate')
 const gate = gateFlag >= 0 ? args[gateFlag + 1] : undefined
 if (!gate) {
   console.error(
-    'usage: node run.mjs --gate <name> [--scenario cover|cover-over-wet|cover-advect|cover-lift|watercolor-50|white-over-blue|cover-textured|red-over-blue-50|bristle-edge|bristle-wet|bristle-line|bristle-end|bristle-tip|emboss-smooth|edge-layer] [--edge <0..100>] [--falloff <0..100>] [--pickup <0..100>] [--wet-under] [--emboss <-100..100>] [--body <0..100>] [--light <0..4>] [--size <32..4096>] [--brush <id>] [--wet-mode <0|1>] [--texture <mask id>] [--drive <stop|lift|decay|mouse|mouse-lift|bake>] [--stroke-size <1..400>] [--dry <0..100>] [--feather <0..100>] [--release <0..1>]   (e.g. neutral-identity)',
+    'usage: node run.mjs --gate <name> [--scenario cover|cover-over-wet|cover-advect|cover-lift|watercolor-50|white-over-blue|cover-textured|red-over-blue-50|bristle-edge|bristle-wet|bristle-line|bristle-end|bristle-tip|emboss-smooth|edge-layer] [--edge <0..100>] [--falloff <0..100>] [--pickup <0..100>] [--wet-under] [--emboss <-100..100>] [--body <0..100>] [--light <0..4>] [--size <32..4096>] [--brush <id>] [--wet-mode <0|1>] [--texture <mask id>] [--drive <stop|lift|decay|mouse|mouse-lift|bake>] [--stroke-size <1..400>] [--dry <0..100>] [--feather <0..100>] [--release <0..1>]   (e.g. neutral-identity; --feather also on --scenario edge-layer)',
   )
   console.error(
     '       every operand except --gate is optional and additive; an omitted operand writes no key/value, so the neutral gate keeps reproducing the committed baseline',
@@ -596,11 +598,13 @@ if (driveRaw !== undefined) {
 // axis. `--dry` and `--feather` are the acrylic record's own two keys (the
 // artist's cells: Dry 0 and 70, Feather 100), folded into every stroke's
 // params bag; `--release` replaces the LAST authored sample's pressure so the
-// release catch-up is captured at its actual pressure. All three are
-// bristle-end only, and `--release` is refused on the paths whose release
+// release catch-up is captured at its actual pressure. `--dry` and `--release`
+// are bristle-end only, and `--release` is refused on the paths whose release
 // pressure the script's own points define (only stop and bake are overridable;
-// the default stop cell already authors 0.75).
-const readEndPercent = (flagName) => {
+// the default stop cell already authors 0.75). 261126-hgl: `--feather` is also
+// accepted on `edge-layer` — the artist's Feathered fringe is the layer path's
+// own operand, and the record's Feather 85 stays the default everywhere.
+const readEndPercent = (flagName, scenes = ['bristle-end']) => {
   const flag = args.indexOf(flagName)
   const raw = flag >= 0 ? args[flag + 1] : undefined
   if (raw === undefined) return undefined
@@ -609,14 +613,18 @@ const readEndPercent = (flagName) => {
     console.error(`invalid ${flagName} "${raw}" (expected an integer 0..100)`)
     process.exit(1)
   }
-  if (scenario !== 'bristle-end') {
-    console.error(`${flagName} is only valid with --scenario bristle-end`)
+  if (!scenes.includes(scenario)) {
+    console.error(`${flagName} is only valid with --scenario ${scenes.join(' or ')}`)
     process.exit(1)
   }
   return value
 }
 const dry = readEndPercent('--dry')
-const feather = readEndPercent('--feather')
+// 261126-hgl: the Feathered fringe's mid operand — the acrylic record's own
+// Feather key, folded into the same canonical bag as --dry. Readable on the
+// layer scene too, so the artist's Feather 100 can be judged there; the
+// record's Feather 85 stays the default when absent.
+const feather = readEndPercent('--feather', LAYER_SCENES)
 
 const releaseFlag = args.indexOf('--release')
 const releaseRaw = releaseFlag >= 0 ? args[releaseFlag + 1] : undefined
