@@ -2154,6 +2154,23 @@ describe('the edge-layer gate (Spec 10)', () => {
       // after. A merge that writes no touch leaves the pair EQUAL.
       edgeMergedTouchBefore: layer ? -604800 : null,
       edgeMergedTouchAfter: layer ? 12.5 : null,
+      // 261126: the same pair on one texel of stroke A's core over BARE PAPER
+      // inside the merge rect — where every per-dab stamp weighs the sheet's
+      // cover (0 there), so only the merge's post-merge cover can wet it. This
+      // is the merge's own witness: the rect MAX is already live before the
+      // merge once the dabs self-wet the paint they cross.
+      edgeMergedTouchPaperBefore: layer ? -604800 : null,
+      edgeMergedTouchPaperAfter: layer ? 12.5 : null,
+      // 261126 (pickup leg): the crossing's carried-film readout. The layer
+      // path reports all of them; the sheet path (amount 0) has no layer film
+      // (null) but still reports the sheet colour and the touch.
+      edgePickupControl: layer ? 100 : null,
+      edgeWetUnder: false,
+      edgePickupLayerRgb: layer ? [104, 96, 116] : null,
+      edgePickupSheetRgb: [166, 180, 202],
+      edgePickupMix: layer ? 0.57 : null,
+      edgePickupWet: layer ? 0.77 : 1,
+      edgePickupTouch: 0.25,
       layerAllocated: layer,
       mergeDraws: layer ? 1 : 0,
       mergeDrawsFirst: layer ? 1 : 0,
@@ -2357,6 +2374,40 @@ describe('the edge-layer gate (Spec 10)', () => {
       expect(invariantLine(output)).toContain('is missing')
     })
 
+    // 261126 (pickup leg): the layer's gather must read the SAME wet-pickup
+    // law as the sheet path. The bars are executed so a dropped or inverted
+    // check cannot pass on the valid fixture alone.
+    it('fails a pickup-100 layer whose carried film lacks the under-paint', () => {
+      const { status, output } = compareSynthetic('nyquist-pickup-cold', {
+        ...validEdgeLayerCapture(100, 50),
+        edgePickupMix: 0,
+      })
+      expect(status, lawVerdict(status, output)).toBe(1)
+      expect(invariantLine(output)).toContain('edgePickupMix')
+      expect(output).toContain("does not contain the under-paint's colour")
+    })
+
+    it('fails a pickup-0 control that carried any under-paint', () => {
+      const { status, output } = compareSynthetic('nyquist-pickup-control', {
+        ...validEdgeLayerCapture(100, 50),
+        edgePickupControl: 0,
+        edgePickupMix: 0.2,
+      })
+      expect(status, lawVerdict(status, output)).toBe(1)
+      expect(invariantLine(output)).toContain('edgePickupMix')
+      expect(output).toContain('is not 0 at pickup 0')
+    })
+
+    it('fails a pickup reading whose gather wet gate is cold', () => {
+      const { status, output } = compareSynthetic('nyquist-pickup-dry', {
+        ...validEdgeLayerCapture(100, 50),
+        edgePickupWet: 0.4,
+      })
+      expect(status, lawVerdict(status, output)).toBe(1)
+      expect(invariantLine(output)).toContain('edgePickupWet')
+      expect(output).toContain('wet gate is cold')
+    })
+
     it('fails a core that is not exact, a continuity break, an over-residual and a settled p95', () => {
       const cases: Array<[string, Record<string, unknown>, string]> = [
         ['core', { edgeCoreExactPaper: 2 }, 'edgeCoreExactPaper'],
@@ -2507,10 +2558,25 @@ describe('the edge-layer gate (Spec 10)', () => {
     }
 
     it('WR-01: fails a merge that wrote no last-touch stamp', () => {
-      // An unstamped merge leaves the pair EQUAL — the pre value survives.
-      const output = rejects('nyquist-merge-touch', { edgeMergedTouchAfter: -604800 })
-      expect(invariantLine(output)).toContain('edgeMergedTouchAfter')
+      // An unstamped merge leaves both pairs EQUAL — the pre values survive.
+      // 261126: the dabs now stamp the paint they cross, so the rect pair is
+      // already live before the merge; the bare-paper texel is the merge's own
+      // witness and the one an unstamped merge leaves at the sentinel.
+      const output = rejects('nyquist-merge-touch', {
+        edgeMergedTouchAfter: -604800,
+        edgeMergedTouchPaperAfter: -604800,
+      })
+      expect(invariantLine(output)).toContain('edgeMergedTouchPaperAfter')
       expect(output).toContain('must stamp')
+    })
+
+    it('WR-01: fails a merge that pushed the rect backwards', () => {
+      const output = rejects('nyquist-merge-touch-back', {
+        edgeMergedTouchBefore: 12.5,
+        edgeMergedTouchAfter: 5,
+      })
+      expect(invariantLine(output)).toContain('edgeMergedTouchAfter')
+      expect(output).toContain('backwards')
     })
 
     it('WR-01: fails a touch reading reported at amount 0', () => {

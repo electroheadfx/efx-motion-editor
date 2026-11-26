@@ -245,6 +245,11 @@
 //             [--edge <0..100>]       edge-layer only: the layer alpha amount
 //             [--falloff <0..100>]    edge-layer only: 0 broad / 50 linear /
 //                                     100 rim
+//             [--pickup <0..100>]     edge-layer only: overrides the record's
+//                                     canonical 100 (the pickup-0 control)
+//             [--wet-under]           edge-layer only: skip the fix after the
+//                                     FIRST stroke (wet under-paint arm); absent
+//                                     keeps the shipped dry-under scene
 //    compare.mjs <a> --falloff-sweep <b> <c>
 //                                     the ONLY cross-capture falloff ordering
 //                                     (broad < linear < rim, strict, both
@@ -291,7 +296,7 @@ const gateFlag = args.indexOf('--gate')
 const gate = gateFlag >= 0 ? args[gateFlag + 1] : undefined
 if (!gate) {
   console.error(
-    'usage: node run.mjs --gate <name> [--scenario cover|cover-over-wet|cover-advect|cover-lift|watercolor-50|white-over-blue|cover-textured|red-over-blue-50|bristle-edge|bristle-wet|bristle-line|bristle-end|bristle-tip|emboss-smooth|edge-layer] [--edge <0..100>] [--falloff <0..100>] [--emboss <-100..100>] [--body <0..100>] [--light <0..4>] [--size <32..4096>] [--brush <id>] [--wet-mode <0|1>] [--texture <mask id>] [--drive <stop|lift|decay|mouse|mouse-lift|bake>] [--stroke-size <1..400>] [--dry <0..100>] [--feather <0..100>] [--release <0..1>]   (e.g. neutral-identity)',
+    'usage: node run.mjs --gate <name> [--scenario cover|cover-over-wet|cover-advect|cover-lift|watercolor-50|white-over-blue|cover-textured|red-over-blue-50|bristle-edge|bristle-wet|bristle-line|bristle-end|bristle-tip|emboss-smooth|edge-layer] [--edge <0..100>] [--falloff <0..100>] [--pickup <0..100>] [--wet-under] [--emboss <-100..100>] [--body <0..100>] [--light <0..4>] [--size <32..4096>] [--brush <id>] [--wet-mode <0|1>] [--texture <mask id>] [--drive <stop|lift|decay|mouse|mouse-lift|bake>] [--stroke-size <1..400>] [--dry <0..100>] [--feather <0..100>] [--release <0..1>]   (e.g. neutral-identity)',
   )
   console.error(
     '       every operand except --gate is optional and additive; an omitted operand writes no key/value, so the neutral gate keeps reproducing the committed baseline',
@@ -399,6 +404,36 @@ if (falloffRaw !== undefined) {
     process.exit(1)
   }
   falloff = value
+}
+
+// 261126 (Spec 10 pickup leg): Pickup — the ONE carrier/deposit knob
+// (canonical 0..100). Omitted keeps the acrylic record's canonical 100, so
+// the committed edge-layer baseline is unchanged; the operand exists so a
+// capture can carry the pickup-0 control over the SAME scene. `edge-layer`
+// only, refused elsewhere here first.
+const pickupFlag = args.indexOf('--pickup')
+const pickupRaw = pickupFlag >= 0 ? args[pickupFlag + 1] : undefined
+let pickup
+if (pickupRaw !== undefined) {
+  const value = Number(pickupRaw)
+  if (!Number.isInteger(value) || value < 0 || value > 100) {
+    console.error(`invalid --pickup "${pickupRaw}" (expected an integer 0..100)`)
+    process.exit(1)
+  }
+  if (scenario !== 'edge-layer') {
+    console.error('--pickup is only valid with --scenario edge-layer')
+    process.exit(1)
+  }
+  pickup = value
+}
+
+// 261126 (Spec 10 pickup leg): the wet-under control — skip the explicit fix
+// after the FIRST stroke so its last-touch stamp survives into the second
+// stroke's gather. `edge-layer` only; the shipped scene stays dry-under.
+const wetUnder = args.includes('--wet-under')
+if (wetUnder && scenario !== 'edge-layer') {
+  console.error('--wet-under is only valid with --scenario edge-layer')
+  process.exit(1)
 }
 
 // 64-10: optional square-sheet size. Omitted keeps the phase-default sheet,
@@ -604,6 +639,8 @@ const pageQuery =
   (scenario === undefined ? '' : `&scenario=${scenario}`) +
   (edge === undefined ? '' : `&edge=${edge}`) +
   (falloff === undefined ? '' : `&falloff=${falloff}`) +
+  (pickup === undefined ? '' : `&pickup=${pickup}`) +
+  (wetUnder ? '&wetUnder=1' : '') +
   (emboss === undefined ? '' : `&emboss=${emboss}`) +
   (body === undefined ? '' : `&body=${body}`) +
   (light === undefined ? '' : `&light=${light}`) +

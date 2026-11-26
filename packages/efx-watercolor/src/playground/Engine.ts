@@ -1171,15 +1171,16 @@ export class WatercolorEngine {
     }
     g.blit(this.cover.write.views[0]!, rect.x0, rect.y0, this.cover.read.views[0]!, rect.x0, rect.y0, w, h);
     g.blit(this.mergeRelief!.views[0]!, rect.x0, rect.y0, this.relief.views[0]!, rect.x0, rect.y0, w, h);
-    // 261125-kvl (WR-01): a just-merged stroke is STILL WET. The shipped path
-    // stamps last-touch after every dab, but bristleTouch stays silent while
-    // the layer is open (that paint has not landed yet), so without this
-    // stamp the next stroke would read the merged region as fully dry (up to
-    // the one-week sentinel). ONE stamp draw over the merge rect, weighted by
-    // the merged cover pass 2 just produced — a texel the layer did not cover
-    // keeps its true age. Same carry discipline as bristleTouch: the halves
-    // are equal outside the carried rect, blitted read-to-write here, and the
-    // scissored draw plus swap leaves this rect as the only difference.
+    // 261125-kvl (WR-01): a just-merged stroke is STILL WET. The dabs now
+    // stamp last-touch like the sheet path (261126), but those stamps sit
+    // under the SHEET's cover — where the layer paints over bare paper the
+    // weight is 0, so without this stamp the layer's OWN new film would read
+    // dry (up to the one-week sentinel) to the next stroke. ONE stamp draw
+    // over the merge rect, weighted by the merged cover pass 2 just produced
+    // — a texel the layer did not cover keeps its true age. Same carry
+    // discipline as bristleTouch: the halves are equal outside the carried
+    // rect, blitted read-to-write here, and the scissored draw plus swap
+    // leaves this rect as the only difference.
     // Undo is safe: every dab's prologue ran touch(rect) with the last-touch
     // read half in its snapshot (snapshotLayers' fifth entry), and the merge
     // rect is the union of those exact dabs, so the saved tiles revert this
@@ -4154,9 +4155,16 @@ export class WatercolorEngine {
    */
   private bristleTouch(x: number, y: number, r: number, angle: number): void {
     const { gl, g } = this;
-    // 261125-kvl: an open stroke layer's paint never lands on the sheet, so
-    // the sheet's last-touch memory must not record it.
-    if (this.layerOpen) return;
+    // 261126 (Spec 10 pickup leg): the layer path stamps EXACTLY like the
+    // sheet path — 261125-kvl's early return made the layer's gather read
+    // only the PRE-EXISTING wetness, so a stroke crossing settled paint
+    // picked up nothing while Edge 0 (self-wetting per dab) dragged the same
+    // paint in. The stamp is weighted by the SHEET's cover, i.e. the paint
+    // the dab crosses — where the layer strokes over bare paper the weight is
+    // 0 and the age is untouched; the stroke-end merge stamp (WR-01) is the
+    // one that wets the layer's OWN film. The stamp rect is a dab rect, so
+    // the stroke's tile protection reverts it with the paint (see the merge
+    // stamp's induction below).
     // `angle` is accepted for signature symmetry with bristleInk: the touch
     // rect is the dab's axis-aligned stamp at the SAME extent (1.6).
     void angle;

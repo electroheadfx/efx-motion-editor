@@ -2006,6 +2006,18 @@ const EDGE_LAYER_DEFAULT_FALLOFF = 50
  *  `LINE_BAND_PX`, so a refused operand can never leave a painted sheet. */
 let EDGE_LAYER_AMOUNT = EDGE_LAYER_DEFAULT_AMOUNT
 let EDGE_LAYER_FALLOFF = EDGE_LAYER_DEFAULT_FALLOFF
+/** 261126 (Spec 10 pickup leg): the Pickup control over the same scene.
+ *  `null` keeps the acrylic record's canonical 100 (the committed baseline);
+ *  the `--pickup 0` capture is the no-pickup control the readout is judged
+ *  against. */
+let EDGE_LAYER_PICKUP: number | null = null
+/** 261126 (Spec 10 pickup leg): the WET-under control. The shipped scene runs
+ *  `fix()` after each stroke, and an explicit fix CLEARS the last-touch pair
+ *  by law (Engine.fix → clearLastTouch), so stroke A is DRY when B crosses it
+ *  — the dry-under arm of the shipped wet-pickup law. `--wet-under` skips the
+ *  fix after the FIRST stroke only, keeping A's stroke-end merge stamp alive:
+ *  the wet-under arm the live defect reports. */
+let EDGE_LAYER_WET_UNDER = false
 /** Mirrors BRISTLE_EDGE_START (DESIGN 3.3 pins 0.30) and the comparator's
  *  EDGE_START: where the lateral band begins, in silhouette units. */
 const EDGE_LAYER_START = 0.3
@@ -2045,6 +2057,12 @@ const EDGE_LAYER_CORE_AEFF = 1 - 1e-4
  *  bands at those texels are the RAW states (a storage-domain identity). */
 const EDGE_LAYER_ENDPOINT = 1e-4
 const EDGE_LAYER_SILHOUETTE_MIN_PX = 8
+/** The silhouette threshold, as a share of the cover_L peak. 0.90, not 1.0:
+ *  261126 — where Pickup runs, the cover shares the shipped §3.3 smear
+ *  (`bristleCoverFS`'s law on the sheet path), which legitimately ripples the
+ *  plateau by several %. At 0.99 the under-side band collapsed to 4 px on
+ *  dry under (2048); at 0.90 it reads 36 px against the paper side's 34. */
+const EDGE_LAYER_SILHOUETTE_PEAK = 0.9
 /** The coefficient-mix identity bar, in 1/255 units (the retired encoder's
  *  spike-006 bar, unchanged: max 2, p95 1, zero over). The committed storage
  *  must reproduce the pointwise mix `mix(sheet, layer, aEff)`; the only
@@ -2097,6 +2115,31 @@ function readEdgeKnob(name: 'edge' | 'falloff', scenario: string, fallback: numb
   return value
 }
 
+/** 261126: the wet-under operand — edge-layer only, absent means dry-under. */
+function readEdgeWetUnder(scenario: string): boolean {
+  const raw = new URLSearchParams(location.search).get('wetUnder')
+  if (raw === null || raw === '') return false
+  if (scenario !== 'edge-layer') {
+    throw new Error('--wet-under is only valid with --scenario edge-layer')
+  }
+  if (raw !== '1') throw new Error(`invalid wetUnder "${raw}" (expected 1)`)
+  return true
+}
+
+/** 261126: the pickup operand — null keeps the record's canonical 100. */
+function readEdgePickup(scenario: string): number | null {
+  const raw = new URLSearchParams(location.search).get('pickup')
+  if (raw === null || raw === '') return null
+  if (scenario !== 'edge-layer') {
+    throw new Error('--pickup is only valid with --scenario edge-layer')
+  }
+  const value = Number(raw)
+  if (!Number.isInteger(value) || value < 0 || value > 100) {
+    throw new Error(`invalid pickup "${raw}" (expected an integer 0..100)`)
+  }
+  return value
+}
+
 /** Spec 10: spike 006's stroke A — a horizontal drag across the sheet. */
 function edgeLayerPointsA(): readonly AquarellePoint[] {
   return [
@@ -2125,6 +2168,9 @@ function edgeLayerScript(): readonly ScriptEntry[] {
   const params = bristleLineParams(100, STROKE_PARAMS['size']!)
   params['edgeFade'] = EDGE_LAYER_AMOUNT
   params['edgeFalloff'] = EDGE_LAYER_FALLOFF
+  // The pickup override rides the SAME canonical bag (0..100); absent leaves
+  // the acrylic record's 100, so the committed capture is unchanged.
+  if (EDGE_LAYER_PICKUP !== null) params['pickup'] = EDGE_LAYER_PICKUP
   return [
     {
       color: EDGE_LAYER_A_COLOR,
@@ -2161,7 +2207,13 @@ interface EdgeLayerInternals {
   /** The engine's LIVE `Params` — the display's own granulation feed
    *  (`uGranulation = params.granulation * 0.55`), never a probe re-derivation
    *  of the record's 0..100 value. */
-  readonly params: { readonly granulation: number }
+  readonly params: { readonly granulation: number; readonly wetSeconds: number; readonly pickup: number }
+  /** 261126: the palette's seven absorbance coefficients (`uPigmentA/B`) —
+   *  the no-pickup reference the layer's carried film is measured against. */
+  pigment?: { readonly coeffs: Float32Array }
+  /** 261126: the virtual clock in seconds — `wetAt`'s age reference. Private
+   *  member; absent on a pre-change tree (the wet reading is then null). */
+  nowSec?: () => number
   ink: { read: { views: WebGLFramebuffer[] } }
   fixed: { views: WebGLFramebuffer[] }
   cover: { read: { views: WebGLFramebuffer[] } }
@@ -2169,7 +2221,7 @@ interface EdgeLayerInternals {
   /** WR-01: the last-touch R32F lane (SECONDS on the virtual clock). Optional
    *  so a pre-change engine reports the merge-stamp readings as absent rather
    *  than crashing the visit. */
-  lastTouch?: { read: { views: WebGLFramebuffer[] } }
+  lastTouch?: { read: { views: WebGLFramebuffer[] }; write: { views: WebGLFramebuffer[] } }
   paper: { views: WebGLFramebuffer[] }
   gl: WebGL2RenderingContext
   /** The document size — the Studio rows read it after a resize/create. */
@@ -2306,6 +2358,21 @@ function edgeTouchMax(engine: WatercolorEngine, rect: EdgeRect): number | null {
   return round4(max)
 }
 
+/** 261126: ONE texel's last-touch stamp (R32F seconds) from one half of the
+ *  ping-pong pair, or null without the lane. The pickup readout reads the
+ *  crossing's core — the gather's own wetAt input at the texel it judges. */
+function edgeTouchAt(
+  engine: WatercolorEngine,
+  fb: WebGLFramebuffer | null,
+  x: number,
+  y: number,
+): number | null {
+  if (!fb) return null
+  const it = engine as unknown as EdgeLayerInternals
+  const values = it.g.readFloat(fb, it.dw, it.dh, { x0: x, y0: y, x1: x + 1, y1: y + 1 })
+  return values.length > 0 ? round4(values[0]!) : null
+}
+
 /** Spec 10: the OPEN stroke's layer over `rect`, or null when the engine has
  *  no layer yet (the pre-change tree — every reading is then absent). */
 function readEdgeLayerFields(
@@ -2374,6 +2441,161 @@ function edgeLayerAEff(lateral: number, coverL: number): number {
   const t = Math.min(1, Math.max(0, (u - EDGE_LAYER_START) / Math.max(1 - EDGE_LAYER_START, 1e-4)))
   const e = Math.pow(2, 2 * bias - 1)
   return Math.min(1, Math.max(0, (1 - amount * Math.pow(t, e)) * coverL))
+}
+
+// ---------------------------------------------------------------------------
+// 261126 (Spec 10 pickup leg): the crossing's pickup colour readout
+// ---------------------------------------------------------------------------
+
+/** The core window, in doc pixels either side of the crossing: stroke B is a
+ *  vertical drag on x = 0.5·sheet, so ±4 px is squarely inside its core and
+ *  inside stroke A's band on the other axis. */
+const EDGE_PICKUP_HALF_PX = 4
+/** Mirrors Engine.BRISTLE_BODY_ALPHA_FLOOR (module-local there, 0.5): the
+ *  smear's cover normaliser, so the reported wet reading is the gather's own
+ *  `wetAt`, not a re-scaled variant. */
+const EDGE_PICKUP_BODY_FLOOR = 0.5
+
+/** Every pickup field ABSENT — a tree/capture without the layer fabricated no
+ *  zero. */
+const EDGE_PICKUP_ABSENT: Record<string, unknown> = {
+  edgePickupTexels: null,
+  edgePickupLayerRgb: null,
+  edgePickupSheetRgb: null,
+  edgePickupMergedRgb: null,
+  edgePickupMix: null,
+  edgePickupWet: null,
+  edgePickupCover: null,
+  edgePickupCoreCover: null,
+  edgePickupTouch: null,
+  edgePickupTouchWrite: null,
+  edgePickupTouchMax: null,
+  edgePickupNow: null,
+}
+
+/**
+ * 261126: does the layer's carried film contain the under-paint's colour?
+ *
+ * Three measurements over stroke B's core at the crossing, where B's carried
+ * film sits on stroke A's washed band:
+ *
+ *  - `edgePickupLayerRgb` — the OPEN layer's own film, decoded to display RGB8
+ *    in the storage domain (`k = 1`, no granulation, no film soften): what the
+ *    bristles carried and deposited.
+ *  - `edgePickupSheetRgb` — the sheet under it, the same decode: stroke A's
+ *    paint. With no pickup these two bracket "own brush" vs "under-paint".
+ *  - `edgePickupMergedRgb` — the committed display bytes at the same doc
+ *    texels (the artist-facing surface).
+ *
+ * `edgePickupMix` is the coefficient-space share: the mean carried film `L`,
+ * the mean under-paint `S` and the brush's own palette `P` (the engine's
+ * `uPigmentA/B`, the no-pickup reference) projected as
+ * `mix = <L − P, S − P> / <S − P, S − P>`, clamped to 0..1 — 0 is "the layer
+ * carries only the brush's own paint", 1 is "the layer carries the
+ * under-paint's spectrum". It is the readout the pickup fix is measured on;
+ * decodable but not re-derived from a display formula.
+ *
+ * `edgePickupWet` is the gather's own wetness at the core, from the SAME
+ * inputs it reads — the last-touch stamp at the crossing (read at capture,
+ * before either merge re-stamps it), the engine's virtual clock and the
+ * sheet's cover there: `exp(−(now − touch)/wetSeconds) · min(cover/0.5, 1)`.
+ * A dry reading alongside a low mix says the pickup never had a wet target —
+ * a different defect from a gather that reads a wet sheet and ignores it.
+ */
+function edgePickupReadout(
+  engine: WatercolorEngine,
+  capture: EdgeStrokeCapture | null,
+  transparent: HTMLCanvasElement,
+  sheet: number,
+): Record<string, unknown> {
+  if (capture === null) return EDGE_PICKUP_ABSENT
+  // 261126: the sheet path (Edge 0 / amount 0) has no layer. It still reports
+  // the SHEET-domain pickup signals — the carried film it deposits is the
+  // sheet's own — so the shipped wet-pickup law's dry-under arm is measurable
+  // on the same scene. Layer-only members stay null.
+  const layer = capture.layer
+  const doc = capture.sheet
+  const { rect, width, height } = doc
+  const centre = Math.round(0.5 * sheet)
+  const dw = transparent.width
+  const dh = transparent.height
+  const tData = transparent.getContext('2d')!.getImageData(0, 0, dw, dh).data
+  const it = engine as unknown as EdgeLayerInternals
+  const pigment = it.pigment?.coeffs ?? null
+  const layerRgb: number[] | null = layer === null ? null : [0, 0, 0]
+  const sheetRgb = [0, 0, 0]
+  const mergedRgb = [0, 0, 0]
+  const filmL = new Float64Array(7)
+  const filmS = new Float64Array(7)
+  let coverSum = 0
+  let n = 0
+  const x0 = Math.max(rect.x0, centre - EDGE_PICKUP_HALF_PX)
+  const x1 = Math.min(rect.x1 - 1, centre + EDGE_PICKUP_HALF_PX)
+  for (let y = rect.y0; y < rect.y1; y += 1) {
+    const ly = y - rect.y0
+    if (ly < 0 || ly >= height) continue
+    for (let x = x0; x <= x1; x += 1) {
+      const lx = x - rect.x0
+      if (lx < 0 || lx >= width) continue
+      const fi = ly * width + lx
+      if (layer !== null && layerRgb !== null) {
+        const lRgb = edgeBandsRgb8(edgeTexelBands(layer.a, layer.b, fi, 1))
+        for (let c = 0; c < 3; c += 1) layerRgb[c] = layerRgb[c]! + lRgb[c]!
+      }
+      const sRgb = edgeBandsRgb8(edgeTexelBands(doc.a, doc.b, fi, 1))
+      for (let c = 0; c < 3; c += 1) {
+        sheetRgb[c] = sheetRgb[c]! + sRgb[c]!
+      }
+      const cr = dh - 1 - y
+      const i4 = (cr * dw + x) * 4
+      for (let c = 0; c < 3; c += 1) mergedRgb[c] = mergedRgb[c]! + tData[i4 + c]!
+      if (layer !== null) {
+        for (let c = 0; c < 4; c += 1) filmL[c] = filmL[c]! + layer.a[fi * 4 + c]!
+        for (let c = 0; c < 3; c += 1) filmL[4 + c] = filmL[4 + c]! + layer.b[fi * 4 + c]!
+      }
+      for (let c = 0; c < 4; c += 1) filmS[c] = filmS[c]! + doc.a[fi * 4 + c]!
+      for (let c = 0; c < 3; c += 1) filmS[4 + c] = filmS[4 + c]! + doc.b[fi * 4 + c]!
+      coverSum += doc.cover[fi]!
+      n += 1
+    }
+  }
+  if (n === 0) return EDGE_PICKUP_ABSENT
+  let mix: number | null = null
+  if (pigment !== null && layer !== null) {
+    let dA2 = 0
+    let dAdB = 0
+    for (let c = 0; c < 7; c += 1) {
+      const dA = filmS[c]! / n - pigment[c]!
+      const dB = filmL[c]! / n - pigment[c]!
+      dA2 += dA * dA
+      dAdB += dA * dB
+    }
+    mix = dA2 > 1e-8 ? round4(Math.min(1, Math.max(0, dAdB / dA2))) : null
+  }
+  const wet =
+    capture.touchCore !== null && capture.nowCore !== null
+      ? round4(
+          Math.exp(
+            -Math.max(capture.nowCore - capture.touchCore, 0) / Math.max(it.params.wetSeconds, 1),
+          ) * Math.min(Math.max(coverSum / n, 0) / EDGE_PICKUP_BODY_FLOOR, 1),
+        )
+      : null
+  const meanRgb = (acc: number[]): [number, number, number] =>
+    acc.map((v) => round2(v / n)) as [number, number, number]
+  return {
+    edgePickupTexels: n,
+    edgePickupLayerRgb: layerRgb === null ? null : meanRgb(layerRgb),
+    edgePickupSheetRgb: meanRgb(sheetRgb),
+    edgePickupMergedRgb: meanRgb(mergedRgb),
+    edgePickupMix: mix,
+    edgePickupWet: wet,
+    edgePickupCover: round4(coverSum / n),
+    edgePickupCoreCover: capture.coverCore,
+    edgePickupTouch: capture.touchCore,
+    edgePickupTouchWrite: capture.touchCoreWrite,
+    edgePickupTouchMax: capture.touchRectMax,
+    edgePickupNow: capture.nowCore,
+  }
 }
 
 /** One display band's value from a coefficient getter and a scatter term —
@@ -2636,11 +2858,19 @@ interface EdgeMergeSide {
   readonly preLayer: EdgeLayerFields | null
   readonly postSheet: EdgeDocFields
   /** WR-01: max last-touch over the merge's OWN rect immediately before the
-   *  merge, and immediately after it. The merge must stamp the region — an
-   *  unstamped merge leaves the pair EQUAL (the pre value is the cleared
-   *  one-week sentinel on a fresh sheet). */
+   *  merge, and immediately after it. The merge must never DRY the region it
+   *  commits (post >= pre). After 261126 the dabs themselves stamp over the
+   *  paint they cross, so on the visit's scene the max is already live before
+   *  the merge — the paper pair below is the merge's own witness. */
   readonly preTouch: number | null
   readonly postTouch: number | null
+  /** WR-01 (261126): one texel over BARE paper inside the merge rect (doc
+   *  0.5, 0.25), before/after. Per-dab stamps weight by the SHEET's cover, so
+   *  bare paper keeps its old age through every dab; only the merge's
+   *  post-merge cover can wet it. The visit's fresh sheet leaves `pre` at the
+   *  cleared one-week sentinel, so an unstamped merge leaves the pair EQUAL. */
+  readonly preTouchPaper: number | null
+  readonly postTouchPaper: number | null
 }
 
 /** Spec 10: one stroke's mid-stroke capture — the layer, the untouched sheet
@@ -2654,6 +2884,18 @@ interface EdgeStrokeCapture {
   readonly layerCoverMax: number | null
   /** Debug: the open stroke's last stamped doc position at capture. */
   readonly strokePos: { x: number; y: number } | null
+  /** 261126: the last-touch stamp at the crossing's core, and the engine's
+   *  virtual clock, both read at capture — the gather's `wetAt` inputs at the
+   *  texel the pickup readout profiles. */
+  readonly touchCore: number | null
+  readonly nowCore: number | null
+  /** Debug: the same core texel in the OTHER half of the ping-pong pair, and
+   *  the max last-touch over the whole capture rect — a sentinel core beside a
+   *  live rect means a spatial hole or a half-selection bug, not a dry scene. */
+  readonly touchCoreWrite: number | null
+  readonly touchRectMax: number | null
+  /** Debug: the sheet's cover at the exact core texel at capture. */
+  readonly coverCore: number | null
   /** Debug: max aEff over the capture rect (the endpoint set's reachability). */
   readonly maxAeff: number | null
   readonly mergeDraws: number | null
@@ -2675,13 +2917,23 @@ function captureEdgeStroke(
     layerCoverMax = 0
     for (let i = 0; i < cover.length; i += 1) layerCoverMax = Math.max(layerCoverMax, cover[i]!)
   }
+  const centre = Math.round(0.5 * sheet)
+  const sheetFields = readEdgeDocFields(engine, sheet, rect)
+  const coreIndex = (centre - rect.y0) * sheetFields.width + (centre - rect.x0)
+  const coverCore =
+    coreIndex >= 0 && coreIndex < sheetFields.cover.length ? round4(sheetFields.cover[coreIndex]!) : null
   return {
     layer: readEdgeLayerFields(engine, sheet, rect),
-    sheet: readEdgeDocFields(engine, sheet, rect),
+    sheet: sheetFields,
     layerAllocated: typeof it.layerAllocated === 'boolean' ? it.layerAllocated : null,
     layerOpen: typeof it.layerOpen === 'boolean' ? it.layerOpen : null,
     layerCoverMax,
     strokePos: it.stroke ? { x: round2(it.stroke.x), y: round2(it.stroke.y) } : null,
+    touchCore: edgeTouchAt(engine, it.lastTouch?.read.views[0] ?? null, centre, centre),
+    touchCoreWrite: edgeTouchAt(engine, it.lastTouch?.write.views[0] ?? null, centre, centre),
+    touchRectMax: edgeTouchMax(engine, rect),
+    coverCore,
+    nowCore: typeof it.nowSec === 'function' ? round4(it.nowSec()) : null,
     mergeDraws: typeof it.mergeDraws === 'number' ? it.mergeDraws : null,
     merge: null,
   }
@@ -2771,12 +3023,17 @@ function edgeSideReadings(
   const sheetFields = capture.merge ? capture.merge.preSheet : capture.sheet
   const { width, height } = sheetFields
   const paperG = readEdgePaperG(engine, sheetFields)
-  // The layer's geometric silhouette: its outermost station within 1 % of the
-  // cover_L peak. Guarded — a degenerate profile has no station to judge.
+  // The layer's geometric silhouette: its outermost station within
+  // EDGE_LAYER_SILHOUETTE_PEAK of the cover_L peak. Guarded — a degenerate
+  // profile has no station to judge. 261126: the threshold is 0.90, not the
+  // pre-pickup 0.99 — where Pickup drags the cover toward the under-paint's
+  // snapshot alpha (the SAME smear bristleCoverFS runs on the sheet path) the
+  // plateau legitimately ripples by several %, and a 99 % band collapsed to
+  // 4 px on the under side (measured at 2048, dry under).
   let peak = 0
   for (const value of profile.cover) peak = Math.max(peak, value)
   if (!(peak > 0)) return EDGE_SIDE_ABSENT
-  const flat = peak * 0.99
+  const flat = peak * EDGE_LAYER_SILHOUETTE_PEAK
   let silhouette = 0
   for (let i = profile.cover.length - 1; i >= 0; i -= 1) {
     if (profile.cover[i]! >= flat) {
@@ -3167,6 +3424,8 @@ function edgeLayerReport(
     mergeDrawsFirst: mergeDeltas.length > 0 ? mergeDeltas[0]! : null,
     edgeMergedTouchBefore: firstMerge === null ? null : firstMerge.preTouch,
     edgeMergedTouchAfter: firstMerge === null ? null : firstMerge.postTouch,
+    edgeMergedTouchPaperBefore: firstMerge === null ? null : firstMerge.preTouchPaper,
+    edgeMergedTouchPaperAfter: firstMerge === null ? null : firstMerge.postTouchPaper,
     // Task 5: the merge's own wall clock (the instrument times only
     // `baseMerge`). The visit's two strokes merge first, so entries 0 and 1
     // are stroke A's and B's — measured BEFORE the replay and the Studio rows
@@ -3175,6 +3434,13 @@ function edgeLayerReport(
     edgeMergeMsSecond: mergeTimes.length > 1 ? round2(mergeTimes[1]!) : null,
     edgeMergeMsMax:
       mergeTimes.length > 0 ? round2(Math.max(...mergeTimes.slice(0, Math.min(2, mergeTimes.length)))) : null,
+    // 261126 (Spec 10 pickup leg): the crossing's carried-film colour readout
+    // (defined at `edgePickupReadout`) and the visit's own display export, so
+    // a pickup capture has an image beside its numbers.
+    ...edgePickupReadout(engine, captures.b, transparent, sheet),
+    edgePickupControl: EDGE_LAYER_PICKUP,
+    edgeWetUnder: EDGE_LAYER_WET_UNDER,
+    pngTransparent: transparent.toDataURL('image/png'),
   }
 }
 
@@ -3243,6 +3509,7 @@ function edgeLayerVisitReport(
     // first dab would inherit the VISIT's final direction. Pin it to the
     // scene definition instead: same scene, real determinism check.
     pinStrokeStart(engine)
+    let replayEntry = 0
     for (const entry of script) {
       const stroke = makeStroke(entry)
       if (split) {
@@ -3255,7 +3522,12 @@ function edgeLayerVisitReport(
       }
       const settle = entry.settle ?? SETTLE_TICKS
       for (let tick = 0; tick <= settle; tick += 1) adapter.stepTick(tick)
-      adapter.fix()
+      // 261126: the replay reproduces the VISIT's cadence, `--wet-under`
+      // included — the operand defines a scene whose first stroke is not
+      // dried before the second. Fixing here would make the replay a different
+      // scene (the visit would read as non-deterministic by construction).
+      if (!(EDGE_LAYER_WET_UNDER && replayEntry === 0)) adapter.fix()
+      replayEntry += 1
     }
     return digestCanvas(engine.exportCanvas('transparent'))
   }
@@ -5514,6 +5786,8 @@ function run(
         postSheet: { paper: EdgeDocFields; under: EdgeDocFields }
         preTouch: number | null
         postTouch: number | null
+        preTouchPaper: number | null
+        postTouchPaper: number | null
       }> = []
       const mergeHost = engine as unknown as {
         mergeStrokeLayer: (rect: EdgeRect) => void
@@ -5544,16 +5818,27 @@ function run(
         // after — the behavioural proof that the stroke-end merge stamps the
         // merged region (an unstamped merge leaves the pair equal).
         const preTouch = edgeTouchMax(engine, rect)
+        // 261126: the layer's OWN film witness — one texel on stroke A's core
+        // over bare paper (x 0.18, the core line y 0.5), inside A's merge rect.
+        // The sheet is blank before A's merge, so every per-dab stamp weighs 0
+        // there (weight = sheet cover) and only the merge's post-merge cover
+        // wets it. `firstMerge` is A's merge, so the pair must move.
+        const paperTouchX = Math.round(0.18 * sheet)
+        const paperTouchY = Math.round(0.5 * sheet)
+        const touchInternals = engine as unknown as EdgeLayerInternals
+        const preTouchPaper = edgeTouchAt(engine, touchInternals.lastTouch?.read.views[0] ?? null, paperTouchX, paperTouchY)
         const start = performance.now()
         baseMerge(rect)
         mergeTimes.push(performance.now() - start)
         const postTouch = edgeTouchMax(engine, rect)
+        const postTouchPaper = edgeTouchAt(engine, touchInternals.lastTouch?.read.views[0] ?? null, paperTouchX, paperTouchY)
         const postSheet = {
           paper: readEdgeDocFields(engine, sheet, mergePaperRect),
           under: readEdgeDocFields(engine, sheet, mergeUnderRect),
         }
-        mergeSnapshots.push({ preSheet, preLayer, postSheet, preTouch, postTouch })
+        mergeSnapshots.push({ preSheet, preLayer, postSheet, preTouch, postTouch, preTouchPaper, postTouchPaper })
       }
+      let edgeEntry = 0
       for (const entry of script) {
         const stroke = makeStroke(entry)
         const partial = Math.max(2, Math.floor(stroke.pts.length * EDGE_LAYER_PARTIAL))
@@ -5581,14 +5866,21 @@ function run(
               postSheet: snap.postSheet[pick],
               preTouch: snap.preTouch,
               postTouch: snap.postTouch,
+              preTouchPaper: snap.preTouchPaper,
+              postTouchPaper: snap.postTouchPaper,
             },
           }
         }
         const settle = entry.settle ?? SETTLE_TICKS
         for (let tick = 0; tick <= settle; tick += 1) adapter.stepTick(tick)
-        adapter.fix()
+        // 261126 (pickup leg): the shipped scene dries every stroke (explicit
+        // fix → clearLastTouch), so the next stroke crosses DRY paint. The
+        // wet-under control skips the fix after the FIRST stroke only, so A's
+        // merge stamp survives into B's gather — the live defect's arm.
+        if (!(EDGE_LAYER_WET_UNDER && edgeEntry === 0)) adapter.fix()
         const drawsAfter = typeof edgeInternals.mergeDraws === 'number' ? edgeInternals.mergeDraws : null
         if (drawsBefore !== null && drawsAfter !== null) edgeMergeDeltas.push(drawsAfter - drawsBefore)
+        edgeEntry += 1
       }
     }
     script.forEach((entry, index) => {
@@ -6020,6 +6312,8 @@ function main(): void {
     // and refused on any other scenario — never silently ignored.
     EDGE_LAYER_AMOUNT = readEdgeKnob('edge', scenario, EDGE_LAYER_DEFAULT_AMOUNT)
     EDGE_LAYER_FALLOFF = readEdgeKnob('falloff', scenario, EDGE_LAYER_DEFAULT_FALLOFF)
+    EDGE_LAYER_PICKUP = readEdgePickup(scenario)
+    EDGE_LAYER_WET_UNDER = readEdgeWetUnder(scenario)
     sheet = readSize()
     brush = readBrush()
     emboss = readEmboss()

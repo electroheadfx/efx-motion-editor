@@ -75,6 +75,15 @@
 //   16. `layerStrokeActive` reads `params.edgeFade` live and requires the
 //      bristle Brush with a bristle response — the SAME predicate at stroke
 //      start, every dab and the merge.
+//
+//   261126 — the layer's pickup leg (live UAT: yellow stayed yellow over blue)
+//   17. `bristleTouch` carries NO layer branch: the layer path stamps the same
+//      sheet lane the sheet path does, weighted by the SHEET's cover. The
+//      261125-kvl early return made the layer's gather read only pre-existing
+//      wetness, so a stroke crossing settled paint picked up nothing while
+//      Edge 0 (self-wetting per dab) dragged the same paint in. The stroke-end
+//      merge stamp stays — it is the one that wets the layer's OWN film, whose
+//      per-dab stamps are no-ops over bare paper (weight 0).
 // ============================================================
 
 import { readFileSync } from 'node:fs'
@@ -727,5 +736,40 @@ describe('every recreate path forgets the layer first (261125-kvl task 5)', () =
     // Forget never frees: disposal belongs to the caller's target walk.
     expectNotContains(body, 'deleteTexture')
     expectNotContains(body, 'disposeTarget')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 261126 — the layer's pickup leg: the same per-dab stamp as the sheet path
+// ---------------------------------------------------------------------------
+
+describe('the layer path stamps last-touch like the sheet path (261126)', () => {
+  it('bristleTouch has no layer branch: one stamp, weighted by the SHEET cover', () => {
+    const body = sliceBetween(ENGINE, 'private bristleTouch(', 'readBristles(): Uint16Array {')
+    // The 261125-kvl early return is the regression: with it, a layer stroke's
+    // gather read only the pre-existing wetness and picked up nothing.
+    expectNotContains(body, 'this.layerOpen')
+    expectNotContains(body, 'return;')
+    // The weight is the sheet's committed cover — the paint the dab crosses.
+    expectContains(body, 'gl.uniform1i(t.u.uCover!, g.bindTex(1, this.cover.read.tex[0]!));')
+    expectContains(body, 'g.draw(this.lastTouch.write, rect);')
+  })
+
+  it('the dab loop stamps every bristle dab AFTER its deposit', () => {
+    const at = firstIndexAfter(ENGINE, 'if (bristle) this.bristleInk(')
+    const touchAt = firstIndexAfter(ENGINE, 'if (bristle) this.bristleTouch(dx, dy, dr, angle);', at)
+    expect(touchAt).toBeGreaterThan(at)
+  })
+
+  it('the merge stamp reads the MERGED cover and follows the cover pass', () => {
+    const body = sliceBetween(ENGINE, 'private mergeStrokeLayer(rect: Rect) {', 'private createDocument(')
+    const coverPassAt = firstIndexAfter(body, "const c = this.programs.strokeLayerCover;")
+    const touchAt = firstIndexAfter(body, 'const t = this.programs.bristleTouch!;')
+    // The layer's own film is wet by the COVERED merge, never before it.
+    expect(touchAt).toBeGreaterThan(coverPassAt)
+    expectContains(body, 'gl.uniform1i(t.u.uCover!, g.bindTex(1, this.cover.read.tex[0]!));')
+    // Carry discipline rides the same pair as every other stamp.
+    expectContains(body, 'if (carry) g.blit(this.lastTouch.read.views[0]!, carry.x0, carry.y0, this.lastTouch.write.views[0]!, carry.x0, carry.y0, carry.x1 - carry.x0, carry.y1 - carry.y0);')
+    expectContains(body, 'recordStamp(this.touchCarry, rect);')
   })
 })

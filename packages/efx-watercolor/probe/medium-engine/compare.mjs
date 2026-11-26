@@ -1318,10 +1318,18 @@ const EDGE_LAYER_READINGS = [
   'edgePolishMax',
   'edgePolishP95',
   'edgePolishOver',
-  // WR-01: the first merge's last-touch pair — required at amount > 0 (the
+  // WR-01: the first merge's last-touch pairs — required at amount > 0 (the
   // merge must stamp), absent at amount 0 (no merge runs).
   'edgeMergedTouchBefore',
   'edgeMergedTouchAfter',
+  'edgeMergedTouchPaperBefore',
+  'edgeMergedTouchPaperAfter',
+  // 261126: the pickup readout's layer-domain members — required at amount > 0
+  // (a layer exists); `edgePickupSheetRgb`/`edgePickupTouch` also report on the
+  // sheet path, where they are DIAGNOSTIC, not bar material.
+  'edgePickupLayerRgb',
+  'edgePickupMix',
+  'edgePickupWet',
 ]
 
 /** One profile's arrays, or a failure line when the shape is unusable. */
@@ -1466,6 +1474,7 @@ function edgeLayerFailures(data, reference) {
       ...edgeIdentityFailures(data, reference),
       ...edgeStudioFailures(data),
       ...edgeMergeTouchFailures(data),
+      ...edgePickupFailures(data),
     ]
   }
 
@@ -1504,6 +1513,7 @@ function edgeLayerFailures(data, reference) {
   // the first merge must MOVE the region's last-touch forward (an unstamped
   // merge leaves the pair equal and the next stroke reads it as dry).
   failures.push(...edgeMergeTouchFailures(data))
+  failures.push(...edgePickupFailures(data))
   for (const family of EDGE_PROFILE_FAMILIES) {
     const parsed = edgeProfileOf(data, family)
     if (parsed.error) {
@@ -1893,26 +1903,29 @@ function edgeStudioFailures(data) {
 }
 
 /**
- * WR-01 (261125-kvl): the stroke-end merge must STAMP the merged region's
- * last-touch. The shipped path stamps after every dab, but `bristleTouch`
- * stays silent while the layer is open (that paint has not landed yet), so
- * without a stamp at merge the next stroke reads freshly merged paint as
- * fully dry — the pre-stroke age, up to the cleared one-week sentinel.
+ * WR-01 (261125-kvl, extended 261126): the stroke-end merge must STAMP the
+ * merged region's last-touch. Since 261126 the layer's dabs stamp exactly
+ * like the sheet path — weighted by the SHEET's cover — so the paint a dab
+ * CROSSES is re-wet (that is the pickup input), while the layer's OWN film
+ * over bare paper is untouched (sheet cover 0). The merge's post-merge cover
+ * is what wets that film; without it the next stroke reads freshly merged
+ * paint as fully dry — the pre-stroke age, up to the cleared one-week
+ * sentinel.
  *
- * The probe reads the last-touch lane over the FIRST merge's own rect
- * immediately before and after `mergeStrokeLayer`. On the visit's fresh sheet
- * `before` is the sentinel and `after` the stroke-end clock, so an unstamped
- * merge leaves the pair EQUAL. Amount-keyed: no merge runs at amount 0, so
- * both readings must be null there. The wall-clock merge times are NOT
- * involved — this is the layer's own state, not a cost reading.
+ * The probe reads two last-touch pairs around the FIRST
+ * `mergeStrokeLayer`: the max over the merge rect (must not dry) and ONE
+ * texel over bare paper (sentinel before, stroke-end clock after). Amount-
+ * keyed: no merge runs at amount 0, so all four readings must be null there.
+ * The wall-clock merge times are NOT involved — this is the layer's own
+ * state, not a cost reading.
  */
 function edgeMergeTouchFailures(data) {
-  const fields = ['edgeMergedTouchBefore', 'edgeMergedTouchAfter']
+  const fields = ['edgeMergedTouchBefore', 'edgeMergedTouchAfter', 'edgeMergedTouchPaperBefore', 'edgeMergedTouchPaperAfter']
   const missing = fields.filter((field) => !(field in data))
   if (missing.length > 0) {
     return [
       `capture is missing ${missing.join(', ')} — re-run --scenario edge-layer ` +
-        "(the merge's last-touch pair is read around each merge)",
+        "(the merge's last-touch pairs are read around each merge)",
     ]
   }
   if (data.edgeAmount === 0) {
@@ -1936,11 +1949,83 @@ function edgeMergeTouchFailures(data) {
     }
   }
   if (failures.length > 0) return failures
-  if (!(data.edgeMergedTouchAfter > data.edgeMergedTouchBefore)) {
+  // 261126: the dabs stamp the paint they cross (sheet cover), so the merge
+  // rect's MAX is already live before the merge; the merge must never dry it.
+  if (!(data.edgeMergedTouchAfter >= data.edgeMergedTouchBefore)) {
     failures.push(
-      `edgeMergedTouchAfter ${data.edgeMergedTouchAfter} is not after edgeMergedTouchBefore ` +
-        `${data.edgeMergedTouchBefore} at amount ${data.edgeAmount} — the stroke-end merge must stamp ` +
-        "the merged region's last-touch, or the next stroke reads the merged paint as fully dry",
+      `edgeMergedTouchAfter ${data.edgeMergedTouchAfter} is before edgeMergedTouchBefore ` +
+        `${data.edgeMergedTouchBefore} at amount ${data.edgeAmount} — the stroke-end merge must not ` +
+        "push the merged region's last-touch backwards",
+    )
+  }
+  // The merge's own witness is the bare-paper texel: every per-dab stamp is
+  // weighted by the sheet's cover, which is 0 there, so only the post-merge
+  // cover can wet it. An unstamped merge leaves the sentinel in place.
+  if (!(data.edgeMergedTouchPaperAfter > data.edgeMergedTouchPaperBefore)) {
+    failures.push(
+      `edgeMergedTouchPaperAfter ${data.edgeMergedTouchPaperAfter} is not after ` +
+        `edgeMergedTouchPaperBefore ${data.edgeMergedTouchPaperBefore} at amount ${data.edgeAmount} — ` +
+        "the stroke-end merge must stamp the layer's OWN film, or the next stroke reads it as fully dry",
+    )
+  }
+  return failures
+}
+
+/**
+ * 261126 (Spec 10 pickup leg): the layer's gather must read the SAME
+ * wet-pickup law as the sheet path. The probe decodes the layer film over the
+ * crossing's core window and projects its departure from the brush pigment
+ * onto the under-paint's own departure (`edgePickupMix`, 0 = the carried film
+ * is pure brush colour, 1 = it is the under-paint). Bars:
+ *  - pickup 0 (`edgePickupControl === 0`): mix is EXACTLY 0 — the control
+ *    proves the reading is pickup, not a colour coincidence;
+ *  - the canonical 100 (control null): mix >= EDGE_PICKUP_MIN_MIX — the stroke
+ *    carried the under-paint in. Both the wet-under scene and the shipped
+ *    dry-under scene pass: the sheet path self-wets per dab (bristleTouch's
+ *    cover-weighted stamp), and so does the layer path since 261126;
+ *  - the gather's own wet gate must be live (`edgePickupWet > 0.5`).
+ * The sheet path (no layer) reports null layer members and is not judged here.
+ */
+const EDGE_PICKUP_MIN_MIX = 0.05
+
+function edgePickupFailures(data) {
+  const fields = ['edgePickupLayerRgb', 'edgePickupMix', 'edgePickupWet', 'edgePickupControl', 'edgeWetUnder']
+  const missing = fields.filter((field) => !(field in data))
+  if (missing.length > 0) {
+    return [
+      `capture is missing ${missing.join(', ')} — re-run --scenario edge-layer ` +
+        '(the pickup readout profiles the crossing core)',
+    ]
+  }
+  if (data.edgePickupLayerRgb === null) return []
+  const failures = []
+  if (typeof data.edgePickupMix !== 'number' || !Number.isFinite(data.edgePickupMix)) {
+    failures.push(`edgePickupMix ${JSON.stringify(data.edgePickupMix)} is not a finite projection`)
+  }
+  if (typeof data.edgePickupWet !== 'number' || !Number.isFinite(data.edgePickupWet)) {
+    failures.push(`edgePickupWet ${JSON.stringify(data.edgePickupWet)} is not a finite wetness`)
+  }
+  if (failures.length > 0) return failures
+  if (data.edgePickupControl === 0) {
+    if (data.edgePickupMix !== 0) {
+      failures.push(
+        `edgePickupMix ${data.edgePickupMix} is not 0 at pickup 0 — the smear weight is zero, ` +
+          'so the layer film must be pure brush pigment',
+      )
+    }
+    return failures
+  }
+  if (!(data.edgePickupMix >= EDGE_PICKUP_MIN_MIX)) {
+    failures.push(
+      `edgePickupMix ${data.edgePickupMix} is below ${EDGE_PICKUP_MIN_MIX} at pickup ` +
+        `${JSON.stringify(data.edgePickupControl)} (wet-under ${data.edgeWetUnder}) — the layer's ` +
+        "carried film does not contain the under-paint's colour; the gather is reading dry paint",
+    )
+  }
+  if (!(data.edgePickupWet > 0.5)) {
+    failures.push(
+      `edgePickupWet ${data.edgePickupWet} is not above 0.5 — the gather's wet gate is cold at the ` +
+        'crossing core, so no smear can be expected',
     )
   }
   return failures
@@ -2079,12 +2164,15 @@ function printEdgeStudio(data) {
       `restore ${data.edgeRestoreReallocated}, resize ${data.edgeResizeReallocated}, ` +
       `create ${data.edgeCreateReallocated}`,
   )
-  // WR-01: the first merge's last-touch pair — the sentinel before, the
-  // stroke-end clock after (null at amount 0, where no merge runs).
+  // WR-01: the first merge's last-touch pairs — the max over the merge rect
+  // and the layer's OWN film texel over bare paper (null at amount 0, where
+  // no merge runs).
   if (typeof data.edgeMergedTouchBefore === 'number' || typeof data.edgeMergedTouchAfter === 'number') {
     parts.push(
       `merge last-touch ${JSON.stringify(data.edgeMergedTouchBefore)} → ` +
-        `${JSON.stringify(data.edgeMergedTouchAfter)} s`,
+        `${JSON.stringify(data.edgeMergedTouchAfter)} s | paper ` +
+        `${JSON.stringify(data.edgeMergedTouchPaperBefore)} → ` +
+        `${JSON.stringify(data.edgeMergedTouchPaperAfter)} s`,
     )
   }
   console.log(`studio    : ${parts.join(' | ')}`)
