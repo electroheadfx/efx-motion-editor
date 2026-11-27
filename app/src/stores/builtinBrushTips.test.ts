@@ -44,7 +44,10 @@ import {
   customBrushTips,
   resetAquarelleBrushCatalog,
 } from './aquarelleBrushCatalog';
-import { textureEntries } from '../components/physic-paint/view/WatercolorTextureStrip';
+import {
+  textureEntries,
+  textureSections,
+} from '../components/physic-paint/view/WatercolorTextureStrip';
 
 beforeEach(() => {
   resetBuiltinBrushTips();
@@ -240,6 +243,48 @@ describe('builtinBrushTips — the strip ordering law (tracer slice)', () => {
     } finally {
       resetAquarelleBrushCatalog();
     }
+  });
+
+  it('splits the strip into a labelled app section and a labelled user section', async () => {
+    const { port } = makeFakePort();
+    await loadBuiltinBrushTips(port);
+    const custom: AquarelleTip = {
+      id: 'wc/custom-section-fixture',
+      category: 'custom',
+      name: 'Section import',
+      ...NEUTRAL_TOOL_OVERRIDES,
+    };
+    addCustomBrushTip(custom);
+    try {
+      const sections = textureSections(
+        builtinBrushTips.value,
+        customBrushTips.value,
+        new Set(['wc/custom-section-fixture']),
+      );
+      expect(sections.map((section) => section.key)).toEqual(['app', 'user']);
+      expect(sections.map((section) => section.label)).toEqual(['Built-in', 'Your tips']);
+      // The app section owns the Default chip and every bundled tip.
+      expect(sections[0]!.entries).toHaveLength(23);
+      expect(sections[0]!.entries[0]).toEqual({ id: null, name: 'Default', unavailable: false });
+      expect(sections[0]!.entries.slice(1).map((entry) => entry.id)).toEqual(
+        manifest.tips.map((tip) => tip.id),
+      );
+      // The user section carries the imports, unavailable flag included.
+      expect(sections[1]!.entries).toEqual([
+        { id: 'wc/custom-section-fixture', name: 'Section import', unavailable: true },
+      ]);
+    } finally {
+      resetAquarelleBrushCatalog();
+    }
+  });
+
+  it('omits the user section while the machine library is empty', async () => {
+    const { port } = makeFakePort();
+    await loadBuiltinBrushTips(port);
+    const sections = textureSections(builtinBrushTips.value, customBrushTips.value, new Set());
+    expect(sections.map((section) => section.key)).toEqual(['app']);
+    expect(sections[0]!.entries[0]!.id).toBeNull();
+    expect(sections[0]!.entries).toHaveLength(23);
   });
 
   it('both boot branches await loadBuiltinBrushTips before the first render', () => {

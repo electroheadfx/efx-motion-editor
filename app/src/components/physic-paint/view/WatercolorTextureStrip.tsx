@@ -10,7 +10,10 @@
 //
 //  Order: Default (no texture — the response's own procedural tip),
 //  then the 22 bundled Wootha tips, then the machine library's rows in
-//  catalog order. quick 261127-uxj: the bundled tips are APP ASSETS
+//  catalog order. The row is split into two labelled sections: "Built-in"
+//  (the Default chip + the bundled tips) and "Your tips" (the machine
+//  library's imports, omitted while that library is empty).
+//  quick 261127-uxj: the bundled tips are APP ASSETS
 //  (`wc/default-*`, loaded at boot from `app/src/assets/brush-tips/`);
 //  the machine library stays the only source of USER textures and the
 //  only delete/rotation authority. quick 261116-inu: import is the
@@ -78,6 +81,35 @@ export function textureEntries(
     ...bundled.map(toEntry),
     ...imports.map(toEntry),
   ];
+}
+
+/** One labelled group of the strip: the app's own tips, then the user's. */
+export interface TextureSection {
+  readonly key: 'app' | 'user';
+  readonly label: string;
+  readonly entries: readonly TextureEntry[];
+}
+
+/**
+ * The strip's two labelled sections: "Built-in" (the Default chip plus the 22
+ * bundled assets) and "Your tips" (the machine library's imports). The user
+ * section is omitted while the library is empty, so a fresh install shows only
+ * the built-in group instead of an empty heading.
+ */
+export function textureSections(
+  bundled: readonly AquarelleTip[],
+  imports: readonly AquarelleTip[],
+  unavailableIds: ReadonlySet<string>,
+): TextureSection[] {
+  const entries = textureEntries(bundled, imports, unavailableIds);
+  const appCount = bundled.length + 1;
+  const sections: TextureSection[] = [
+    { key: 'app', label: 'Built-in', entries: entries.slice(0, appCount) },
+  ];
+  if (imports.length > 0) {
+    sections.push({ key: 'user', label: 'Your tips', entries: entries.slice(appCount) });
+  }
+  return sections;
 }
 
 /**
@@ -156,6 +188,7 @@ export function WatercolorTextureStrip(props: { compact?: boolean }) {
   // re-measure the row, so the generation is read — and exposed as data.
   const catalogGeneration = brushCatalogGeneration.value;
   const compact = props.compact === true;
+  const sections = textureSections(bundled, imports, unavailableIds);
   return (
     <div
       class="watercolor-texture-strip"
@@ -163,15 +196,26 @@ export function WatercolorTextureStrip(props: { compact?: boolean }) {
       data-compact={compact ? 'true' : 'false'}
       data-catalog-generation={catalogGeneration}
     >
-      {textureEntries(bundled, imports, unavailableIds).map((entry) => (
-        <TextureChip
-          key={entry.id ?? 'default'}
-          entry={entry}
-          responseId={responseId}
-          textureRotation={entry.id === null ? 0 : rotationById.get(entry.id) ?? 0}
-          selected={entry.id === selectedTextureId}
-          compact={compact}
-        />
+      {sections.map((section) => (
+        <div
+          key={section.key}
+          class="watercolor-texture-section"
+          data-testid={`watercolor-texture-section-${section.key}`}
+        >
+          <span class="watercolor-texture-section-label">{section.label}</span>
+          <div class="watercolor-texture-section-chips">
+            {section.entries.map((entry) => (
+              <TextureChip
+                key={entry.id ?? 'default'}
+                entry={entry}
+                responseId={responseId}
+                textureRotation={entry.id === null ? 0 : rotationById.get(entry.id) ?? 0}
+                selected={entry.id === selectedTextureId}
+                compact={compact}
+              />
+            ))}
+          </div>
+        </div>
       ))}
     </div>
   );

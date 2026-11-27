@@ -2452,18 +2452,42 @@ button.destructive {
 .watercolor-texture-strip {
   grid-column: 1 / -1;
   display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+/* quick 261127-uxj follow-up: the row is split into two labelled sections —
+   "Built-in" (the Default chip + the bundled tips) and "Your tips"
+   (machine-library imports). The chips inside each section keep the shared
+   wrapping row; only the modal tightens them to a 4-column grid below. */
+.watercolor-texture-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.watercolor-texture-section-label {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #7799bb;
+}
+
+.watercolor-texture-section-chips {
+  display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
   gap: 6px;
 }
 
-/* quick 261127-uxj: the Textures MODAL lays its chips out 4 per row; the
-   compact popover and the brush library keep the shared flex-wrap row above.
-   Placed AFTER the base rule on purpose — WatercolorBrushLibrary.test.ts's
-   cssRuleBody() takes the FIRST substring match of '.watercolor-texture-strip {',
-   and this scoped selector contains that substring. 4×80px chips + 3×6px gap
-   = 338px inside the sheet's 348px content width. */
-.physics-paint-texture-modal .watercolor-texture-strip {
+/* quick 261127-uxj: the Textures MODAL lays each section's chips out 4 per
+   row; the compact popover and the brush library keep the shared flex-wrap
+   row above. 4×80px chips + 3×6px gap = 338px inside the sheet's 348px
+   content width. */
+.physics-paint-texture-modal .watercolor-texture-section-chips {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   justify-items: center;
