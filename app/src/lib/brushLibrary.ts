@@ -43,6 +43,7 @@ import {
   unavailableTipIds,
   type AquarelleLibraryRow,
 } from '../stores/aquarelleBrushCatalog';
+import { builtinMaskEntries } from '../stores/builtinBrushTips';
 
 /** What one boot scan achieved; never a refusal — degrade, always resolve. */
 export interface BrushLibraryLoadResult {
@@ -126,13 +127,14 @@ export async function deleteBrushTexture(digest: string): Promise<boolean> {
     replaceLibraryEntries(nextRows, nextUnavailable);
 
     // Every surviving mask is kept by identity; the deleted id's registration
-    // is the only one dropped.
+    // is the only one dropped. quick 261127-uxj: the bundled app-asset masks
+    // ride every registry replacement — a user delete must never drop them.
     const remainingMasks: { id: string; mask: Uint8Array }[] = [];
     for (const entry of nextRows) {
       const mask = resolveMask(entry.tip.id);
       if (mask !== null) remainingMasks.push({ id: entry.tip.id, mask });
     }
-    replaceMaskRegistry(remainingMasks);
+    replaceMaskRegistry([...remainingMasks, ...builtinMaskEntries()]);
 
     publishBrushCatalog();
     return true;

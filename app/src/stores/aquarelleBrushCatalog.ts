@@ -42,6 +42,7 @@ import type {
   PhysicPaintBrushCatalogPayload,
 } from '../types/physicPaint';
 import { decodeBridgeBase64, encodeBridgeBase64 } from '../lib/webpBytes';
+import { builtinMaskEntries } from './builtinBrushTips';
 
 /** The imported tips of the open project (empty on a project with no imports). */
 const customBrushTipsSignal = signal<readonly AquarelleTip[]>([]);
@@ -455,13 +456,16 @@ function decodeBase64OrNull(value: string): Uint8Array | null {
 
 /**
  * The STUDIO realm's one application path: replace this realm's customs, mask
- * registry (exactly the payload's decoded masks; there are no compile-time
- * built-ins left) and unavailable set, then let the setters bump
- * `brushCatalogGeneration` for every real change. Replace-only by
- * construction — a second payload without a prior id leaves that id
- * unresolvable and unlisted. Never appends, never throws on one bad entry
- * (the wire guard refuses a malformed payload whole; this defensive branch
- * degrades a single undecodable mask to unavailable instead).
+ * registry (the payload's decoded masks UNIONED with the bundled app assets
+ * this realm registered at boot) and unavailable set, then let the setters
+ * bump `brushCatalogGeneration` for every real change. quick 261127-uxj: the
+ * bundled Wootha tips are APP ASSETS, not payload entries — a payload
+ * application replaces the registry, so the union is what keeps them
+ * registered in the Studio realm; the payload itself stays user-library-only.
+ * Replace-only by construction — a second payload without a prior id leaves
+ * that id unresolvable and unlisted. Never appends, never throws on one bad
+ * entry (the wire guard refuses a malformed payload whole; this defensive
+ * branch degrades a single undecodable mask to unavailable instead).
  */
 export function applyBrushCatalogPayload(payload: PhysicPaintBrushCatalogPayload): void {
   const rows: AquarelleLibraryRow[] = [];
@@ -481,7 +485,9 @@ export function applyBrushCatalogPayload(payload: PhysicPaintBrushCatalogPayload
   }
   batch(() => {
     replaceLibraryEntries(rows, [...unavailable]);
-    replaceMaskRegistry(masks);
+    // The bundled defaults ride EVERY registry replacement: the payload owns
+    // the user masks, never the app's own assets.
+    replaceMaskRegistry([...masks, ...builtinMaskEntries()]);
     // WR-03: this realm instance applied a catalog snapshot. From here on an
     // empty custom list means the machine library has no rows (known-empty),
     // not that the push never arrived — the save leg relies on that

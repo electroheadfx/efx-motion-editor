@@ -52,6 +52,7 @@ import {
   unavailableTipIds,
   upsertLibraryRow,
 } from '../stores/aquarelleBrushCatalog';
+import { loadBuiltinBrushTips, resetBuiltinBrushTips } from '../stores/builtinBrushTips';
 import type { BrushLibraryEntry } from './ipc';
 
 const DIGEST_A = 'a'.repeat(64);
@@ -93,6 +94,8 @@ const ENTRY_B = libraryEntry({
 beforeEach(() => {
   resetAquarelleBrushCatalog();
   resetMaskRegistry();
+  // quick 261127-uxj: the bundled-tip session memo must not leak between cases.
+  resetBuiltinBrushTips();
   mockScan.mockReset();
   mockDecode.mockReset();
   mockDelete.mockReset();
@@ -109,6 +112,7 @@ beforeEach(() => {
 afterEach(() => {
   resetAquarelleBrushCatalog();
   resetMaskRegistry();
+  resetBuiltinBrushTips();
   _setBrushCatalogPublisher(() => {});
 });
 
@@ -270,6 +274,25 @@ describe('deleteBrushTexture — one row and one file, never a project', () => {
     } finally {
       warn.mockRestore();
     }
+  });
+
+  // quick 261127-uxj: the bundled Wootha tips are app assets loaded at boot.
+  // `deleteBrushTexture` replaces the registry, so it must union them back in
+  // — deleting one USER texture must never blank the 22 defaults.
+  it('a user delete keeps the bundled app-asset masks registered', async () => {
+    const bundledMask = new Uint8Array(TIP_MASK_BYTES).fill(5);
+    const loaded = await loadBuiltinBrushTips(async () => bundledMask);
+    expect(loaded.loaded).toBe(22);
+    expect(resolveMask('wc/default-wootha-002')).toBe(bundledMask);
+
+    await loadBrushLibrary();
+    await expect(deleteBrushTexture(DIGEST_A)).resolves.toBe(true);
+
+    // The deleted user mask is the only one dropped.
+    expect(resolveMask(ENTRY_A.id)).toBeNull();
+    expect(resolveMask(ENTRY_B.id)).toEqual(makeMask(11));
+    expect(resolveMask('wc/default-wootha-002')).toBe(bundledMask);
+    expect(resolveMask('wc/default-wootha-charcoal-023')).toBe(bundledMask);
   });
 
   it('re-importing the deleted bytes clears the unavailable flag again', async () => {

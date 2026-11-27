@@ -2457,6 +2457,18 @@ button.destructive {
   gap: 6px;
 }
 
+/* quick 261127-uxj: the Textures MODAL lays its chips out 4 per row; the
+   compact popover and the brush library keep the shared flex-wrap row above.
+   Placed AFTER the base rule on purpose — WatercolorBrushLibrary.test.ts's
+   cssRuleBody() takes the FIRST substring match of '.watercolor-texture-strip {',
+   and this scoped selector contains that substring. 4×80px chips + 3×6px gap
+   = 338px inside the sheet's 348px content width. */
+.physics-paint-texture-modal .watercolor-texture-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  justify-items: center;
+}
+
 .watercolor-texture-chip {
   all: unset;
   cursor: pointer;

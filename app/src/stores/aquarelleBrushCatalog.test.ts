@@ -241,6 +241,65 @@ describe('aquarelleBrushCatalog — the wire projection of a library row (CR-01 
   });
 });
 
+// quick 261127-uxj: the bundled Wootha tips are APP ASSETS this realm loads
+// at boot. A catalog payload replaces the mask registry, so the application
+// path must union them back in — a Studio layer switch must never blank the
+// default textures.
+describe('aquarelleBrushCatalog — bundled app assets survive a payload (quick 261127-uxj)', () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  afterEach(() => {
+    vi.resetModules();
+  });
+
+  it('a payload application keeps the bundled masks registered, and still replaces user masks', async () => {
+    const catalog = await import('./aquarelleBrushCatalog');
+    const builtin = await import('./builtinBrushTips');
+    const watercolor = await import('@efxlab/efx-watercolor');
+
+    // Every bundled file answers one valid 262,144-byte mask.
+    const loaded = await builtin.loadBuiltinBrushTips(
+      async () => new Uint8Array(TIP_MASK_BYTES).fill(3),
+    );
+    expect(loaded.loaded).toBe(22);
+    const loadedBundled = watercolor.resolveMask('wc/default-wootha-002');
+    expect(loadedBundled === null, 'the bundled mask registered at boot').toBe(false);
+
+    const userMask = new Uint8Array(TIP_MASK_BYTES).fill(9);
+    catalog.applyBrushCatalogPayload({
+      libraryRevision: 3,
+      entries: [{
+        tip: customTip('wc/custom-payload-bundled'),
+        digest: DIGEST,
+        textureRotation: 0,
+        maskBase64: bytesToBase64(userMask),
+      }],
+      unavailableTipIds: [],
+    });
+
+    // The payload's own mask resolves…
+    expect(watercolor.resolveMask('wc/custom-payload-bundled')).toEqual(userMask);
+    // …and the bundled masks survive the replacement by IDENTITY.
+    expect(watercolor.resolveMask('wc/default-wootha-002')).toBe(loadedBundled);
+    expect(watercolor.resolveMask('wc/default-wootha-charcoal-023') === null).toBe(false);
+    expect(catalog.customBrushTips.value.map((tip) => tip.id)).toEqual([
+      'wc/custom-payload-bundled',
+    ]);
+
+    // Replace-not-append still holds for user ids: a second payload without
+    // the first id leaves it unresolvable — while the bundled masks stay.
+    catalog.applyBrushCatalogPayload({
+      libraryRevision: 4,
+      entries: [],
+      unavailableTipIds: [],
+    });
+    expect(watercolor.resolveMask('wc/custom-payload-bundled')).toBe(null);
+    expect(watercolor.resolveMask('wc/default-wootha-002')).toBe(loadedBundled);
+  });
+});
+
 describe('aquarelleBrushCatalog — applyBrushCatalogPayload on a FRESH module instance (63-05 / D-20)', () => {
   beforeEach(() => {
     // The Studio webview is a separate JS context whose modules start empty;
