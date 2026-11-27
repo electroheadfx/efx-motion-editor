@@ -34,8 +34,9 @@ describe('Hand removed from the Studio tool rail (261107-sg3)', () => {
       // 61-08 (D-05): PenTool joins the icon set for the vector pen host tool;
       // 61-13 (D-16): VectorSquare joins it for the wireframe latch. Still no
       // Hand icon. quick-261112: Wind + RefreshCcwDot left with Dry/re-render.
-      // 2026-11-27: Watercolor wears Droplets, Water wears Droplet.
-      "import { Droplet, Droplets, Eraser, Paintbrush, Pen, PenTool, Pipette, Scan, VectorSquare } from 'lucide-preact';",
+      // 2026-11-27: Watercolor wears the assembled WatercolorToolIcon
+      // (brush + droplet); Water wears the double Droplets.
+      "import { Droplets, Eraser, Paintbrush, Pen, PenTool, Pipette, Scan, VectorSquare } from 'lucide-preact';",
     );
     expect(rail).toContain("import { memo } from 'preact/compat';");
     // Only the hand session used hooks — both imports leave with it.
