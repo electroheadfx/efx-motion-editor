@@ -734,7 +734,7 @@ Items acknowledged and carried forward from previous milestone close:
 | 72 | Studio top bar + Paint tab: Emboss is Medium-only (watercolor no longer renders it); Pigment takes the freed top-bar seat in Watercolor mode | 2026-11-27 | f063e8182 | — |
 | 73 | Studio top bar: Undo/Redo grouped into one segmented button; Brush size slider grows into free width (480px cap); every slider/stepper value selects its text on focus so typing replaces it (UAT approved 2026-11-27) | 2026-11-27 | cd3bf96c9 | — |
 | 74 | Studio top bar follow-up: action icons shrink to 36px boxes / 16px glyphs; the Medium bar hides Emboss first, then Feather noise, as the settings area narrows (UAT approved 2026-11-27) | 2026-11-27 | 62c446ad9 | — |
-| 75 | Studio paint: Medium response renamed Gouache Round; Pen renamed Pen 1B, landing grain 25, pigment #333537, pickup 0, opacity 100, dry 0, feather noise 60, falloff 0, emboss 0 (automated-ready; artist UAT pending) | 2026-11-27 | 6e29c09e9 | — |
+| 75 | Studio paint: Medium response renamed Gouache Round; Pen 1B derived from it (one shared physics record + bristle tip), landing grain 25, pigment #333537, pickup 0, opacity 100, dry 0, feather noise 60, falloff 0, emboss 0 (automated-ready; artist UAT pending) | 2026-11-27 | 9aafda1d4 | — |
 
 ## Roadmap Evolution
 
