@@ -553,18 +553,22 @@ export function PhysicsPaintTopBar({
             rebakeAvailable={rebakeAvailable}
             onRebakeScript={onRebakeScript}
           />
-          <PhysicsPaintHistoryActionButton
-            item={TOP_BAR_HISTORY_ITEMS[0]}
-            historyAvailability={historyAvailability}
-            disabled={disabled}
-            onAction={onUndo}
-          />
-          <PhysicsPaintHistoryActionButton
-            item={TOP_BAR_HISTORY_ITEMS[1]}
-            historyAvailability={historyAvailability}
-            disabled={disabled}
-            onAction={onRedo}
-          />
+          {/* 261127: Undo | Redo are ONE segmented group — shared seam,
+              rounded outer corners only. */}
+          <div class="physics-paint-history-group" data-testid="physics-history-group">
+            <PhysicsPaintHistoryActionButton
+              item={TOP_BAR_HISTORY_ITEMS[0]}
+              historyAvailability={historyAvailability}
+              disabled={disabled}
+              onAction={onUndo}
+            />
+            <PhysicsPaintHistoryActionButton
+              item={TOP_BAR_HISTORY_ITEMS[1]}
+              historyAvailability={historyAvailability}
+              disabled={disabled}
+              onAction={onRedo}
+            />
+          </div>
           <TopBarDryButton disabled={disabled} />
         </div>
         {toolOwnsSettings ? (
@@ -613,6 +617,7 @@ export function PhysicsPaintTopBar({
                 void commitAquarelleSelectionParam('size', aquarellePaintCanonicalFromPx(value));
               }}
               disabled={disabled}
+              class="physics-paint-topbar-size"
             />
             {/* 2026-11-27 (artist's live ruling): Pigment stays in Paint &
                 reservoir — the Medium bar carries its bristle knobs instead.

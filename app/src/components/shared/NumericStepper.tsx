@@ -487,6 +487,8 @@ export function NumericStepper({
           aria-describedby={ariaDescribedBy}
           onFocus={(event) => {
             startCoalescing();
+            // Focusing selects the whole readout: typing replaces it directly.
+            event.currentTarget.select();
             onFocus?.(event);
           }}
           onBlur={(event) => {

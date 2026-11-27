@@ -591,6 +591,8 @@ export function SliderStepper({
             // left the document) must not swallow this gesture's commit.
             suppressBlurCommit.current = false;
             startCoalescing();
+            // Focusing selects the whole readout: typing replaces it directly.
+            event.currentTarget.select();
             onFocus?.(event);
           }}
           onBlur={(event) => {

@@ -999,3 +999,17 @@ describe('slider-stepper — onCommit gesture boundary (261111-tul)', () => {
     expect(onCommit).toHaveBeenCalledWith(80);
   });
 });
+
+// 261127 (artist's ruling): focusing the readout selects its whole text, so a
+// new value can be typed directly without selecting or clearing first.
+describe('slider-stepper — value focus', () => {
+  it('selects the whole readout on focus so typing replaces it', () => {
+    const select = vi.fn();
+    const onFocus = vi.fn();
+    const tree = renderStepper({ onFocus });
+    const value = byClass(tree, 'slider-stepper-value') as AnyVNode;
+    (value.props as any).onFocus({ currentTarget: { select } });
+    expect(select).toHaveBeenCalledTimes(1);
+    expect(onFocus).toHaveBeenCalledTimes(1);
+  });
+});

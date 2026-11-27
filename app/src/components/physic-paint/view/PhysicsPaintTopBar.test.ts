@@ -1320,11 +1320,35 @@ describe('quick-261112 top-bar action cluster', () => {
     expect(actions, 'the action cluster leads the settings').toBeDefined();
     const actionChildren = (actions!.props?.children as AnyVNode[]) ?? [];
     expect(actionChildren[0]?.type).toBe(TopBarRebakeButton);
-    expect(actionChildren[1]?.type).toBe(PhysicsPaintHistoryActionButton);
-    expect(actionChildren[1]?.props?.item?.id).toBe('undo');
-    expect(actionChildren[2]?.type).toBe(PhysicsPaintHistoryActionButton);
-    expect(actionChildren[2]?.props?.item?.id).toBe('redo');
-    expect(actionChildren[3]?.type).toBe(TopBarDryButton);
+    // 261127: Undo and Redo are one segmented group.
+    const historyGroup = actionChildren[1];
+    expect(historyGroup?.type).toBe('div');
+    expect(String(historyGroup?.props?.class)).toContain('physics-paint-history-group');
+    const groupChildren = (historyGroup?.props?.children as AnyVNode[]) ?? [];
+    expect(groupChildren[0]?.type).toBe(PhysicsPaintHistoryActionButton);
+    expect(groupChildren[0]?.props?.item?.id).toBe('undo');
+    expect(groupChildren[1]?.type).toBe(PhysicsPaintHistoryActionButton);
+    expect(groupChildren[1]?.props?.item?.id).toBe('redo');
+    expect(actionChildren[2]?.type).toBe(TopBarDryButton);
+  });
+
+  it('styles the Undo/Redo group as one segmented button and grows Brush size into free width', () => {
+    const styles = css();
+    // 261127: shared seam inside the group, rounded outer corners only.
+    const group = getCssRuleBlock(styles, '.physics-paint-history-group {');
+    expect(group).toContain('display: inline-flex');
+    const inner = getCssRuleBlock(styles, '.physics-paint-history-group .physics-paint-icon-button {');
+    expect(inner).toContain('border-radius: 0');
+    const last = getCssRuleBlock(styles, '.physics-paint-history-group .physics-paint-icon-button:last-child {');
+    expect(last).toContain('margin-left: -1px');
+    expect(last).toContain('border-top-right-radius: 8px');
+    expect(styles).toContain('.physics-paint-history-group .physics-paint-icon-button:first-child {');
+    // 261127: Brush size takes the free width, capped on very wide windows.
+    const size = getCssRuleBlock(styles, '.physics-paint-topbar-primary .physics-paint-topbar-size {');
+    expect(size).toContain('flex: 1 1 140px');
+    expect(size).toContain('max-width: 480px');
+    const body = stripComments(topBarSource());
+    expect(body).toContain('class="physics-paint-topbar-size"');
   });
 
   it('the Re-render button follows the frame availability and fires the replay', () => {

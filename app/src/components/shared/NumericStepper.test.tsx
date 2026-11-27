@@ -1086,3 +1086,16 @@ describe('NumericStepper — commitOnInput live commit (261105-sk3)', () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 });
+
+// 261127 (artist's ruling): focusing the readout selects its whole text, so a
+// new value can be typed directly without selecting or clearing first.
+describe('NumericStepper — value focus', () => {
+  it('selects the whole readout on focus so typing replaces it', () => {
+    const select = vi.fn();
+    const onFocus = vi.fn();
+    const field = input(renderStepper({ onFocus }))!;
+    (field.props as { onFocus: (event: unknown) => void }).onFocus({ currentTarget: { select } });
+    expect(select).toHaveBeenCalledTimes(1);
+    expect(onFocus).toHaveBeenCalledTimes(1);
+  });
+});

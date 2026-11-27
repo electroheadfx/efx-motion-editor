@@ -528,6 +528,15 @@ button.destructive {
   min-width: 140px;
 }
 
+/* 261127 (artist's ruling): the Brush size is the primary knob — it takes the
+   settings row's FREE width when there is any. The cap keeps it sane on very
+   wide windows; leftover space beyond the cap still feeds the action cluster's
+   auto margins, so the trio stays centered there. */
+.physics-paint-topbar-primary .physics-paint-topbar-size {
+  flex: 1 1 140px;
+  max-width: 480px;
+}
+
 /* quick-261112: Undo | Redo | Flash-dry render for every tool and sit CENTERED
    between the brush dropdown and the right settings — the auto margins split
    the free space the settings leave behind. 38px matches the dropdown height. */
@@ -542,6 +551,30 @@ button.destructive {
 .physics-paint-topbar-actions .physics-paint-icon-button {
   width: 43px;
   height: 43px;
+}
+
+/* 261127 (artist's ruling): Undo | Redo read as ONE grouped button — a single
+   shared seam between the halves, rounded outer corners only. The −1px pull
+   collapses the adjacent borders into that seam (hover repaints both). */
+.physics-paint-history-group {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+
+.physics-paint-history-group .physics-paint-icon-button {
+  border-radius: 0;
+}
+
+.physics-paint-history-group .physics-paint-icon-button:first-child {
+  border-top-left-radius: 8px;
+  border-bottom-left-radius: 8px;
+}
+
+.physics-paint-history-group .physics-paint-icon-button:last-child {
+  border-top-right-radius: 8px;
+  border-bottom-right-radius: 8px;
+  margin-left: -1px;
 }
 
 /* 261028-k03b / 261029-eur: the Eraser tool's primary cluster — eraser icon +
