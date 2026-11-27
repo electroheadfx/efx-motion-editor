@@ -213,8 +213,16 @@ describe('64-09 Paper & Light tab', () => {
         `${label} row must sit below the paper picker`,
       ).toBeGreaterThan(groupAt);
     }
-    expect(body.match(/<SliderStepper\b/g) ?? [], 'exactly the three light rows').toHaveLength(3);
-    expect(body.match(/physics-paint-option-group/g) ?? [], 'one light option group').toHaveLength(1);
+    // 2026-11-27 (artist's live ruling): the Grain row joined the tab above
+    // the Light group — four steppers, two option groups.
+    expect(
+      body.match(/<SliderStepper\b/g) ?? [],
+      'the Grain row plus the three light rows',
+    ).toHaveLength(4);
+    expect(
+      body.match(/physics-paint-option-group/g) ?? [],
+      'the Grain and Light option groups',
+    ).toHaveLength(2);
   });
 
   it('reads the document light with the package default — never a retyped triple', () => {
@@ -275,8 +283,9 @@ describe('64-09 Paper & Light tab', () => {
         `onChange={(value) => props.onLightChange?.({ ${field}: value })}`,
       );
     }
-    expect(body.match(/onCommit=\{/g) ?? [], 'exactly the three rows commit').toHaveLength(3);
-    expect(body.match(/onChange=\{/g) ?? [], 'exactly the three rows change').toHaveLength(3);
+    // The three light rows + the Grain row each commit and change.
+    expect(body.match(/onCommit=\{/g) ?? [], 'four rows commit').toHaveLength(4);
+    expect(body.match(/onChange=\{/g) ?? [], 'four rows change').toHaveLength(4);
     // The commit port is the Studio handler; the view still never persists.
     expect(body, 'the tab never calls the store mutation').not.toContain('setDocumentLight');
     // One-field patches only: the commit never rebuilds the triple.

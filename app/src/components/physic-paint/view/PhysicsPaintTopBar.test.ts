@@ -144,21 +144,20 @@ describe('PhysicsPaintTopBar small-width responsiveness (36.15-06 fix)', () => {
 
   it('hides the last optional watercolor knobs via container queries (I-11 follow-up)', () => {
     const styles = css();
-    // quick-261112: the action quartet's 206px leads the cluster — every
-    // threshold shifts by it (740→946, 590→796; narrow 607→811).
-    expect(styles, 'Grain hides first at wide viewports').toContain('@container (max-width: 945px)');
-    expect(styles, 'Edges hides last').toContain('@container (max-width: 795px)');
+    // 2026-11-27: the Grain tier left with its control (moved to the Paper
+    // tab); Edges now hides first.
+    expect(styles, 'Edges hides first at wide viewports').toContain('@container (max-width: 795px)');
     expect(styles, 'narrow-viewport thresholds follow the 115px control width').toContain(
-      '@container (max-width: 810px)',
+      '@container (max-width: 687px)',
     );
-    // Pigment is the primary control in Water color, never an optional knob.
+    // Pigment and Grain are never top-bar controls now.
     expect(styles).not.toContain('.physics-paint-topbar-optional-pigment');
-    expect(styles).toContain('.physics-paint-topbar-optional-grain');
+    expect(styles).not.toContain('.physics-paint-topbar-optional-grain');
     expect(styles).toContain('.physics-paint-topbar-optional-edges');
     // The hide rules must out-rank .physics-paint-topbar-control's display:flex
     // (the equal-specificity bug that kept every knob visible).
     const controlAt = styles.indexOf('.physics-paint-topbar-control {');
-    const hideAt = styles.indexOf('.physics-paint-topbar-primary .physics-paint-topbar-optional-grain');
+    const hideAt = styles.indexOf('.physics-paint-topbar-primary .physics-paint-topbar-optional-edges');
     expect(controlAt, 'control display rule must exist').toBeGreaterThan(-1);
     expect(hideAt, 'hide rule must exist').toBeGreaterThan(-1);
     expect(hideAt, 'hide rule must follow the control display rule').toBeGreaterThan(controlAt);
@@ -166,8 +165,8 @@ describe('PhysicsPaintTopBar small-width responsiveness (36.15-06 fix)', () => {
 
   it('hides Water at the deepest threshold, inside the existing media blocks (261029-hy2 CR-02)', () => {
     const styles = css();
-    const wideStart = styles.indexOf('@media (min-width: 1181px) {\n  @container (max-width: 945px)');
-    const narrowStart = styles.indexOf('@media (max-width: 1180px) {\n  @container (max-width: 810px)');
+    const wideStart = styles.indexOf('@media (min-width: 1181px) {\n  @container (max-width: 795px)');
+    const narrowStart = styles.indexOf('@media (max-width: 1180px) {\n  @container (max-width: 687px)');
     const chainEnd = styles.indexOf('.physics-paint-segmented-row {');
     expect(wideStart, 'the wide hide-chain block exists').toBeGreaterThan(-1);
     expect(narrowStart, 'the narrow hide-chain block exists').toBeGreaterThan(wideStart);
@@ -183,7 +182,7 @@ describe('PhysicsPaintTopBar small-width responsiveness (36.15-06 fix)', () => {
     expect(narrow, 'the Water tier lives in the narrow block').toContain(waterSelector);
     // No new base @media above the first one: the tier follows the Edges tier.
     expect(wide.indexOf(waterSelector)).toBeGreaterThan(wide.indexOf('@container (max-width: 795px)'));
-    expect(narrow.indexOf(waterSelector)).toBeGreaterThan(narrow.indexOf('@container (max-width: 483px)'));
+    expect(narrow.indexOf(waterSelector)).toBeGreaterThan(narrow.indexOf('@container (max-width: 687px)'));
     // Out-ranks .physics-paint-topbar-control's display:flex (source order).
     const controlAt = styles.indexOf('.physics-paint-topbar-control {');
     expect(styles.indexOf(waterSelector)).toBeGreaterThan(controlAt);
@@ -626,11 +625,11 @@ describe('261029-hy2 tool pill + settings-cluster gating', () => {
 });
 
 // 261017-vcn Q6: the grain widgets left the top bar for the Paper tab.
-// 2026-11-27 (artist's live ruling): the Gouache bar carries Brush size +
-// Pickup + Opacity — Pigment stays in Paint & reservoir, and the
-// watercolor-only Edges / Grain knobs leave with their panel rows.
+// 2026-11-27 (artist's live ruling): the Medium bar carries Brush size +
+// Pickup + Opacity + Feather noise — Pigment stays in Paint & reservoir, and
+// the watercolor-only Edges / Grain knobs leave with their panel rows.
 describe('261017-vcn top bar slim (I-04 remainder)', () => {
-  it('renders Brush size + Pickup + Opacity for Gouache and no Background / Grain rows', () => {
+  it('renders Brush size + Pickup + Opacity + Feather noise for Medium and no Background / Grain rows', () => {
     // 261027-klx: Water color is the only module — the bar has one branch.
     const props = baseTopBarProps();
     const tree = renderTopBar(props);
@@ -640,7 +639,7 @@ describe('261017-vcn top bar slim (I-04 remainder)', () => {
       (node) => typeof (node as AnyVNode).props?.label === 'string',
     ) as AnyVNode[];
     const labels = controls.map((s) => s.props.label);
-    expect(labels).toEqual(['Brush size', 'Pickup', 'Opacity']);
+    expect(labels).toEqual(['Brush size', 'Pickup', 'Opacity', 'Feather noise']);
     expect(labels).not.toContain('Pigment');
     expect(labels).not.toContain('Grain scale');
     // The retired rows leave the render tree.
@@ -692,7 +691,7 @@ describe('261018-f15 watercolor top-bar aquarelle globals', () => {
         (node) => typeof (node as AnyVNode).props?.label === 'string',
       ) as AnyVNode[];
       const labels = controls.map((s) => s.props.label);
-      expect(labels).toEqual(['Brush size', 'Water', 'Edges', 'Grain']);
+      expect(labels).toEqual(['Brush size', 'Water', 'Edges']);
     } finally {
       vi.doUnmock('../../shared/activeModule');
       vi.doUnmock('./aquarelleRecordState');
@@ -705,20 +704,22 @@ describe('261018-f15 watercolor top-bar aquarelle globals', () => {
     expect(body).toContain('setAquarelleParam');
     expect(body).toContain("setAquarelleParam('water'");
     expect(body).toContain("setAquarelleParam('edge'");
-    expect(body).toContain("setAquarelleParam('granulation'");
     expect(body).toContain("setAquarelleParam('pickup'");
+    expect(body).toContain("setAquarelleParam('featherNoise'");
     // Opacity writes the stored transparency key inverted (100 = opaque).
     expect(body).toContain("setAquarelleParam('edgeFade', 100 - value)");
-    // 2026-11-27: Pigment left the top bar for Paint & reservoir.
+    // 2026-11-27: Pigment and Grain left the top bar (Paint & reservoir / the
+    // Paper tab).
     expect(body).not.toContain('label="Pigment"');
     expect(body).not.toContain('physics-paint-topbar-optional-pigment');
+    expect(body).not.toContain('physics-paint-topbar-optional-grain');
+    expect(body).not.toContain("setAquarelleParam('granulation'");
     // 261027-klx: one module — no branch gate.
     expect(body).not.toContain('isWatercolor');
     // Every optional knob is gated through the shared row law (one import +
     // five call sites).
     expect(body.split('isAquarelleParamRowVisible').length - 1).toBe(6);
     // Optional knobs carry the query-hidden classes.
-    expect(body).toContain('physics-paint-topbar-optional-grain');
     expect(body).toContain('physics-paint-topbar-optional-edges');
   });
 });
@@ -1179,14 +1180,15 @@ describe('quick 261111-ucf top-bar slider release commits', () => {
     setScriptStrokeSelection([10701]);
 
     // 2026-11-27 (artist's live ruling): the real store opens on the ACRYLIC
-    // (Gouache) medium — the bar renders Brush size + Pickup + Opacity; the
-    // watercolor-only knobs leave with their panel rows.
+    // (Medium) medium — the bar renders Brush size + Pickup + Opacity +
+    // Feather noise; the watercolor-only knobs leave with their panel rows.
     const nodes = childrenOf(renderTopBar(baseTopBarProps())) as AnyVNode[];
     const byId = (id: string) => nodes.find((n) => n.props?.id === id);
     const released: Array<[string, string]> = [
       ['physics-brush-size', 'size'],
       ['physics-aquarelle-pickup', 'pickup'],
       ['physics-aquarelle-opacity', 'edgeFade'],
+      ['physics-aquarelle-feather-noise', 'featherNoise'],
     ];
 
     for (const [id] of released) {
@@ -1199,7 +1201,7 @@ describe('quick 261111-ucf top-bar slider release commits', () => {
       'physics-aquarelle-edges',
       'physics-aquarelle-grain',
     ]) {
-      expect(byId(retired), `the Gouache bar hides ${retired}`).toBeUndefined();
+      expect(byId(retired), `the Medium bar hides ${retired}`).toBeUndefined();
     }
     // A drag (onChange) never commits: the port is silent until a release.
     expect(calls).toHaveLength(0);
@@ -1209,21 +1211,21 @@ describe('quick 261111-ucf top-bar slider release commits', () => {
       // quick 261116-inu / Task 8: the Brush size release carries px and
       // commits the canonical through the ONE mapping. Opacity commits the
       // stored TRANSPARENCY key inverted (displayed 37 = stored 63); Pickup
-      // forwards its integer verbatim.
+      // and Feather noise forward their integer verbatim.
       const expected = id === 'physics-brush-size'
         ? aquarellePaintCanonicalFromPx(37)
         : id === 'physics-aquarelle-opacity' ? 63 : 37;
       expect(calls[calls.length - 1]!.patch, `${id} forwards ${key}`).toEqual({ params: { [key]: expected } });
     }
-    expect(calls, 'one patch per release').toHaveLength(3);
+    expect(calls, 'one patch per release').toHaveLength(4);
     expect(calls.map((call) => call.ids)).toEqual([
-      [10701], [10701], [10701],
+      [10701], [10701], [10701], [10701],
     ]);
   });
 
   // quick 261124-iq9 / 2026-11-27: EVERY top-bar knob follows the selected
   // medium through the SAME row law the Paint panel renders.
-  it('swaps the watercolor-only knobs for Pickup / Opacity across the medium law', () => {
+  it('swaps the watercolor-only knobs for Pickup / Opacity / Feather noise across the medium law', () => {
     setAquarelleTool('brush');
     applyAquarelleMedium('watercolor');
     try {
@@ -1232,11 +1234,15 @@ describe('quick 261111-ucf top-bar slider release commits', () => {
       for (const visible of [
         'physics-aquarelle-water',
         'physics-aquarelle-edges',
-        'physics-aquarelle-grain',
       ]) {
         expect(watercolorById(visible), `the Watercolor bar renders ${visible}`).toBeDefined();
       }
-      for (const hidden of ['physics-aquarelle-pickup', 'physics-aquarelle-opacity']) {
+      for (const hidden of [
+        'physics-aquarelle-pickup',
+        'physics-aquarelle-opacity',
+        'physics-aquarelle-feather-noise',
+        'physics-aquarelle-grain',
+      ]) {
         expect(watercolorById(hidden), `the Watercolor bar hides ${hidden}`).toBeUndefined();
       }
 
@@ -1248,10 +1254,14 @@ describe('quick 261111-ucf top-bar slider release commits', () => {
         'physics-aquarelle-edges',
         'physics-aquarelle-grain',
       ]) {
-        expect(acrylicById(hidden), `the Gouache bar hides ${hidden}`).toBeUndefined();
+        expect(acrylicById(hidden), `the Medium bar hides ${hidden}`).toBeUndefined();
       }
-      for (const visible of ['physics-aquarelle-pickup', 'physics-aquarelle-opacity']) {
-        expect(acrylicById(visible), `the Gouache bar renders ${visible}`).toBeDefined();
+      for (const visible of [
+        'physics-aquarelle-pickup',
+        'physics-aquarelle-opacity',
+        'physics-aquarelle-feather-noise',
+      ]) {
+        expect(acrylicById(visible), `the Medium bar renders ${visible}`).toBeDefined();
       }
     } finally {
       applyAquarelleMedium('acrylic');

@@ -348,7 +348,9 @@ export const brushGroupOrder: readonly MediumId[] = Object.freeze([
  */
 export const brushGroupLabels: Readonly<Record<MediumId, string>> = Object.freeze({
   watercolor: 'Watercolor',
-  acrylic: 'Gouache',
+  // 2026-11-27 (artist's live ruling): the acrylic group reads "Medium" in
+  // the Studio — the same word as its dropdown name (D-18 stays true).
+  acrylic: 'Medium',
 });
 
 /** The preset's medium tag; an absent tag reads as the default medium. */
@@ -477,7 +479,9 @@ export const BRUSH_PRESETS: BrushPreset[] = [
    * stroke persists the response id and an unknown id replays as the round.
    * ------------------------------------------------------------------- */
   define({
-    id: 'bristle-round', name: 'Gouache', hint: 'Round acrylic brush with body: springy, loaded hairs',
+    // 2026-11-27 (artist's live ruling): the acrylic family reads "Medium" in
+    // the Studio — same word as the medium dropdown and the group header.
+    id: 'bristle-round', name: 'Medium', hint: 'Round acrylic brush with body: springy, loaded hairs',
     group: 'acrylic', pressureLink: 0, speedLink: 0,
     aspect: 0.7, rotation: 'follow',
     water: 0.06, load: 1.4, capacity: 1.6, grain: 0.15,

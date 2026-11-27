@@ -167,7 +167,7 @@ const EXPECTED_SECTION_IDS = [
   'watercolor-brush-section-acrylic',
 ]
 
-const EXPECTED_TITLES = ['Watercolor', 'Gouache']
+const EXPECTED_TITLES = ['Watercolor', 'Medium']
 
 // The classification table, restated as counts per section (quick 261124-tje:
 // the Gouache section holds Gouache + Pen).

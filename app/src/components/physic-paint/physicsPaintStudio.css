@@ -561,22 +561,13 @@ button.destructive {
 }
 
 /* I-11 follow-up / 261029-hy2 CR-02: hide the last optional watercolor knobs
-   as the settings area narrows. Order: Grain → Edges → Water; the primary
-   Pigment control (and Brush size) always stay. Thresholds follow the control
-   widths (140px + 10px gap at wide viewports, 115px + 8px below 1180px):
-   5 controls = 5 × 140 + 4 × 10 = 740 and 5 × 115 + 4 × 8 = 607;
-   4 = 590 / 484; 3 = 440 / 361. quick-261112: the action quartet (4 × 43px +
-   3 × 8px = 196px) plus its cluster gap now leads the same cluster, so every
-   threshold shifts by 206px (wide) / 204px (narrow) — 946/796/646 and
-   811/688/565. The right-pinned cluster overflows off the unscrollable START
-   edge, so the Water tier is what keeps the leading Brush size control
-   reachable below ~985px.
+   as the settings area narrows. Order: Edges → Water; the primary controls
+   (Brush size and the Medium bar's Pickup / Opacity / Feather noise) always
+   stay. 2026-11-27: the Grain tier left with its control (moved to the Paper
+   tab).
    These rules MUST follow .physics-paint-topbar-control's display:flex — the
    descendant selector keeps them winning at equal source order. */
 @media (min-width: 1181px) {
-  @container (max-width: 945px) {
-    .physics-paint-topbar-primary .physics-paint-topbar-optional-grain { display: none; }
-  }
   @container (max-width: 795px) {
     .physics-paint-topbar-primary .physics-paint-topbar-optional-edges { display: none; }
   }
@@ -586,9 +577,6 @@ button.destructive {
 }
 
 @media (max-width: 1180px) {
-  @container (max-width: 810px) {
-    .physics-paint-topbar-primary .physics-paint-topbar-optional-grain { display: none; }
-  }
   @container (max-width: 687px) {
     .physics-paint-topbar-primary .physics-paint-topbar-optional-edges { display: none; }
   }
@@ -1771,10 +1759,10 @@ button.destructive {
   padding-top: 2px;
 }
 
-/* 2026-11-27 (artist's UAT): the Light section opens with one gap under the
-   paper picker — the tab root is not a flex column, so the group's own gap
-   cannot reach the paper block above it. */
-.physics-paint-light-group {
+/* 2026-11-27 (artist's UAT): the Paper tab's trailing sections (Grain, Light)
+   open with one gap under the paper block — the tab root is not a flex
+   column, so the group's own gap cannot reach what sits above it. */
+.physics-paint-paper-section {
   margin-top: 15px;
 }
 

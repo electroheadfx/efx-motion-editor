@@ -15,7 +15,35 @@ import { DEFAULT_LIGHT } from '@efxlab/efx-watercolor';
 import type { LightSettings } from '@efxlab/efx-watercolor';
 import { SliderStepper } from '../../shared/SliderStepper';
 import { PaperPicker } from './PaperPicker';
+import { aquarelleParams, setAquarelleParam } from './aquarelleRecordState';
+import { commitAquarelleSelectionParam } from './aquarellePaintControls';
 import type { StudioBackgroundMode } from '../engine/physicsPaintStudioSettings';
+
+/**
+ * 2026-11-27 (artist's live ruling): the Grain control moved here from the
+ * Paint tab — the artist reads it as one global paint/paper knob, available
+ * under both media. It writes the SAME `granulation` key the medium records
+ * carry, so recorded strokes and Reset keep their meaning.
+ */
+function PaperGrainRow(props: { disabled?: boolean }) {
+  return (
+    <div class="physics-paint-option-row" data-testid="paper-grain-row">
+      <SliderStepper
+        label="Grain"
+        value={aquarelleParams.value.granulation}
+        onChange={(value) => setAquarelleParam('granulation', value)}
+        onCommit={(value) => {
+          void commitAquarelleSelectionParam('granulation', value);
+        }}
+        step={1}
+        min={0}
+        max={100}
+        ariaLabel="Grain"
+        disabled={props.disabled}
+      />
+    </div>
+  );
+}
 
 export function RightPanelPaperTab(props: {
   paperId?: string;
@@ -55,10 +83,15 @@ export function RightPanelPaperTab(props: {
         onGrainScaleChange={(scale) => props.onGrainScaleChange?.(scale)}
         disabled={props.disabled}
       />
+      {/* 2026-11-27 (artist's live ruling): the Grain row moved here from the
+          Paint tab — one global paint knob under the paper controls. */}
+      <div class="physics-paint-option-group physics-paint-paper-section" data-testid="right-panel-grain-group">
+        <PaperGrainRow disabled={props.disabled} />
+      </div>
       {/* 64-09 (D-06): the three light rows BELOW the grain pair — one option
           group, no second panel, no floating sheet. Each row is controlled by
           the document light and emits a ONE-FIELD patch upward. */}
-      <div class="physics-paint-option-group physics-paint-light-group" data-testid="right-panel-light-group">
+      <div class="physics-paint-option-group physics-paint-paper-section" data-testid="right-panel-light-group">
         <span class="physics-paint-right-label">Light</span>
         <div class="physics-paint-option-row">
           <SliderStepper

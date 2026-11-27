@@ -2,13 +2,14 @@
 //  AquarelleGlobalsPanel — the medium dropdown, the context-driven
 //  parameter groups + Reset. This is the Paint-tab content.
 //
-//  Phase 64 (D-01/D-07/D-22): the panel LEADS with the five-item
-//  medium dropdown, then the slider rows below it. quick 261122-gys:
+//  Phase 64 (D-01/D-07/D-22): the panel LEADS with the medium
+//  dropdown, then Reset, then the slider rows. quick 261122-gys:
 //  a pick binds a preset of the picked group AND applies the whole
 //  record in one move (pickAquarelleMedium), then closes — the
 //  label, the rows and the brush always describe the same medium,
 //  and the selected name is shown truthfully, with no "edited"
-//  marker.
+//  marker. 2026-11-27 (artist's live ruling): Reset always sits at
+//  the top, directly under the dropdown.
 //
 //  quick 261121-mtu: the flat twelve-row list is gone. The rows
 //  and their seven group headings come from ONE pure selector,
@@ -20,8 +21,9 @@
 //  fluid set, and the Eraser shows the Lift row alone. Group
 //  headings render only when non-empty, in the fixed order
 //  Medium · Paint & reservoir · Drying · Noise · Watercolor only ·
-//  Eraser (2026-11-27: the Transparency group is retired — one global
-//  Transparency row now sits in Paint & reservoir under Pickup).
+//  Relief · Eraser (2026-11-27: the Transparency group is retired — one
+//  global Transparency row now sits in Paint & reservoir under Pickup;
+//  Emboss closes the tab in the trailing Relief section).
 //
 //  Param keys stay water/load/flow/bleed/edge/granulation/dry/
 //  viscosity/body/feather/pickup/refill/emboss — `body` rides the
@@ -218,6 +220,21 @@ export function AquarelleGlobalsPanel() {
         </button>
       </div>
 
+      {/* 2026-11-27 (artist's live ruling): Reset always sits at the top of
+          the Paint tab, directly under the Medium dropdown. */}
+      <button
+        type="button"
+        data-testid="aquarelle-params-reset"
+        onClick={onReset}
+        class="physics-paint-text-button"
+        style={{
+          display: 'block',
+          width: '100%',
+        }}
+      >
+        Reset
+      </button>
+
       {menuOpen && menuAnchor !== null ? (
         <div
           ref={menuRef}
@@ -277,19 +294,6 @@ export function AquarelleGlobalsPanel() {
         </div>
       ))}
 
-      <button
-        type="button"
-        data-testid="aquarelle-params-reset"
-        onClick={onReset}
-        class="physics-paint-text-button"
-        style={{
-          display: 'block',
-          width: '100%',
-          marginTop: '8px',
-        }}
-      >
-        Reset
-      </button>
     </div>
   );
 }

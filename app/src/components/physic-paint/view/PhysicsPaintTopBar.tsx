@@ -46,9 +46,9 @@ import { isAquarelleParamRowVisible } from './aquarelleParamVisibility';
  *
  * 2026-11-27 (artist's live ruling): the top bar mirrors the Paint panel's
  * row law instead of a hand-rolled list. Pigment left the bar (it lives in
- * Paint & reservoir); Pickup and Opacity take its seat for the Gouache
- * context, and the watercolor-only Edges / Grain knobs now disappear with
- * their panel rows instead of staying as dead controls.
+ * Paint & reservoir); Pickup, Opacity and Feather noise take its seat for the
+ * Medium context, and the watercolor-only Edges / Grain knobs now disappear
+ * with their panel rows instead of staying as dead controls.
  *
  * 261018-f15 C1: Water / Edges / Grain follow the primary control in Water
  * color mode and write setAquarelleParam('water' | 'edge' | 'granulation') —
@@ -467,14 +467,14 @@ export function PhysicsPaintTopBar({
     activeTool === 'brush' || activeTool === 'watercolor' || activeTool === 'lift';
   // 2026-11-27 (artist's live ruling): EVERY top-bar paint knob is gated by
   // the SAME row law the Paint panel renders, so a row the panel hides can
-  // never keep a dead top-bar slider alive. For Gouache that means Water,
-  // Edges and Grain (all absent from its panel) leave the bar, while Pickup
-  // and Opacity take the retired Pigment seat.
+  // never keep a dead top-bar slider alive. For the Medium (acrylic) context
+  // that means Water, Edges and Grain leave the bar, while Pickup, Opacity
+  // and Feather noise take the retired Pigment seat.
   const waterRowVisible = isAquarelleParamRowVisible(activeTool, selectedMediumId, 'water');
   const pickupRowVisible = isAquarelleParamRowVisible(activeTool, selectedMediumId, 'pickup');
   const opacityRowVisible = isAquarelleParamRowVisible(activeTool, selectedMediumId, 'edgeFade');
+  const featherNoiseRowVisible = isAquarelleParamRowVisible(activeTool, selectedMediumId, 'featherNoise');
   const edgesRowVisible = isAquarelleParamRowVisible(activeTool, selectedMediumId, 'edge');
-  const grainRowVisible = isAquarelleParamRowVisible(activeTool, selectedMediumId, 'granulation');
 
   return (
     <header class="physics-paint-topbar" aria-label="Physics Paint controls">
@@ -610,10 +610,10 @@ export function PhysicsPaintTopBar({
               disabled={disabled}
             />
             {/* 2026-11-27 (artist's live ruling): Pigment stays in Paint &
-                reservoir — the Gouache bar carries its two bristle knobs
-                instead. Pickup is the carrier/gather rate; Opacity is the
-                `edgeFade` key rendered inverted (the stored key is
-                transparency, 0 = opaque). */}
+                reservoir — the Medium bar carries its bristle knobs instead.
+                Pickup is the carrier/gather rate; Opacity is the `edgeFade`
+                key rendered inverted (the stored key is transparency, 0 =
+                opaque); Feather noise is the edge break-up amplitude. */}
             {pickupRowVisible && (
               <TopBarSlider
                 id="physics-aquarelle-pickup"
@@ -638,6 +638,20 @@ export function PhysicsPaintTopBar({
                 onChange={(value) => setAquarelleParam('edgeFade', 100 - value)}
                 onCommit={(value) => {
                   void commitAquarelleSelectionParam('edgeFade', 100 - value);
+                }}
+                disabled={disabled}
+              />
+            )}
+            {featherNoiseRowVisible && (
+              <TopBarSlider
+                id="physics-aquarelle-feather-noise"
+                label="Feather noise"
+                min={0}
+                max={100}
+                value={aquarelleParams.value.featherNoise}
+                onChange={(value) => setAquarelleParam('featherNoise', value)}
+                onCommit={(value) => {
+                  void commitAquarelleSelectionParam('featherNoise', value);
                 }}
                 disabled={disabled}
               />
@@ -670,21 +684,6 @@ export function PhysicsPaintTopBar({
                 }}
                 disabled={disabled}
                 class="physics-paint-topbar-optional-edges"
-              />
-            )}
-            {grainRowVisible && (
-              <TopBarSlider
-                id="physics-aquarelle-grain"
-                label="Grain"
-                min={0}
-                max={100}
-                value={aquarelleParams.value.granulation}
-                onChange={(value) => setAquarelleParam('granulation', value)}
-                onCommit={(value) => {
-                  void commitAquarelleSelectionParam('granulation', value);
-                }}
-                disabled={disabled}
-                class="physics-paint-topbar-optional-grain"
               />
             )}
           </>

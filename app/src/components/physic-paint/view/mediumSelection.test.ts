@@ -309,7 +309,7 @@ describe('applyAquarelleMedium', () => {
     // quick 261124-iq9: the acrylic record is DISPLAYED as Gouache; Body 100
     // keeps the visible cover (any Body above 0 takes the coverage composite).
     expect(aquarelleParams.value.body).toBe(100);
-    expect(aquarelleParams.value.emboss).toBe(3);
+    expect(aquarelleParams.value.emboss).toBe(0);
     // 64-22 / Spec 10 / Spec 11: all eighteen medium keys land in the one write.
     expect(aquarelleParams.value.feather).toBe(85);
     expect(aquarelleParams.value.pickup).toBe(100);

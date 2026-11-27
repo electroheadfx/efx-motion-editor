@@ -36,10 +36,11 @@
 //  neither appears in `AQUARELLE_PARAM_ROWS` by design.
 //
 //  2026-11-27 (artist's live ruling): Emboss returns to the UI as a
-//  0..4 test band — the display relief is lit again, and the artist
-//  is re-judging a low-value impasto on the Gouache medium. The
-//  signed band's negative half is retired from the ROW; the engine
-//  still honours a negative recorded emboss.
+//  0..5 test band in a trailing Relief section; the display relief is
+//  lit again and the Medium record defaults it to 0. The signed band's
+//  negative half is retired from the ROW; the engine still honours a
+//  negative recorded emboss. The Grain row's control moved to the Paper
+//  tab, so the row is hidden here (the key keeps its Reset/persistence).
 // ============================================================
 
 import { DEFAULT_MEDIUM_ID, type MediumId } from '@efxlab/efx-watercolor';
@@ -52,6 +53,7 @@ export type AquarelleParamGroupId =
   | 'drying'
   | 'noise'
   | 'watercolor'
+  | 'relief'
   | 'eraser';
 
 export interface AquarelleParamGroup {
@@ -77,9 +79,10 @@ export interface AquarelleParamRow {
   readonly hiddenForMedia?: readonly MediumId[];
   /**
    * Hidden in EVERY context, for every medium. Used while a row's feature is
-   * gated off: the row stays in the list (and keeps its band) so the medium
-   * record, the Reset key set and the persistence keep working, but no panel
-   * renders it. See the Feather row.
+   * gated off or its control lives elsewhere: the row stays in the list (and
+   * keeps its band) so the medium record, the Reset key set and the
+   * persistence keep working, but no panel renders it. See the Feather and
+   * Grain rows.
    */
   readonly hidden?: boolean;
   /**
@@ -105,13 +108,17 @@ export interface VisibleAquarelleParamGroup {
  *  contrasting under. The surviving transparency is ONE global amount
  *  (`edgeFade`, relabelled Transparency) and lives in Paint & reservoir under
  *  Pickup; its falloff row is gone with the lateral law. `noise` keeps the
- *  break-up pair (Feather noise / Feather falloff, Spec 11). */
+ *  break-up pair (Feather noise / Feather falloff, Spec 11). `relief` is the
+ *  trailing Emboss section (2026-11-27). */
 export const AQUARELLE_PARAM_GROUPS: readonly AquarelleParamGroup[] = Object.freeze([
   Object.freeze({ id: 'medium', label: 'Medium' }),
   Object.freeze({ id: 'paint', label: 'Paint & reservoir' }),
   Object.freeze({ id: 'drying', label: 'Drying' }),
   Object.freeze({ id: 'noise', label: 'Noise' }),
   Object.freeze({ id: 'watercolor', label: 'Watercolor only' }),
+  // 2026-11-27 (artist's live ruling): Emboss moves to its own trailing
+  // section — the Paint tab ends with the relief setup.
+  Object.freeze({ id: 'relief', label: 'Relief' }),
   Object.freeze({ id: 'eraser', label: 'Eraser' }),
 ]);
 
@@ -119,12 +126,12 @@ export const AQUARELLE_PARAM_GROUPS: readonly AquarelleParamGroup[] = Object.fre
  *  row's band is capped here — this is the ONE home of the cap (the
  *  panel only forwards `row.max`).
  *  2026-11-27 (artist's live ruling): the row is back for a low-value
- *  test — 0..4. Above 4 the first-order relief shade reads too hard, so
- *  the test band stops there; the engine still honours a negative
- *  recorded emboss (the row no longer offers one). This pair is the ONE
- *  home of the band (the panel only forwards `row.min/max`). */
+ *  test — 0..5 — in the trailing Relief section, and the Medium record
+ *  defaults it to 0. The engine still honours a negative recorded
+ *  emboss (the row no longer offers one). This pair is the ONE home of
+ *  the band (the panel only forwards `row.min/max`). */
 const EMBOSS_MIN = 0;
-const EMBOSS_MAX = 4;
+const EMBOSS_MAX = 5;
 
 const WATERCOLOR_ONLY: readonly MediumId[] = Object.freeze(['watercolor']);
 /** The only bristle medium — Feather is the bristle band's width (spec §3). */
@@ -160,11 +167,6 @@ export const AQUARELLE_PARAM_ROWS: readonly AquarelleParamRow[] = Object.freeze(
     hiddenForMedia: ACRYLIC_HIDDEN,
     water: true,
   }),
-  // 2026-11-27 (artist's live ruling): re-enabled as a 0..4 test band. The
-  // display relief was gated off on 2026-11-23 (the first-order heightmap
-  // shade turns to speckle as strokes accumulate); it is lit again for this
-  // test, and the low band keeps the shade subtle. See RELIEF_BUMP.
-  Object.freeze({ key: 'emboss', label: 'Emboss', group: 'medium', min: EMBOSS_MIN, max: EMBOSS_MAX, paint: 'all' }),
   Object.freeze({ key: 'load', label: 'Pigment', group: 'paint', paint: 'all' }),
   Object.freeze({
     key: 'pickup',
@@ -217,13 +219,24 @@ export const AQUARELLE_PARAM_ROWS: readonly AquarelleParamRow[] = Object.freeze(
   Object.freeze({ key: 'flow', label: 'Flow', group: 'watercolor', paint: WATERCOLOR_ONLY, water: true }),
   Object.freeze({ key: 'bleed', label: 'Bleed', group: 'watercolor', paint: WATERCOLOR_ONLY, water: true }),
   Object.freeze({ key: 'edge', label: 'Edges', group: 'watercolor', paint: WATERCOLOR_ONLY, water: true }),
+  // 2026-11-27 (artist's live ruling): the Grain control moves to the Paper
+  // tab (it is a global paint/paper knob to the artist, available under every
+  // medium). The ROW stays in the table — hidden in every context — so the
+  // medium record, the Reset key set, the per-stroke bag and the persistence
+  // keep their shape (the Feather precedent).
   Object.freeze({
     key: 'granulation',
     label: 'Grain',
     group: 'watercolor',
     paint: WATERCOLOR_ONLY,
     water: true,
+    hidden: true,
   }),
+  // 2026-11-27 (artist's live ruling): the Emboss setup closes the Paint tab —
+  // its own trailing Relief section, tested at 0..5. The display relief was
+  // gated off on 2026-11-23 (the first-order heightmap shade turns to speckle
+  // as strokes accumulate); it is lit again for this test. See RELIEF_BUMP.
+  Object.freeze({ key: 'emboss', label: 'Emboss', group: 'relief', min: EMBOSS_MIN, max: EMBOSS_MAX, paint: 'all' }),
   Object.freeze({ key: 'lift', label: 'Lift', group: 'eraser', lift: true }),
 ]);
 
@@ -238,10 +251,10 @@ export function visibleAquarelleParamRows(
   mediumId: MediumId | null,
 ): AquarelleParamRow[] {
   if (tool === 'lift') {
-    return AQUARELLE_PARAM_ROWS.filter((row) => row.lift === true);
+    return AQUARELLE_PARAM_ROWS.filter((row) => row.lift === true && row.hidden !== true);
   }
   if (tool === 'water') {
-    return AQUARELLE_PARAM_ROWS.filter((row) => row.water === true);
+    return AQUARELLE_PARAM_ROWS.filter((row) => row.water === true && row.hidden !== true);
   }
   const medium = mediumId ?? DEFAULT_MEDIUM_ID;
   return AQUARELLE_PARAM_ROWS.filter((row) => {

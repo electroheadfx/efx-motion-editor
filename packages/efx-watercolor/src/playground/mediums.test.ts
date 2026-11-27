@@ -51,7 +51,7 @@ describe('medium records', () => {
   })
 
   it('names each medium with the D-18 short label', () => {
-    expect(MEDIUMS.map((medium) => medium.name)).toEqual(['Watercolor', 'Gouache'])
+    expect(MEDIUMS.map((medium) => medium.name)).toEqual(['Watercolor', 'Medium'])
   })
 
   // quick 261124-iq9: the gouache, pastel (Chalk) and graphite media are
@@ -114,10 +114,10 @@ describe('medium records', () => {
       viscosity: 90,
       // 2026-11-21 (artist's acrylic brush default, quick 261121-mtu): the
       // mixing bag a bristle acrylic pick must start from — Feather 85 (a
-      // soft-but-defined edge; 100 smeared the mark's silhouette) and Emboss
-      // 3 (a light relief pass; the row caps at 15).
+      // soft-but-defined edge; 100 smeared the mark's silhouette).
+      // 2026-11-27 (artist's live ruling): Emboss defaults to 0.
       body: 100,
-      emboss: 3,
+      emboss: 0,
       feather: 85,
       pickup: 100,
       refill: 0,
@@ -152,13 +152,13 @@ describe('medium records', () => {
     expect(acrylic.granulation).toBe(25)
     expect(acrylic.viscosity).toBe(90)
     // 2026-11-21 (artist's acrylic brush default, quick 261121-mtu): the five
-    // mixing knobs ride the brush pick — full Body, full Pickup, no Refill,
-    // Feather 85 (soft-but-defined edge: 100 smeared the silhouette) and
-    // Emboss 3 (a light relief pass; the row caps at 15). No new `feather`
-    // expression is added: D-22's Feather half is discharged by composition
-    // through the existing softness band (D-25).
+    // mixing knobs ride the brush pick — full Body, full Pickup, no Refill and
+    // Feather 85 (soft-but-defined edge: 100 smeared the silhouette). No new
+    // `feather` expression is added: D-22's Feather half is discharged by
+    // composition through the existing softness band (D-25).
+    // 2026-11-27 (artist's live ruling): Emboss defaults to 0.
     expect(acrylic.body).toBe(100)
-    expect(acrylic.emboss).toBe(3)
+    expect(acrylic.emboss).toBe(0)
     expect(acrylic.pickup).toBe(100)
     expect(acrylic.refill).toBe(0)
     expect(acrylic.feather).toBe(85)

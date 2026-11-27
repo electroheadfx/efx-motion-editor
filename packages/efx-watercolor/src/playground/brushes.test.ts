@@ -134,11 +134,11 @@ interface NewPresetSpec {
 }
 
 // The two acrylic responses, restated verbatim (quick 261124-iq9: the display
-// name becomes Gouache, its id and every parameter stay shipped; quick
+// name becomes Medium, its id and every parameter stay shipped; quick
 // 261124-tje appends the Pen).
 const NEW_PRESETS: Record<string, NewPresetSpec> = {
   'bristle-round': {
-    name: 'Gouache',
+    name: 'Medium',
     group: 'acrylic',
     overrides: {
       aspect: 0.7,
@@ -181,7 +181,7 @@ describe('brush group order and labels', () => {
   it('maps each group to the D-18 short header name', () => {
     expect({ ...groupLabels() }).toEqual({
       watercolor: 'Watercolor',
-      acrylic: 'Gouache',
+      acrylic: 'Medium',
     })
   })
 

@@ -462,7 +462,7 @@ describe('WatercolorBrushLibrary brush-card grid (I-03, 261027-gh9)', () => {
     const titles = sectionNodes(renderLibrary()).map((section) =>
       textContent(childrenOf(section)[0]),
     );
-    expect(titles).toEqual(['Watercolor', 'Gouache']);
+    expect(titles).toEqual(['Watercolor', 'Medium']);
   });
 
   it('exposes the library root testid on a 2-column grid', () => {
