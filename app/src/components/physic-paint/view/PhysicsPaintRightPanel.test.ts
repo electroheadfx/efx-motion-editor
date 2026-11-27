@@ -126,6 +126,7 @@ vi.mock('lucide-preact', () => {
     AudioWaveform: Icon,
     Paintbrush: Icon,
     Droplet: Icon,
+    Droplets: Icon,
     Pen: Icon,
     Eraser: Icon,
     Plus: Icon,

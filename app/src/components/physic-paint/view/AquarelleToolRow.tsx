@@ -9,7 +9,7 @@
 //  (the lift-contract source pin checks both).
 // ============================================================
 
-import { Droplet, Eraser, Paintbrush, Pen, WavesArrowDown } from 'lucide-preact';
+import { Droplet, Droplets, Eraser, Paintbrush, Pen } from 'lucide-preact';
 import type { ComponentChildren } from 'preact';
 import {
   aquarelleActiveTool,
@@ -27,8 +27,10 @@ const TOOLS: ReadonlyArray<{
 }> = Object.freeze([
   // 2026-11-27 (artist's live ruling): the tool reads "Medium" (B unchanged).
   { id: 'brush', label: 'Medium', shortcut: 'B', Icon: Paintbrush },
-  { id: 'watercolor', label: 'Watercolor', shortcut: 'A', Icon: Droplet },
-  { id: 'water', label: 'Water', shortcut: 'W', Icon: WavesArrowDown },
+  // 2026-11-27 (artist's live ruling): Watercolor wears the double droplet;
+  // Water takes the single Droplet.
+  { id: 'watercolor', label: 'Watercolor', shortcut: 'A', Icon: Droplets },
+  { id: 'water', label: 'Water', shortcut: 'W', Icon: Droplet },
   { id: 'pen', label: 'Pen', shortcut: 'P', Icon: Pen },
   { id: 'lift', label: 'Eraser', shortcut: 'E', Icon: Eraser },
 ]);

@@ -41,12 +41,11 @@ vi.mock('lucide-preact', () => {
   return {
     Paintbrush: Icon,
     Droplet: Icon,
+    Droplets: Icon,
     Pen: Icon,
     Eraser: Icon,
     Plus: Icon,
     FolderOpen: Icon,
-    // quick 261121-mtu: Water now wears WavesArrowDown; Watercolor wears Droplet.
-    WavesArrowDown: Icon,
   };
 });
 

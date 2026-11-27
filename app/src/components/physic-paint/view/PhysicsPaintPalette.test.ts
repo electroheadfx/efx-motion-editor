@@ -100,6 +100,7 @@ vi.mock('lucide-preact', () => {
     X: Icon,
     Paintbrush: Icon,
     Droplet: Icon,
+    Droplets: Icon,
     Pen: Icon,
     Eraser: Icon,
     Plus: Icon,

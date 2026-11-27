@@ -41,6 +41,7 @@ vi.mock('lucide-preact', () => {
   });
   return {
     Droplet: Icon,
+    Droplets: Icon,
     Eraser: Icon,
     Paintbrush: Icon,
     Pen: Icon,
@@ -49,7 +50,6 @@ vi.mock('lucide-preact', () => {
     RefreshCcwDot: Icon,
     Scan: Icon,
     VectorSquare: Icon,
-    WavesArrowDown: Icon,
     Wind: Icon,
   };
 });

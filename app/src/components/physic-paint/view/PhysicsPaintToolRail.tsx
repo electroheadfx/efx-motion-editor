@@ -1,6 +1,6 @@
 import { memo } from 'preact/compat';
 import type { ReadonlySignal } from '@preact/signals';
-import { Droplet, Eraser, Paintbrush, Pen, PenTool, Pipette, Scan, VectorSquare, WavesArrowDown } from 'lucide-preact';
+import { Droplet, Droplets, Eraser, Paintbrush, Pen, PenTool, Pipette, Scan, VectorSquare } from 'lucide-preact';
 import type { ComponentChildren } from 'preact';
 import moveToolIcon from '../../../assets/physics-paint-ui/icons/move-tool.svg';
 import clearCanvasIcon from '../../../assets/physics-paint-ui/icons/clear-canvas-pencil.svg';
@@ -52,9 +52,10 @@ const VECTOR_PEN_TOOLTIP =
 
 /**
  * UI checklist rows 8/9: Water color rail = Brush | Watercolor | Water | Pen |
- * Eraser (quick 261121-mtu added the Watercolor paint tool — Droplet moved to
- * it; Water now wears WavesArrowDown). quick-261112: the Flash-dry action
- * left for the top-bar action cluster.
+ * Eraser (quick 261121-mtu added the Watercolor paint tool; 2026-11-27 the
+ * artist's live ruling gave Watercolor the double Droplets and Water the
+ * single Droplet). quick-261112: the Flash-dry action left for the top-bar
+ * action cluster.
  */
 const WATERCOLOR_RAIL_TOOLS: ReadonlyArray<{
   id: AquarelleTool;
@@ -65,8 +66,8 @@ const WATERCOLOR_RAIL_TOOLS: ReadonlyArray<{
   // 2026-11-27 (artist's live ruling): the tool reads "Medium" (the
   // acrylic/brush family); the B shortcut is unchanged.
   { id: 'brush', label: 'Medium', shortcut: 'B', Icon: Paintbrush },
-  { id: 'watercolor', label: 'Watercolor', shortcut: 'A', Icon: Droplet },
-  { id: 'water', label: 'Water', shortcut: 'W', Icon: WavesArrowDown },
+  { id: 'watercolor', label: 'Watercolor', shortcut: 'A', Icon: Droplets },
+  { id: 'water', label: 'Water', shortcut: 'W', Icon: Droplet },
   { id: 'pen', label: 'Pen', shortcut: 'P', Icon: Pen },
   { id: 'lift', label: 'Eraser', shortcut: 'E', Icon: Eraser },
 ]);
