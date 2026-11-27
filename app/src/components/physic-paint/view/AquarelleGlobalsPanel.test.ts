@@ -8,7 +8,7 @@
  *   quick 261122-gys: a dropdown pick binds a preset of the picked group —
  *   the in-group tip is kept, else the family's last pick, else the group's
  *   first (acrylic falls back to Bristle Round)
- *   quick 261121-mtu: the panel renders the six context groups from the ONE
+ *   quick 261121-mtu: the panel renders the seven context groups from the ONE
  *   pure selector (`aquarelleParamVisibility.ts`, spec §8), driven by the
  *   active TOOL plus the selected MEDIUM. Default context (Brush + Watercolor)
  *   is ten rows in the order Viscosity, Emboss, Pigment, Pickup, Water,
@@ -892,13 +892,14 @@ describe('tool x medium context rows (quick 261121-mtu)', () => {
   it('Gouache (the acrylic record) shows its bristle rows only', () => {
     applyAquarelleMedium('acrylic');
     const labels = renderedSliders();
-    // Spec 10 / Spec 11: the four edge knobs join the bristle context, after
-    // Feather — the grain pair follows the edge pair in the same group.
+    // quick 261127-jox: the bristle Edge group split into Transparency (the
+    // lateral pair, Spec 10) and Noise (the break-up pair, Spec 11); the
+    // legacy Feather amplitude row is hidden in every context — the
+    // featherNoise re-index owns the same raggedness.
     expect(labels).toEqual([
       'Pigment',
       'Pickup',
       'Dry speed',
-      'Feather',
       'Edge transparency',
       'Edge falloff',
       'Feather noise',
@@ -906,8 +907,38 @@ describe('tool x medium context rows (quick 261121-mtu)', () => {
     ]);
     // quick 261124-iq9: Viscosity and Water are hidden for the Gouache paint
     // context; Refill and every fluid-only row stay off the bristle path too.
-    for (const absent of ['Viscosity', 'Refill', 'Water', 'Flow', 'Bleed', 'Edges', 'Grain']) {
+    // quick 261127-jox: the exact 'Feather' label must not render.
+    for (const absent of [
+      'Viscosity',
+      'Refill',
+      'Water',
+      'Flow',
+      'Bleed',
+      'Edges',
+      'Grain',
+      'Feather',
+    ]) {
       expect(labels.includes(absent), `${absent} is absent for Gouache`).toBe(false);
+    }
+  });
+
+  // quick 261127-jox: the Gouache panel renders its bristle knobs as TWO
+  // labelled sections — Transparency then Noise — in the fixed group order
+  // (the exact-list assertion also forbids any extra group heading).
+  it('renders the Gouache headings as paint, drying, transparency, noise', () => {
+    applyAquarelleMedium('acrylic');
+    const tree = renderPanel();
+    const groups = [...walk(tree)].filter((node) => {
+      const id = node.props?.['data-testid'];
+      return typeof id === 'string' && id.startsWith('aquarelle-param-group-');
+    });
+    expect(groups.map((group) => group.props?.['data-testid']).join('|')).toBe(
+      'aquarelle-param-group-paint|aquarelle-param-group-drying|aquarelle-param-group-transparency|aquarelle-param-group-noise',
+    );
+    const headings = ['Paint & reservoir', 'Drying', 'Transparency', 'Noise'];
+    const texts = groups.map((group) => textContent(group));
+    for (let i = 0; i < headings.length; i += 1) {
+      expect(texts[i]!.startsWith(headings[i]!), `heading ${headings[i]}`).toBe(true);
     }
   });
 

@@ -11,7 +11,7 @@
 //  marker.
 //
 //  quick 261121-mtu: the flat twelve-row list is gone. The rows
-//  and their six group headings come from ONE pure selector,
+//  and their seven group headings come from ONE pure selector,
 //  `visibleAquarelleParamGroups(activeTool, selectedMediumId)`
 //  (`aquarelleParamVisibility.ts`, spec §8). The law is the
 //  ACTIVE TOOL plus the ACTIVE MEDIUM, never the tool alone:
@@ -19,8 +19,9 @@
 //  acrylic AND watercolor — decision B), the Water tool shows its
 //  fluid set, and the Eraser shows the Lift row alone. Group
 //  headings render only when non-empty, in the fixed order
-//  Medium · Paint & reservoir · Drying · Edge · Watercolor only ·
-//  Eraser.
+//  Medium · Paint & reservoir · Drying · Transparency · Noise ·
+//  Watercolor only · Eraser (quick 261127-jox split the bristle
+//  Edge group into Transparency and Noise).
 //
 //  Param keys stay water/load/flow/bleed/edge/granulation/dry/
 //  viscosity/body/feather/pickup/refill/emboss — `body` rides the
