@@ -4,10 +4,10 @@ milestone: v2.2.0
 current_phase: 64
 status: completed
 stopped_at: Phase 64 complete — all phases complete
-last_updated: "2026-11-27T20:04:27.036Z"
+last_updated: "2026-11-27T20:10:53.082Z"
 last_activity: 2026-11-27
 last_activity_desc: Quick 261127-khp MEASURED NEGATIVE — pickup-under stripes are a ~23 px band, not 1-3 px; probe scene delivered, no law shipped
-state_head: f063e81823d1b26e96181fc50cdc67c5176b7fcd
+state_head: cd3bf96c92df1a44904c6f4918475a65e1c1a881
 progress:
   total_phases: 2
   completed_phases: 2
@@ -732,6 +732,7 @@ Items acknowledged and carried forward from previous milestone close:
 | 70 | Studio paint: Emboss on the top bar (0-5); Paint tab order Reset → dropdown → Brush size → Grain → groups; Grain back from Paper tab under every medium; paint tool reads Medium (B unchanged) (UAT approved 2026-11-27) | 2026-11-27 | 01c6f2e37 | — |
 | 71 | Studio Watercolor icon: droplet outlined (no fill) and a bit smaller | 2026-11-27 | 9d7304b54 | — |
 | 72 | Studio top bar + Paint tab: Emboss is Medium-only (watercolor no longer renders it); Pigment takes the freed top-bar seat in Watercolor mode | 2026-11-27 | f063e8182 | — |
+| 73 | Studio top bar: Undo/Redo grouped into one segmented button; Brush size slider grows into free width (480px cap); every slider/stepper value selects its text on focus so typing replaces it | 2026-11-27 | cd3bf96c9 | — |
 
 ## Roadmap Evolution
 
