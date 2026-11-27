@@ -115,11 +115,12 @@ export interface AquarelleGlobalParams {
    */
   wetSeconds: number;
   /**
-   * Spec 10 (Edge transparency / Edge falloff): the per-stroke translucent
-   * layer's two knobs, 0..100. `edgeFade` 0 is neutral — the shipped opaque
-   * edge, and amount 0 bypasses the layer entirely; the falloff bias shapes
-   * the fade (0 broad / 50 linear / 100 rim) and is inert at amount 0. Both
-   * ride the record loop and the selection write allowlist.
+   * 2026-11-27 (artist's live ruling): `edgeFade` is now ONE GLOBAL
+   * transparency for the per-stroke translucent layer, 0..100 — 0 is the
+   * shipped opaque path (the layer is bypassed), 100 is fully transparent.
+   * The lateral fade and its `edgeFalloff` shape bias are retired; the key
+   * remains in the record loop and the selection write allowlist so the
+   * schema and Reset keep their shape.
    */
   edgeFade: number;
   edgeFalloff: number;

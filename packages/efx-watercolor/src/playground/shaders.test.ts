@@ -106,9 +106,9 @@ describe('coverage composite shaders (SPIKE 001)', () => {
 //  261125-kvl (SPIKE 006) — the per-stroke stroke layer.
 //
 //  The layer's law is ONE component-wise coefficient mix:
-//    A_eff = lateralWeight(u, amount, b)·cover_L;  film_out = mix(film_S, film_L, A_eff)
-//  where `lateralWeight` is the ONE shared GLSL function (261126): u = 0 on
-//  the centre line, u = 1 at the visual edge, no interior plateau.
+//    A_eff = lateralWeight(amount)·cover_L;  film_out = mix(film_S, film_L, A_eff)
+//  where `lateralWeight` is the ONE shared GLSL function — 2026-11-27: ONE
+//  global transparency, uniform over the stroke (the lateral fade retired).
 //  The retired encoder mixed display-reflectance bands and refit the sheet's
 //  coefficients with a Levenberg-Marquardt solve; it is gone, with its band
 //  table, its pre-blur and its granulation division. The shipped compositor
@@ -164,11 +164,11 @@ describe('stroke layer shaders (261125-kvl, SPIKE 006)', () => {
       const pin = (needle: string) =>
         expect(src!.includes(needle), `${name} is missing shader text: ${needle}`).toBe(true)
       pin('float layerAEff(vec2 uv){')
-      // The ONE shared weight, verbatim (261126): no plateau, no uEdgeStart.
-      pin('float lateralWeight(float u, float amount, float falloff){')
-      pin('float e = exp2(2.0 * falloff - 1.0);')
-      pin('return 1.0 - amount * pow(clamp(u, 0.0, 1.0), e);')
-      pin('return clamp(lateralWeight(u, uEdgeFade, uEdgeFalloff) * coverL, 0.0, 1.0);')
+      // The ONE shared weight: the global transparency (2026-11-27 — the
+      // lateral fade and its falloff are retired).
+      pin('float lateralWeight(float amount){')
+      pin('return 1.0 - clamp(amount, 0.0, 1.0);')
+      pin('return clamp(lateralWeight(uEdgeFade) * coverL, 0.0, 1.0);')
     }
     // ONE declaration of the weight in the module, and every program that
     // APPLIES the law carries that exact snippet — the live display variant
@@ -215,12 +215,10 @@ describe('stroke layer shaders (261125-kvl, SPIKE 006)', () => {
       expect(displayLayerFS.includes(needle), `displayLayerFS is missing shader text: ${needle}`).toBe(true)
     pin('uniform sampler2D uLayerA, uLayerB;')
     pin('uniform sampler2D uLayerCover;')
-    pin('uniform sampler2D uLayerLateral;')
     pin('uniform sampler2D uLayerRelief;')
-    pin('uniform float uEdgeFade, uEdgeFalloff;')
-    // The frozen lateral law, through the SAME shared function the merge uses.
-    pin('float layerU = texture(uLayerLateral, uv).x;')
-    pin('layerAeff = clamp(lateralWeight(layerU, uEdgeFade, uEdgeFalloff) * layerCover, 0.0, 1.0);')
+    pin('uniform float uEdgeFade;')
+    // The global law, through the SAME shared function the merge uses.
+    pin('layerAeff = clamp(lateralWeight(uEdgeFade) * layerCover, 0.0, 1.0);')
     // THE live law: the same coefficient mix the merge commits, applied to
     // the display's own film states (blur, then k) BEFORE the reconstruction.
     pin('a = mix(a, layerInk, layerAeff);')

@@ -7593,16 +7593,12 @@ export function PhysicsPaintStudio() {
     onKeyDown: handlePhysicsPaintKeyDown,
     onSetRightPanelCollapsed: handleSetRightPanelCollapsed,
   }));
-  // 261018-f15 C2 / 261027-klx: ONE write-through pair for Brush size +
-  // Pigment — the top bar and the Paint-tab duplicate both call these routers.
-  // Water color is the only module, so each writes its aquarelle param.
+  // 261018-f15 C2 / 261027-klx: the Brush size write-through router — the top
+  // bar and the Paint-tab control both write the aquarelle param.
   const handleBrushSizeChange = useCallback((value: number) => {
     setAquarelleParam('size', value);
   }, []);
-  const handleOpacityChange = useCallback((value: number) => {
-    setAquarelleParam('load', value);
-  }, []);
-  const topBar = topBarPropsMemo.resolve([settings.size, settings.opacity, readyToApply, staticControlsLocked, handleBrushSizeChange, handleOpacityChange, watercolorMoveAvailable, historyAvailability, undo, redo, rebakeScriptAvailable, handleRebakeScript], () => ({
+  const topBar = topBarPropsMemo.resolve([settings.size, settings.opacity, readyToApply, staticControlsLocked, handleBrushSizeChange, watercolorMoveAvailable, historyAvailability, undo, redo, rebakeScriptAvailable, handleRebakeScript], () => ({
     brushSize: settings.size,
     opacity: settings.opacity,
     ready: readyToApply,
@@ -7611,10 +7607,8 @@ export function PhysicsPaintStudio() {
     // top-bar Brush size drives aquarelleParams.size; in Brush mode it stays
     // on settings.size.
     onBrushSizeChange: handleBrushSizeChange,
-    // 261017-w4x I-05 (Q3): Opacity is top-bar only for every paint mode. Same
-    // call-time module router as Brush size — watercolor drives
-    // aquarelleParams.load (Pigment); Brush mode drives settings.opacity.
-    onOpacityChange: handleOpacityChange,
+    // 2026-11-27 (artist's live ruling): Pigment left the top bar — the bar's
+    // own Pickup / Opacity sliders write the aquarelle params directly.
     // 261029-eur: the Eraser Edit switch's enable gate (current edit frame).
     // Signal object passed by IDENTITY — the top-bar leaf reads `.value`.
     moveAvailable: watercolorMoveAvailable,

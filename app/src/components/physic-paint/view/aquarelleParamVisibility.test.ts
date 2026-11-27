@@ -15,8 +15,8 @@
  *     medium (the paint-context law never reaches its fluid set)
  *   Refill (decision B): ABSENT for acrylic (record fixes 0) and for
  *     watercolor (the engine reads refill only in the bristle carrier)
- *   `body` and `wetSeconds` never have a row; Emboss is the ONE signed
- *     row (-15..15, quick 261123-hr5) — every other row keeps 0..100
+ *   `body` and `wetSeconds` never have a row; Emboss is the ONE banded
+ *     row (0..4, 2026-11-27 low-value test) — every other row keeps 0..100
  *   the module is pure data: no Preact, no signals, no DOM
  *
  * Assertion style: scalar predicates (joined key lists) so TAP diagnostics
@@ -41,21 +41,21 @@ const PAINT_TOOLS: readonly AquarelleTool[] = ['brush', 'watercolor', 'pen'];
 /** The two medium ids in the engine's fixed order. */
 const MEDIA = ['watercolor', 'acrylic'] as const;
 
-// 2026-11-23: Emboss is gated off — hidden in every context until a new
-// display renderer replaces the first-order heightmap shade (see RELIEF_BUMP).
-// The ROW survives in AQUARELLE_PARAM_ROWS; only its visibility went.
+// 2026-11-27 (artist's live ruling): Emboss returns to the UI at 0..4 — the
+// display relief is lit again for a low-value test, so the row leads the
+// Medium group in both paint contexts.
 // quick 261124-iq9: Viscosity and Water leave the Gouache (acrylic) context,
-// and Pickup/Refill leave it too (bristle-program keys), leaving four rows.
-// Spec 10: Edge transparency and Edge falloff join the bristle context.
-// Spec 11: Feather noise and Feather falloff follow them.
-// quick 261127-jox: the legacy Feather row is hidden in every context (the
-// featherNoise re-index owns the same raggedness), so the Gouache paint
-// context renders seven rows.
-const P_A = 'load|pickup|dry|edgeFade|edgeFalloff|featherNoise|featherFalloff';
+// and Pickup/Refill leave it too (bristle-program keys).
+// 2026-11-27 (artist's live ruling): Edge transparency's lateral fade is
+// retired; the ONE global Transparency row (`edgeFade`) moves into Paint &
+// reservoir under Pickup and the Edge falloff row is gone. Spec 11's Feather
+// noise / Feather falloff follow. quick 261127-jox: the legacy Feather row is
+// hidden in every context, so the Gouache paint context renders seven rows.
+const P_A = 'emboss|load|pickup|edgeFade|dry|featherNoise|featherFalloff';
 // rev 3: Pickup joins Refill as bristle-only — `uPickupRate` (carrier) and
 // `uSmear` (gather) are the only bindings, so the fluid row is dead and the
 // watercolor context hides it.
-const P_W = 'viscosity|load|water|dry|flow|bleed|edge|granulation';
+const P_W = 'viscosity|emboss|load|water|dry|flow|bleed|edge|granulation';
 const W_KEYS = 'viscosity|dry|flow|bleed|edge|granulation';
 const L_KEYS = 'lift';
 
@@ -112,27 +112,28 @@ describe('Matrix 2 — the row set per (tool, medium) context', () => {
     }
   });
 
-  it('reproduces the gated row counts: P-A 7, P-W 8, W 6, L 1', () => {
+  it('reproduces the gated row counts: P-A 7, P-W 9, W 6, L 1', () => {
     expect(visibleAquarelleParamRows('brush', 'acrylic'), 'P-A').toHaveLength(7);
-    expect(visibleAquarelleParamRows('brush', 'watercolor'), 'P-W').toHaveLength(8);
+    expect(visibleAquarelleParamRows('brush', 'watercolor'), 'P-W').toHaveLength(9);
     expect(visibleAquarelleParamRows('water', 'watercolor'), 'W').toHaveLength(6);
     expect(visibleAquarelleParamRows('water', 'acrylic'), 'W (acrylic)').toHaveLength(6);
     expect(visibleAquarelleParamRows('lift', 'watercolor'), 'L').toHaveLength(1);
     expect(visibleAquarelleParamRows('lift', 'acrylic'), 'L (acrylic)').toHaveLength(1);
   });
 
-  it('keeps Emboss out of EVERY context while the display emboss is gated', () => {
-    // Hidden everywhere, for every medium, but still a row: the medium record,
-    // the Reset key set and the recorded thickness keep their shape.
+  it('renders the Emboss row in every paint context (0..4 test band)', () => {
+    // 2026-11-27 (artist's live ruling): the display relief is lit again, so
+    // the row returns for every paint medium; the row data carries the band.
     for (const tool of PAINT_TOOLS) {
       for (const medium of MEDIA) {
         expect(
           visibleAquarelleParamRows(tool, medium).map((row) => row.key).includes('emboss'),
-          `${tool}/${medium} must not render the Emboss row`,
-        ).toBe(false);
+          `${tool}/${medium} renders the Emboss row`,
+        ).toBe(true);
       }
     }
-    expect(AQUARELLE_PARAM_ROWS.find((row) => row.key === 'emboss')?.hidden).toBe(true);
+    const emboss = AQUARELLE_PARAM_ROWS.find((row) => row.key === 'emboss')!;
+    expect(emboss.hidden, 'the row is exposed again').toBeUndefined();
   });
 });
 
@@ -170,23 +171,26 @@ describe('decision B — Refill visibility per medium', () => {
 });
 
 describe('groups — fixed order, empty groups dropped', () => {
-  it('keeps the seven group ids in the spec §8 order (the bristle split)', () => {
+  it('keeps the six group ids in the spec §8 order (Transparency retired)', () => {
     expect(AQUARELLE_PARAM_GROUPS.map((group) => group.id).join('|')).toBe(
-      'medium|paint|drying|transparency|noise|watercolor|eraser',
+      'medium|paint|drying|noise|watercolor|eraser',
     );
     expect(AQUARELLE_PARAM_GROUPS.map((group) => group.label).join('|')).toBe(
-      'Medium|Paint & reservoir|Drying|Transparency|Noise|Watercolor only|Eraser',
+      'Medium|Paint & reservoir|Drying|Noise|Watercolor only|Eraser',
     );
   });
 
-  it('drops the bristle groups for the watercolor medium (Transparency/Noise are bristle-only)', () => {
+  it('drops the bristle group for the watercolor medium (Noise is bristle-only)', () => {
     const ids = visibleAquarelleParamGroups('brush', 'watercolor').map((group) => group.id);
     expect(ids.join('|')).toBe('medium|paint|drying|watercolor');
   });
 
-  it('drops the Medium group for the only bristle medium (Viscosity is hidden there)', () => {
+  it('keeps the Medium group for the bristle medium through the Emboss row', () => {
     const ids = visibleAquarelleParamGroups('brush', 'acrylic').map((group) => group.id);
-    expect(ids.join('|'), 'brush + acrylic').toBe('paint|drying|transparency|noise');
+    expect(ids.join('|'), 'brush + acrylic').toBe('medium|paint|drying|noise');
+    const mediumRows = visibleAquarelleParamGroups('brush', 'acrylic')
+      .find((group) => group.id === 'medium')!.rows;
+    expect(keys(mediumRows), 'Emboss is the Medium group opener').toBe('emboss');
   });
 
   it('renders Medium · Drying · Watercolor only for the Water tool', () => {
@@ -212,19 +216,18 @@ describe('groups — fixed order, empty groups dropped', () => {
 });
 
 describe('the row table itself', () => {
-  it('holds exactly the seventeen Matrix 2 rows in order', () => {
+  it('holds exactly the sixteen Matrix 2 rows in order', () => {
     expect(keys(AQUARELLE_PARAM_ROWS)).toBe(
       [
         'viscosity',
         'emboss',
         'load',
         'pickup',
+        'edgeFade',
         'refill',
         'water',
         'dry',
         'feather',
-        'edgeFade',
-        'edgeFalloff',
         'featherNoise',
         'featherFalloff',
         'flow',
@@ -243,10 +246,10 @@ describe('the row table itself', () => {
     expect(rowKeys.includes('size')).toBe(false);
   });
 
-  it('keeps the Emboss signed band -15..15 and the 0..100 band on every other row', () => {
+  it('keeps the Emboss 0..4 test band and the 0..100 band on every other row', () => {
     const emboss = AQUARELLE_PARAM_ROWS.find((row) => row.key === 'emboss')!;
-    expect(emboss.min, 'the signed Emboss floor').toBe(-15);
-    expect(emboss.max, 'the signed Emboss ceiling').toBe(15);
+    expect(emboss.min, 'the Emboss test floor').toBe(0);
+    expect(emboss.max, 'the Emboss test ceiling').toBe(4);
     for (const row of AQUARELLE_PARAM_ROWS.filter((candidate) => candidate.key !== 'emboss')) {
       expect(row.max, `${row.key} keeps the default ceiling`).toBeUndefined();
       expect(row.min, `${row.key} keeps the default floor`).toBeUndefined();
@@ -293,18 +296,15 @@ describe('the row table itself', () => {
     ).toBe(true);
   });
 
-  // quick 261127-jox: the four bristle knobs split by what they do — the
-  // lateral pair (Spec 10) in 'transparency', the break-up pair (Spec 11) in
-  // 'noise'. No label, band or paint law moves.
-  it('splits the bristle knobs into transparency/noise and hides exactly Emboss + Feather', () => {
+  // 2026-11-27 (artist's live ruling): the lateral fade is retired — its key
+  // is ONE global Transparency row in Paint & reservoir under Pickup, and the
+  // Edge falloff row is gone. Spec 11's break-up pair stays in 'noise'.
+  it('moves the global Transparency into paint under Pickup and hides exactly Feather', () => {
     const hidden = AQUARELLE_PARAM_ROWS.filter((row) => row.hidden === true);
-    expect(hidden.map((row) => row.key).join('|'), 'exactly the two gated rows').toBe(
-      'emboss|feather',
-    );
+    expect(hidden.map((row) => row.key).join('|'), 'exactly the gated row').toBe('feather');
     const byKey = (key: string) => AQUARELLE_PARAM_ROWS.find((row) => row.key === key)!;
     for (const [key, group, label] of [
-      ['edgeFade', 'transparency', 'Edge transparency'],
-      ['edgeFalloff', 'transparency', 'Edge falloff'],
+      ['edgeFade', 'paint', 'Opacity'],
       ['featherNoise', 'noise', 'Feather noise'],
       ['featherFalloff', 'noise', 'Feather falloff'],
     ] as const) {
@@ -312,6 +312,17 @@ describe('the row table itself', () => {
       expect(byKey(key).label, `${key} keeps its label`).toBe(label);
       expect(byKey(key).paint, `${key} keeps the bristle law`).toEqual(['acrylic']);
     }
+    // 2026-11-27: the stored key is transparency (0 = opaque); the row renders
+    // OPACITY, 100 = opaque — the artist's "default is opacity 100".
+    expect(byKey('edgeFade').invert, 'Opacity inverts for display').toBe(true);
+    expect(
+      AQUARELLE_PARAM_ROWS.some((row) => row.key === 'edgeFalloff'),
+      'the retired Edge falloff row is gone',
+    ).toBe(false);
+    const paintKeys = visibleAquarelleParamRows('brush', 'acrylic').map((row) => row.key);
+    expect(paintKeys.indexOf('edgeFade'), 'Transparency sits directly under Pickup').toBe(
+      paintKeys.indexOf('pickup') + 1,
+    );
   });
 
   it('gives the Lift row no paint/water context and the other rows no lift context', () => {
@@ -378,11 +389,11 @@ describe('the shared row selector — isAquarelleParamRowVisible', () => {
     }
   });
 
-  // Spec 10 / Spec 11: the four edge knobs are bristle-only. The paint branch
-  // plus the bristle medium is the whole law, so the fluid paint context and
-  // the Water tool never see them.
-  it('shows the edge rows on Brush + acrylic only (bristle-only rows)', () => {
-    for (const key of ['edgeFade', 'edgeFalloff', 'featherNoise', 'featherFalloff'] as const) {
+  // 2026-11-27: the global Transparency and Spec 11's noise pair are
+  // bristle-only. The paint branch plus the bristle medium is the whole law,
+  // so the fluid paint context and the Water tool never see them.
+  it('shows the transparency and noise rows on Brush + acrylic only (bristle-only rows)', () => {
+    for (const key of ['edgeFade', 'featherNoise', 'featherFalloff'] as const) {
       expect(isAquarelleParamRowVisible('brush', 'acrylic', key), `brush + acrylic ${key}`).toBe(
         true,
       );

@@ -19,9 +19,9 @@
 //  acrylic AND watercolor — decision B), the Water tool shows its
 //  fluid set, and the Eraser shows the Lift row alone. Group
 //  headings render only when non-empty, in the fixed order
-//  Medium · Paint & reservoir · Drying · Transparency · Noise ·
-//  Watercolor only · Eraser (quick 261127-jox split the bristle
-//  Edge group into Transparency and Noise).
+//  Medium · Paint & reservoir · Drying · Noise · Watercolor only ·
+//  Eraser (2026-11-27: the Transparency group is retired — one global
+//  Transparency row now sits in Paint & reservoir under Pickup).
 //
 //  Param keys stay water/load/flow/bleed/edge/granulation/dry/
 //  viscosity/body/feather/pickup/refill/emboss — `body` rides the
@@ -74,18 +74,28 @@ function GlobalSlider(props: {
   value: number;
   min?: number;
   max?: number;
+  /** The stored value is transparency; the row shows opacity (max = opaque). */
+  invert?: boolean;
   onChange: (value: number) => void;
   onCommit?: (value: number) => void;
 }) {
   const min = props.min ?? GLOBAL_MIN;
   const max = props.max ?? GLOBAL_MAX;
+  const stored = Math.max(min, Math.min(max, props.value));
+  // 2026-11-27 (artist's live ruling): the Opacity row stores transparency
+  // (0 = opaque) and renders opacity (100 = opaque). Only this surface flips;
+  // the stored keys, the records, the per-stroke bag and the engine keep the
+  // shipped transparency semantics, so existing strokes and their replay are
+  // untouched.
+  const shown = props.invert === true ? max + min - stored : stored;
+  const toStored = (value: number) => (props.invert === true ? max + min - value : value);
   return (
-    <div class="physics-paint-option-row">
+    <div class="physics-paint-option-row aquarelle-param-row">
       <SliderStepper
         label={props.label}
-        value={Math.max(min, Math.min(max, props.value))}
-        onChange={props.onChange}
-        onCommit={props.onCommit}
+        value={shown}
+        onChange={(value) => props.onChange(toStored(value))}
+        onCommit={(value) => props.onCommit?.(toStored(value))}
         step={1}
         min={min}
         max={max}
@@ -259,6 +269,7 @@ export function AquarelleGlobalsPanel() {
               value={params[row.key]}
               min={row.min}
               max={row.max}
+              invert={row.invert === true}
               onChange={onGlobalChange(row.key)}
               onCommit={onGlobalCommit(row.key)}
             />

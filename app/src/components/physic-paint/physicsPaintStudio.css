@@ -453,7 +453,7 @@ button.destructive {
 }
 
 /* UI checklist row 4: one row. 261018-k1o: left = Engine ready + the tool pill,
-   right = Brush size + Opacity (+ Water/Edges/Grain/Pigment) as ONE group.
+   right = Brush size + Pickup + Opacity (+ Water/Edges/Grain) as ONE group.
    261029-hy2: the settings cluster is pinned to the RIGHT edge at every width
    (never centered) — flex-end parks it against the bar's end edge and any
    overflow exits the start edge. */
@@ -1758,11 +1758,24 @@ button.destructive {
   min-height: 28px;
 }
 
+/* 2026-11-27 (artist's UAT): the Paint tab's parameter rows breathe — one
+   extra vertical step between consecutive slider/stepper parameters. */
+.aquarelle-param-row + .aquarelle-param-row {
+  margin-top: 10px;
+}
+
 .physics-paint-option-group {
   display: flex;
   flex-direction: column;
   gap: 15px;
   padding-top: 2px;
+}
+
+/* 2026-11-27 (artist's UAT): the Light section opens with one gap under the
+   paper picker — the tab root is not a flex column, so the group's own gap
+   cannot reach the paper block above it. */
+.physics-paint-light-group {
+  margin-top: 15px;
 }
 
 /* 261018-gqo move 2: section titles breathe (— TEXTURE — no longer crammed

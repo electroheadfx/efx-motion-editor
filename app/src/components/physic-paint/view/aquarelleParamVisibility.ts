@@ -35,9 +35,11 @@
 //  `wetSeconds` has no row (it is seconds, not a 0..100 global) —
 //  neither appears in `AQUARELLE_PARAM_ROWS` by design.
 //
-//  quick 261123-hr5: Emboss becomes the ONE signed row (-15..15).
-//  Negative emboss smooths a dry impasto while keeping the paint;
-//  the sign is recorded per stroke, never in a medium record.
+//  2026-11-27 (artist's live ruling): Emboss returns to the UI as a
+//  0..4 test band — the display relief is lit again, and the artist
+//  is re-judging a low-value impasto on the Gouache medium. The
+//  signed band's negative half is retired from the ROW; the engine
+//  still honours a negative recorded emboss.
 // ============================================================
 
 import { DEFAULT_MEDIUM_ID, type MediumId } from '@efxlab/efx-watercolor';
@@ -48,7 +50,6 @@ export type AquarelleParamGroupId =
   | 'medium'
   | 'paint'
   | 'drying'
-  | 'transparency'
   | 'noise'
   | 'watercolor'
   | 'eraser';
@@ -78,9 +79,16 @@ export interface AquarelleParamRow {
    * Hidden in EVERY context, for every medium. Used while a row's feature is
    * gated off: the row stays in the list (and keeps its band) so the medium
    * record, the Reset key set and the persistence keep working, but no panel
-   * renders it. See the Emboss row.
+   * renders it. See the Feather row.
    */
   readonly hidden?: boolean;
+  /**
+   * The row STORES transparency (0 = opaque) but renders and edits OPACITY
+   * (max = opaque). The panel inverts for display and maps back on change, so
+   * the stored keys, the medium records and the engine keep the shipped
+   * transparency semantics. See the Opacity row.
+   */
+  readonly invert?: boolean;
   readonly water?: boolean;
   readonly lift?: boolean;
 }
@@ -92,15 +100,16 @@ export interface VisibleAquarelleParamGroup {
 }
 
 /** Fixed group order (spec §8). An empty group renders no heading.
- *  quick 261127-jox: the bristle "Edge" group is SPLIT by what the knobs do —
- *  `transparency` holds the lateral pair (Edge transparency / Edge falloff,
- *  Spec 10) and `noise` the break-up pair (Feather noise / Feather falloff,
- *  Spec 11). No key, value or label moved. */
+ *  2026-11-27 (artist's live ruling): the Transparency group is RETIRED — its
+ *  lateral fade read as a zebra band where a stroke's edge crossed a
+ *  contrasting under. The surviving transparency is ONE global amount
+ *  (`edgeFade`, relabelled Transparency) and lives in Paint & reservoir under
+ *  Pickup; its falloff row is gone with the lateral law. `noise` keeps the
+ *  break-up pair (Feather noise / Feather falloff, Spec 11). */
 export const AQUARELLE_PARAM_GROUPS: readonly AquarelleParamGroup[] = Object.freeze([
   Object.freeze({ id: 'medium', label: 'Medium' }),
   Object.freeze({ id: 'paint', label: 'Paint & reservoir' }),
   Object.freeze({ id: 'drying', label: 'Drying' }),
-  Object.freeze({ id: 'transparency', label: 'Transparency' }),
   Object.freeze({ id: 'noise', label: 'Noise' }),
   Object.freeze({ id: 'watercolor', label: 'Watercolor only' }),
   Object.freeze({ id: 'eraser', label: 'Eraser' }),
@@ -109,13 +118,13 @@ export const AQUARELLE_PARAM_GROUPS: readonly AquarelleParamGroup[] = Object.fre
 /** Post-UAT (2026-11-21): emboss relief is very hard above 15, so the
  *  row's band is capped here — this is the ONE home of the cap (the
  *  panel only forwards `row.max`).
- *  Quick 261123-hr5: Emboss is SIGNED. The row spans -15..15: negative
- *  emboss SUBTRACTS paint thickness (smooths a dry impasto, keeps the
- *  paint), positive deposits it. The sign rides the per-stroke recorded
- *  bag only — a medium record never carries a negative emboss. This pair
- *  is the ONE home of the band (the panel only forwards `row.min/max`). */
-const EMBOSS_MIN = -15;
-const EMBOSS_MAX = 15;
+ *  2026-11-27 (artist's live ruling): the row is back for a low-value
+ *  test — 0..4. Above 4 the first-order relief shade reads too hard, so
+ *  the test band stops there; the engine still honours a negative
+ *  recorded emboss (the row no longer offers one). This pair is the ONE
+ *  home of the band (the panel only forwards `row.min/max`). */
+const EMBOSS_MIN = 0;
+const EMBOSS_MAX = 4;
 
 const WATERCOLOR_ONLY: readonly MediumId[] = Object.freeze(['watercolor']);
 /** The only bristle medium — Feather is the bristle band's width (spec §3). */
@@ -138,8 +147,8 @@ const PICKUP_HIDDEN: readonly MediumId[] = Object.freeze(['watercolor']);
 const ACRYLIC_HIDDEN: readonly MediumId[] = Object.freeze(['acrylic']);
 
 /**
- * The seventeen rows in Matrix 2's order (sixteen canvas rows + the
- * Eraser-context Lift row). The 17-key count is what makes the Reset
+ * The sixteen rows in Matrix 2's order (fifteen canvas rows + the
+ * Eraser-context Lift row). The 16-key count is what makes the Reset
  * key set (`rows - lift` + `body`) reproduce the shipped patch.
  */
 export const AQUARELLE_PARAM_ROWS: readonly AquarelleParamRow[] = Object.freeze([
@@ -151,12 +160,11 @@ export const AQUARELLE_PARAM_ROWS: readonly AquarelleParamRow[] = Object.freeze(
     hiddenForMedia: ACRYLIC_HIDDEN,
     water: true,
   }),
-  // Gated off 2026-11-23: the display emboss is a first-order heightmap shade
-  // (one-texel gradient, black clamp, no specular) that turns to speckle as
-  // strokes accumulate. The row stays so the medium record, the Reset key set
-  // and the recorded thickness keep their shape; a new renderer re-enables it
-  // by dropping `hidden`. See RELIEF_BUMP in the engine.
-  Object.freeze({ key: 'emboss', label: 'Emboss', group: 'medium', min: EMBOSS_MIN, max: EMBOSS_MAX, paint: 'all', hidden: true }),
+  // 2026-11-27 (artist's live ruling): re-enabled as a 0..4 test band. The
+  // display relief was gated off on 2026-11-23 (the first-order heightmap
+  // shade turns to speckle as strokes accumulate); it is lit again for this
+  // test, and the low band keeps the shade subtle. See RELIEF_BUMP.
+  Object.freeze({ key: 'emboss', label: 'Emboss', group: 'medium', min: EMBOSS_MIN, max: EMBOSS_MAX, paint: 'all' }),
   Object.freeze({ key: 'load', label: 'Pigment', group: 'paint', paint: 'all' }),
   Object.freeze({
     key: 'pickup',
@@ -164,6 +172,19 @@ export const AQUARELLE_PARAM_ROWS: readonly AquarelleParamRow[] = Object.freeze(
     group: 'paint',
     paint: 'all',
     hiddenForMedia: PICKUP_HIDDEN,
+  }),
+  // 2026-11-27 (artist's live ruling): Edge transparency's lateral fade is
+  // retired; the SAME `edgeFade` key is now ONE global transparency, moved
+  // into Paint & reservoir under Pickup. The row renders as OPACITY — 100 is
+  // opaque (the default), 0 fully transparent (`invert`; the stored key
+  // keeps the transparency semantics), and the former Edge falloff row is
+  // gone with the lateral law.
+  Object.freeze({
+    key: 'edgeFade',
+    label: 'Opacity',
+    group: 'paint',
+    paint: BRISTLE_MEDIA,
+    invert: true,
   }),
   Object.freeze({
     key: 'refill',
@@ -187,11 +208,6 @@ export const AQUARELLE_PARAM_ROWS: readonly AquarelleParamRow[] = Object.freeze(
   // medium records, the per-stroke bag and the Reset write set, and the engine
   // still multiplies by the recorded Feather; only the ROW is hidden.
   Object.freeze({ key: 'feather', label: 'Feather', group: 'noise', paint: BRISTLE_MEDIA, hidden: true }),
-  // Spec 10: the stroke layer's two knobs — the Transparency section's pair.
-  // Both render through the existing GlobalSlider — 0 / 50 / 100 ARE the three
-  // named shapes for the falloff, and amount 0 is the shipped opaque edge.
-  Object.freeze({ key: 'edgeFade', label: 'Edge transparency', group: 'transparency', paint: BRISTLE_MEDIA }),
-  Object.freeze({ key: 'edgeFalloff', label: 'Edge falloff', group: 'transparency', paint: BRISTLE_MEDIA }),
   // Spec 11: the break-up pair — the Noise section's pair. Same BRISTLE_MEDIA
   // law and the same GlobalSlider; `featherNoise` 0 is the clean edge, 20 the
   // neutral base look and 100 the full break-up, while `featherFalloff` 50 is

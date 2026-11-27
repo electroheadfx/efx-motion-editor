@@ -1852,18 +1852,19 @@ void main(){
 //  TRANSIENT layer instead of the sheet and commits ONCE at stroke end through
 //  the frozen composite (DESIGN-stroke-layer-transparency §3.3):
 //
-//    u     = MIN over covering dabs of clamp(|across| / (uRadius · uLayerEdge), 0, 1)
-//    e     = 2^(2·falloff - 1)
-//    A     = lateralWeight(u, amount, falloff) = 1 - amount · u^e
+//    A     = 1 - amount                        (ONE global transparency)
 //    aEff  = A · cover_L
 //    film_out = mix(film_S, film_L, aEff)      film = (absorbs, absorbs, S)
 //    cover_out  = 1 - (1 - cover_S) · (1 - aEff)
 //    relief_out = relief_S + aEff · relief_L
 //
-//  261126: u spans the WHOLE lateral coordinate — 0 on the centre line (A = 1)
-//  to 1 at the stroke's VISUAL edge (A = 1 − amount) — with no interior
-//  plateau. uLayerEdge is bound from BRISTLE_LAYER_EDGE (0.9 of the nominal
-//  footprint; measured at 2048 to be where the deposit's cover falls to 2-5 %).
+//  2026-11-27 (artist's live ruling): the LATERAL fade is RETIRED — its
+//  partial-alpha rim read as a zebra band wherever a stroke's feathered edge
+//  crossed a contrasting under (measured: the band is the brush's own cap/rim
+//  texture, untouched by pickup, the under or the feather noise). The layer's
+//  alpha is ONE global transparency, uniform over the whole stroke. The
+//  lateral field is still WRITTEN by the cover pass (uLayerEdge, the MIN
+//  coordinate) as the layer's structure, but no longer shapes the alpha.
 //
 //  The film composite is a coefficient-space lerp — the engine's one
 //  subtractive pigment mix — never a mix of display reflectances (261125: the
@@ -1879,44 +1880,35 @@ void main(){
 // ============================================================
 
 /**
- * Spec 10: ONE lateral falloff weight, shared verbatim by the layer's alpha
- * (through `STROKE_LAYER_ALPHA`) and the live display variant, so the commit
- * and the live composite cannot disagree. `u` is the layer's own lateral
- * coordinate — 0 on the stroke's centre line, 1 at its VISUAL edge
- * (`bristleCoverLayerFS` writes `|across| / (uRadius · uLayerEdge)`, capped at
- * 1). `amount` is Edge transparency and `falloff` the shape bias
- * (0 broad, 0.5 linear, 1 rim — `e = 2^(2b − 1)`).
- *
- *     weight = 1 − amount · u^e
- *
- * The weight is 1 on the centre line and falls monotonically to 1 − amount at
- * the visual edge: at amount 100 the edge is fully transparent and there is NO
- * opaque plateau. The artist's solid core was the retired
- * `t = (u − uEdgeStart) / (1 − uEdgeStart)` interior plateau (uEdgeStart 0.30)
- * compounded with a 0.66-of-footprint anchor that saturated at 36 px INSIDE
- * the visible deposit (measured 2048: half-cover 39.5 px, 5 % reach 46 px).
+ * Spec 10, retired 2026-11-27 by the artist's live ruling: the layer's alpha
+ * is ONE GLOBAL TRANSPARENCY — the same weight over the whole stroke. The
+ * lateral falloff (1 − amount · u^e) produced a partial-alpha rim whose
+ * exposed per-run texture read as a zebra band wherever the stroke's edge
+ * crossed a contrasting under; the artist's tested replacement is uniform.
+ * One shared function, so the merge, the two union passes and the live
+ * display cannot disagree: `amount` is the amount (0 opaque, 1 fully
+ * transparent); the falloff and the lateral coordinate no longer participate.
  * Amount 0 never reaches here — the Engine's amount-0 branch allocates no
  * layer — and evaluates to 1 everywhere if it did.
  */
 export const LATERAL_WEIGHT = `
-float lateralWeight(float u, float amount, float falloff){
-  float e = exp2(2.0 * falloff - 1.0);
-  return 1.0 - amount * pow(clamp(u, 0.0, 1.0), e);
+float lateralWeight(float amount){
+  return 1.0 - clamp(amount, 0.0, 1.0);
 }`;
 
 /**
- * The lateral alpha law — ONE snippet shared verbatim by the merge and the two
- * union passes, so the three can never disagree. `uCoverL` / `uLateral` are
- * layerFilm's two attachments; `uEdgeFade` is the amount (0 neutral) and
- * `uEdgeFalloff` the shape bias. The lateral factor itself is LATERAL_WEIGHT.
+ * The layer alpha law — ONE snippet shared verbatim by the merge and the two
+ * union passes, so the three can never disagree. `uCoverL` is layerFilm's
+ * cover attachment; `uEdgeFade` is the global transparency amount (0
+ * neutral). The lateral fade is retired (2026-11-27): LATERAL_WEIGHT is
+ * uniform over the stroke.
  */
 const STROKE_LAYER_ALPHA = `${LATERAL_WEIGHT}
-uniform sampler2D uCoverL, uLateral;
-uniform float uEdgeFade, uEdgeFalloff;
+uniform sampler2D uCoverL;
+uniform float uEdgeFade;
 float layerAEff(vec2 uv){
-  float u = texture(uLateral, uv).x;
   float coverL = clamp(texture(uCoverL, uv).x, 0.0, 1.0);
-  return clamp(lateralWeight(u, uEdgeFade, uEdgeFalloff) * coverL, 0.0, 1.0);
+  return clamp(lateralWeight(uEdgeFade) * coverL, 0.0, 1.0);
 }`;
 
 /**
@@ -2431,9 +2423,8 @@ function displaySource(layer: boolean): string {
     ? `
 uniform sampler2D uLayerA, uLayerB;   // the open stroke's ink pair (absorbs, rgb+S)
 uniform sampler2D uLayerCover;        // layerFilm attachment 0: cover_L
-uniform sampler2D uLayerLateral;      // layerFilm attachment 1: the MIN lateral field
 uniform sampler2D uLayerRelief;       // the open stroke's thickness
-uniform float uEdgeFade, uEdgeFalloff; // the frozen lateral law: amount, shape bias`
+uniform float uEdgeFade;              // the global transparency amount`
     : '';
   // The live layer block, inserted BEFORE the single display reconstruction.
   const layerMix = layer
@@ -2474,10 +2465,9 @@ uniform float uEdgeFade, uEdgeFalloff; // the frozen lateral law: amount, shape 
       layerInk *= k;
       layerBands *= k;
       layerScatter *= k;
-      // The SAME lateralWeight the merge's layerAEff calls: u = 0 on the
-      // centre line, 1 at the visual edge, no interior plateau.
-      float layerU = texture(uLayerLateral, uv).x;
-      layerAeff = clamp(lateralWeight(layerU, uEdgeFade, uEdgeFalloff) * layerCover, 0.0, 1.0);
+      // The SAME lateralWeight the merge's layerAEff calls: one GLOBAL
+      // transparency amount, uniform over the stroke (2026-11-27).
+      layerAeff = clamp(lateralWeight(uEdgeFade) * layerCover, 0.0, 1.0);
       a = mix(a, layerInk, layerAeff);
       b = mix(b, layerBands, layerAeff);
       scatter = mix(scatter, layerScatter, layerAeff);

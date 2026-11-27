@@ -33,14 +33,13 @@ export type MediumId = 'watercolor' | 'acrylic'
  * coverage band), `pickup` and `refill` (§3.1 carrier rates) and
  * `wetSeconds` (the §3.4 last-touch lifetime, in seconds).
  *
- * Spec 10 adds the bristle edge pair: `edgeFade` (Edge transparency — the
- * stroke layer's lateral ALPHA scale, 0 neutral) and `edgeFalloff` (the
- * fade's shape bias: 0 broad / 50 linear / 100 rim).
+ * 2026-11-27: `edgeFade` is ONE GLOBAL transparency for the stroke layer
+ * (0 opaque, 100 fully transparent); the lateral fade and its `edgeFalloff`
+ * shape bias are retired, the key kept in the record set.
  *
  * Spec 11 adds the break-up pair: `featherNoise` (the re-indexed break-up
  * slider — 0 clean edge, 20 the neutral base look, 100 the full break-up)
- * and `featherFalloff` (the opening's shape bias — the same 0 / 50 / 100
- * map as `edgeFalloff`).
+ * and `featherFalloff` (the opening's shape bias — 0 / 50 / 100).
  */
 export type MediumParamKey =
   | 'water'
@@ -94,8 +93,8 @@ const WATERCOLOR_PARAMS: Readonly<Record<MediumParamKey, number>> = Object.freez
   pickup: DEFAULT_CANONICAL_PARAMS.pickup,
   refill: DEFAULT_CANONICAL_PARAMS.refill,
   wetSeconds: DEFAULT_CANONICAL_PARAMS.wetSeconds,
-  // Spec 10: derived, not retyped — the neutral medium paints the shipped
-  // edge (no transparency, the linear falloff shape).
+  // 2026-11-27: derived, not retyped — the neutral medium paints opaque
+  // (global transparency 0); the falloff is a retired, unused key.
   edgeFade: DEFAULT_CANONICAL_PARAMS.edgeFade,
   edgeFalloff: DEFAULT_CANONICAL_PARAMS.edgeFalloff,
   // Spec 11: derived, not retyped — the neutral 20 / the linear shape.

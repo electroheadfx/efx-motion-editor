@@ -143,8 +143,8 @@ export interface Params {
   pickup: number;      // 64-22: §3.1 carrier pickup rate — how much sheet paint a bristle lifts (0..1)
   refill: number;      // 64-22: §3.1 carrier refill rate — how fast a bristle refills from the load (0..1)
   wetSeconds: number;  // 64-22: last-touch wetness lifetime in SECONDS (>= 1) — declared here so the ONE mapping has one destination; consumed by 64-24
-  edgeFade: number;    // Spec 10: Edge transparency — the stroke layer's lateral alpha scale (0..1, 0 neutral)
-  edgeFalloff: number; // Spec 10: Edge falloff — the fade's shape bias (0..1, 0.5 linear)
+  edgeFade: number;    // 2026-11-27: GLOBAL transparency — the stroke layer's uniform alpha scale (0..1, 0 opaque)
+  edgeFalloff: number; // RETIRED (2026-11-27): kept in the record set; the global law reads no shape bias
   featherNoise: number;   // Spec 11: Feather noise — the break-up slider (0..1, 0.2 neutral: 0 clean edge, >0.2 erosion)
   featherFalloff: number; // Spec 11: Feather falloff — the opening AND grain body's shape bias (0..1, 0.5 shipped)
 }
@@ -162,7 +162,7 @@ export const DEFAULT_PARAMS: Params = {
   pickup: 1.0,
   refill: 0.6,
   wetSeconds: 7,
-  // Spec 10: amount 0 is inert at every falloff; 50 is the linear shape.
+  // 2026-11-27: amount 0 is the shipped opaque path; the falloff is retired.
   edgeFade: 0,
   edgeFalloff: 0.5,
   // Spec 11 (artist re-index 2026-11-27k): 20 canonical (0.2 here) is the
@@ -275,15 +275,18 @@ const MAX_REF_SIDE = 4096;
 // Phase 64: the emboss gradient is one document texel wide with this fixed
 // bump scale — a document-space constant, never a function of zoom (D-13).
 //
-// GATED OFF 2026-11-23. At 0 the display normal is flat AND `litDelta` is 0
-// (both terms carry the bump), so `shade` is exactly 1 and the emboss is
-// inert — the deposit still records thickness, nothing is displayed. The
-// shipped shading was a first-order heightmap term: a one-texel central
+// Was GATED OFF at 0 on 2026-11-23. At 0 the display normal is flat AND
+// `litDelta` is 0 (both terms carry the bump), so `shade` is exactly 1 and the
+// emboss is inert — the deposit still records thickness, nothing is displayed.
+// The shipped shading is a first-order heightmap term: a one-texel central
 // difference over a grain-gated field turns to high-frequency speckle as
 // strokes accumulate, `clamp(1 + litDelta, 0.0, 1.5)` drives any steep slope
-// to pure black, and there is no specular. A new renderer spiked against a
-// real impasto reference replaces the display term and restores this to 1.
-const RELIEF_BUMP = 0.0;
+// to pure black, and there is no specular.
+// 2026-11-27 (artist's live ruling): lit again for a low-value test — the
+// Emboss row returns at 0..4, so the shade stays subtle and the artist can
+// re-judge a light impasto on the Gouache medium. A new renderer spiked
+// against a real impasto reference still replaces the display term later.
+const RELIEF_BUMP = 1.0;
 // Phase 64 post-delivery tuning (UAT): Body must read as a true cover and the
 // emboss as a relief the user can see, without touching the delivered colours.
 // Three separate multipliers, never a change to the shared curve:
@@ -1119,12 +1122,12 @@ export class WatercolorEngine {
     this.discardLayer();
   }
 
-  /** The two lateral-law uniforms every layer shader reads (amount, shape
-   *  bias). The lateral field's anchor is a gather-time uniform (uLayerEdge). */
+  /** The ONE layer-alpha uniform every layer shader reads: the global
+   *  transparency amount (2026-11-27 — the lateral fade and its falloff are
+   *  retired; the whole layer film is uniformly (1 − amount)). */
   private bindLayerAlpha(p: Program) {
     const { gl } = this;
     gl.uniform1f(p.u.uEdgeFade!, clamp(this.params.edgeFade, 0, 1));
-    gl.uniform1f(p.u.uEdgeFalloff!, clamp(this.params.edgeFalloff, 0, 1));
   }
 
   /**
@@ -1191,7 +1194,6 @@ export class WatercolorEngine {
     gl.uniform1i(m.u.uLayerA!, g.bindTex(4, this.layerInk!.read.tex[0]!));
     gl.uniform1i(m.u.uLayerB!, g.bindTex(5, this.layerInk!.read.tex[1]!));
     gl.uniform1i(m.u.uCoverL!, g.bindTex(6, this.layerFilm!.tex[0]!));
-    gl.uniform1i(m.u.uLateral!, g.bindTex(7, this.layerFilm!.tex[1]!));
     gl.uniform2f(m.u.uOutSize!, this.dw, this.dh);
     this.bindLayerAlpha(m);
     g.draw(this.ink.write, rect);
@@ -1201,7 +1203,6 @@ export class WatercolorEngine {
     gl.disable(gl.BLEND);
     gl.uniform1i(c.u.uCoverS!, g.bindTex(0, this.cover.read.tex[0]!));
     gl.uniform1i(c.u.uCoverL!, g.bindTex(1, this.layerFilm!.tex[0]!));
-    gl.uniform1i(c.u.uLateral!, g.bindTex(2, this.layerFilm!.tex[1]!));
     gl.uniform2f(c.u.uOutSize!, this.dw, this.dh);
     this.bindLayerAlpha(c);
     g.draw(this.cover.write, rect);
@@ -1212,7 +1213,6 @@ export class WatercolorEngine {
     gl.uniform1i(r.u.uReliefS!, g.bindTex(0, this.relief.tex[0]!));
     gl.uniform1i(r.u.uReliefL!, g.bindTex(1, this.layerRelief!.tex[0]!));
     gl.uniform1i(r.u.uCoverL!, g.bindTex(2, this.layerFilm!.tex[0]!));
-    gl.uniform1i(r.u.uLateral!, g.bindTex(3, this.layerFilm!.tex[1]!));
     gl.uniform2f(r.u.uOutSize!, this.dw, this.dh);
     this.bindLayerAlpha(r);
     g.draw(this.mergeRelief!, rect);
@@ -4078,14 +4078,13 @@ export class WatercolorEngine {
     gl.uniform1f(p.u.uFeatherCap!, BRISTLE_FEATHER_CAP);
     gl.uniform1f(p.u.uFeatherMin!, BRISTLE_FEATHER_MIN);
     gl.uniform1f(p.u.uFeatherShift!, BRISTLE_FEATHER_SHIFT);
-    // Spec 10: the stroke layer's lateral alpha. Bound unconditionally so
-    // every consumer of the ONE gather program receives the same values;
-    // the lateral field's anchor is the constant (the layer's own cover
-    // write divides by it), the two knobs are Params members. Inert on any
-    // program that does not declare them (missing locations are null).
+    // 2026-11-27: the stroke layer's GLOBAL transparency amount. Bound
+    // unconditionally so every gather consumer receives the same value; the
+    // lateral field's anchor is still written by the cover pass (the layer's
+    // structure), but no longer shapes the alpha. Inert on any program that
+    // does not declare them (missing locations are null).
     gl.uniform1f(p.u.uLayerEdge!, BRISTLE_LAYER_EDGE);
     gl.uniform1f(p.u.uEdgeFade!, clamp(this.params.edgeFade, 0, 1));
-    gl.uniform1f(p.u.uEdgeFalloff!, clamp(this.params.edgeFalloff, 0, 1));
     // Spec 11: the feather noise/falloff pair and the front's two constants.
     // Bound unconditionally like Spec 10's pair: the ONE gather binder feeds
     // every consumer, and the neutral program does not declare them (missing
@@ -4896,16 +4895,15 @@ export class WatercolorEngine {
     gl.uniform1f(p.u.uShadow, shadow);
     gl.uniform1f(p.u.uDpr, this.dpr);
     if (layerLive) {
-      // The open stroke's own film, units 10-14 (0-9 are taken). The lateral
-      // law's two uniforms ride here too — the shared bindGather push never
-      // reaches a display program, and the merge binds them through
-      // bindLayerAlpha at the same values, so the display and the commit read
+      // The open stroke's own film, units 10-13 (0-9 are taken). The global
+      // transparency amount rides here too — the shared bindGather push never
+      // reaches a display program, and the merge binds it through
+      // bindLayerAlpha at the same value, so the display and the commit read
       // ONE law (the shader's shared lateralWeight).
       gl.uniform1i(p.u.uLayerA, g.bindTex(10, this.layerInk!.read.tex[0]));
       gl.uniform1i(p.u.uLayerB, g.bindTex(11, this.layerInk!.read.tex[1]));
       gl.uniform1i(p.u.uLayerCover, g.bindTex(12, this.layerFilm!.tex[0]));
-      gl.uniform1i(p.u.uLayerLateral, g.bindTex(13, this.layerFilm!.tex[1]));
-      gl.uniform1i(p.u.uLayerRelief, g.bindTex(14, this.layerRelief!.tex[0]));
+      gl.uniform1i(p.u.uLayerRelief, g.bindTex(13, this.layerRelief!.tex[0]));
       this.bindLayerAlpha(p);
     }
     g.draw(target, scissor, this.canvasSize);

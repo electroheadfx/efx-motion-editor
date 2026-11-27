@@ -2683,41 +2683,16 @@ describe('261008-ig1 Task 2 — Studio multi-clip selection, open target, and re
   });
 });
 
-// 261017-w4x I-05 (Q3): Opacity is top-bar only for every paint mode. The
-// top-bar slider must route at call time the same way Brush size already does
-// — watercolor writes aquarelleParams.load (Pigment), Brush mode writes
-// settings.opacity. Without the watercolor arm, deleting the Paint-tab Opacity
-// orphans Pigment until I-01 lands. Scalar predicates keep TAP diagnostics
-// one-line (project idiom).
+// 261017-w4x I-05 (Q3): the top-bar writers stay identity-stable callbacks.
+// 2026-11-27 (artist's live ruling): the Pigment router is retired with its
+// slider — the bar's Pickup / Opacity sliders write aquarelleParams directly.
+// Scalar predicates keep TAP diagnostics one-line (project idiom).
 describe('261027-klx single-engine top-bar writers', () => {
-  it("handleOpacityChange writes setAquarelleParam('load') unconditionally", () => {
-    // 261018-f15 C2 extracted the routers to identity-stable useCallbacks so
-    // the Paint-tab pair can share ONE write-through. 261027-klx: Water color
-    // is the only module, so the engine-1 else arm (setBrushOpacity) is gone.
-    const routerStart = studio.indexOf('const handleOpacityChange = useCallback(');
-    expect(routerStart, 'handleOpacityChange must exist').toBeGreaterThan(-1);
-    const routerEnd = studio.indexOf('const topBar = topBarPropsMemo.resolve(', routerStart);
-    expect(routerEnd, 'router ends before the topBar memo').toBeGreaterThan(routerStart);
-    const opacityHandler = studio.slice(routerStart, routerEnd);
-    expect(opacityHandler, 'the live pigment writes aquarelleParams.load').toContain(
-      "setAquarelleParam('load', value)",
-    );
-    expect(opacityHandler, 'the engine-1 else arm left with engine 1').not.toContain('setBrushOpacity');
-    expect(opacityHandler, 'no module branch remains').not.toContain('activeModule');
-    // The topBar memo binds the shared router (not a bare setter).
-    const topBarStart = studio.indexOf('const topBar = topBarPropsMemo.resolve(');
-    const topBarEnd = studio.indexOf('const toolRail = toolRailPropsMemo.resolve(', topBarStart);
-    const topBarBlock = studio.slice(topBarStart, topBarEnd);
-    expect(topBarBlock).toContain('onOpacityChange: handleOpacityChange');
-    // Memo deps stay the slim set — no activeModule captured for the router.
-    const topBarDeps = topBarBlock.slice(0, topBarBlock.indexOf('], () =>'));
-    expect(topBarDeps.indexOf('activeModule'), 'topBar deps must not capture activeModule').toBe(-1);
-  });
-
   it('Brush size router is the same unconditional aquarelle writer', () => {
     const routerStart = studio.indexOf('const handleBrushSizeChange = useCallback(');
     expect(routerStart, 'handleBrushSizeChange must exist').toBeGreaterThan(-1);
-    const routerEnd = studio.indexOf('const handleOpacityChange = useCallback(', routerStart);
+    const routerEnd = studio.indexOf('const topBar = topBarPropsMemo.resolve(', routerStart);
+    expect(routerEnd, 'router ends before the topBar memo').toBeGreaterThan(routerStart);
     const sizeHandler = studio.slice(routerStart, routerEnd);
     expect(sizeHandler).toContain("setAquarelleParam('size', value)");
     expect(sizeHandler, 'the engine-1 size setter left with engine 1').not.toContain('setBrushSize');
@@ -2726,6 +2701,12 @@ describe('261027-klx single-engine top-bar writers', () => {
     const topBarEnd = studio.indexOf('const toolRail = toolRailPropsMemo.resolve(', topBarStart);
     const topBarBlock = studio.slice(topBarStart, topBarEnd);
     expect(topBarBlock).toContain('onBrushSizeChange: handleBrushSizeChange');
+    // The retired Pigment router left with its slider.
+    expect(studio, 'no Pigment router').not.toContain('const handleOpacityChange = useCallback(');
+    expect(topBarBlock, 'no onOpacityChange binding').not.toContain('onOpacityChange');
+    // Memo deps stay the slim set — no activeModule captured for the router.
+    const topBarDeps = topBarBlock.slice(0, topBarBlock.indexOf('], () =>'));
+    expect(topBarDeps.indexOf('activeModule'), 'topBar deps must not capture activeModule').toBe(-1);
   });
 });
 

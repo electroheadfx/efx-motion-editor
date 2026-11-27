@@ -40,18 +40,22 @@ import { isAquarelleParamRowVisible } from './aquarelleParamVisibility';
 
 /**
  * 261017-vcn I-04 remainder: the top bar keeps status pill + brush trigger +
- * Brush size + Opacity in one row. Background / Grain strength / Grain scale
- * rows and those props left for the Paper tab (PaperPicker) — one home for
- * paper + background.
+ * Brush size in one row. Background / Grain strength / Grain scale rows and
+ * those props left for the Paper tab (PaperPicker) — one home for paper +
+ * background.
+ *
+ * 2026-11-27 (artist's live ruling): the top bar mirrors the Paint panel's
+ * row law instead of a hand-rolled list. Pigment left the bar (it lives in
+ * Paint & reservoir); Pickup and Opacity take its seat for the Gouache
+ * context, and the watercolor-only Edges / Grain knobs now disappear with
+ * their panel rows instead of staying as dead controls.
  *
  * 261018-f15 C1: Water / Edges / Grain follow the primary control in Water
  * color mode and write setAquarelleParam('water' | 'edge' | 'granulation') —
- * the same seam the Paint-tab globals use. Brush mode keeps Brush size +
- * Opacity only; Water color labels that slot Pigment because its value is the
- * canonical `load`, never an alpha.
+ * the same seam the Paint-tab globals use.
  *
  * 261018-gqo move 5: Engine ready is pinned left alone; the settings controls
- * (Brush size + Pigment/Opacity + Water/Edges/Grain) form ONE group.
+ * (Brush size + Pickup/Opacity + Water/Edges/Grain) form ONE group.
  *
  * 261027-gh9g: the module switcher left the Studio top bar entirely. The
  * active brush's larger painted thumbnail + name seat in the LEFT cluster
@@ -61,9 +65,10 @@ import { isAquarelleParamRowVisible } from './aquarelleParamVisibility';
  *
  * 261029-hy2: the settings group is pinned to the RIGHT edge at every width,
  * and it renders ONLY for the tools that own settings — Brush (Brush size +
- * Pigment + Water + Edges + Grain) and Eraser (Size + Eraser strength + Edit).
- * Water and Pen remove the whole cluster from the DOM. The left slot is ONE
- * tool pill for both tools: tool icon + painted thumb + name + chevron.
+ * Pickup + Opacity + Water + Edges + Grain) and Eraser (Size + Eraser
+ * strength + Edit). Water and Pen remove the whole cluster from the DOM. The
+ * left slot is ONE tool pill for both tools: tool icon + painted thumb + name
+ * + chevron.
  *
  * 261027-k6j — the Script switch sits beside the tool pill and gates stroke
  * recording only.
@@ -80,7 +85,6 @@ export interface PhysicsPaintTopBarProps {
   ready: boolean;
   disabled?: boolean;
   onBrushSizeChange: (value: number) => void;
-  onOpacityChange: (value: number) => void;
   /**
    * 261029-eur: the frame-scoped "is there anything to select" gate — the
    * same signal the rail's Select toggle reads. The Edit switch is disabled
@@ -396,7 +400,6 @@ export function PhysicsPaintTopBar({
   ready,
   disabled = false,
   onBrushSizeChange,
-  onOpacityChange,
   moveAvailable,
   historyAvailability,
   onUndo,
@@ -449,12 +452,9 @@ export function PhysicsPaintTopBar({
   // shows its OWN canonical in the retired 1..80 unit; the two never cross.
   const liveBrushSizePx = aquarellePaintSizePx();
   const liveLiftSize = aquarelleLiftSize.value;
-  // Water color has no opacity — its canonical Pigment `load` rides this same
-  // primary control, so the bar never shows Opacity and Pigment twice.
-  const liveOpacity = aquarelleParams.value.load;
   // 261028-k03b / 261029-eur: the Eraser tool owns the primary cluster — Size
-  // + Eraser strength + the Edit switch. The brush knobs (pigment/water/edges/
-  // grain) do not describe an eraser stroke.
+  // + Eraser strength + the Edit switch. The brush knobs (pickup/opacity/
+  // water/edges/grain) do not describe an eraser stroke.
   const activeTool = aquarelleActiveTool.value;
   const liftStrength = aquarelleParams.value.lift;
   // 261029-hy2: only the paint tools (Brush, and quick 261121-mtu's
@@ -465,11 +465,16 @@ export function PhysicsPaintTopBar({
   // painting watercolor.
   const toolOwnsSettings =
     activeTool === 'brush' || activeTool === 'watercolor' || activeTool === 'lift';
-  // quick 261124-iq9: Water is absent for the Gouache (acrylic) paint context
-  // and present for Watercolor — the SAME row law the Paint panel renders, so
-  // the two surfaces stay together. Edges and Grain are deliberately NOT
-  // gated (the requirement names Viscosity and Water only).
+  // 2026-11-27 (artist's live ruling): EVERY top-bar paint knob is gated by
+  // the SAME row law the Paint panel renders, so a row the panel hides can
+  // never keep a dead top-bar slider alive. For Gouache that means Water,
+  // Edges and Grain (all absent from its panel) leave the bar, while Pickup
+  // and Opacity take the retired Pigment seat.
   const waterRowVisible = isAquarelleParamRowVisible(activeTool, selectedMediumId, 'water');
+  const pickupRowVisible = isAquarelleParamRowVisible(activeTool, selectedMediumId, 'pickup');
+  const opacityRowVisible = isAquarelleParamRowVisible(activeTool, selectedMediumId, 'edgeFade');
+  const edgesRowVisible = isAquarelleParamRowVisible(activeTool, selectedMediumId, 'edge');
+  const grainRowVisible = isAquarelleParamRowVisible(activeTool, selectedMediumId, 'granulation');
 
   return (
     <header class="physics-paint-topbar" aria-label="Physics Paint controls">
@@ -604,18 +609,39 @@ export function PhysicsPaintTopBar({
               }}
               disabled={disabled}
             />
-            <TopBarSlider
-              id="physics-aquarelle-pigment"
-              label="Pigment"
-              min={0}
-              max={100}
-              value={liveOpacity}
-              onChange={onOpacityChange}
-              onCommit={(value) => {
-                void commitAquarelleSelectionParam('load', value);
-              }}
-              disabled={disabled}
-            />
+            {/* 2026-11-27 (artist's live ruling): Pigment stays in Paint &
+                reservoir — the Gouache bar carries its two bristle knobs
+                instead. Pickup is the carrier/gather rate; Opacity is the
+                `edgeFade` key rendered inverted (the stored key is
+                transparency, 0 = opaque). */}
+            {pickupRowVisible && (
+              <TopBarSlider
+                id="physics-aquarelle-pickup"
+                label="Pickup"
+                min={0}
+                max={100}
+                value={aquarelleParams.value.pickup}
+                onChange={(value) => setAquarelleParam('pickup', value)}
+                onCommit={(value) => {
+                  void commitAquarelleSelectionParam('pickup', value);
+                }}
+                disabled={disabled}
+              />
+            )}
+            {opacityRowVisible && (
+              <TopBarSlider
+                id="physics-aquarelle-opacity"
+                label="Opacity"
+                min={0}
+                max={100}
+                value={100 - aquarelleParams.value.edgeFade}
+                onChange={(value) => setAquarelleParam('edgeFade', 100 - value)}
+                onCommit={(value) => {
+                  void commitAquarelleSelectionParam('edgeFade', 100 - value);
+                }}
+                disabled={disabled}
+              />
+            )}
             {waterRowVisible && (
               <TopBarSlider
                 id="physics-aquarelle-water"
@@ -631,32 +657,36 @@ export function PhysicsPaintTopBar({
                 class="physics-paint-topbar-optional-water"
               />
             )}
-            <TopBarSlider
-              id="physics-aquarelle-edges"
-              label="Edges"
-              min={0}
-              max={100}
-              value={aquarelleParams.value.edge}
-              onChange={(value) => setAquarelleParam('edge', value)}
-              onCommit={(value) => {
-                void commitAquarelleSelectionParam('edge', value);
-              }}
-              disabled={disabled}
-              class="physics-paint-topbar-optional-edges"
-            />
-            <TopBarSlider
-              id="physics-aquarelle-grain"
-              label="Grain"
-              min={0}
-              max={100}
-              value={aquarelleParams.value.granulation}
-              onChange={(value) => setAquarelleParam('granulation', value)}
-              onCommit={(value) => {
-                void commitAquarelleSelectionParam('granulation', value);
-              }}
-              disabled={disabled}
-              class="physics-paint-topbar-optional-grain"
-            />
+            {edgesRowVisible && (
+              <TopBarSlider
+                id="physics-aquarelle-edges"
+                label="Edges"
+                min={0}
+                max={100}
+                value={aquarelleParams.value.edge}
+                onChange={(value) => setAquarelleParam('edge', value)}
+                onCommit={(value) => {
+                  void commitAquarelleSelectionParam('edge', value);
+                }}
+                disabled={disabled}
+                class="physics-paint-topbar-optional-edges"
+              />
+            )}
+            {grainRowVisible && (
+              <TopBarSlider
+                id="physics-aquarelle-grain"
+                label="Grain"
+                min={0}
+                max={100}
+                value={aquarelleParams.value.granulation}
+                onChange={(value) => setAquarelleParam('granulation', value)}
+                onCommit={(value) => {
+                  void commitAquarelleSelectionParam('granulation', value);
+                }}
+                disabled={disabled}
+                class="physics-paint-topbar-optional-grain"
+              />
+            )}
           </>
         )
         ) : null}

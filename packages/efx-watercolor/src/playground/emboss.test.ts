@@ -283,18 +283,18 @@ describe('engine light state (MED-15)', () => {
     // No collision: ink 0-1, fixed 2-3, wet 4, paper 5, ref 6, relief 7,
     // coverage 8 (SPIKE 001 — an addition, never a replacement), underlay 9
     // (2026-11-21 — live compositor only, unbound on exports), and the layer
-    // variant's five samplers 10-14 (261125-kvl — bound only while an Edge
-    // stroke's layer is open; exports structurally bind the shipped program).
+    // variant's four samplers 10-13 (261125-kvl; 2026-11-27 retired the
+    // lateral-field sampler with the global transparency — bound only while
+    // a layer is open; exports structurally bind the shipped program).
     const binds = [...body.matchAll(/g\.bindTex\((\d+),/g)].map((match) => Number(match[1]))
-    expect(binds).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14])
+    expect(binds).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13])
     // Degrees become radians once, at this boundary.
     expect(body.match(/Math\.PI\) \/ 180/g) ?? []).toHaveLength(2)
     // The bump is a fixed document-space scale, never a zoom-dependent value.
-    // 2026-11-23: gated to 0 — the display emboss is off until a new renderer
-    // replaces the first-order heightmap shade. Both the normal's slope and
-    // `litDelta` carry the bump, so 0 makes `shade` exactly 1 (inert); the
-    // deposit still records thickness.
-    expectContains(ENGINE_SOURCE, 'const RELIEF_BUMP = 0.0;')
+    // 2026-11-27 (artist's live ruling): lit again at 1.0 for the Emboss
+    // 0..4 test band — both the normal's slope and `litDelta` carry it, so
+    // the display relief reads on screen; the deposit law is unchanged.
+    expectContains(ENGINE_SOURCE, 'const RELIEF_BUMP = 1.0;')
     expectContains(body, 'gl.uniform1f(p.u.uReliefBump, RELIEF_BUMP);')
   })
 

@@ -58,7 +58,7 @@ export function RightPanelPaperTab(props: {
       {/* 64-09 (D-06): the three light rows BELOW the grain pair — one option
           group, no second panel, no floating sheet. Each row is controlled by
           the document light and emits a ONE-FIELD patch upward. */}
-      <div class="physics-paint-option-group" data-testid="right-panel-light-group">
+      <div class="physics-paint-option-group physics-paint-light-group" data-testid="right-panel-light-group">
         <span class="physics-paint-right-label">Light</span>
         <div class="physics-paint-option-row">
           <SliderStepper

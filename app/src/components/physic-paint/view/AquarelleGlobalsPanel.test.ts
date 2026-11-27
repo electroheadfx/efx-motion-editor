@@ -11,10 +11,10 @@
  *   quick 261121-mtu: the panel renders the seven context groups from the ONE
  *   pure selector (`aquarelleParamVisibility.ts`, spec §8), driven by the
  *   active TOOL plus the selected MEDIUM. Default context (Brush + Watercolor)
- *   is ten rows in the order Viscosity, Emboss, Pigment, Pickup, Water,
- *   Dry speed, Flow, Bleed, Edges, Grain — decision B hides Refill for
- *   watercolor and Feather is bristle-only, so the Edge group drops. The
- *   old flat playground order is SUPERSEDED by the group order. Post-UAT
+ *   is nine rows in the order Viscosity, Emboss, Pigment, Water, Dry speed,
+ *   Flow, Bleed, Edges, Grain — decision B hides Refill for watercolor,
+ *   Pickup is bristle-only and Feather is bristle-only. The old flat
+ *   playground order is SUPERSEDED by the group order. Post-UAT
  *   2026-11-22: `body` rides the bag and the Reset law but has NO row — the
  *   compositor's alpha is max(pigment-darkness, cover), so Body only reads on
  *   near-white pigments. `wetSeconds` is a medium-record value with NO row.
@@ -189,11 +189,11 @@ function collectOrderedLabels(tree: TestVNode): string[] {
 // Default context = Brush + Watercolor. rev 3: Pickup is the bristle
 // carrier/gather smear only, so the fluid context hides it alongside Refill
 // and Feather — nine rows.
-// 2026-11-23: Emboss is gated off (hidden in every context until a new
-// display renderer replaces the first-order heightmap shade), so the default
-// context renders eight rows, not nine.
+// 2026-11-27 (artist's live ruling): Emboss returns at 0..4, so the Medium
+// group opens again with Viscosity then Emboss.
 const GLOBAL_LABELS = [
   'Viscosity',
+  'Emboss',
   'Pigment',
   'Water',
   'Dry speed',
@@ -428,13 +428,13 @@ describe('Phase 64 medium dropdown', () => {
     const sliders = [...walk(tree)].filter(
       (node) => node.props?.['data-testid'] === 'slider-stepper',
     );
-    expect(sliders, 'eight row sliders for Brush + Watercolor').toHaveLength(GLOBAL_LABELS.length);
-    expect(GLOBAL_LABELS).toHaveLength(8);
+    expect(sliders, 'nine row sliders for Brush + Watercolor').toHaveLength(GLOBAL_LABELS.length);
+    expect(GLOBAL_LABELS).toHaveLength(9);
     const ordered = collectOrderedLabels(tree).filter((label) =>
       (GLOBAL_LABELS as readonly string[]).includes(label),
     );
     expectGlobalOrder(ordered);
-    expect(ordered).toHaveLength(8);
+    expect(ordered).toHaveLength(9);
     // quick 261121-mtu: decision B hides Refill for watercolor, rev 3 hides
     // Pickup (bristle-program-only), and Feather is bristle-only. None of the
     // three may appear in the default context.
@@ -443,14 +443,14 @@ describe('Phase 64 medium dropdown', () => {
     expect(ordered).not.toContain('Feather');
     const index = (label: string) => ordered.indexOf(label);
     expect(index('Viscosity'), 'Viscosity leads the Medium group').toBe(0);
-    // 2026-11-23: Emboss is gated off and does not render. The row keeps its
-    // place in the table, so un-gating restores the downstream positions.
-    expect(index('Emboss'), 'the gated Emboss row does not render').toBe(-1);
-    expect(index('Pigment'), 'Pigment opens Paint & reservoir').toBe(1);
-    expect(index('Water'), 'Water opens Drying').toBe(2);
-    expect(index('Dry speed'), 'Dry speed follows Water').toBe(3);
-    expect(index('Flow'), 'Flow opens Watercolor only').toBe(4);
-    expect(index('Grain'), 'Grain closes the list').toBe(7);
+    // 2026-11-27 (artist's live ruling): Emboss returns at 0..4 and follows
+    // Viscosity in the Medium group.
+    expect(index('Emboss'), 'the Emboss test row renders').toBe(1);
+    expect(index('Pigment'), 'Pigment opens Paint & reservoir').toBe(2);
+    expect(index('Water'), 'Water opens Drying').toBe(3);
+    expect(index('Dry speed'), 'Dry speed follows Water').toBe(4);
+    expect(index('Flow'), 'Flow opens Watercolor only').toBe(5);
+    expect(index('Grain'), 'Grain closes the list').toBe(8);
   });
 
   it('renders the non-empty group headings in the fixed order', () => {
@@ -492,8 +492,8 @@ describe('Phase 64 medium dropdown', () => {
     expect(sliderLabels).not.toContain('wetSeconds');
     expect(sliderLabels).not.toContain('Wet seconds');
     expect(sliderLabels).not.toContain('Wet Seconds');
-    // 2026-11-23: eight rows in the default context (Emboss gated), not twelve.
-    expect(sliderLabels).toHaveLength(8);
+    // 2026-11-27: nine rows in the default context (Emboss back at 0..4).
+    expect(sliderLabels).toHaveLength(9);
   });
 
   it('moves the canonical viscosity key through the one seam on change and release', () => {
@@ -506,6 +506,39 @@ describe('Phase 64 medium dropdown', () => {
     (row!.props['onChange'] as (value: number) => void)(42);
     expect(aquarelleParams.value.viscosity, 'Viscosity writes the canonical key').toBe(42);
     expect(typeof row!.props['onCommit'], 'the release path is wired like every row').toBe(
+      'function',
+    );
+  });
+
+  // 2026-11-27 (artist's live ruling): the slider is OPACITY — 100 = opaque,
+  // the default — while the canonical `edgeFade` key keeps the shipped
+  // TRANSPARENCY semantics (0 = opaque), so existing strokes and their replay
+  // are untouched. The row inverts for display and maps back on change.
+  it('renders the Opacity row inverted and stores transparency on change', () => {
+    applyAquarelleMedium('acrylic');
+    // The raw tree keeps GlobalSlider's props (the stored value and the row's
+    // own callbacks); invoking the component yields the SliderStepper vnode
+    // with the DISPLAYED value and the inverted callbacks (same pattern as the
+    // signed-Emboss band test).
+    const slider = (): TestVNode => {
+      const row = [...walk(AquarelleGlobalsPanel())].find(
+        (node) =>
+          node.props?.['label'] === 'Opacity' && typeof node.props?.['onChange'] === 'function',
+      );
+      expect(row, 'the Opacity row must render').toBeTruthy();
+      const group = (row!.type as (props: Record<string, unknown>) => unknown)(
+        row!.props,
+      ) as TestVNode;
+      return childrenOf(group)[0] as TestVNode;
+    };
+    expect(aquarelleParams.value.edgeFade, 'the record default is transparency 0').toBe(0);
+    expect(slider().props['value'], 'the default displays as opacity 100').toBe(100);
+    (slider().props['onChange'] as (value: number) => void)(25);
+    expect(aquarelleParams.value.edgeFade, 'opacity 25 stores transparency 75').toBe(75);
+    expect(slider().props['value'], 'the slider now reads opacity 25').toBe(25);
+    // The release path rides the same toStored wrapper (it commits the
+    // selection, not the param store, so its effect is observed elsewhere).
+    expect(typeof slider().props['onCommit'], 'the inverted release path is wired').toBe(
       'function',
     );
   });
@@ -812,7 +845,10 @@ describe('quick 261111-ucf globals release commits + Reset batch', () => {
     const body = stripComments(
       readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'AquarelleGlobalsPanel.tsx'), 'utf8'),
     );
-    expect(body.split('onCommit={props.onCommit}').length - 1, 'one GlobalSlider passthrough').toBe(1);
+    expect(
+      body.split('onCommit={(value) => props.onCommit?.(toStored(value))}').length - 1,
+      'one GlobalSlider passthrough (2026-11-27: the Opacity row maps through toStored)',
+    ).toBe(1);
     expect(
       body.split('commitAquarelleSelectionParam(key, value)').length - 1,
       'one per-row release commit',
@@ -826,14 +862,10 @@ describe('quick 261111-ucf globals release commits + Reset batch', () => {
   });
 });
 
-// Quick 261123-hr5 (signed Emboss): negative emboss smooths a dry impasto and
-// keeps the paint, so the row is -15..15 on the track, the typed-entry commit
-// clamp and the readout, while every other global row keeps the 0..100 band.
-// PARKED 2026-11-23: the Emboss row is hidden in every context while the
-// display emboss is gated (see RELIEF_BUMP), so it does not render and these
-// UI-level pins cannot run. The -15..15 band itself is still pinned on the ROW
-// DATA in aquarelleParamVisibility.test.ts. Un-skip with the row.
-describe.skip('quick 261123-hr5 signed emboss row band', () => {
+// 2026-11-27 (artist's live ruling): Emboss returns to the UI as a 0..4
+// low-value test band, rendered on the track, the typed-entry commit clamp
+// and the readout, while every other global row keeps the 0..100 band.
+describe('261127 emboss 0..4 test band', () => {
   function sliderProps(label: string): { value: number; min: number; max: number } {
     const row = [...walk(AquarelleGlobalsPanel())].find(
       (node) => node.props?.['label'] === label && typeof node.props?.['onChange'] === 'function',
@@ -846,19 +878,19 @@ describe.skip('quick 261123-hr5 signed emboss row band', () => {
     return slider.props as { value: number; min: number; max: number };
   }
 
-  it('pins min -15 and max 15 on the Emboss row (both drag and typed commits)', () => {
-    setAquarelleParam('emboss', -7);
+  it('pins min 0 and max 4 on the Emboss row (both drag and typed commits)', () => {
+    setAquarelleParam('emboss', 3);
     const props = sliderProps('Emboss');
-    expect(props.min, 'the signed row floor').toBe(-15);
-    expect(props.max, 'the row ceiling is 15').toBe(15);
-    expect(props.value, 'an in-band negative value passes through').toBe(-7);
+    expect(props.min, 'the test-row floor').toBe(0);
+    expect(props.max, 'the row ceiling is 4').toBe(4);
+    expect(props.value, 'an in-band value passes through').toBe(3);
   });
 
-  it('reads a legacy value outside the band as the nearest cap', () => {
+  it('reads a value outside the band as the nearest cap', () => {
     setAquarelleParam('emboss', 40);
-    expect(sliderProps('Emboss').value, 'an out-of-band value reads as the ceiling').toBe(15);
+    expect(sliderProps('Emboss').value, 'an out-of-band value reads as the ceiling').toBe(4);
     setAquarelleParam('emboss', -40);
-    expect(sliderProps('Emboss').value, 'a negative out-of-band value reads as the floor').toBe(-15);
+    expect(sliderProps('Emboss').value, 'a negative value reads as the floor').toBe(0);
   });
 
   it('leaves every other global row on the 0..100 band', () => {
@@ -892,22 +924,25 @@ describe('tool x medium context rows (quick 261121-mtu)', () => {
   it('Gouache (the acrylic record) shows its bristle rows only', () => {
     applyAquarelleMedium('acrylic');
     const labels = renderedSliders();
-    // quick 261127-jox: the bristle Edge group split into Transparency (the
-    // lateral pair, Spec 10) and Noise (the break-up pair, Spec 11); the
-    // legacy Feather amplitude row is hidden in every context — the
-    // featherNoise re-index owns the same raggedness.
+    // 2026-11-27 (artist's live ruling): the lateral Edge transparency fade is
+    // retired — ONE Opacity row (the `edgeFade` key, rendered inverted: 100 =
+    // opaque) sits in Paint & reservoir under Pickup, and the Edge falloff row
+    // is gone. Noise keeps the break-up pair (Spec 11); the legacy Feather
+    // amplitude row is hidden in every context. Emboss returns at 0..4 and
+    // opens the Medium group.
     expect(labels).toEqual([
+      'Emboss',
       'Pigment',
       'Pickup',
+      'Opacity',
       'Dry speed',
-      'Edge transparency',
-      'Edge falloff',
       'Feather noise',
       'Feather falloff',
     ]);
     // quick 261124-iq9: Viscosity and Water are hidden for the Gouache paint
     // context; Refill and every fluid-only row stay off the bristle path too.
-    // quick 261127-jox: the exact 'Feather' label must not render.
+    // quick 261127-jox: the exact 'Feather' label must not render; 2026-11-27
+    // retires both former Edge rows.
     for (const absent of [
       'Viscosity',
       'Refill',
@@ -917,15 +952,19 @@ describe('tool x medium context rows (quick 261121-mtu)', () => {
       'Edges',
       'Grain',
       'Feather',
+      'Edge transparency',
+      'Edge falloff',
+      'Transparency',
     ]) {
       expect(labels.includes(absent), `${absent} is absent for Gouache`).toBe(false);
     }
   });
 
-  // quick 261127-jox: the Gouache panel renders its bristle knobs as TWO
-  // labelled sections — Transparency then Noise — in the fixed group order
+  // 2026-11-27: the Gouache panel renders its knobs as THREE labelled
+  // sections — Medium (Viscosity hidden, Emboss only), Paint & reservoir (now
+  // carrying the global Transparency) and Noise — in the fixed group order
   // (the exact-list assertion also forbids any extra group heading).
-  it('renders the Gouache headings as paint, drying, transparency, noise', () => {
+  it('renders the Gouache headings as medium, paint, drying, noise', () => {
     applyAquarelleMedium('acrylic');
     const tree = renderPanel();
     const groups = [...walk(tree)].filter((node) => {
@@ -933,20 +972,21 @@ describe('tool x medium context rows (quick 261121-mtu)', () => {
       return typeof id === 'string' && id.startsWith('aquarelle-param-group-');
     });
     expect(groups.map((group) => group.props?.['data-testid']).join('|')).toBe(
-      'aquarelle-param-group-paint|aquarelle-param-group-drying|aquarelle-param-group-transparency|aquarelle-param-group-noise',
+      'aquarelle-param-group-medium|aquarelle-param-group-paint|aquarelle-param-group-drying|aquarelle-param-group-noise',
     );
-    const headings = ['Paint & reservoir', 'Drying', 'Transparency', 'Noise'];
+    const headings = ['Medium', 'Paint & reservoir', 'Drying', 'Noise'];
     const texts = groups.map((group) => textContent(group));
     for (let i = 0; i < headings.length; i += 1) {
       expect(texts[i]!.startsWith(headings[i]!), `heading ${headings[i]}`).toBe(true);
     }
   });
 
-  it('Watercolor shows its eight rows with no Refill, Pickup or Feather', () => {
+  it('Watercolor shows its nine rows with no Refill, Pickup or Feather', () => {
     applyAquarelleMedium('watercolor');
     const labels = renderedSliders();
     expect(labels).toEqual([
       'Viscosity',
+      'Emboss',
       'Pigment',
       'Water',
       'Dry speed',
