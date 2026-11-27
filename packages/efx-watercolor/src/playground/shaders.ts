@@ -1032,11 +1032,12 @@ export function bristleGatherSource(extended: boolean): string {
 // Spec 11 — the law's uniforms, declared ONLY by the extended variant.
   const FEATHER_LAW_UNIFORMS = `// Spec 11 (feather noise): the artist's two knobs. The falloff reuses the
 // shipped 2^(2b-1) shape (the tested twin edgeFalloffExponent is its only
-// source — no second table); the noise is a RIM-BORDER control whose bites
-// ride the three-scale cloud over the Feather law's own band.
+// source — no second table); the noise waves the silhouette with the
+// smoothed three-scale cloud.
 uniform float uFeatherFalloff;       // the opening shape bias (0..1, 0.5 shipped)
-uniform float uFeatherNoise;         // the DRIVEN border amount (0..1, 0 shipped)
-uniform float uFeatherNoiseLift;     // the rim bite's threshold rise at noise 100 (LIFT)
+uniform float uFeatherNoise;         // the DRIVEN wave amount (0..1, 0 shipped)
+uniform float uFeatherNoiseAnchor;   // 1 at the VISUAL edge (BRISTLE_LAYER_EDGE)
+uniform float uFeatherNoiseLift;     // the wave's threshold rise at noise 100 (LIFT)
 `;
 // Spec 11 — the law's statements, kept out of the neutral variant. The
 // featherShift below the falloff branch is PRE's statement VERBATIM in BOTH
@@ -1053,36 +1054,34 @@ uniform float uFeatherNoiseLift;     // the rim bite's threshold rise at noise 1
     featherShift = uFeather * uFeatherShift
                  * pow(smoothstep(featherStart, uFeatherEdge, lateral), exp2(2.0 * uFeatherFalloff - 1.0));
   }
-  // Spec 11 rev (2026-11-27j, the artist's live ruling): the noise is a
-  // BORDER, not a front. The body keeps its full width at every setting; the
-  // RIM becomes progressively ragged and broken. The band is the Feather
-  // law's own span (featherStart -> uFeatherEdge), so the noise rides exactly
-  // the zone Edge transparency opens — never the core. Threshold-only, paper
-  // kept by mix. Gated by uFeather, so Feather 0 is inert; the drive is 0 at
-  // slider 0, which also keeps the neutral program in charge there.
+  // Spec 11 rev (2026-11-27n, the artist's green-envelope ruling): the noise
+  // is a SMOOTH WAVE of the silhouette, not an inward sweep. The front's
+  // centre sits on the natural painted edge and ONLY its amplitude grows
+  // with the slider — the body keeps its width, the edge waves gently at 20
+  // and wildly at 100. The wobble is the SMOOTHED three-scale cloud (two
+  // coarsest octaves per scale): rounded waves, never fine crinkle — the
+  // artist's three-time "add blur". Threshold-only, paper kept by mix.
   float height = mix(grainHeight(css, uAxis), 0.5, rimCalm);
   if (uFeatherNoise * uFeather > 0.0) {
-    float rim = smoothstep(featherStart, uFeatherEdge, lateral);
-    // SOFT raggedness (the artist's "more blur"): a smoothed three-scale
-    // cloud (20/60/200 px, coarsest octaves) bites only where it is HIGH —
-    // about half the rim keeps its natural edge, so the body never shrinks
-    // and the bites grow with the slider instead.
+    float uN = clamp(lateral / uFeatherNoiseAnchor, 0.0, 1.0);
     float wobble = cloudMixSmooth(css);
-    float ragged = clamp(2.2 * wobble, 0.0, 1.5);
-    float bite = uFeatherNoiseLift * rim * ragged;
-    featherShift += uFeather * uFeatherNoise * bite;
-    // SPECKS: a band across the middle of the rim, perforated by the FINE
-    // cloud, so the border detaches in loose freckles instead of cutting.
-    float band = 4.0 * rim * (1.0 - rim);
+    float front = 0.78 + wobble * mix(0.10, 0.60, uFeatherNoise);
+    // A wide document-px band blurs the removal boundary itself.
+    float bandUN = clamp(8.0 / max(uHalfWidthPx, 1.0), 0.05, 0.30);
+    float envelope = smoothstep(front - bandUN, front + bandUN, uN);
+    featherShift += uFeather * uFeatherNoise * uFeatherNoiseLift * envelope;
+    // SPECKS around the front, perforated by the FINE cloud; scaled with the
+    // slider so the low values stay clean.
+    float band = exp(-pow((uN - (front - 0.07)) / 0.11, 2.0));
     float spray = clamp(max(cloudMix(css * 3.1 + 23.0), 0.0) * 14.0, 0.0, 1.3);
     featherShift += uFeather * uFeatherNoise * uFeatherNoiseLift * band * spray;
     // SPIKES: sparse peaks of a SLOW field throw a little paint past the
-    // silhouette; the same peaks cancel the rim bite there, so the mark
-    // bulges and frays outward instead of breaking at those spots.
+    // silhouette; the same peaks cancel the front there, so the mark bulges
+    // and frays outward instead of breaking at those spots.
     float spikeField = cloudMix(css * 0.8 + 41.0);
     float spike = smoothstep(0.10, 0.34, spikeField);
     float reach = mix(0.12, 0.40, uFeatherNoise);
-    featherShift -= uFeather * uFeatherNoise * bite * 0.90 * spike;
+    featherShift -= uFeather * uFeatherNoise * uFeatherNoiseLift * envelope * 0.90 * spike;
     featherShift -= uFeather * uFeatherNoise * spike * reach;
   }
 `;

@@ -512,13 +512,19 @@ export const FEATHER_NOISE_FLOOR = 0.75;
 export const FEATHER_NOISE_LIFT = 1.4;
 
 /**
- * The Feather-noise DRIVE (artist mapping 2026-11-27k, the live ladder):
- * 0 -> 0 (the plain block: no noise at all), then LINEAR — 20 is the light
- * second step, 50 medium, 80 strong, 100 the full ragged border.
+ * The Feather-noise DRIVE (the artist's mapping, restored 2026-11-27p — this
+ * is the ladder they approved in the #27 capture):
+ *   0 .. 20   -> 0                          (the plain block: no visible noise)
+ *   20 .. 60  -> n - 0.2                    (light fringe at 40, medium at 60)
+ *   60 .. 100 -> 0.4 + (n - 0.6) * 1.5      (the full halo at 100)
+ * Piecewise linear, so every value in between interpolates.
  */
 export function featherNoiseDrive(n: number): number {
   if (!Number.isFinite(n)) return 0;
-  return clamp01(n);
+  const x = clamp01(n);
+  if (x <= 0.2) return 0;
+  if (x <= 0.6) return x - 0.2;
+  return 0.4 + (x - 0.6) * 1.5;
 }
 
 /**
