@@ -228,7 +228,13 @@ import { alongCoherence, type AlongCoherence } from './ridge'
 // quick 261126-n20 (issue 3): the blend share-spectrum detector — same
 // pure-helper pattern; the blend readout projects each across station's
 // visible colour onto the under-to-stroke axis and reads its spectrum.
-import { BLEND_WORM_BAND_HI_PX, BLEND_WORM_BAND_LO_PX, detrendedRms, shareSpectrum } from './blend'
+import {
+  BLEND_WORM_BAND_HI_PX,
+  BLEND_WORM_BAND_LO_PX,
+  detrendedRms,
+  shareSpectrum,
+  transitionWidthPx,
+} from './blend'
 import { WatercolorEngine, clampDocSize } from '../../src/playground/Engine'
 import { BRUSH_PRESETS } from '../../src/playground/brushes'
 import { PAPERS, type PaperPreset } from '../../src/playground/papers'
@@ -2317,25 +2323,32 @@ function blendProfileSet(engine: WatercolorEngine, strokeSize: number): Record<s
 // longitudinal stripes. The pickup reads the pre-dab sheet POINTWISE
 // (`cA = mix(cA, snapA, smear)` / `cB = mix(cB, snapB.xyz, smear)`), so every
 // fragment copies the under's film sample at its own position and structure
-// narrower than a bristle run freezes into the judged film. The law this
-// quick measures replaces that under reference with a 5-tap local mean (the
-// centre plus four 1.5 px diagonal corners in the stroke frame) inside the
-// existing Pickup guard.
+// narrower than a bristle run freezes into the judged film.
+//
+// quick 261127-khp measured the defect: the artist cell's AC power sits in a
+// ~23 px dominant stripe (1–3 px band share 0.000), so a 1.5 px kernel could
+// never reach it and no law was written. quick 261127-lpj re-baselines on the
+// 4–40 px DOMINANT band (the bar's currency), adds the under-boundary's 10–90
+// transition width (the previous 2.5 px bleed could not see an edge either),
+// and adds the `constant` under control — the painted under's own median
+// pigment, so the report can say whether the stripes come from the under's
+// TEXTURE or from the under's colour.
 //
 // The scene is the artist's own: the under is a `bristle-round` stroke at the
 // acrylic record (Size 250, Body 100, Dry 0, Pickup 100, Edge 0) from x 0.35
 // to 0.92 at y 0.52, fixed; the judged stroke is the same record in the
 // yellow at `--stroke-size`, `--pickup` and `--edge`, from x 0.10 to 0.90 at
 // the same y, so it enters the under at x = 0.35. `--under` swaps the under
-// for three controls: a plain watercolour band (`flat`), the painted under
-// box-blurred after its fix (`blurred`), and bare paper (`none`).
+// for four controls: a plain watercolour band (`flat`), the painted under
+// box-blurred after its fix (`blurred`), the painted under replaced by its own
+// median pigment (`constant`), and bare paper (`none`).
 //
 // The readout samples the judged body ACROSS the stroke at three x stations
 // inside the under (0.45 / 0.55 / 0.65) on the transparent export. Each
 // station's series is the RGB deviation magnitude from that station's own
-// per-channel mean; `shareSpectrum` reads its 1–3 px band (the fine aliasing
-// this quick removes) and, as a DIAGNOSTIC, its 4–32 px band (the pre-existing
-// n20 worm band), so the report can state where the defect actually lives.
+// per-channel mean; `shareSpectrum` reads its 1–3 px band (the fine aliasing),
+// its 4–32 px band (the pre-existing n20 worm band) and — since 261127-lpj —
+// its 4–40 px DOMINANT band, the band the green bar is frozen on.
 const PICKUP_UNDER_BLUE = '#1a88ec'
 const PICKUP_UNDER_YELLOW = '#f9e01c'
 const PICKUP_UNDER_UNDER_SIZE = 250
@@ -2352,14 +2365,30 @@ const PICKUP_UNDER_STATIONS: readonly number[] = [0.45, 0.55, 0.65]
 /** The fine band the law must collapse, document px. */
 const PICKUP_UNDER_BAND_LO_PX = 1
 const PICKUP_UNDER_BAND_HI_PX = 3
+/** quick 261127-lpj: the DOMINANT band the khp RED matrix measured the defect
+ *  in — the 4–40 px band (peak 17.5–23 px on the artist cells). The green bar
+ *  is read on THIS band; the 1–3 px band above stays reported verbatim. */
+const PICKUP_UNDER_DOMINANT_LO_PX = 4
+const PICKUP_UNDER_DOMINANT_HI_PX = 40
 /** The perpendicular station spacing, document px — the 1.5 px law's scale. */
 const PICKUP_UNDER_STATION_PX = 0.5
 /** The boundary-bleed read window: 20 px inside the boundary, the far field
  *  from 12 px in. */
 const PICKUP_UNDER_BLEED_SCAN_PX = 20
 const PICKUP_UNDER_BLEED_FAR_PX = 12
+/** quick 261127-lpj: the under-boundary 10–90 read — 0.5 px doc-x stations
+ *  over boundary ± 40 px, the plateaus 8..20 px on each side of the edge. The
+ *  bleed above stays reported verbatim (evidence continuity) but is never
+ *  gated: it could only ever measure a 2.5 px band the defect never lived in. */
+const PICKUP_UNDER_EDGE_STEP_PX = 0.5
+const PICKUP_UNDER_EDGE_SEARCH_PX = 40
+const PICKUP_UNDER_EDGE_IN_PX = 8
+const PICKUP_UNDER_EDGE_OUT_PX = 20
+/** A band whose in/out visible-colour distance is below this (0..255) holds
+ *  no edge to measure and is skipped. */
+const PICKUP_UNDER_EDGE_MIN_DELTA = 6
 
-type UnderKind = 'painted' | 'flat' | 'blurred' | 'none'
+type UnderKind = 'painted' | 'flat' | 'blurred' | 'constant' | 'none'
 /** The scene's operand, read once by `main()` before any stroke — module state
  *  like `EDGE_LAYER_*`, so a refused operand can never leave a painted sheet. */
 let PICKUP_UNDER_KIND: UnderKind = 'painted'
@@ -2372,8 +2401,14 @@ function readUnderKind(scenario: string): UnderKind {
   if (scenario !== 'pickup-under') {
     throw new Error('--under is only valid with --scenario pickup-under')
   }
-  if (raw !== 'painted' && raw !== 'flat' && raw !== 'blurred' && raw !== 'none') {
-    throw new Error(`invalid under "${raw}" (expected painted, flat, blurred or none)`)
+  if (
+    raw !== 'painted' &&
+    raw !== 'flat' &&
+    raw !== 'blurred' &&
+    raw !== 'constant' &&
+    raw !== 'none'
+  ) {
+    throw new Error(`invalid under "${raw}" (expected painted, flat, blurred, constant or none)`)
   }
   return raw
 }
@@ -2424,7 +2459,9 @@ function pickupUnderFlatPoints(): readonly AquarellePoint[] {
 
 /** The scene's script. The under carries the artist's exact recipe (Edge 0 =
  *  the sheet path, falloff 50, Body 100 = the record's load, Dry 0, Pickup
- *  100); the judged stroke carries the operands. `none` omits the under. */
+ *  100); the judged stroke carries the operands. `none` omits the under;
+ *  `constant` keeps the painted under (its replacement is the visit's own
+ *  hook, after the fix, so the replay can re-apply it deterministically). */
 function pickupUnderScript(
   kind: UnderKind,
   strokeSize: number,
@@ -2527,6 +2564,66 @@ function blurWholeSheet(engine: WatercolorEngine, sheet: number): void {
   if (!(cover instanceof Uint16Array)) throw new Error('blur: cover is not half float')
   whole.layers.cover = blurHalfLayer(cover, w, h, 1)
   if (!engine.restoreSheet(snapshot)) throw new Error('blur: restoreSheet refused the sheet')
+}
+
+/** The `constant` control (quick 261127-lpj): the painted under's per-bristle
+ *  TEXTURE replaced by the under's own median pigment, leaving one uniform
+ *  colour under the judged stroke. A stripe that survives here is not the
+ *  under's texture (the SUMMARY must say so). The four covered components of
+ *  `inkA + fixedA` and of `inkB + fixedB` are collected in the half-float
+ *  domain, their channel-wise medians become `fixedA`/`fixedB` with the ink
+ *  pools zeroed and the cover at 1; `wet`, `relief` and the exact-f32
+ *  last-touch lane are carried through untouched (the blur control's rule).
+ *  Whole-rect fill, so no document-to-rect index mapping is needed. Harness
+ *  work, never medium cost — the caller accounts it as capture time. */
+function constantUnder(engine: WatercolorEngine, sheet: number): void {
+  const snapshot = engine.captureSheet()
+  const whole = snapshot.whole
+  if (whole.rect === null) throw new Error('constant: the sheet is blank')
+  if (whole.w !== sheet || whole.h !== sheet) throw new Error('constant: the sheet size moved')
+  const w = whole.rect.x1 - whole.rect.x0
+  const h = whole.rect.y1 - whole.rect.y0
+  const inkA = whole.layers.inkA
+  const inkB = whole.layers.inkB
+  const fixedA = whole.layers.fixedA
+  const fixedB = whole.layers.fixedB
+  const cover = whole.layers.cover
+  if (!(inkA instanceof Uint16Array) || !(inkB instanceof Uint16Array)) {
+    throw new Error('constant: the ink layers are not half float')
+  }
+  if (!(fixedA instanceof Uint16Array) || !(fixedB instanceof Uint16Array)) {
+    throw new Error('constant: the fixed layers are not half float')
+  }
+  if (!(cover instanceof Uint16Array)) throw new Error('constant: cover is not half float')
+  if (cover.length !== w * h || inkA.length !== w * h * 4) {
+    throw new Error('constant: the layers do not match the rect')
+  }
+  const aSamples: number[][] = [[], [], [], []]
+  const bSamples: number[][] = [[], [], [], []]
+  for (let i = 0; i < cover.length; i += 1) {
+    if (fromHalf(cover[i]!) <= 0.5) continue
+    for (let c = 0; c < 4; c += 1) {
+      aSamples[c]!.push(fromHalf(inkA[i * 4 + c]!) + fromHalf(fixedA[i * 4 + c]!))
+      bSamples[c]!.push(fromHalf(inkB[i * 4 + c]!) + fromHalf(fixedB[i * 4 + c]!))
+    }
+  }
+  const median = (values: readonly number[]): number => {
+    if (values.length === 0) return 0
+    const sorted = [...values].sort((a, b) => a - b)
+    return sorted[Math.floor(sorted.length / 2)]!
+  }
+  const medianA = aSamples.map((values) => median(values))
+  const medianB = bSamples.map((values) => median(values))
+  for (let i = 0; i < cover.length; i += 1) {
+    for (let c = 0; c < 4; c += 1) {
+      fixedA[i * 4 + c] = toHalf(medianA[c]!)
+      fixedB[i * 4 + c] = toHalf(medianB[c]!)
+      inkA[i * 4 + c] = 0
+      inkB[i * 4 + c] = 0
+    }
+    cover[i] = toHalf(1)
+  }
+  if (!engine.restoreSheet(snapshot)) throw new Error('constant: restoreSheet refused the sheet')
 }
 
 /** One RGBA bilinear sample; raster coordinates (y down), clamped edges. */
@@ -2654,6 +2751,107 @@ function pickupUnderBleed(
   return worst
 }
 
+/**
+ * The under's leading-edge SHARPNESS (quick 261127-lpj): the 10–90 percent
+ * width of the visible-colour transition along x at x = 0.35, measured on a
+ * profile averaged over three y bands inside the judged body. The bleed above
+ * was range-limited to 20 px with a 2/255 bar and could not see a soft edge;
+ * this is the instrument the boundary bar is frozen on. Each band's profile
+ * runs at 0.5 px doc-x stations over boundary ± 40 px, each sample the band's
+ * mean visible RGB (composited on white, 255 - alpha, 2 px y steps); the in
+ * plateau is [boundary + 8, boundary + 20], the out plateau
+ * [boundary - 20, boundary - 8]. A band whose plateau distance is below
+ * 6/255 is skipped (a boundary the stroke does not visibly cross holds no
+ * edge), and the samples are projected onto the in-out axis before the pure
+ * `transitionWidthPx` detector reads the crossings. `--under none` has no
+ * under edge at all: nulls and zero valid, nothing skipped.
+ */
+function pickupUnderBoundarySharp(
+  data: Uint8ClampedArray,
+  w: number,
+  h: number,
+  centreDocY: number,
+  strokeSize: number,
+): { px: number | null; worst: number | null; valid: number; skip: number } {
+  if (PICKUP_UNDER_KIND === 'none') return { px: null, worst: null, valid: 0, skip: 0 }
+  const boundary = Math.round(PICKUP_UNDER_UNDER_X0 * w)
+  const half = Math.max(6, Math.round(Math.min(strokeSize, PICKUP_UNDER_UNDER_SIZE) / 2) - 12)
+  const bandHeight = (2 * half) / 3
+  const widths: number[] = []
+  let skip = 0
+  for (let band = 0; band < 3; band += 1) {
+    const gy0 = -half + band * bandHeight
+    const gy1 = gy0 + bandHeight
+    const xs: number[] = []
+    const samples: Array<[number, number, number]> = []
+    for (
+      let dx = -PICKUP_UNDER_EDGE_SEARCH_PX;
+      dx <= PICKUP_UNDER_EDGE_SEARCH_PX + 1e-9;
+      dx += PICKUP_UNDER_EDGE_STEP_PX
+    ) {
+      const rasterX = boundary + dx
+      let r = 0
+      let g = 0
+      let b = 0
+      let n = 0
+      for (let gy = gy0; gy <= gy1 + 1e-9; gy += 2) {
+        const rasterY = h - 1 - (centreDocY + gy)
+        const rgba = rgbaBilinear(data, w, h, rasterX, rasterY)
+        const a = 255 - rgba[3]
+        r += rgba[0] + a
+        g += rgba[1] + a
+        b += rgba[2] + a
+        n += 1
+      }
+      xs.push(dx)
+      samples.push(n > 0 ? [r / n, g / n, b / n] : [255, 255, 255])
+    }
+    const plateauMean = (lo: number, hi: number): [number, number, number] => {
+      let r = 0
+      let g = 0
+      let b = 0
+      let n = 0
+      for (let i = 0; i < xs.length; i += 1) {
+        const dx = xs[i]!
+        if (dx < lo || dx > hi) continue
+        const s = samples[i]!
+        r += s[0]
+        g += s[1]
+        b += s[2]
+        n += 1
+      }
+      return n > 0 ? [r / n, g / n, b / n] : [255, 255, 255]
+    }
+    const out = plateauMean(-PICKUP_UNDER_EDGE_OUT_PX, -PICKUP_UNDER_EDGE_IN_PX)
+    const into = plateauMean(PICKUP_UNDER_EDGE_IN_PX, PICKUP_UNDER_EDGE_OUT_PX)
+    const axr = into[0] - out[0]
+    const axg = into[1] - out[1]
+    const axb = into[2] - out[2]
+    const axis2 = axr * axr + axg * axg + axb * axb
+    if (Math.sqrt(axis2) < PICKUP_UNDER_EDGE_MIN_DELTA) {
+      skip += 1
+      continue
+    }
+    const profile = samples.map(
+      (s) => (s[0] * axr + s[1] * axg + s[2] * axb) / axis2,
+    )
+    const width = transitionWidthPx(profile, PICKUP_UNDER_EDGE_STEP_PX)
+    if (width === null) {
+      skip += 1
+      continue
+    }
+    widths.push(width)
+  }
+  if (widths.length === 0) return { px: null, worst: null, valid: 0, skip }
+  const dsum = widths.reduce((sum, value) => sum + value, 0)
+  return {
+    px: dsum / widths.length,
+    worst: Math.max(...widths),
+    valid: widths.length,
+    skip,
+  }
+}
+
 /** The scene's stripe / body / bleed readout on the committed capture. */
 function pickupUnderMetrics(
   transparent: HTMLCanvasElement,
@@ -2671,6 +2869,7 @@ function pickupUnderMetrics(
   const halfWindow = Math.max(6, Math.round(Math.min(strokeSize, PICKUP_UNDER_UNDER_SIZE) / 2) - 10)
   const fine: Array<{ acRms: number; bandShare: number; peakPx: number }> = []
   const wide: Array<{ acRms: number; bandShare: number; peakPx: number }> = []
+  const dominant: Array<{ acRms: number; bandShare: number; peakPx: number }> = []
   for (const sx of PICKUP_UNDER_STATIONS) {
     const series = pickupUnderStationSeries(data, w, h, sx * w, centreDocY, halfWindow)
     fine.push(
@@ -2685,6 +2884,15 @@ function pickupUnderMetrics(
         stationPx: PICKUP_UNDER_STATION_PX,
         bandLoPx: BLEND_WORM_BAND_LO_PX,
         bandHiPx: BLEND_WORM_BAND_HI_PX,
+      }),
+    )
+    // quick 261127-lpj: the DOMINANT band (4–40 px) the khp matrix measured
+    // the artist's defect in. Same series, same detector, one wider band.
+    dominant.push(
+      shareSpectrum(series, {
+        stationPx: PICKUP_UNDER_STATION_PX,
+        bandLoPx: PICKUP_UNDER_DOMINANT_LO_PX,
+        bandHiPx: PICKUP_UNDER_DOMINANT_HI_PX,
       }),
     )
   }
@@ -2715,6 +2923,7 @@ function pickupUnderMetrics(
         axis2
     }
   }
+  const boundarySharp = pickupUnderBoundarySharp(data, w, h, centreDocY, strokeSize)
   return {
     pickupUnderStripeRms: round2(stripeOf(fine)),
     pickupUnderStripeAc: round2(mean(fine.map((s) => s.acRms))),
@@ -2726,11 +2935,23 @@ function pickupUnderMetrics(
     pickupUnderStripeWideAc: round2(mean(wide.map((s) => s.acRms))),
     pickupUnderStripeWidePeakPx: round2(median(wide.map((s) => s.peakPx))),
     pickupUnderStripeWideBandShare: round4(mean(wide.map((s) => s.bandShare))),
+    // quick 261127-lpj: the DOMINANT 4–40 px band — the green bar's currency.
+    pickupUnderStripeDominantRms: round2(stripeOf(dominant)),
+    pickupUnderStripeDominantAc: round2(mean(dominant.map((s) => s.acRms))),
+    pickupUnderStripeDominantPeakPx: round2(median(dominant.map((s) => s.peakPx))),
+    pickupUnderStripeDominantBandShare: round4(mean(dominant.map((s) => s.bandShare))),
     pickupUnderBodyShare: round4(share),
     pickupUnderBodyMean: round2((strokeRef[0] + strokeRef[1] + strokeRef[2]) / 3),
     pickupUnderStrokeRef: strokeRef.map((v) => round2(v)),
     pickupUnderUnderRef: underRef === null ? null : underRef.map((v) => round2(v)),
     pickupUnderBoundaryBleedPx: round2(pickupUnderBleed(data, w, h, centreDocY, strokeSize)),
+    // quick 261127-lpj: the under's leading-edge 10–90 width — the boundary
+    // bar's instrument (the bleed above stays reported, never gated).
+    pickupUnderBoundarySharpPx: boundarySharp.px === null ? null : round2(boundarySharp.px),
+    pickupUnderBoundarySharpWorstPx:
+      boundarySharp.worst === null ? null : round2(boundarySharp.worst),
+    pickupUnderBoundarySharpValid: boundarySharp.valid,
+    pickupUnderBoundarySharpSkip: boundarySharp.skip,
   }
 }
 
@@ -2786,8 +3007,12 @@ function pickupUnderReplay(
       const settle = entry.settle ?? SETTLE_TICKS
       for (let tick = 0; tick <= settle; tick += 1) adapter.stepTick(tick)
       adapter.fix()
-      if (kind === 'blurred' && script.length === 2 && index === 0) {
-        blurWholeSheet(engine, sheet)
+      // quick 261127-lpj: the under's fix hook must run on every replay too —
+      // the blurred control re-blurs, the constant control re-fills its flat
+      // pigment, so visit and replay stay the same scenario.
+      if ((kind === 'blurred' || kind === 'constant') && script.length === 2 && index === 0) {
+        if (kind === 'blurred') blurWholeSheet(engine, sheet)
+        else constantUnder(engine, sheet)
       }
     })
     return digestCanvas(engine.exportCanvas('transparent'))
@@ -8855,6 +9080,14 @@ function run(
         adapter.fix()
         if (script.length === 2 && underEntry === 0) {
           if (PICKUP_UNDER_KIND === 'blurred') blurWholeSheet(engine, sheet)
+          // quick 261127-lpj: the constant under's fill is harness work — its
+          // whole-sheet capture, median and restore count as capture time,
+          // never as medium cost.
+          if (PICKUP_UNDER_KIND === 'constant') {
+            const fillStart = performance.now()
+            constantUnder(engine, sheet)
+            captureMs += performance.now() - fillStart
+          }
           const refStart = performance.now()
           pickupUnderUnderRef = pickupUnderRef(engine, strokeSize)
           captureMs += performance.now() - refStart

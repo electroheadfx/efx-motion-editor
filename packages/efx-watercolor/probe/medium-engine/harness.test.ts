@@ -61,6 +61,7 @@ import {
   BLEND_WORM_BAND_LO_PX,
   detrendedRms,
   shareSpectrum,
+  transitionWidthPx,
 } from './blend'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -3227,12 +3228,18 @@ describe('the blend share-spectrum detector (261126-n20 task 3)', () => {
     // The `--under` operand: parsed in run.mjs, refused off the scene and on
     // any unknown value, forwarded through the explicit pageQuery enumeration.
     expectContains(RUN, "const underFlag = args.indexOf('--under')")
-    expectContains(RUN, '`invalid --under "${underRaw}" (expected painted, flat, blurred or none)`')
+    expectContains(
+      RUN,
+      '`invalid --under "${underRaw}" (expected painted, flat, blurred, constant or none)`',
+    )
     expectContains(RUN, "console.error('--under is only valid with --scenario pickup-under')")
     expectContains(RUN, "(under === undefined ? '' : `&under=${under}`)")
     expectContains(PROBE, 'function readUnderKind(scenario: string): UnderKind {')
     expectContains(PROBE, "throw new Error('--under is only valid with --scenario pickup-under')")
-    expectContains(PROBE, '`invalid under "${raw}" (expected painted, flat, blurred or none)`')
+    expectContains(
+      PROBE,
+      '`invalid under "${raw}" (expected painted, flat, blurred, constant or none)`',
+    )
     // The scene constants: the artist's exact pair.
     expectContains(PROBE, "const PICKUP_UNDER_BLUE = '#1a88ec'")
     expectContains(PROBE, "const PICKUP_UNDER_YELLOW = '#f9e01c'")
@@ -3264,6 +3271,97 @@ describe('the blend share-spectrum detector (261126-n20 task 3)', () => {
     )
     expectContains(PROBE, "if (scenario === 'pickup-under') {")
     expectContains(PROBE, 'pinStrokeStart(engine)')
+  })
+
+  it('re-baselines the scene on the dominant band, the boundary and the constant control (261127-lpj task 1)', () => {
+    // The defect's own scale: the 4-40 px dominant band (khp measured ~23 px
+    // stripes), declared as named constants with the doc-px station grid.
+    expectContains(PROBE, 'const PICKUP_UNDER_DOMINANT_LO_PX = 4')
+    expectContains(PROBE, 'const PICKUP_UNDER_DOMINANT_HI_PX = 40')
+    expectContains(PROBE, 'bandLoPx: PICKUP_UNDER_DOMINANT_LO_PX,')
+    expectContains(PROBE, 'bandHiPx: PICKUP_UNDER_DOMINANT_HI_PX,')
+    expectContains(PROBE, 'pickupUnderStripeDominantRms:')
+    expectContains(PROBE, 'pickupUnderStripeDominantAc:')
+    expectContains(PROBE, 'pickupUnderStripeDominantPeakPx:')
+    expectContains(PROBE, 'pickupUnderStripeDominantBandShare:')
+    // The under's leading-edge 10-90 width: the boundary bar's instrument.
+    expectContains(PROBE, 'const PICKUP_UNDER_EDGE_STEP_PX = 0.5')
+    expectContains(PROBE, 'const PICKUP_UNDER_EDGE_SEARCH_PX = 40')
+    expectContains(PROBE, 'const PICKUP_UNDER_EDGE_IN_PX = 8')
+    expectContains(PROBE, 'const PICKUP_UNDER_EDGE_OUT_PX = 20')
+    expectContains(PROBE, 'const PICKUP_UNDER_EDGE_MIN_DELTA = 6')
+    expectContains(PROBE, 'function pickupUnderBoundarySharp(')
+    expectContains(PROBE, 'transitionWidthPx(profile, PICKUP_UNDER_EDGE_STEP_PX)')
+    // A missing edge reads null, never a manufactured width.
+    expectContains(PROBE, 'pickupUnderBoundarySharpPx:')
+    expectContains(PROBE, 'pickupUnderBoundarySharpWorstPx:')
+    expectContains(PROBE, 'pickupUnderBoundarySharpValid:')
+    expectContains(PROBE, 'pickupUnderBoundarySharpSkip:')
+    // The constant-under control: the painted under's pigment replaced by its
+    // own channel-wise median, on the visit AND on both replays.
+    expectContains(PROBE, "raw !== 'blurred' &&")
+    expectContains(PROBE, "raw !== 'constant' &&")
+    expectContains(RUN, "underRaw !== 'blurred' &&")
+    expectContains(RUN, "underRaw !== 'constant' &&")
+    expectContains(PROBE, 'function constantUnder(engine: WatercolorEngine, sheet: number): void {')
+    expectContains(PROBE, "if (PICKUP_UNDER_KIND === 'constant') {")
+    expectContains(PROBE, "if ((kind === 'blurred' || kind === 'constant') && script.length === 2 && index === 0) {")
+    expectContains(PROBE, 'else constantUnder(engine, sheet)')
+  })
+})
+
+// ============================================================
+//  quick 261127-lpj task 1: the boundary-width detector.
+//
+//  The pickup-under GREEN bar needs the under's leading edge expressed as a
+//  number: the 10-90 percent transition width of the fill profile, in document
+//  px. Pure (blend.ts), so it EXECUTES here on synthetic profiles before any
+//  capture trusts it. A linear ramp rises over its full support, so a ramp
+//  whose 10-90 crossings span 8 px is a 10 px 0->1 rise at 1 px steps — the
+//  test states the crossing positions instead of trusting intuition.
+// ============================================================
+
+describe('the boundary-width detector (261127-lpj task 1)', () => {
+  it('reads a linear ramp as its 10-90 crossing span in px', () => {
+    // 32 stations at 1 px: 0 -> 1 over indices 10..20 (slope 0.1/px). The
+    // 0.1 crossing lands on i=11, the 0.9 crossing on i=19 -> 8 px.
+    const profile = Array.from({ length: 32 }, (_, i) =>
+      i <= 10 ? 0 : i >= 20 ? 1 : (i - 10) / 10,
+    )
+    expect(transitionWidthPx(profile, 1)).toBe(8)
+    // The station grid scales the width, never the crossings.
+    expect(transitionWidthPx(profile, 0.5)).toBe(4)
+  })
+
+  it('reads a hard step as one station wide', () => {
+    const profile = Array.from({ length: 32 }, (_, i) => (i < 16 ? 0.2 : 0.8))
+    expect(transitionWidthPx(profile, 1)).toBe(1)
+    expect(transitionWidthPx(profile, 0.5)).toBe(0.5)
+  })
+
+  it('reads null instead of inventing an edge', () => {
+    // Flat: no span to cross.
+    expect(transitionWidthPx(new Array<number>(32).fill(0.4), 1)).toBeNull()
+    // Below the minimum station count.
+    expect(transitionWidthPx(new Array<number>(BLEND_MIN_STATIONS - 1).fill(0.4), 1)).toBeNull()
+    // A non-positive or non-finite station step.
+    expect(transitionWidthPx(new Array<number>(32).fill(0.4), 0)).toBeNull()
+    expect(transitionWidthPx(new Array<number>(32).fill(0.4), Number.NaN)).toBeNull()
+    // Reversed or non-finite percentages.
+    expect(transitionWidthPx(new Array<number>(32).fill(0.4), 1, 0.9, 0.1)).toBeNull()
+    expect(transitionWidthPx(new Array<number>(32).fill(0.4), 1, Number.NaN, 0.9)).toBeNull()
+  })
+
+  it('reads a falling profile with the same crossing span', () => {
+    // The edge may face either way (the under reads dark on light or light on
+    // dark); the signed span is handled, the width stays positive. Dyadic
+    // values keep every threshold comparison exact: t = 0.375 at i=11 and
+    // t = 1.0 at i=16 -> 5 px, the mirror of the rising ramp below.
+    const falling = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0.625, 0.5, 0.375, 0.25, 0.125]
+    const profile = [...falling, ...new Array<number>(32 - falling.length).fill(0)]
+    expect(transitionWidthPx(profile, 1)).toBe(5)
+    const rising = profile.map((v) => 1 - v)
+    expect(transitionWidthPx(rising, 1)).toBe(transitionWidthPx(profile, 1))
   })
 })
 

@@ -319,15 +319,24 @@
 //  at the same y, settled and fixed. The report carries the run-scale stripe
 //  spectrum (0.5 px stations, the 1–3 px band plus a 4–32 px diagnostic), the
 //  body under-share, the boundary bleed, the replay digests, the recipe
-//  echoes and a 1:1 crossing crop. `--under painted|flat|blurred|none`
+//  echoes and a 1:1 crossing crop. `--under painted|flat|blurred|constant|none`
 //  selects the under kind (painted is the artist's recipe; flat is a plain
 //  watercolour band; blurred box-blurs the five paint layers after the
-//  under's fix; none is bare paper). The flag is refused on every other
-//  scenario and on any unknown value.
+//  under's fix; constant replaces the painted under's pigment with its own
+//  channel-wise median — a constant-under control that isolates any spatial
+//  structure the under carries; none is bare paper). The flag is refused on
+//  every other scenario and on any unknown value.
+//
+//  quick 261127-lpj re-baselines the scene on the defect's own scale: the
+//  report adds the 4–40 px DOMINANT stripe band (RMS, AC, peak, band share —
+//  khp measured the defect's peak at ~23 px, far outside the 1–3 px band) and
+//  the under's leading-edge 10–90 boundary width (mean and worst over three
+//  y bands, plus valid/skip counts). The GREEN bars are judged on those two
+//  instruments.
 //             [--scenario pickup-under]
 //                                     blue bristle under + yellow judged
 //                                     stroke; stripe/bleed/replay readout
-//             [--under <painted|flat|blurred|none>]
+//             [--under <painted|flat|blurred|constant|none>]
 //                                     pickup-under only: which under the judged
 //                                     stroke crosses (default painted)
 //
@@ -356,7 +365,7 @@ const gateFlag = args.indexOf('--gate')
 const gate = gateFlag >= 0 ? args[gateFlag + 1] : undefined
 if (!gate) {
   console.error(
-    'usage: node run.mjs --gate <name> [--scenario cover|cover-over-wet|cover-advect|cover-lift|watercolor-50|white-over-blue|cover-textured|red-over-blue-50|bristle-edge|bristle-wet|bristle-line|bristle-blend|bristle-end|bristle-tip|emboss-smooth|edge-layer|edge-rim|feather-noise|pickup-under] [--edge <0..100>] [--falloff <0..100>] [--noise <0..100>] [--pickup <0..100>] [--under <painted|flat|blurred|none>] [--wet-under] [--emboss <-100..100>] [--body <0..100>] [--light <0..4>] [--size <32..4096>] [--brush <id>] [--wet-mode <0|1>] [--texture <mask id>] [--drive <stop|lift|decay|mouse|mouse-lift|bake>] [--stroke-size <1..800>] [--dry <0..100>] [--feather <0..100>] [--release <0..1>]   (e.g. neutral-identity; --feather also on --scenario edge-layer / edge-rim; --noise / --falloff on --scenario feather-noise; --under on --scenario pickup-under)',
+    'usage: node run.mjs --gate <name> [--scenario cover|cover-over-wet|cover-advect|cover-lift|watercolor-50|white-over-blue|cover-textured|red-over-blue-50|bristle-edge|bristle-wet|bristle-line|bristle-blend|bristle-end|bristle-tip|emboss-smooth|edge-layer|edge-rim|feather-noise|pickup-under] [--edge <0..100>] [--falloff <0..100>] [--noise <0..100>] [--pickup <0..100>] [--under <painted|flat|blurred|constant|none>] [--wet-under] [--emboss <-100..100>] [--body <0..100>] [--light <0..4>] [--size <32..4096>] [--brush <id>] [--wet-mode <0|1>] [--texture <mask id>] [--drive <stop|lift|decay|mouse|mouse-lift|bake>] [--stroke-size <1..800>] [--dry <0..100>] [--feather <0..100>] [--release <0..1>]   (e.g. neutral-identity; --feather also on --scenario edge-layer / edge-rim; --noise / --falloff on --scenario feather-noise; --under on --scenario pickup-under)',
   )
   console.error(
     '       every operand except --gate is optional and additive; an omitted operand writes no key/value, so the neutral gate keeps reproducing the committed baseline',
@@ -723,15 +732,24 @@ const feather = readEndPercent('--feather', EDGE_KNOB_SCENES)
 // on the same scene means FEATHER falloff (see EDGE_KNOB_SCENES above).
 const noise = readEndPercent('--noise', ['feather-noise'])
 // quick 261127-khp: the pickup-under operand — which under the judged stroke
-// crosses. `painted` is the artist's recipe (absent keeps it); the other three
-// are the scene's own controls. Refused off the scene and on any unknown
-// value, so a typo can never silently paint bare paper.
+// crosses. `painted` is the artist's recipe (absent keeps it); `constant` is
+// lpj's constant-under control (the painted under's pigment replaced by its
+// own channel-wise median). Refused off the scene and on any unknown value, so
+// a typo can never silently paint bare paper.
 const underFlag = args.indexOf('--under')
 const underRaw = underFlag >= 0 ? args[underFlag + 1] : undefined
 let under
 if (underRaw !== undefined) {
-  if (underRaw !== 'painted' && underRaw !== 'flat' && underRaw !== 'blurred' && underRaw !== 'none') {
-    console.error(`invalid --under "${underRaw}" (expected painted, flat, blurred or none)`)
+  if (
+    underRaw !== 'painted' &&
+    underRaw !== 'flat' &&
+    underRaw !== 'blurred' &&
+    underRaw !== 'constant' &&
+    underRaw !== 'none'
+  ) {
+    console.error(
+      `invalid --under "${underRaw}" (expected painted, flat, blurred, constant or none)`,
+    )
     process.exit(1)
   }
   if (scenario !== 'pickup-under') {

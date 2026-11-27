@@ -51,6 +51,61 @@ function round4(value: number): number {
   return Math.round(value * 10000) / 10000
 }
 
+function round2(value: number): number {
+  return Math.round(value * 100) / 100
+}
+
+/** The first `share` of the series, as a median — the plateau reader. */
+function plateauMedian(values: readonly number[], from: number, count: number): number {
+  const slice: number[] = []
+  for (let i = from; i < from + count; i += 1) {
+    const v = values[i]
+    slice.push(Number.isFinite(v) ? (v as number) : 0)
+  }
+  slice.sort((a, b) => a - b)
+  return slice[Math.floor(slice.length / 2)]!
+}
+
+/**
+ * The 10–90 percent transition width of a monotone-ish profile, in document px
+ * (quick 261127-lpj). `out` is the median of the first 20 percent of samples,
+ * `in` the median of the last 20 percent; each sample is normalised to
+ * `(p - out) / (in - out)` and the width is the distance between the first
+ * sample at or above `loPct` and the first LATER sample at or above `hiPct`.
+ * A flat profile (plateau difference below 1e-6), a series shorter than eight
+ * samples, a non-positive/non-finite step or either missing crossing reads
+ * null — a missing edge can never manufacture a width. Pure and unit-tested.
+ */
+export function transitionWidthPx(
+  profile: readonly number[],
+  stepPx: number,
+  loPct = 0.1,
+  hiPct = 0.9,
+): number | null {
+  const n = profile.length
+  if (n < BLEND_MIN_STATIONS || !Number.isFinite(stepPx) || stepPx <= 0) return null
+  if (!Number.isFinite(loPct) || !Number.isFinite(hiPct) || !(hiPct > loPct)) return null
+  const edge = Math.max(1, Math.floor(n * 0.2))
+  const out = plateauMedian(profile, 0, edge)
+  const into = plateauMedian(profile, n - edge, edge)
+  const span = into - out
+  if (!(Math.abs(span) >= 1e-6)) return null
+  let iLo = -1
+  let iHi = -1
+  for (let i = 0; i < n; i += 1) {
+    const v = profile[i]
+    const p = (Number.isFinite(v) ? (v as number) : out) - out
+    const t = p / span
+    if (iLo < 0 && t >= loPct) iLo = i
+    if (iLo >= 0 && i > iLo && t >= hiPct) {
+      iHi = i
+      break
+    }
+  }
+  if (iLo < 0 || iHi < 0) return null
+  return round2((iHi - iLo) * stepPx)
+}
+
 /**
  * RMS of a series after removing its mean and a least-squares linear fit —
  * the AC energy used for both axes of `blendAnisotropy`.
