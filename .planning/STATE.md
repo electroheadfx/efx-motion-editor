@@ -4,10 +4,10 @@ milestone: v2.2.0
 current_phase: 64
 status: completed
 stopped_at: Phase 64 complete — all phases complete
-last_updated: "2026-11-27T20:10:53.082Z"
+last_updated: "2026-11-27T20:15:51.254Z"
 last_activity: 2026-11-27
 last_activity_desc: Quick 261127-khp MEASURED NEGATIVE — pickup-under stripes are a ~23 px band, not 1-3 px; probe scene delivered, no law shipped
-state_head: cd3bf96c92df1a44904c6f4918475a65e1c1a881
+state_head: 62c446ad961c0e2468b9c3c0949f618f7b9928b8
 progress:
   total_phases: 2
   completed_phases: 2
@@ -733,6 +733,7 @@ Items acknowledged and carried forward from previous milestone close:
 | 71 | Studio Watercolor icon: droplet outlined (no fill) and a bit smaller | 2026-11-27 | 9d7304b54 | — |
 | 72 | Studio top bar + Paint tab: Emboss is Medium-only (watercolor no longer renders it); Pigment takes the freed top-bar seat in Watercolor mode | 2026-11-27 | f063e8182 | — |
 | 73 | Studio top bar: Undo/Redo grouped into one segmented button; Brush size slider grows into free width (480px cap); every slider/stepper value selects its text on focus so typing replaces it | 2026-11-27 | cd3bf96c9 | — |
+| 74 | Studio top bar follow-up: action icons shrink to 36px boxes / 16px glyphs; the Medium bar hides Emboss first, then Feather noise, as the settings area narrows | 2026-11-27 | 62c446ad9 | — |
 
 ## Roadmap Evolution
 
