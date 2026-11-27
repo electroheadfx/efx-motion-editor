@@ -4,10 +4,10 @@ milestone: v2.2.0
 current_phase: 64
 status: completed
 stopped_at: Phase 64 complete — all phases complete
-last_updated: "2026-11-27T14:28:53.256Z"
+last_updated: "2026-11-27T18:20:48.309Z"
 last_activity: 2026-11-27
 last_activity_desc: Quick 261127-khp MEASURED NEGATIVE — pickup-under stripes are a ~23 px band, not 1-3 px; probe scene delivered, no law shipped
-state_head: 2541e9bd3b35fc0f2a282a167e6152556f337dd0
+state_head: 8f664cb279df3207204dcb2b958808138c7cc52f
 progress:
   total_phases: 2
   completed_phases: 2
@@ -727,6 +727,7 @@ Items acknowledged and carried forward from previous milestone close:
 | 261126-v8j | Feather noise UAT APPROVED (2026-11-27): re-indexed slider — 0 clean edge, 20 the shipped base look (new default; the neutral program is byte-identical to PRE), 40/60/100 the three-scale (20/60/200 px) breakup with a continuous core and chips floored at the base silhouette; Feather falloff = the shipped 2^(2b−1) rim opening; the two rejected live attempts (uniform chip "animal", smooth single-field) reverted; 18 medium / 20 global keys, defaults 20/50 | 2026-11-27 | e8c696567 | [261126-v8j-read-specs-v2-2-0-medium-engine-gsd-quic](./quick/261126-v8j-read-specs-v2-2-0-medium-engine-gsd-quic/) |
 | 261127-jox | Paint panel: split the bristle Edge group into Transparency and Noise sections; hide the legacy Feather row (UAT approved 2026-11-27) | 2026-11-27 | 7e817f9af | [261127-jox-paint-panel-split-the-bristle-edge-group](./quick/261127-jox-paint-panel-split-the-bristle-edge-group/) |
 | 261127-khp | Pickup-under aliasing: probe scene + 25-cell RED matrix; MEASURED NEGATIVE — the defect is a ~23 px stripe (fine 1-3 px band = 0% power) and the planned 1.5 px under-mean cannot reach it; no law shipped | 2026-11-27 | 2541e9bd3 | [261127-khp-pickup-under-aliasing-fix-bristle-brush-](./quick/261127-khp-pickup-under-aliasing-fix-bristle-brush-/) |
+| 68 | Studio paint: top bar mirrors the Paint row law — Pigment out, Pickup + Opacity in; Edges/Grain gated for Gouache; Paper Light gap; Emboss test band 0-4 with display relief lit | 2026-11-27 | 8f664cb27 | — |
 
 ## Roadmap Evolution
 
