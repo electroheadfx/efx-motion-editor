@@ -512,8 +512,8 @@ export const FEATHER_NOISE_FLOOR = 0.75;
 export const FEATHER_NOISE_LIFT = 1.4;
 
 /**
- * The Feather-noise DRIVE (the artist's mapping, restored 2026-11-27p — this
- * is the ladder they approved in the #27 capture):
+ * The Feather-noise DRIVE (artist-approved mapping 2026-11-27h). The recorded
+ * slider is the artist's scale; the shader reads this drive:
  *   0 .. 20   -> 0                          (the plain block: no visible noise)
  *   20 .. 60  -> n - 0.2                    (light fringe at 40, medium at 60)
  *   60 .. 100 -> 0.4 + (n - 0.6) * 1.5      (the full halo at 100)
