@@ -4,10 +4,10 @@ milestone: v2.2.0
 current_phase: 64
 status: completed
 stopped_at: Phase 64 complete — all phases complete
-last_updated: "2026-11-27T20:15:51.254Z"
+last_updated: "2026-11-27T20:29:55.655Z"
 last_activity: 2026-11-27
 last_activity_desc: Quick 261127-khp MEASURED NEGATIVE — pickup-under stripes are a ~23 px band, not 1-3 px; probe scene delivered, no law shipped
-state_head: 62c446ad961c0e2468b9c3c0949f618f7b9928b8
+state_head: 6e29c09e99a92d9a836b913b39583d4e24322988
 progress:
   total_phases: 2
   completed_phases: 2
@@ -734,6 +734,7 @@ Items acknowledged and carried forward from previous milestone close:
 | 72 | Studio top bar + Paint tab: Emboss is Medium-only (watercolor no longer renders it); Pigment takes the freed top-bar seat in Watercolor mode | 2026-11-27 | f063e8182 | — |
 | 73 | Studio top bar: Undo/Redo grouped into one segmented button; Brush size slider grows into free width (480px cap); every slider/stepper value selects its text on focus so typing replaces it (UAT approved 2026-11-27) | 2026-11-27 | cd3bf96c9 | — |
 | 74 | Studio top bar follow-up: action icons shrink to 36px boxes / 16px glyphs; the Medium bar hides Emboss first, then Feather noise, as the settings area narrows (UAT approved 2026-11-27) | 2026-11-27 | 62c446ad9 | — |
+| 75 | Studio paint: Medium response renamed Gouache Round; Pen renamed Pen 1B, landing grain 25, pigment #333537, pickup 0, opacity 100, dry 0, feather noise 60, falloff 0, emboss 0 (automated-ready; artist UAT pending) | 2026-11-27 | 6e29c09e9 | — |
 
 ## Roadmap Evolution
 
