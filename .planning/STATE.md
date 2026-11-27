@@ -4,10 +4,10 @@ milestone: v2.2.0
 current_phase: 64
 status: completed
 stopped_at: Phase 64 complete — all phases complete
-last_updated: "2026-11-27T18:36:52.894Z"
+last_updated: "2026-11-27T18:49:28.143Z"
 last_activity: 2026-11-27
 last_activity_desc: Quick 261127-khp MEASURED NEGATIVE — pickup-under stripes are a ~23 px band, not 1-3 px; probe scene delivered, no law shipped
-state_head: 2261b7ef058545d62bff59a030cfe18dfffee32a
+state_head: 01c6f2e378ed237b6748a927146686cc0aae6753
 progress:
   total_phases: 2
   completed_phases: 2
@@ -729,6 +729,7 @@ Items acknowledged and carried forward from previous milestone close:
 | 261127-khp | Pickup-under aliasing: probe scene + 25-cell RED matrix; MEASURED NEGATIVE — the defect is a ~23 px stripe (fine 1-3 px band = 0% power) and the planned 1.5 px under-mean cannot reach it; no law shipped | 2026-11-27 | 2541e9bd3 | [261127-khp-pickup-under-aliasing-fix-bristle-brush-](./quick/261127-khp-pickup-under-aliasing-fix-bristle-brush-/) |
 | 68 | Studio paint: top bar mirrors the Paint row law — Pigment out, Pickup + Opacity in; Edges/Grain gated for Gouache; Paper Light gap; Emboss test band 0-4 with display relief lit | 2026-11-27 | 8f664cb27 | — |
 | 69 | Studio paint: Emboss defaults 0 at a 0-5 band in a trailing Relief section; top bar gains Feather noise; Grain moves to the Paper tab; Reset under the dropdown; acrylic renamed Medium | 2026-11-27 | 2261b7ef0 | — |
+| 70 | Studio paint: Emboss on the top bar (0-5); Paint tab order Reset → dropdown → Brush size → Grain → groups; Grain back from Paper tab under every medium; paint tool reads Medium (B unchanged) | 2026-11-27 | 01c6f2e37 | — |
 
 ## Roadmap Evolution
 
