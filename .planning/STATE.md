@@ -736,7 +736,7 @@ Items acknowledged and carried forward from previous milestone close:
 | 74 | Studio top bar follow-up: action icons shrink to 36px boxes / 16px glyphs; the Medium bar hides Emboss first, then Feather noise, as the settings area narrows (UAT approved 2026-11-27) | 2026-11-27 | 62c446ad9 | — |
 | 75 | Studio paint: Medium response renamed Gouache Round; Pen 1B derived from it (one shared physics record + bristle tip), landing grain 25, pigment #333537, pickup 0, opacity 100, dry 0, feather noise 60, falloff 0, emboss 0 (UAT approved 2026-11-27) | 2026-11-27 | 9aafda1d4 | — |
 | 76 | Studio paint: lateral Edge transparency retired — ONE global Opacity (`edgeFade`, shown inverted, 100 = opaque) under Pickup in Paint & reservoir; the Transparency section and Edge falloff row are gone; roomier Paint-tab rows (UAT approved 2026-11-27; bundled in 8f664cb27) | 2026-11-27 | 8f664cb27 | — |
-| 77 | Studio UI reorder: Tips brush section after the responses, Paper/Light tab label, Paint-tab five-tool dropdown (no duplicate label) plus the brush-response picker | 2026-11-27 | fcc34e5fe | — |
+| 77 | Studio UI reorder: Tips brush section after the responses, Paper/Light tab label, Paint-tab five-tool dropdown (no duplicate label) plus the brush-response picker (UAT approved 2026-11-27) | 2026-11-27 | fcc34e5fe | — |
 
 ## Roadmap Evolution
 
