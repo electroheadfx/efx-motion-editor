@@ -27,11 +27,11 @@ const DROP_PATH =
   'M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z';
 
 // Glyph transforms in the 24-unit box: the brush reaches the top-right
-// corner and the drop sits just below its lower-left bristles, very
-// close but never touching (≈2 units of clear space between strokes).
+// corner and the drop sits below-right of its lower-left bristles, very
+// close but never touching (≈1.7 units of clear space between strokes).
 // The union of both strokes is centred in the box.
-const BRUSH = { x: 7.2, y: 0.9, scale: 0.66 };
-const DROP = { x: -0.55, y: 9.85, scale: 0.55 };
+const BRUSH = { x: 6.75, y: 0.3, scale: 0.66 };
+const DROP = { x: 0, y: 10.25, scale: 0.55 };
 const STROKE_UNITS = 1.5;
 
 export function WatercolorToolIcon({ size = 24 }: { size?: number }): ComponentChildren {
