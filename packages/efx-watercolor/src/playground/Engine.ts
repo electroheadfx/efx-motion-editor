@@ -34,10 +34,13 @@ import {
   bristleContactPressure,
   bristleCount,
   bristleSampleScale,
-  featherNoiseBlurU,
+  featherNoiseChipCut,
+  featherNoiseChipFeaturePx,
   featherNoiseDrive,
-  featherNoiseFeaturePx,
-  FEATHER_NOISE_DEPTH,
+  featherNoiseWobbleFeaturePx,
+  FEATHER_NOISE_CHIP_TOOTH,
+  FEATHER_NOISE_CORE_DEPTH,
+  FEATHER_NOISE_CORE_WOBBLE,
   FEATHER_NOISE_LIFT,
   gatherSoftness,
   LAST_TOUCH_DRY_SECONDS,
@@ -4080,17 +4083,24 @@ export class WatercolorEngine {
     gl.uniform1f(p.u.uLayerEdge!, BRISTLE_LAYER_EDGE);
     gl.uniform1f(p.u.uEdgeFade!, clamp(this.params.edgeFade, 0, 1));
     gl.uniform1f(p.u.uEdgeFalloff!, clamp(this.params.edgeFalloff, 0, 1));
-    // Spec 11: the feather noise/falloff pair and the front's constants.
-    // Bound unconditionally like Spec 10's pair: the ONE gather binder feeds
-    // every consumer, and the neutral program does not declare them (missing
-    // locations are null). The constants arrive from bristles.ts.
+    // Spec 11: the feather noise/falloff pair and the chipped band's
+    // constants. Bound unconditionally like Spec 10's pair: the ONE gather
+    // binder feeds every consumer, and the neutral program does not declare
+    // them (missing locations are null). The constants arrive from
+    // bristles.ts; the chip threshold follows the recorded slider.
     gl.uniform1f(p.u.uFeatherFalloff!, clamp(this.params.featherFalloff, 0, 1));
     gl.uniform1f(p.u.uFeatherNoise!, clamp(featherNoiseDrive(this.params.featherNoise), 0, 1));
-    // The front shares Edge transparency's lateral span: 1 at the VISUAL edge.
+    // The band shares Edge transparency's lateral span: 1 at the VISUAL edge.
     gl.uniform1f(p.u.uFeatherNoiseAnchor!, BRISTLE_LAYER_EDGE);
-    gl.uniform1f(p.u.uFeatherNoiseDepth!, FEATHER_NOISE_DEPTH);
-    gl.uniform1f(p.u.uFeatherNoiseFeature!, featherNoiseFeaturePx(halfWidthPx));
-    gl.uniform1f(p.u.uFeatherNoiseBlur!, featherNoiseBlurU(halfWidthPx, BRISTLE_LAYER_EDGE));
+    gl.uniform1f(p.u.uFeatherNoiseCoreDepth!, FEATHER_NOISE_CORE_DEPTH);
+    gl.uniform1f(p.u.uFeatherNoiseWobble!, FEATHER_NOISE_CORE_WOBBLE);
+    gl.uniform1f(p.u.uFeatherNoiseWobbleFeature!, featherNoiseWobbleFeaturePx(halfWidthPx));
+    gl.uniform1f(p.u.uFeatherNoiseChipFeature!, featherNoiseChipFeaturePx(halfWidthPx));
+    gl.uniform1f(
+      p.u.uFeatherNoiseChipCut!,
+      featherNoiseChipCut(featherNoiseDrive(this.params.featherNoise)),
+    );
+    gl.uniform1f(p.u.uFeatherNoiseChipTooth!, FEATHER_NOISE_CHIP_TOOTH);
     gl.uniform1f(p.u.uFeatherNoiseLift!, FEATHER_NOISE_LIFT);
     // The end's takeoff is the same threshold mechanism on the leading
     // frontier: the last running dab's uncovered band opens into tooth

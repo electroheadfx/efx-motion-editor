@@ -950,13 +950,13 @@ void main(){
 // ============================================================
 
 const FEATHER_FIELD = `
-// Spec 11 (2026-11-27, quick 261126-v8j): ONE coherent fractal field in the
-// STROKE frame — three octaves of the engine's own value noise, weights
-// summing to 1, so the field reads 0..1. Isotropic by construction: no
-// rotation and no anisotropic scale, so the eroded front never elongates.
-// The caller samples it in the stroke frame (across / along, doc px) over a
-// brush-relative feature size; the whole stroke sees ONE field, never a
-// per-dab repeat.
+// Spec 11 (2026-11-27, quick 261126-v8j — the artist's chip ruling): ONE
+// fine-scale chip field in the STROKE frame — three octaves of the engine's
+// own value noise, weights summing to 1, so the field reads 0..1. Thresholded
+// sharply it becomes the dry-brush speckle mask; the caller also uses ONE
+// low-frequency value-noise cell of the same family to wobble the core. The
+// coordinates are the stroke frame (across / along, doc px), so the whole
+// stroke sees ONE field, never a per-dab repeat.
 float featherNoiseFbm(vec2 p){
   float v = 0.5714 * valueNoise(p)
           + 0.2857 * valueNoise(p * 2.0 + vec2(17.3, 11.1))
@@ -982,15 +982,18 @@ export function bristleGatherSource(extended: boolean): string {
 // Spec 11 — the law's uniforms, declared ONLY by the extended variant.
   const FEATHER_LAW_UNIFORMS = `// Spec 11 (feather noise): the artist's two knobs. The falloff reuses the
 // shipped 2^(2b-1) shape (the tested twin edgeFalloffExponent is its only
-// source — no second table); the noise is a depth-of-penetration control
-// whose front is the stroke-frame field below.
-uniform float uFeatherFalloff;       // the opening shape bias (0..1, 0.5 shipped)
-uniform float uFeatherNoise;         // the recorded slider / drive (0..1, 0 shipped)
-uniform float uFeatherNoiseAnchor;   // 1 at the VISUAL edge (BRISTLE_LAYER_EDGE — the Edge-transparency span)
-uniform float uFeatherNoiseDepth;    // the deepest front penetration (FEATHER_NOISE_DEPTH)
-uniform float uFeatherNoiseFeature;  // the field's feature size, doc px (brush-relative, floored)
-uniform float uFeatherNoiseBlur;     // the soft front's half-band, uN (never a hard cut)
-uniform float uFeatherNoiseLift;     // the front's threshold rise (FEATHER_NOISE_LIFT)
+// source — no second table); the noise is the chipped band's control: a
+// solid core that recedes with the drive, and ONE fine chip field outside it.
+uniform float uFeatherFalloff;           // the opening shape bias (0..1, 0.5 shipped)
+uniform float uFeatherNoise;             // the recorded slider / drive (0..1, 0 shipped)
+uniform float uFeatherNoiseAnchor;       // 1 at the VISUAL edge (BRISTLE_LAYER_EDGE — the Edge-transparency span)
+uniform float uFeatherNoiseCoreDepth;    // the core's recession at drive 1 (FEATHER_NOISE_CORE_DEPTH)
+uniform float uFeatherNoiseWobble;       // the core wobble's amplitude, uN (FEATHER_NOISE_CORE_WOBBLE)
+uniform float uFeatherNoiseWobbleFeature;// the wobble's feature size, doc px (brush-relative, floored)
+uniform float uFeatherNoiseChipFeature;  // the chip cells' feature size, doc px (brush-relative, floored)
+uniform float uFeatherNoiseChipCut;      // the chip threshold for the current drive (FEATHER_NOISE_CHIP_CUT_*)
+uniform float uFeatherNoiseChipTooth;    // the paper tooth's share of the chip field (FEATHER_NOISE_CHIP_TOOTH)
+uniform float uFeatherNoiseLift;         // the chip removal's threshold rise (FEATHER_NOISE_LIFT)
 `;
 // Spec 11 — the law's statements, kept out of the neutral variant. The
 // featherShift below the falloff branch is PRE's statement VERBATIM in BOTH
@@ -1008,42 +1011,63 @@ uniform float uFeatherNoiseLift;     // the front's threshold rise (FEATHER_NOIS
                  * pow(smoothstep(featherStart, uFeatherEdge, lateral), exp2(2.0 * uFeatherFalloff - 1.0));
   }
   // Spec 11 — Feather noise (artist ruling 2026-11-27, quick 261126-v8j):
-  // ONE coherent noise field erodes the base shape from its boundary INWARD,
-  // progressively with the slider. Removal is THRESHOLD-ONLY (a shift, never
-  // a depth fade): paint outside the front is gone, the body inside it keeps
-  // its exact carried film, and the kept set's level set leaves detached
-  // chunks behind the front as it deepens. Nothing can lie OUTSIDE the base
-  // mark, so no outward spray, spike or finger can exist by construction.
+  // the noise is a CHIPPED BAND, never a receding front. A solid core
+  // survives at coreU = 1 − CORE_DEPTH·drive, meandered by ONE low-frequency
+  // value-noise cell so it is not a cylinder; inside the core the paint is
+  // untouched and keeps its exact carried film. Outside it, ONE fine-scale
+  // chip field — three octaves of the engine's value noise in the stroke
+  // frame plus the paper tooth — is thresholded into a SHARP speckle mask,
+  // and the removal is gated by it over the base mark (uN ≤ 1):
   //
-  // The field is sampled in the STROKE frame (the 261126-rov displacement
+  //     featherShift += LIFT · band · chipMask
+  //
+  // Where the mask is 1 the paint is removed completely; where it is 0 the
+  // paint is untouched, so the kept paint in the band IS the chips and keeps
+  // its own coverage / paper / bristle micro texture. The removal is a
+  // threshold shift (never a depth fade — a depth fade lanes), and a shift
+  // can only remove what the base deposit laid: no outward spike or spray
+  // can exist by construction, and the mark's footprint survives as flakes.
+  //
+  // The fields are sampled in the STROKE frame (the 261126-rov displacement
   // coordinates): across px = q.x · uHalfWidthPx, along px = uAlongPx −
-  // q.y · uHalfWidthPx, divided by the brush-relative feature size. The
-  // MINUS is the stroke-stationary sign: q.y is negative toward the LEADING
-  // half (the takeoff law reads -q.y), so for a dab at station S and a texel
-  // at station P, uAlongPx = S and q.y · uHalfWidthPx = S − P. The sum
-  // uAlongPx + q.y · uHalfWidthPx therefore reads 2S − P — a per-DAB phase.
-  // Measured 2026-11-27: with the plus sign every covering dab of a texel
-  // sampled a different phase, so the surviving set was driven by the
-  // field's MINIMUM over ~80 dabs — a uniform shallow shrink with no ram,
-  // no chunks and no spine (noise 100 kept a solid 59.5 px half-width).
-  // The minus sign makes every covering dab read the SAME station P, so the
-  // stroke sees ONE coherent field, never a per-dab repeat.
+  // q.y · uHalfWidthPx. The MINUS is the stroke-stationary sign: q.y is
+  // negative toward the LEADING half (the takeoff law reads -q.y), so for a
+  // dab at station S and a texel at station P, q.y · uHalfWidthPx = S − P,
+  // and the difference reads the texel's own station P. The plus form read
+  // 2S − P — a per-DAB phase; measured 2026-11-27, every covering dab then
+  // sampled a different phase and the surviving set was the field's MINIMUM
+  // over ~80 dabs (a uniform shallow shrink). Every covering dab must read
+  // the same station for the chips to be stroke-stationary.
   //
   // The lateral anchor is the SAME uN Edge transparency uses (0 on the
-  // centre line, 1 at the VISUAL edge), and the front's soft band is a real
-  // 1.5–3 px transition in that coordinate. NOT scaled by uFeather: the
-  // erosion must work at Feather 0 and at the acrylic default alike.
+  // centre line, 1 at the VISUAL edge). NOT scaled by uFeather: the chips
+  // must work at Feather 0 and at the acrylic default alike.
   // uFeatherNoise === 0 skips the block outright, so the neutral program
-  // never evaluates the field.
-  float height = mix(grainHeight(css, uAxis), 0.5, rimCalm);
+  // never evaluates the fields.
+  //
+  // The core boundary and the chip threshold are the ONLY soft lines here:
+  // ±0.01 uN (≈1 px) of anti-alias on the band gate, ±0.03 of field on the
+  // mask. A wide smoothstep on the removal is the rejected "smooth front":
+  // it erases the edge texture and reads as a lumpy contour.
+  float rawHeight = grainHeight(css, uAxis);
+  float height = mix(rawHeight, 0.5, rimCalm);
   if (uFeatherNoise > 0.0) {
-    float uN = clamp(lateral / uFeatherNoiseAnchor, 0.0, 1.0);
-    vec2 nf = vec2(q.x * uHalfWidthPx, uAlongPx - q.y * uHalfWidthPx)
-            / max(uFeatherNoiseFeature, 1.0);
-    float n01 = smoothstep(-0.3, 0.7, featherNoiseFbm(nf));
-    float front = 1.0 - uFeatherNoiseDepth * uFeatherNoise * n01;
-    float envelope = smoothstep(front - uFeatherNoiseBlur, front + uFeatherNoiseBlur, uN);
-    featherShift += uFeatherNoiseLift * envelope;
+    float uN = lateral / uFeatherNoiseAnchor;
+    // The stroke-stationary frame (doc px): lateral offset and the texel's
+    // own station along the stroke.
+    vec2 sp = vec2(q.x * uHalfWidthPx, uAlongPx - q.y * uHalfWidthPx);
+    // The core: recedes linearly with the drive, wobbled low-frequency.
+    float wob = valueNoise(sp / max(uFeatherNoiseWobbleFeature, 1.0) + vec2(5.7, 9.1)) - 0.5;
+    float core = 1.0 - uFeatherNoiseCoreDepth * uFeatherNoise + wob * 2.0 * uFeatherNoiseWobble;
+    // The band: outside the core, clamped to the base mark's visual edge.
+    float band = smoothstep(core - 0.01, core + 0.01, uN)
+               * (1.0 - smoothstep(1.0, 1.01, uN));
+    // ONE chip field: fine, stroke-frame, tooth-tilted; a sharp threshold
+    // turns it into flakes, never a front.
+    float chips = featherNoiseFbm(sp / max(uFeatherNoiseChipFeature, 1.0) + vec2(3.1, 7.7))
+                + uFeatherNoiseChipTooth * (rawHeight - 0.5);
+    float chipMask = smoothstep(uFeatherNoiseChipCut - 0.03, uFeatherNoiseChipCut + 0.03, chips);
+    featherShift += uFeatherNoiseLift * band * chipMask;
   }
 `;
   // The neutral gather's height statement, at its PRE position (before the

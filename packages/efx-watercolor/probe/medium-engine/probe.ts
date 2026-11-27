@@ -250,19 +250,23 @@ import { buildBrushForStroke } from '../../src/playground/brushBridge'
 import { engineScaleToSize, sizeToEngineScale, toEngineParams } from '../../src/playground/params'
 // quick 261125-rtc: the report names the effective sampling factor the dab
 // chain ran at, through the engine's OWN size round trip.
-// quick 261126-v8j (Spec 11): the feather-noise report echoes the eroding
-// front's own knobs from the SHIPPED constants and twins — the drive, the
-// brush-relative feature size and the soft band — never a re-typed literal.
+// quick 261126-v8j (Spec 11): the feather-noise report echoes the chipped
+// band's own knobs from the SHIPPED constants and twins — the drive, the
+// core curve, the two brush-relative feature sizes and the chip threshold —
+// never a re-typed literal.
 import {
   BRISTLE_FEATHER_EDGE,
   BRISTLE_FEATHER_MIN,
   BRISTLE_FEATHER_REACH,
   BRISTLE_LAYER_EDGE,
   bristleSampleScale,
-  featherNoiseBlurU,
+  featherNoiseChipCut,
+  featherNoiseChipFeaturePx,
+  featherNoiseCoreU,
   featherNoiseDrive,
-  featherNoiseFeaturePx,
-  FEATHER_NOISE_DEPTH,
+  featherNoiseWobbleFeaturePx,
+  FEATHER_NOISE_CHIP_TOOTH,
+  FEATHER_NOISE_CORE_WOBBLE,
 } from '../../src/playground/bristles'
 import { pigmentFromHex } from '../../src/playground/spectral'
 // Spec 10: the CPU band mirror (`displayBasisGLSL`'s own tables and epsilon)
@@ -7412,14 +7416,15 @@ function featherNoiseMetrics(
   const featherStart =
     BRISTLE_FEATHER_EDGE *
     (1 - (BRISTLE_FEATHER_MIN + (BRISTLE_FEATHER_REACH - BRISTLE_FEATHER_MIN) * uFeather))
-  // The eroding front's knobs, from the shipped constants and twins: the
-  // recorded slider -> drive, the brush-relative feature size and the soft
-  // band (uN), plus the deepest penetration at that drive. The probe echoes
-  // them so a capture can never silently describe another law.
+  // The chipped band's knobs, from the shipped constants and twins: the
+  // recorded slider -> drive, the surviving core's radius (uN), the chip
+  // field's threshold and the two brush-relative feature sizes. The probe
+  // echoes them so a capture can never silently describe another law.
   const drive = featherNoiseDrive(Number(bag['featherNoise'] ?? 0) / 100)
-  const featurePx = featherNoiseFeaturePx(halfWidthPx)
-  const blurU = featherNoiseBlurU(halfWidthPx, BRISTLE_LAYER_EDGE)
-  const frontDepth = FEATHER_NOISE_DEPTH * drive
+  const coreU = featherNoiseCoreU(drive)
+  const chipFeaturePx = featherNoiseChipFeaturePx(halfWidthPx)
+  const wobbleFeaturePx = featherNoiseWobbleFeaturePx(halfWidthPx)
+  const chipCut = featherNoiseChipCut(drive)
 
   // The committed across profile (postFix = the sheet the artist judges).
   const profile = (surfaces['postFix'] as Record<string, unknown> | undefined) ?? null
@@ -7516,13 +7521,17 @@ function featherNoiseMetrics(
     featherStart: round4(featherStart),
     effectiveFeather,
     strokeSize,
-    // The eroding front's own echo: slider -> drive, feature px, soft band
-    // uN, and the deepest penetration at this slider. `anchor` is the visual
-    // edge the uN coordinate is measured against (BRISTLE_LAYER_EDGE).
+    // The chipped band's own echo: slider -> drive, the surviving core's
+    // radius (uN), the chip field's threshold, and the chip / wobble feature
+    // sizes in doc px. `anchor` is the visual edge the uN coordinate is
+    // measured against (BRISTLE_LAYER_EDGE).
     drive: round4(drive),
-    featurePx: round2(featurePx),
-    blurU: round4(blurU),
-    frontDepth: round4(frontDepth),
+    coreU: round4(coreU),
+    chipCut: round4(chipCut),
+    chipFeaturePx: round2(chipFeaturePx),
+    wobbleFeaturePx: round2(wobbleFeaturePx),
+    chipTooth: FEATHER_NOISE_CHIP_TOOTH,
+    wobbleU: FEATHER_NOISE_CORE_WOBBLE,
     anchor: BRISTLE_LAYER_EDGE,
     inputs: {
       paramsSize: round4(engineSize),

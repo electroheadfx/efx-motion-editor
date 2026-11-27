@@ -1,29 +1,39 @@
 // ============================================================
 //  featherNoise.test.ts — Spec 11 (2026-11-27, quick 261126-v8j):
-//  Feather noise erodes the base shape; Feather falloff shapes the opening.
+//  Feather noise chips the band outside a receding core; Feather falloff
+//  shapes the opening.
 //
-//  The artist's five-state ruling: ONE coherent noise field erodes the
-//  base shape from its boundary INWARD, progressively with the slider.
-//  0 is the clean footprint; 20 tears the rim shallowly; 40 recedes a
-//  little; 60 breaks the outer half into chunks with a continuous core;
-//  100 leaves a thin central spine with fragments close to the mark.
-//  Removal is THRESHOLD-ONLY (a featherShift rise behind a soft front),
-//  never a depth fade and never an outward spray: nothing can appear
-//  outside the base mark, so no fingers or spikes exist by construction.
-//  Feather falloff still distributes the shipped rim opening with the
+//  The artist's live UAT rejected the first law's CHARACTER (a smooth front
+//  that shrank the whole mark into a noodle). The revised ruling: a solid
+//  CORE recedes linearly with the slider — coreU = 1 − CORE_DEPTH·drive,
+//  wobbled by one low-frequency value-noise cell — and OUTSIDE the core ONE
+//  fine chip field (three octaves of the engine's value noise in the stroke
+//  frame plus the paper tooth) is thresholded into a sharp speckle mask:
+//
+//      featherShift += LIFT · band · chipMask
+//
+//  Where the mask is 1 the paint is removed; where it is 0 the paint is
+//  untouched, so the kept paint in the band IS the chips and keeps its own
+//  coverage / paper / bristle micro texture. Threshold-only, never a depth
+//  fade and never an outward spray: nothing can appear outside the base
+//  mark. Feather falloff still distributes the shipped rim opening with the
 //  SAME exponent map Edge falloff uses — one shape language, no second
 //  table.
 //
 //  Laws pinned here:
-//   1. The declared constants (feature scale / floor / ceiling, depth,
-//      soft band, lift) — the probe's calibration targets.
+//   1. The declared constants (core depth / wobble, wobble feature, chip
+//      feature, chip cut ends, chip tooth, lift) — the probe's calibration
+//      targets.
 //   2. `featherNoiseDrive(n)` is the recorded slider, clamped: LINEAR,
 //      total, 0 reads the neutral block.
-//   3. `featherNoiseFeaturePx(halfWidthPx)` = clamp(hw · SCALE, MIN, MAX)
-//      in document px — brush-relative, floored and capped, total.
-//   4. `featherNoiseBlurU(halfWidthPx, anchor)` = BLUR_PX / (hw · anchor),
-//      clamped to [MIN_U, MAX_U]: a real soft band, never a hard cut.
-//   5. The law ships as a SHADER PERMUTATION: the engine's default program
+//   3. `featherNoiseCoreU(drive)` = 1 − CORE_DEPTH·drive: the core recedes
+//      monotonically, never collapses; total.
+//   4. `featherNoiseChipCut(drive)` falls from START to END: more drive =
+//      denser flakes; total.
+//   5. `featherNoiseChipFeaturePx` / `featherNoiseWobbleFeaturePx` =
+//      clamp(hw · SCALE, MIN, MAX) in document px — brush-relative,
+//      floored and capped, total.
+//   6. The law ships as a SHADER PERMUTATION: the engine's default program
 //      is the NEUTRAL gather (the pre-change source, byte-for-byte) and the
 //      EXTENDED program — the law — compiles lazily the first time the
 //      driven noise is above 0 or the falloff leaves 50. Both come from the
@@ -44,17 +54,23 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const SRC_ROOT = resolve(HERE, '..')
 
 const FEATHER_NOISE = bristleModule as unknown as {
-  FEATHER_NOISE_FEATURE_SCALE?: number
-  FEATHER_NOISE_FEATURE_MIN_PX?: number
-  FEATHER_NOISE_FEATURE_MAX_PX?: number
-  FEATHER_NOISE_DEPTH?: number
-  FEATHER_NOISE_BLUR_PX?: number
-  FEATHER_NOISE_BLUR_MIN_U?: number
-  FEATHER_NOISE_BLUR_MAX_U?: number
+  FEATHER_NOISE_CORE_DEPTH?: number
+  FEATHER_NOISE_CORE_WOBBLE?: number
+  FEATHER_NOISE_WOBBLE_SCALE?: number
+  FEATHER_NOISE_WOBBLE_MIN_PX?: number
+  FEATHER_NOISE_WOBBLE_MAX_PX?: number
+  FEATHER_NOISE_CHIP_SCALE?: number
+  FEATHER_NOISE_CHIP_MIN_PX?: number
+  FEATHER_NOISE_CHIP_MAX_PX?: number
+  FEATHER_NOISE_CHIP_CUT_START?: number
+  FEATHER_NOISE_CHIP_CUT_END?: number
+  FEATHER_NOISE_CHIP_TOOTH?: number
   FEATHER_NOISE_LIFT?: number
   featherNoiseDrive?: (n: number) => number
-  featherNoiseFeaturePx?: (halfWidthPx: number) => number
-  featherNoiseBlurU?: (halfWidthPx: number, anchor: number) => number
+  featherNoiseCoreU?: (drive: number) => number
+  featherNoiseChipCut?: (drive: number) => number
+  featherNoiseChipFeaturePx?: (halfWidthPx: number) => number
+  featherNoiseWobbleFeaturePx?: (halfWidthPx: number) => number
 }
 
 function packageSourceFiles(dir: string): string[] {
@@ -74,18 +90,35 @@ const PACKAGE_SOURCES = packageSourceFiles(SRC_ROOT).map(file => ({
 
 describe('the Spec 11 feather-noise constants', () => {
   it('pins the declared values the probe calibrates against', () => {
-    expect(FEATHER_NOISE.FEATHER_NOISE_FEATURE_SCALE, 'the feature scale').toBe(0.3)
-    expect(FEATHER_NOISE.FEATHER_NOISE_FEATURE_MIN_PX, 'the feature floor').toBe(6)
-    expect(FEATHER_NOISE.FEATHER_NOISE_FEATURE_MAX_PX, 'the feature ceiling').toBe(90)
-    expect(FEATHER_NOISE.FEATHER_NOISE_DEPTH, 'the deepest front penetration').toBe(0.85)
-    expect(FEATHER_NOISE.FEATHER_NOISE_BLUR_PX, 'the soft band half-width').toBe(1.5)
-    expect(FEATHER_NOISE.FEATHER_NOISE_BLUR_MIN_U, 'the soft band floor').toBe(1e-4)
-    expect(FEATHER_NOISE.FEATHER_NOISE_BLUR_MAX_U, 'the soft band ceiling').toBe(0.5)
-    expect(FEATHER_NOISE.FEATHER_NOISE_LIFT, 'the front threshold rise').toBe(1.4)
+    expect(FEATHER_NOISE.FEATHER_NOISE_CORE_DEPTH, 'the core recession').toBe(0.82)
+    expect(FEATHER_NOISE.FEATHER_NOISE_CORE_WOBBLE, 'the core wobble uN').toBe(0.05)
+    expect(FEATHER_NOISE.FEATHER_NOISE_WOBBLE_SCALE, 'the wobble scale').toBe(0.35)
+    expect(FEATHER_NOISE.FEATHER_NOISE_WOBBLE_MIN_PX, 'the wobble floor').toBe(8)
+    expect(FEATHER_NOISE.FEATHER_NOISE_WOBBLE_MAX_PX, 'the wobble ceiling').toBe(48)
+    expect(FEATHER_NOISE.FEATHER_NOISE_CHIP_SCALE, 'the chip scale').toBe(0.05)
+    expect(FEATHER_NOISE.FEATHER_NOISE_CHIP_MIN_PX, 'the chip floor').toBe(2.5)
+    expect(FEATHER_NOISE.FEATHER_NOISE_CHIP_MAX_PX, 'the chip ceiling').toBe(6)
+    expect(FEATHER_NOISE.FEATHER_NOISE_CHIP_CUT_START, 'the chip cut at drive 0').toBe(0.62)
+    expect(FEATHER_NOISE.FEATHER_NOISE_CHIP_CUT_END, 'the chip cut at drive 1').toBe(0.47)
+    expect(FEATHER_NOISE.FEATHER_NOISE_CHIP_TOOTH, 'the paper tooth share').toBe(0.15)
+    expect(FEATHER_NOISE.FEATHER_NOISE_LIFT, 'the chip threshold rise').toBe(1.4)
+  })
+
+  it('routes every chip cut through the declared ends (the cut falls with drive)', () => {
+    const start = FEATHER_NOISE.FEATHER_NOISE_CHIP_CUT_START ?? Number.NaN
+    const end = FEATHER_NOISE.FEATHER_NOISE_CHIP_CUT_END ?? Number.NaN
+    expect(end, 'more drive removes more area').toBeLessThan(start)
   })
 
   it('leaves no pre-law constant alive in the package sources', () => {
     for (const token of [
+      'FEATHER_NOISE_FEATURE_SCALE',
+      'FEATHER_NOISE_FEATURE_MIN_PX',
+      'FEATHER_NOISE_FEATURE_MAX_PX',
+      'FEATHER_NOISE_DEPTH',
+      'FEATHER_NOISE_BLUR_PX',
+      'FEATHER_NOISE_BLUR_MIN_U',
+      'FEATHER_NOISE_BLUR_MAX_U',
       'FEATHER_NOISE_FEATURES',
       'FEATHER_NOISE_MIN_PX',
       'FEATHER_NOISE_MAX_PX',
@@ -93,6 +126,8 @@ describe('the Spec 11 feather-noise constants', () => {
       'FEATHER_NOISE_FLOOR',
       'featherNoisePeriodPx',
       'featherNoiseScale',
+      'featherNoiseFeaturePx',
+      'featherNoiseBlurU',
     ]) {
       const carriers = PACKAGE_SOURCES.filter(({ text }) => text.includes(token)).map(
         ({ file }) => file,
@@ -118,67 +153,104 @@ describe('featherNoiseDrive — the recorded slider IS the drive', () => {
     expect(drive!(Number.NaN)).toBe(0)
     expect(drive!(-1)).toBe(0)
     expect(drive!(2)).toBeCloseTo(1, 12)
-    expect(drive!(Number.POSITIVE_INFINITY)).toBe(1)
+    expect(drive!(Number.POSITIVE_INFINITY)).toBeCloseTo(1, 12)
   })
 })
 
-describe('featherNoiseFeaturePx — the brush-relative field scale', () => {
-  it('reads half-width · 0.3, floored at 6 px and capped at 90 px', () => {
-    const feature = FEATHER_NOISE.featherNoiseFeaturePx
-    expect(typeof feature, 'featherNoiseFeaturePx is exported').toBe('function')
-    expect(feature?.(120), 'half-width 120 reads 36 px').toBeCloseTo(36, 12)
-    expect(feature?.(4), 'a tiny brush sits on the floor').toBeCloseTo(6, 12)
-    expect(feature?.(20), 'half-width 20 still sits on the floor').toBeCloseTo(6, 12)
-    expect(feature?.(30), 'half-width 30 reads 9 px').toBeCloseTo(9, 12)
-    expect(feature?.(1000), 'a huge brush sits on the cap').toBeCloseTo(90, 12)
+describe('featherNoiseCoreU — the surviving core recedes linearly', () => {
+  it('reads 1 − 0.82 · drive: full at 0, thin at 100', () => {
+    const core = FEATHER_NOISE.featherNoiseCoreU
+    expect(typeof core, 'featherNoiseCoreU is exported').toBe('function')
+    expect(core!(0), 'drive 0 keeps the full width').toBeCloseTo(1, 12)
+    expect(core!(0.2), 'drive 20 recedes by 16.4 %').toBeCloseTo(1 - 0.82 * 0.2, 12)
+    expect(core!(0.4)).toBeCloseTo(1 - 0.82 * 0.4, 12)
+    expect(core!(0.6)).toBeCloseTo(1 - 0.82 * 0.6, 12)
+    expect(core!(1), 'drive 100 keeps 18 % of the visual half-width').toBeCloseTo(0.18, 12)
   })
 
-  it('is total: a missing half-width reads the floor, never NaN', () => {
-    const feature = FEATHER_NOISE.featherNoiseFeaturePx
-    for (const value of [0, -4, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
-      expect(feature?.(value), `half-width ${value} reads the floor`).toBeCloseTo(6, 12)
+  it('never collapses and never grows as the drive rises', () => {
+    const core = FEATHER_NOISE.featherNoiseCoreU ?? (() => Number.NaN)
+    let previous = core(0)
+    for (let step = 0; step <= 100; step += 1) {
+      const value = core(step / 100)
+      expect(value).toBeLessThanOrEqual(previous + 1e-12)
+      expect(value).toBeGreaterThan(0)
+      previous = value
     }
   })
 
-  it('never decreases as the brush widens and stays inside [MIN, MAX]', () => {
-    let previous = 0
-    for (let halfWidth = 0; halfWidth <= 400; halfWidth += 1) {
-      const feature = FEATHER_NOISE.featherNoiseFeaturePx?.(halfWidth) ?? Number.NaN
-      expect(feature).toBeGreaterThanOrEqual(previous)
-      expect(feature).toBeGreaterThanOrEqual(FEATHER_NOISE.FEATHER_NOISE_FEATURE_MIN_PX ?? NaN)
-      expect(feature).toBeLessThanOrEqual(FEATHER_NOISE.FEATHER_NOISE_FEATURE_MAX_PX ?? NaN)
-      previous = feature
-    }
+  it('is total: a non-finite drive reads the neutral core', () => {
+    const core = FEATHER_NOISE.featherNoiseCoreU
+    expect(core?.(Number.NaN), 'NaN reads 1').toBeCloseTo(1, 12)
+    expect(core?.(Number.POSITIVE_INFINITY), 'inf clamps to full drive').toBeCloseTo(0.18, 12)
+    expect(core?.(-1), 'negative clamps to 0').toBeCloseTo(1, 12)
   })
 })
 
-describe('featherNoiseBlurU — the soft front, never a hard cut', () => {
-  it('converts the px half-band through the visual-edge anchor', () => {
-    const blurU = FEATHER_NOISE.featherNoiseBlurU
-    expect(typeof blurU, 'featherNoiseBlurU is exported').toBe('function')
-    expect(blurU?.(120, 0.9), 'half-width 120 reads 1.5 / 108 uN').toBeCloseTo(1.5 / 108, 12)
-    expect(blurU?.(4, 0.9), 'a tiny brush widens the band in uN').toBeCloseTo(1.5 / 3.6, 12)
+describe('featherNoiseChipCut — the flakes densify with the drive', () => {
+  it('falls from 0.62 to 0.47 linearly', () => {
+    const cut = FEATHER_NOISE.featherNoiseChipCut
+    expect(typeof cut, 'featherNoiseChipCut is exported').toBe('function')
+    expect(cut!(0)).toBeCloseTo(0.62, 12)
+    expect(cut!(0.2)).toBeCloseTo(0.62 - 0.15 * 0.2, 12)
+    expect(cut!(0.6)).toBeCloseTo(0.62 - 0.15 * 0.6, 12)
+    expect(cut!(1)).toBeCloseTo(0.47, 12)
   })
 
-  it('clamps both ends: never a hard cut, never the whole tiny mark', () => {
-    const blurU = FEATHER_NOISE.featherNoiseBlurU
-    expect(blurU?.(1, 0.9), 'a 1 px brush sits on the uN ceiling').toBeCloseTo(0.5, 12)
-    expect(blurU?.(1e7, 0.9), 'a huge brush sits on the uN floor').toBeCloseTo(1e-4, 12)
+  it('is total: a non-finite drive reads the sparse end, extremes clamp', () => {
+    const cut = FEATHER_NOISE.featherNoiseChipCut
+    expect(cut?.(Number.NaN)).toBeCloseTo(0.62, 12)
+    expect(cut?.(-1)).toBeCloseTo(0.62, 12)
+    expect(cut?.(2)).toBeCloseTo(0.47, 12)
+  })
+})
+
+describe('the brush-relative feature sizes', () => {
+  it('chip cells read half-width · 0.05, floored at 2.5 px and capped at 6 px', () => {
+    const chip = FEATHER_NOISE.featherNoiseChipFeaturePx
+    expect(typeof chip, 'featherNoiseChipFeaturePx is exported').toBe('function')
+    expect(chip?.(120), 'half-width 120 reads 6 px').toBeCloseTo(6, 12)
+    expect(chip?.(4), 'a tiny brush sits on the floor').toBeCloseTo(2.5, 12)
+    expect(chip?.(40), 'half-width 40 still sits on the floor').toBeCloseTo(2.5, 12)
+    expect(chip?.(80), 'half-width 80 reads 4 px').toBeCloseTo(4, 12)
+    expect(chip?.(1000), 'a huge brush sits on the cap').toBeCloseTo(6, 12)
   })
 
-  it('is total: an unusable span reads the ceiling, never NaN', () => {
-    const blurU = FEATHER_NOISE.featherNoiseBlurU
-    for (const [halfWidth, anchor] of [
-      [0, 0.9],
-      [-4, 0.9],
-      [Number.NaN, 0.9],
-      [Number.POSITIVE_INFINITY, 0.9],
-      [120, 0],
+  it('the wobble reads half-width · 0.35, floored at 8 px and capped at 48 px', () => {
+    const wobble = FEATHER_NOISE.featherNoiseWobbleFeaturePx
+    expect(typeof wobble, 'featherNoiseWobbleFeaturePx is exported').toBe('function')
+    expect(wobble?.(120), 'half-width 120 reads 42 px').toBeCloseTo(42, 12)
+    expect(wobble?.(4), 'a tiny brush sits on the floor').toBeCloseTo(8, 12)
+    expect(wobble?.(20), 'half-width 20 still sits on the floor').toBeCloseTo(8, 12)
+    expect(wobble?.(1000), 'a huge brush sits on the cap').toBeCloseTo(48, 12)
+  })
+
+  it('both are total and never decrease as the brush widens', () => {
+    for (const [name, fn, min, max] of [
+      [
+        'featherNoiseChipFeaturePx',
+        FEATHER_NOISE.featherNoiseChipFeaturePx,
+        FEATHER_NOISE.FEATHER_NOISE_CHIP_MIN_PX,
+        FEATHER_NOISE.FEATHER_NOISE_CHIP_MAX_PX,
+      ],
+      [
+        'featherNoiseWobbleFeaturePx',
+        FEATHER_NOISE.featherNoiseWobbleFeaturePx,
+        FEATHER_NOISE.FEATHER_NOISE_WOBBLE_MIN_PX,
+        FEATHER_NOISE.FEATHER_NOISE_WOBBLE_MAX_PX,
+      ],
     ] as const) {
-      expect(blurU?.(halfWidth, anchor), `span ${halfWidth} reads the ceiling`).toBeCloseTo(
-        0.5,
-        12,
-      )
+      let previous = -1
+      for (let halfWidth = 0; halfWidth <= 400; halfWidth += 1) {
+        const feature = fn?.(halfWidth) ?? Number.NaN
+        expect(feature, `${name}(${halfWidth})`).toBeGreaterThanOrEqual(previous)
+        expect(feature).toBeGreaterThanOrEqual(min ?? Number.NaN)
+        expect(feature).toBeLessThanOrEqual(max ?? Number.NaN)
+        previous = feature
+      }
+      for (const value of [0, -4, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+        expect(fn?.(value), `${name}(${value}) reads the floor`).toBeCloseTo(min ?? Number.NaN, 12)
+      }
     }
   })
 })
@@ -198,15 +270,17 @@ describe('the one exponent map', () => {
 // ============================================================
 //  The law's source pins. The pure twins above prove the arithmetic; these
 //  prove the GLSL and the ONE gather binder carry the artist's 2026-11-27
-//  law (quick 261126-v8j):
+//  revised law (quick 261126-v8j):
 //
-//   * ONE coherent noise field in the STROKE frame erodes the base shape
-//     from its boundary INWARD — removal is threshold-only, never a depth
-//     fade, never an outward spray or spike.
-//   * The field is the engine's value-noise family (three octaves, weights
-//     summing to 1), isotropic, brush-relative with px floors.
-//   * The front is `1 − DEPTH · drive · n01`, the envelope is a real soft
-//     band (`front ± blur`), and the lift is NOT scaled by Feather.
+//   * A solid core recedes linearly with the drive (coreU = 1 −
+//     CORE_DEPTH·drive) and wobbles low-frequency; the paint inside it is
+//     untouched.
+//   * The band outside the core is gated by ONE fine chip field — three
+//     octaves of the engine's value noise in the STROKE frame plus the
+//     paper tooth — thresholded sharply into chipMask.
+//   * The removal is `featherShift += LIFT · band · chipMask` — a threshold
+//     shift, never a depth fade, never a wide smooth envelope or a smooth
+//     shrink, and nothing outside the base mark gains paint.
 //   * Feather falloff still shapes the shipped rim opening with the ONE
 //     exponent map, skipping pow at 50.
 // ============================================================
@@ -215,9 +289,12 @@ const LAW_UNIFORMS = [
   'uFeatherFalloff',
   'uFeatherNoise',
   'uFeatherNoiseAnchor',
-  'uFeatherNoiseDepth',
-  'uFeatherNoiseFeature',
-  'uFeatherNoiseBlur',
+  'uFeatherNoiseCoreDepth',
+  'uFeatherNoiseWobble',
+  'uFeatherNoiseWobbleFeature',
+  'uFeatherNoiseChipFeature',
+  'uFeatherNoiseChipCut',
+  'uFeatherNoiseChipTooth',
   'uFeatherNoiseLift',
 ] as const
 
@@ -239,25 +316,32 @@ describe('the Spec 11 law in BRISTLE_GATHER', () => {
     expect(ENGINE_SOURCE).toContain(
       'gl.uniform1f(p.u.uFeatherNoise!, clamp(featherNoiseDrive(this.params.featherNoise), 0, 1));',
     )
-    // The front's anchor is the Edge-transparency span, never a re-typed 0.9.
+    // The band's anchor is the Edge-transparency span, never a re-typed 0.9.
     expect(ENGINE_SOURCE).toContain(
       'gl.uniform1f(p.u.uFeatherNoiseAnchor!, BRISTLE_LAYER_EDGE);',
     )
     expect(ENGINE_SOURCE).toContain(
-      'gl.uniform1f(p.u.uFeatherNoiseDepth!, FEATHER_NOISE_DEPTH);',
+      'gl.uniform1f(p.u.uFeatherNoiseCoreDepth!, FEATHER_NOISE_CORE_DEPTH);',
     )
     expect(ENGINE_SOURCE).toContain(
-      'gl.uniform1f(p.u.uFeatherNoiseFeature!, featherNoiseFeaturePx(halfWidthPx));',
+      'gl.uniform1f(p.u.uFeatherNoiseWobble!, FEATHER_NOISE_CORE_WOBBLE);',
     )
     expect(ENGINE_SOURCE).toContain(
-      'gl.uniform1f(p.u.uFeatherNoiseBlur!, featherNoiseBlurU(halfWidthPx, BRISTLE_LAYER_EDGE));',
+      'gl.uniform1f(p.u.uFeatherNoiseWobbleFeature!, featherNoiseWobbleFeaturePx(halfWidthPx));',
+    )
+    expect(ENGINE_SOURCE).toContain(
+      'gl.uniform1f(p.u.uFeatherNoiseChipFeature!, featherNoiseChipFeaturePx(halfWidthPx));',
+    )
+    expect(ENGINE_SOURCE).toContain('featherNoiseChipCut(featherNoiseDrive(this.params.featherNoise))')
+    expect(ENGINE_SOURCE).toContain(
+      'gl.uniform1f(p.u.uFeatherNoiseChipTooth!, FEATHER_NOISE_CHIP_TOOTH);',
     )
     expect(ENGINE_SOURCE).toContain(
       'gl.uniform1f(p.u.uFeatherNoiseLift!, FEATHER_NOISE_LIFT);',
     )
   })
 
-  it('computes the dab half-width ONCE for the lateral laws and the feature size', () => {
+  it('computes the dab half-width ONCE for the lateral laws and the features', () => {
     expect(ENGINE_SOURCE).toContain('const halfWidthPx = r * this.dh;')
     expect(ENGINE_SOURCE).toContain('gl.uniform1f(p.u.uHalfWidthPx!, halfWidthPx);')
     expect(ENGINE_SOURCE).not.toContain('gl.uniform1f(p.u.uHalfWidthPx!, r * this.dh);')
@@ -271,43 +355,52 @@ describe('the Spec 11 law in BRISTLE_GATHER', () => {
     expect(BRISTLE_GATHER).toContain('exp2(2.0 * uFeatherFalloff - 1.0)')
   })
 
-  it('erodes through ONE stroke-frame front: threshold-only, no depth fade', () => {
+  it('recedes a CORE and chips the band outside it — never a smooth front', () => {
     expect(BRISTLE_GATHER).toContain('if (uFeatherNoise > 0.0) {')
+    // The stroke-stationary frame: q.y's NEGATED sign. q.y < 0 is the
+    // leading half, so uAlongPx − q.y·uHalfWidthPx is the texel's own
+    // station P (S − (S − P)). The plus sign reads 2S − P — a per-DAB
+    // phase that collapsed the fields to their minimum over ~80 dabs.
     expect(BRISTLE_GATHER).toContain(
-      'float uN = clamp(lateral / uFeatherNoiseAnchor, 0.0, 1.0);',
+      'vec2 sp = vec2(q.x * uHalfWidthPx, uAlongPx - q.y * uHalfWidthPx);',
     )
-    // The stroke frame is the 261126-rov displacement law's coordinates, with
-    // q.y's NEGATED sign: q.y < 0 is the leading half, so
-    // uAlongPx − q.y·uHalfWidthPx is the texel's own station P (S − (S − P)).
-    // The plus sign reads 2S − P — a per-DAB phase that collapsed the front
-    // to the field's minimum over ~80 dabs (a uniform shallow shrink).
+    // The core: linear recession plus one low-frequency wobble cell.
     expect(BRISTLE_GATHER).toContain(
-      'vec2 nf = vec2(q.x * uHalfWidthPx, uAlongPx - q.y * uHalfWidthPx)',
+      'float core = 1.0 - uFeatherNoiseCoreDepth * uFeatherNoise + wob * 2.0 * uFeatherNoiseWobble;',
     )
-
-    expect(BRISTLE_GATHER).toContain('/ max(uFeatherNoiseFeature, 1.0);')
+    // The band: outside the core, clamped to the base mark's visual edge.
+    expect(BRISTLE_GATHER).toContain('float band = smoothstep(core - 0.01, core + 0.01, uN)')
+    expect(BRISTLE_GATHER).toContain('* (1.0 - smoothstep(1.0, 1.01, uN));')
+    // ONE chip field, tooth-tilted, thresholded sharply into a mask.
     expect(BRISTLE_GATHER).toContain(
-      'float n01 = smoothstep(-0.3, 0.7, featherNoiseFbm(nf));',
+      'float chips = featherNoiseFbm(sp / max(uFeatherNoiseChipFeature, 1.0) + vec2(3.1, 7.7))',
     )
+    expect(BRISTLE_GATHER).toContain('+ uFeatherNoiseChipTooth * (rawHeight - 0.5);')
     expect(BRISTLE_GATHER).toContain(
-      'float front = 1.0 - uFeatherNoiseDepth * uFeatherNoise * n01;',
+      'float chipMask = smoothstep(uFeatherNoiseChipCut - 0.03, uFeatherNoiseChipCut + 0.03, chips);',
     )
-    // The removal boundary is a real soft band, never a sub-pixel cut.
-    expect(BRISTLE_GATHER).toContain(
-      'float envelope = smoothstep(front - uFeatherNoiseBlur, front + uFeatherNoiseBlur, uN);',
-    )
-    // DROPPED uFeather: the erosion works at Feather 0 and at Feather 85.
-    expect(BRISTLE_GATHER).toContain('featherShift += uFeatherNoiseLift * envelope;')
+    // The removal: threshold-only, gated by the core band and the chips.
+    expect(BRISTLE_GATHER).toContain('featherShift += uFeatherNoiseLift * band * chipMask;')
+    // DROPPED uFeather: the chips work at Feather 0 and Feather 85 alike.
+    expect(BRISTLE_GATHER).not.toContain('uFeather * band * chipMask')
   })
 
-  it('samples ONE coherent value-noise fbm in the field, weights summing to 1', () => {
+  it('keeps the paper tooth available to the chip field without moving the threshold', () => {
+    expect(BRISTLE_GATHER).toContain('float rawHeight = grainHeight(css, uAxis);')
+    expect(BRISTLE_GATHER).toContain('float height = mix(rawHeight, 0.5, rimCalm);')
+    expect(BRISTLE_GATHER).toContain(
+      'float threshold = uGrain * (1.0 - height) - 0.25 + featherShift;',
+    )
+  })
+
+  it('samples ONE coherent value-noise fbm in the chip field, weights summing to 1', () => {
     expect(BRISTLE_GATHER).toContain('float featherNoiseFbm(vec2 p){')
     expect(BRISTLE_GATHER).toContain('0.5714 * valueNoise(p)')
     expect(BRISTLE_GATHER).toContain('0.2857 * valueNoise(p * 2.0 + vec2(17.3, 11.1))')
     expect(BRISTLE_GATHER).toContain('0.1429 * valueNoise(p * 4.0 + vec2(31.7, 23.9))')
   })
 
-  it('carries NO cloud, spray, spike or outward source any more', () => {
+  it('carries no smooth front, spray, spike or outward source', () => {
     for (const dead of [
       'cloudNoise',
       'cloudMix',
@@ -318,6 +411,14 @@ describe('the Spec 11 law in BRISTLE_GATHER', () => {
       'float band = exp(-pow(',
       'float reach = mix(0.12, 0.40, uFeatherNoise);',
       'featherShift -= uFeather * spike * reach;',
+      // The rejected first law's smooth erosion front.
+      'float n01 = smoothstep(-0.3, 0.7, featherNoiseFbm(nf));',
+      'float front = 1.0 - uFeatherNoiseDepth * uFeatherNoise * n01;',
+      'float envelope = smoothstep(front - uFeatherNoiseBlur, front + uFeatherNoiseBlur, uN);',
+      'featherShift += uFeatherNoiseLift * envelope;',
+      'uFeatherNoiseDepth',
+      'uFeatherNoiseBlur',
+      'uFeatherNoiseFeature',
     ]) {
       expect(BRISTLE_GATHER.includes(dead), `the law no longer carries ${dead}`).toBe(false)
     }
@@ -328,7 +429,7 @@ describe('the Spec 11 law in BRISTLE_GATHER', () => {
       'float featherStart = uFeatherEdge * (1.0 - mix(uFeatherMin, uFeatherReach, uFeather));',
     )
     // PRE's paper height, verbatim — the neutral path compiles from this line.
-    expect(BRISTLE_GATHER).toContain(
+    expect(SHADERS.BRISTLE_GATHER_NEUTRAL ?? '').toContain(
       'float height = mix(grainHeight(css, uAxis), 0.5, rimCalm);',
     )
     expect(BRISTLE_GATHER).toContain(
@@ -385,11 +486,15 @@ describe('the neutral/extended gather permutation', () => {
       'featherNoiseFbm',
       'uFeatherFalloff',
       'uFeatherNoise',
-      'uFeatherNoiseDepth',
-      'uFeatherNoiseFeature',
-      'uFeatherNoiseBlur',
+      'uFeatherNoiseCoreDepth',
+      'uFeatherNoiseWobble',
+      'uFeatherNoiseWobbleFeature',
+      'uFeatherNoiseChipFeature',
+      'uFeatherNoiseChipCut',
+      'uFeatherNoiseChipTooth',
       'uFeatherNoiseLift',
       'q.x * uHalfWidthPx',
+      'rawHeight',
       'exp2(2.0 * uFeatherFalloff - 1.0)',
     ]) {
       expect(neutral.includes(token), `neutral never carries ${token}`).toBe(false)
