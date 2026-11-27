@@ -154,9 +154,17 @@ const NEW_PRESETS: Record<string, NewPresetSpec> = {
   pen: {
     name: 'Pen 1B',
     group: 'acrylic',
+    // 2026-11-27: Pen 1B derives from Gouache Round — the whole physics
+    // record is shared; only the landing bag differs.
     overrides: {
+      aspect: 0.7,
+      rotation: 'follow',
       water: 0.06,
-      spacing: 0.12,
+      load: 1.4,
+      capacity: 1.6,
+      grain: 0.15,
+      roughness: 0.4,
+      spacing: 0.14,
     },
   },
 }
@@ -441,7 +449,7 @@ describe('the per-brush defaults bags (quick 261124-tje)', () => {
       pickup: 0,
       opacity: 100,
       dry: 0,
-      feather: 85,
+      feather: 100,
       featherNoise: 60,
       featherFalloff: 0,
       emboss: 0,

@@ -378,6 +378,27 @@ export function brushSections(presets: readonly BrushPreset[]): BrushGroupSectio
   return sections;
 }
 
+/**
+ * The ONE physics record the Medium (acrylic) responses share. Pen 1B is a
+ * DERIVATIVE of Gouache Round (artist's ruling 2026-11-27): a Medium brush
+ * response carries the engine's whole bristle structure, so a law such as
+ * Feather noise reads the same fields on every Medium response. Only a
+ * response's id, name, hint and landing bag may differ.
+ */
+const ACRYLIC_RESPONSE_PHYSICS = {
+  group: 'acrylic',
+  pressureLink: 0,
+  speedLink: 0,
+  aspect: 0.7,
+  rotation: 'follow',
+  water: 0.06,
+  load: 1.4,
+  capacity: 1.6,
+  grain: 0.15,
+  roughness: 0.4,
+  spacing: 0.14,
+} as const satisfies Partial<BrushPreset>;
+
 export const BRUSH_PRESETS: BrushPreset[] = [
   define({
     id: 'round', name: 'Round', hint: 'A pointed round #8: the everyday brush',
@@ -479,32 +500,33 @@ export const BRUSH_PRESETS: BrushPreset[] = [
     })(n),
   }),
   /* ---------------------------------------------------------------------
-   * Phase 64 (MED-29), narrowed by quick 261124-iq9: the one acrylic response
-   * the medium taxonomy keeps — displayed as "Gouache". It APPENDS after the
-   * watercolor table — never rename or reorder an existing id, because a
-   * stroke persists the response id and an unknown id replays as the round.
+   * Phase 64 (MED-29), narrowed by quick 261124-iq9: the acrylic responses
+   * the medium taxonomy keeps — displayed as "Gouache Round" and "Pen 1B".
+   * They APPEND after the watercolor table — never rename or reorder an
+   * existing id, because a stroke persists the response id and an unknown id
+   * replays as the round.
+   *
+   * 2026-11-27 (artist's ruling after the Pen/Feather-noise report): Pen 1B
+   * is DERIVED from Gouache Round — one shared physics record and tip, so
+   * every bristle-gather (Medium) law reads the same structure on both
+   * responses. Only the id, name, hint and landing bag differ.
    * ------------------------------------------------------------------- */
   define({
     // 2026-11-27 (artist's live ruling): the acrylic family's response card
     // reads "Gouache Round" — distinct from the Medium group header.
     id: 'bristle-round', name: 'Gouache Round', hint: 'Round acrylic brush with body: springy, loaded hairs',
-    group: 'acrylic', pressureLink: 0, speedLink: 0,
-    aspect: 0.7, rotation: 'follow',
-    water: 0.06, load: 1.4, capacity: 1.6, grain: 0.15,
-    roughness: 0.4, spacing: 0.14,
+    ...ACRYLIC_RESPONSE_PHYSICS,
     defaults: { sizePx: 40, load: 100, pickup: 100, dry: 0, feather: 100 },
     tip: bristleTip,
   }),
-  /* ---------------------------------------------------------------------
-   * quick 261124-tje: the Pen response. It APPENDS after Gouache Round on
-   * purpose — the acrylic group's FIRST preset must stay `bristle-round`, so
-   * the Brush family's landing brush never moves. A procedural crisp round
-   * tip; no `custom` (not an imported texture).
-   * ------------------------------------------------------------------- */
   define({
-    id: 'pen', name: 'Pen 1B', hint: 'Fine springy round: crisp edge, no pickup',
-    group: 'acrylic', pressureLink: 0, speedLink: 0,
-    water: 0.06, spacing: 0.12,
+    // quick 261124-tje, re-derived 2026-11-27: the Pen response keeps Gouache
+    // Round's whole physics record; its landing bag is the fine pen setup.
+    // It APPENDS after Gouache Round on purpose — the acrylic group's FIRST
+    // preset must stay `bristle-round`, so the Brush family's landing brush
+    // never moves.
+    id: 'pen', name: 'Pen 1B', hint: 'Gouache body with the pen bag: fine, crisp edge, no pickup',
+    ...ACRYLIC_RESPONSE_PHYSICS,
     defaults: {
       sizePx: 10,
       grain: 25,
@@ -512,13 +534,13 @@ export const BRUSH_PRESETS: BrushPreset[] = [
       pickup: 0,
       opacity: 100,
       dry: 0,
-      feather: 85,
+      feather: 100,
       featherNoise: 60,
       featherFalloff: 0,
       emboss: 0,
       color: '#333537',
     },
-    tip: n => tip((_u, _v, r) => soft(r, 0.85))(n),
+    tip: bristleTip,
   }),
 ];
 

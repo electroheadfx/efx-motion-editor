@@ -7,9 +7,10 @@
 //      dry 0, feather 100 — never lift, never an unnamed key.
 //   2. Applying Pen 1B's bag lands size from 10 px, grain 25,
 //      load 100, pickup 0, opacity 100 (stored edgeFade 0), dry 0,
-//      feather 85, feather noise 60, feather falloff 0, emboss 0,
-//      and its #333537 pigment lands through the registered colour
-//      sink exactly once.
+//      feather 100 (Gouache Round's, since the response derives from
+//      it), feather noise 60, feather falloff 0, emboss 0, and its
+//      #333537 pigment lands through the registered colour sink
+//      exactly once.
 //   3. The colour sink mirrors the lift-preview contract: last
 //      registration wins and a stale unregister clears nothing.
 //   4. A bagless preset ('round') and an unknown id are TOTAL
@@ -175,7 +176,7 @@ describe('applyAquarelleBrushDefaults — the Pen bag', () => {
     expect(aquarelleParams.value.pickup).toBe(0);
     expect(aquarelleParams.value.edgeFade, 'Opacity 100 is stored as transparency 0').toBe(0);
     expect(aquarelleParams.value.dry).toBe(0);
-    expect(aquarelleParams.value.feather).toBe(85);
+    expect(aquarelleParams.value.feather, 'Gouache Round derives the shared Feather').toBe(100);
     expect(aquarelleParams.value.featherNoise).toBe(60);
     expect(aquarelleParams.value.featherFalloff).toBe(0);
     expect(aquarelleParams.value.emboss).toBe(0);
