@@ -48,7 +48,8 @@ export type AquarelleParamGroupId =
   | 'medium'
   | 'paint'
   | 'drying'
-  | 'edge'
+  | 'transparency'
+  | 'noise'
   | 'watercolor'
   | 'eraser';
 
@@ -90,12 +91,17 @@ export interface VisibleAquarelleParamGroup {
   readonly rows: readonly AquarelleParamRow[];
 }
 
-/** Fixed group order (spec §8). An empty group renders no heading. */
+/** Fixed group order (spec §8). An empty group renders no heading.
+ *  quick 261127-jox: the bristle "Edge" group is SPLIT by what the knobs do —
+ *  `transparency` holds the lateral pair (Edge transparency / Edge falloff,
+ *  Spec 10) and `noise` the break-up pair (Feather noise / Feather falloff,
+ *  Spec 11). No key, value or label moved. */
 export const AQUARELLE_PARAM_GROUPS: readonly AquarelleParamGroup[] = Object.freeze([
   Object.freeze({ id: 'medium', label: 'Medium' }),
   Object.freeze({ id: 'paint', label: 'Paint & reservoir' }),
   Object.freeze({ id: 'drying', label: 'Drying' }),
-  Object.freeze({ id: 'edge', label: 'Edge' }),
+  Object.freeze({ id: 'transparency', label: 'Transparency' }),
+  Object.freeze({ id: 'noise', label: 'Noise' }),
   Object.freeze({ id: 'watercolor', label: 'Watercolor only' }),
   Object.freeze({ id: 'eraser', label: 'Eraser' }),
 ]);
@@ -174,18 +180,24 @@ export const AQUARELLE_PARAM_ROWS: readonly AquarelleParamRow[] = Object.freeze(
     hiddenForMedia: ACRYLIC_HIDDEN,
   }),
   Object.freeze({ key: 'dry', label: 'Dry speed', group: 'drying', paint: 'all', water: true }),
-  Object.freeze({ key: 'feather', label: 'Feather', group: 'edge', paint: BRISTLE_MEDIA }),
-  // Spec 10: the stroke layer's two knobs. Both render through the existing
-  // GlobalSlider — 0 / 50 / 100 ARE the three named shapes for the falloff,
-  // and amount 0 is the shipped opaque edge.
-  Object.freeze({ key: 'edgeFade', label: 'Edge transparency', group: 'edge', paint: BRISTLE_MEDIA }),
-  Object.freeze({ key: 'edgeFalloff', label: 'Edge falloff', group: 'edge', paint: BRISTLE_MEDIA }),
-  // Spec 11: the break-up pair. Same BRISTLE_MEDIA law and the same
-  // GlobalSlider; `featherNoise` 0 is the clean edge, 20 the neutral base
-  // look and 100 the full break-up, while `featherFalloff` 50 is the shipped
-  // opening.
-  Object.freeze({ key: 'featherNoise', label: 'Feather noise', group: 'edge', paint: BRISTLE_MEDIA }),
-  Object.freeze({ key: 'featherFalloff', label: 'Feather falloff', group: 'edge', paint: BRISTLE_MEDIA }),
+  // quick 261127-jox: HIDDEN (Emboss precedent). The legacy Feather amplitude
+  // row is a duplicate control — quick 261126-v8j re-indexed `featherNoise` to
+  // own the same edge raggedness (0 zeroes it, 20 is the shipped base look,
+  // above 20 breaks the body up). The key stays in AQUARELLE_GLOBAL_KEYS, both
+  // medium records, the per-stroke bag and the Reset write set, and the engine
+  // still multiplies by the recorded Feather; only the ROW is hidden.
+  Object.freeze({ key: 'feather', label: 'Feather', group: 'noise', paint: BRISTLE_MEDIA, hidden: true }),
+  // Spec 10: the stroke layer's two knobs — the Transparency section's pair.
+  // Both render through the existing GlobalSlider — 0 / 50 / 100 ARE the three
+  // named shapes for the falloff, and amount 0 is the shipped opaque edge.
+  Object.freeze({ key: 'edgeFade', label: 'Edge transparency', group: 'transparency', paint: BRISTLE_MEDIA }),
+  Object.freeze({ key: 'edgeFalloff', label: 'Edge falloff', group: 'transparency', paint: BRISTLE_MEDIA }),
+  // Spec 11: the break-up pair — the Noise section's pair. Same BRISTLE_MEDIA
+  // law and the same GlobalSlider; `featherNoise` 0 is the clean edge, 20 the
+  // neutral base look and 100 the full break-up, while `featherFalloff` 50 is
+  // the shipped opening.
+  Object.freeze({ key: 'featherNoise', label: 'Feather noise', group: 'noise', paint: BRISTLE_MEDIA }),
+  Object.freeze({ key: 'featherFalloff', label: 'Feather falloff', group: 'noise', paint: BRISTLE_MEDIA }),
   Object.freeze({ key: 'flow', label: 'Flow', group: 'watercolor', paint: WATERCOLOR_ONLY, water: true }),
   Object.freeze({ key: 'bleed', label: 'Bleed', group: 'watercolor', paint: WATERCOLOR_ONLY, water: true }),
   Object.freeze({ key: 'edge', label: 'Edges', group: 'watercolor', paint: WATERCOLOR_ONLY, water: true }),

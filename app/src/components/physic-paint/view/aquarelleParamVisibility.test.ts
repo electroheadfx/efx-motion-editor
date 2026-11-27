@@ -5,7 +5,9 @@
  *   the visible rows are a function of (active tool, active medium), never
  *     of the tool alone — the full matrix is pinned per context in order
  *   a null medium resolves to DEFAULT_MEDIUM_ID (a fresh session)
- *   empty groups are dropped; the six group ids keep their fixed order
+ *   empty groups are dropped; the seven group ids keep their fixed order
+ *     (quick 261127-jox split the bristle 'edge' group into 'transparency'
+ *     and 'noise' — see the group-order pin)
  *   the Eraser context renders the Lift row alone
  *   quick 261124-iq9: Viscosity and Water are ABSENT for the Gouache
  *     (acrylic) paint context — the opaque medium reads neither — and
@@ -45,9 +47,11 @@ const MEDIA = ['watercolor', 'acrylic'] as const;
 // quick 261124-iq9: Viscosity and Water leave the Gouache (acrylic) context,
 // and Pickup/Refill leave it too (bristle-program keys), leaving four rows.
 // Spec 10: Edge transparency and Edge falloff join the bristle context.
-// Spec 11: Feather noise and Feather falloff follow them, so the Gouache
-// paint context renders eight rows.
-const P_A = 'load|pickup|dry|feather|edgeFade|edgeFalloff|featherNoise|featherFalloff';
+// Spec 11: Feather noise and Feather falloff follow them.
+// quick 261127-jox: the legacy Feather row is hidden in every context (the
+// featherNoise re-index owns the same raggedness), so the Gouache paint
+// context renders seven rows.
+const P_A = 'load|pickup|dry|edgeFade|edgeFalloff|featherNoise|featherFalloff';
 // rev 3: Pickup joins Refill as bristle-only — `uPickupRate` (carrier) and
 // `uSmear` (gather) are the only bindings, so the fluid row is dead and the
 // watercolor context hides it.
@@ -108,8 +112,8 @@ describe('Matrix 2 — the row set per (tool, medium) context', () => {
     }
   });
 
-  it('reproduces the gated row counts: P-A 8, P-W 8, W 6, L 1', () => {
-    expect(visibleAquarelleParamRows('brush', 'acrylic'), 'P-A').toHaveLength(8);
+  it('reproduces the gated row counts: P-A 7, P-W 8, W 6, L 1', () => {
+    expect(visibleAquarelleParamRows('brush', 'acrylic'), 'P-A').toHaveLength(7);
     expect(visibleAquarelleParamRows('brush', 'watercolor'), 'P-W').toHaveLength(8);
     expect(visibleAquarelleParamRows('water', 'watercolor'), 'W').toHaveLength(6);
     expect(visibleAquarelleParamRows('water', 'acrylic'), 'W (acrylic)').toHaveLength(6);
@@ -166,23 +170,23 @@ describe('decision B — Refill visibility per medium', () => {
 });
 
 describe('groups — fixed order, empty groups dropped', () => {
-  it('keeps the six group ids in the spec §8 order', () => {
+  it('keeps the seven group ids in the spec §8 order (the bristle split)', () => {
     expect(AQUARELLE_PARAM_GROUPS.map((group) => group.id).join('|')).toBe(
-      'medium|paint|drying|edge|watercolor|eraser',
+      'medium|paint|drying|transparency|noise|watercolor|eraser',
     );
     expect(AQUARELLE_PARAM_GROUPS.map((group) => group.label).join('|')).toBe(
-      'Medium|Paint & reservoir|Drying|Edge|Watercolor only|Eraser',
+      'Medium|Paint & reservoir|Drying|Transparency|Noise|Watercolor only|Eraser',
     );
   });
 
-  it('drops the Edge group for the watercolor medium (Feather is bristle-only)', () => {
+  it('drops the bristle groups for the watercolor medium (Transparency/Noise are bristle-only)', () => {
     const ids = visibleAquarelleParamGroups('brush', 'watercolor').map((group) => group.id);
     expect(ids.join('|')).toBe('medium|paint|drying|watercolor');
   });
 
   it('drops the Medium group for the only bristle medium (Viscosity is hidden there)', () => {
     const ids = visibleAquarelleParamGroups('brush', 'acrylic').map((group) => group.id);
-    expect(ids.join('|'), 'brush + acrylic').toBe('paint|drying|edge');
+    expect(ids.join('|'), 'brush + acrylic').toBe('paint|drying|transparency|noise');
   });
 
   it('renders Medium · Drying · Watercolor only for the Water tool', () => {
@@ -261,6 +265,53 @@ describe('the row table itself', () => {
     expect(hidden[1]!.hiddenForMedia!.join('|')).toBe('watercolor');
     expect(hidden[2]!.hiddenForMedia!.join('|')).toBe('acrylic|watercolor');
     expect(hidden[3]!.hiddenForMedia!.join('|')).toBe('acrylic');
+  });
+
+  // quick 261127-jox: the legacy Feather row is hidden in EVERY context — the
+  // featherNoise re-index (quick 261126-v8j) owns the same edge raggedness
+  // (0 zeroes it, 20 is the shipped base look, above 20 breaks the body up).
+  // The row survives so the medium record, the Reset key set, the per-stroke
+  // bag and the persistence keep their shape — hidden is exposure, never
+  // storage (Emboss precedent).
+  it('hides the legacy Feather row in every context at group noise', () => {
+    const feather = AQUARELLE_PARAM_ROWS.find((row) => row.key === 'feather')!;
+    expect(feather.group, 'the legacy row joins the Noise group').toBe('noise');
+    expect(feather.label, 'the row label is untouched').toBe('Feather');
+    expect(feather.paint, 'it stays a bristle-only row').toEqual(['acrylic']);
+    expect(feather.hidden, 'hidden in every context').toBe(true);
+    for (const tool of ['brush', 'watercolor', 'pen', 'water', 'lift'] as AquarelleTool[]) {
+      for (const medium of [...MEDIA, null] as const) {
+        expect(
+          isAquarelleParamRowVisible(tool, medium, 'feather'),
+          `${tool}/${medium} must not render Feather`,
+        ).toBe(false);
+      }
+    }
+    expect(
+      AQUARELLE_PARAM_ROWS.some((row) => row.key === 'feather'),
+      'the key keeps its row',
+    ).toBe(true);
+  });
+
+  // quick 261127-jox: the four bristle knobs split by what they do — the
+  // lateral pair (Spec 10) in 'transparency', the break-up pair (Spec 11) in
+  // 'noise'. No label, band or paint law moves.
+  it('splits the bristle knobs into transparency/noise and hides exactly Emboss + Feather', () => {
+    const hidden = AQUARELLE_PARAM_ROWS.filter((row) => row.hidden === true);
+    expect(hidden.map((row) => row.key).join('|'), 'exactly the two gated rows').toBe(
+      'emboss|feather',
+    );
+    const byKey = (key: string) => AQUARELLE_PARAM_ROWS.find((row) => row.key === key)!;
+    for (const [key, group, label] of [
+      ['edgeFade', 'transparency', 'Edge transparency'],
+      ['edgeFalloff', 'transparency', 'Edge falloff'],
+      ['featherNoise', 'noise', 'Feather noise'],
+      ['featherFalloff', 'noise', 'Feather falloff'],
+    ] as const) {
+      expect(byKey(key).group, `${key} joins ${group}`).toBe(group);
+      expect(byKey(key).label, `${key} keeps its label`).toBe(label);
+      expect(byKey(key).paint, `${key} keeps the bristle law`).toEqual(['acrylic']);
+    }
   });
 
   it('gives the Lift row no paint/water context and the other rows no lift context', () => {
