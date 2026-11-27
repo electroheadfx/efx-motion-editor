@@ -512,19 +512,41 @@ export const FEATHER_NOISE_FLOOR = 0.75;
 export const FEATHER_NOISE_LIFT = 1.4;
 
 /**
- * The Feather-noise DRIVE (artist-approved mapping 2026-11-27h). The recorded
- * slider is the artist's scale; the shader reads this drive:
- *   0 .. 20   -> 0                          (the plain block: no visible noise)
- *   20 .. 60  -> n - 0.2                    (light fringe at 40, medium at 60)
- *   60 .. 100 -> 0.4 + (n - 0.6) * 1.5      (the full halo at 100)
- * Piecewise linear, so every value in between interpolates.
+ * The re-index's NEUTRAL slider value (artist ruling 2026-11-27k): 20 is the
+ * delivered base look — the shipped Feather edge with no cloud break-up — and
+ * the default. 0 is the clean edge (see `featherEdgeClean`); above 20 the
+ * cloud erosion rises to the full break-up at 100. The slider arrives
+ * normalised (0..1). 20 canonical is exactly 0.2, so the UI's 20 round-trips
+ * to this value with no float drift.
+ */
+export const FEATHER_NOISE_NEUTRAL = 0.2;
+
+/**
+ * The Feather-noise BREAK-UP DRIVE (artist re-index 2026-11-27k). The recorded
+ * slider is the artist's scale; the cloud erosion reads this drive:
+ *   0 .. 20   -> 0                   (no break-up: the clean edge at 0, the
+ *                                     shipped base from 20 on)
+ *   20 .. 100 -> (n - 0.2) / 0.8     (light at 40, medium at 60, full at 100)
+ * Linear, so every value in between interpolates. A non-finite slider reads
+ * 0 (the neutral break-up): a missing record key replays the base shape.
  */
 export function featherNoiseDrive(n: number): number {
   if (!Number.isFinite(n)) return 0;
-  const x = clamp01(n);
-  if (x <= 0.2) return 0;
-  if (x <= 0.6) return x - 0.2;
-  return 0.4 + (x - 0.6) * 1.5;
+  return clamp01((clamp01(n) - FEATHER_NOISE_NEUTRAL) / (1 - FEATHER_NOISE_NEUTRAL));
+}
+
+/**
+ * The re-index's EDGE-CLEAN weight (artist ruling 2026-11-27k): the shipped
+ * Feather edge raggedness is scaled by smoothstep(0, 20, slider) — 0 at
+ * slider 0 (a CLEAN edge, zero rim noise) rising to 1 at the neutral 20 (the
+ * delivered base look). Past 20 it stays 1: the break-up owns every change
+ * above 20. A non-finite slider reads 1 — a missing record key replays the
+ * base edge, never NaN.
+ */
+export function featherEdgeClean(n: number): number {
+  if (!Number.isFinite(n)) return 1;
+  const t = clamp01(clamp01(n) / FEATHER_NOISE_NEUTRAL);
+  return t * t * (3 - 2 * t);
 }
 
 /**

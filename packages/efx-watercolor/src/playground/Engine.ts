@@ -34,6 +34,7 @@ import {
   bristleContactPressure,
   bristleCount,
   bristleSampleScale,
+  featherEdgeClean,
   featherNoiseDrive,
   FEATHER_NOISE_LIFT,
   gatherSoftness,
@@ -144,7 +145,7 @@ export interface Params {
   wetSeconds: number;  // 64-22: last-touch wetness lifetime in SECONDS (>= 1) — declared here so the ONE mapping has one destination; consumed by 64-24
   edgeFade: number;    // Spec 10: Edge transparency — the stroke layer's lateral alpha scale (0..1, 0 neutral)
   edgeFalloff: number; // Spec 10: Edge falloff — the fade's shape bias (0..1, 0.5 linear)
-  featherNoise: number;   // Spec 11: Feather noise — the brush-relative grain mixed into the tooth (0..1, 0 neutral)
+  featherNoise: number;   // Spec 11: Feather noise — the break-up slider (0..1, 0.2 neutral: 0 clean edge, >0.2 erosion)
   featherFalloff: number; // Spec 11: Feather falloff — the opening AND grain body's shape bias (0..1, 0.5 shipped)
 }
 
@@ -164,9 +165,11 @@ export const DEFAULT_PARAMS: Params = {
   // Spec 10: amount 0 is inert at every falloff; 50 is the linear shape.
   edgeFade: 0,
   edgeFalloff: 0.5,
-  // Spec 11: noise 0 never takes the second grainHeight sample; falloff 50
-  // is the shipped opening (the pow is skipped) and the linear grain ramp.
-  featherNoise: 0,
+  // Spec 11 (artist re-index 2026-11-27k): 20 canonical (0.2 here) is the
+  // delivered base look and runs the NEUTRAL program; 0 is the clean edge;
+  // above 20 the three-scale break-up rises. Falloff 50 is the shipped
+  // opening (the pow is skipped).
+  featherNoise: 0.2,
   featherFalloff: 0.5,
 };
 
@@ -4017,10 +4020,11 @@ export class WatercolorEngine {
   }
 
   /**
-   * Spec 11 (2026-11-27): the gather program for the CURRENT params. The
-   * shipped (neutral) programs stay bound until the DRIVEN noise leaves the
-   * flat 0..20 block or the falloff leaves 50; the law variants compile once,
-   * on that first non-neutral draw — never at construction.
+   * Spec 11 (2026-11-27, re-indexed 2026-11-27k): the gather program for the
+   * CURRENT params. The shipped (neutral) programs stay bound at the neutral
+   * slider value (20 canonical, drive 0, edge-clean 1) with falloff 50; the
+   * law variants compile once, on the first clean-edge or break-up draw —
+   * never at construction.
    */
   private gatherProgram(
     which: 'bristleDeposit' | 'bristleCover' | 'bristleRelief' | 'bristleCoverLayer',
@@ -4035,9 +4039,17 @@ export class WatercolorEngine {
     return this.gatherLaw[which];
   }
 
-  /** The permutation switch: the DRIVEN noise > 0, or falloff off the linear 50. */
+  /**
+   * The permutation switch: the break-up drive above 0, the clean-edge weight
+   * below 1 (slider under 20), or falloff off the linear 50. At slider 20 the
+   * drive is 0 and the weight exactly 1, so the shipped bytes survive.
+   */
   private featherLawActive(): boolean {
-    return featherNoiseDrive(this.params.featherNoise) > 0 || this.params.featherFalloff !== 0.5;
+    return (
+      featherNoiseDrive(this.params.featherNoise) > 0 ||
+      featherEdgeClean(this.params.featherNoise) < 1 ||
+      this.params.featherFalloff !== 0.5
+    );
   }
 
   private bindGather(p: Program, x: number, y: number, r: number, angle: number, pr: number, alongPx: number, endCap = false): void {
@@ -4080,7 +4092,10 @@ export class WatercolorEngine {
     // locations are null). The constants arrive from bristles.ts.
     gl.uniform1f(p.u.uFeatherFalloff!, clamp(this.params.featherFalloff, 0, 1));
     gl.uniform1f(p.u.uFeatherNoise!, clamp(featherNoiseDrive(this.params.featherNoise), 0, 1));
-    // The grain shares Edge transparency's lateral span: 1 at the VISUAL edge.
+    // The re-index's clean-edge weight: 0 at slider 0 (no rim raggedness),
+    // exactly 1 from slider 20 up (the shipped edge).
+    gl.uniform1f(p.u.uFeatherEdgeClean!, clamp(featherEdgeClean(this.params.featherNoise), 0, 1));
+    // The break-up shares Edge transparency's lateral span: 1 at the VISUAL edge.
     gl.uniform1f(p.u.uFeatherNoiseAnchor!, BRISTLE_LAYER_EDGE);
     gl.uniform1f(p.u.uFeatherNoiseLift!, FEATHER_NOISE_LIFT);
     // The end's takeoff is the same threshold mechanism on the leading

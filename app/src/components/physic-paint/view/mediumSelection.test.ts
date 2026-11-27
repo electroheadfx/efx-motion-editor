@@ -163,12 +163,12 @@ describe('the medium keys in the live bag', () => {
   it('carries featherNoise and featherFalloff in the key list, the defaults and the snapshot', () => {
     expect(AQUARELLE_GLOBAL_KEYS).toContain('featherNoise');
     expect(AQUARELLE_GLOBAL_KEYS).toContain('featherFalloff');
-    expect(DEFAULT_AQUARELLE_PARAMS.featherNoise).toBe(0);
+    expect(DEFAULT_AQUARELLE_PARAMS.featherNoise).toBe(20);
     expect(DEFAULT_AQUARELLE_PARAMS.featherFalloff).toBe(50);
-    expect(aquarelleParams.value.featherNoise).toBe(0);
+    expect(aquarelleParams.value.featherNoise).toBe(20);
     expect(aquarelleParams.value.featherFalloff).toBe(50);
     const fresh = snapshotAquarelleRecord();
-    expect(fresh.params.featherNoise).toBe(0);
+    expect(fresh.params.featherNoise).toBe(20);
     expect(fresh.params.featherFalloff).toBe(50);
     setAquarelleParam('featherNoise', 60);
     setAquarelleParam('featherFalloff', 20);
@@ -317,8 +317,8 @@ describe('applyAquarelleMedium', () => {
     expect(aquarelleParams.value.wetSeconds).toBe(12);
     expect(aquarelleParams.value.edgeFade, 'no transparency on the shipped edge').toBe(0);
     expect(aquarelleParams.value.edgeFalloff, 'the linear falloff shape').toBe(50);
-    expect(aquarelleParams.value.featherNoise, 'the shipped grain is off').toBe(0);
-    expect(aquarelleParams.value.featherFalloff, 'the linear grain shape').toBe(50);
+    expect(aquarelleParams.value.featherNoise, 'the shipped base look is 20').toBe(20);
+    expect(aquarelleParams.value.featherFalloff, 'the linear opening shape').toBe(50);
     expect(aquarelleParams.value.size, 'a medium never resizes the brush').toBe(77);
     expect(aquarelleParams.value.lift, 'a medium never changes the eraser').toBe(33);
     expect(aquarelleSelectedMediumId.value).toBe('acrylic');

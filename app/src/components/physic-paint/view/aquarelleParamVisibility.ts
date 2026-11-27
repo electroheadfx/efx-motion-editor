@@ -180,9 +180,10 @@ export const AQUARELLE_PARAM_ROWS: readonly AquarelleParamRow[] = Object.freeze(
   // and amount 0 is the shipped opaque edge.
   Object.freeze({ key: 'edgeFade', label: 'Edge transparency', group: 'edge', paint: BRISTLE_MEDIA }),
   Object.freeze({ key: 'edgeFalloff', label: 'Edge falloff', group: 'edge', paint: BRISTLE_MEDIA }),
-  // Spec 11: the brush-relative grain pair. Same BRISTLE_MEDIA law and the
-  // same GlobalSlider; `featherNoise` 0 is the plain block and the drive is
-  // flat up to 20, while `featherFalloff` 50 is the shipped opening.
+  // Spec 11: the break-up pair. Same BRISTLE_MEDIA law and the same
+  // GlobalSlider; `featherNoise` 0 is the clean edge, 20 the neutral base
+  // look and 100 the full break-up, while `featherFalloff` 50 is the shipped
+  // opening.
   Object.freeze({ key: 'featherNoise', label: 'Feather noise', group: 'edge', paint: BRISTLE_MEDIA }),
   Object.freeze({ key: 'featherFalloff', label: 'Feather falloff', group: 'edge', paint: BRISTLE_MEDIA }),
   Object.freeze({ key: 'flow', label: 'Flow', group: 'watercolor', paint: WATERCOLOR_ONLY, water: true }),

@@ -102,20 +102,21 @@ export interface AquarelleCanonicalParams {
    */
   edgeFalloff: number
   /**
-   * Spec 11: how much of a brush-relative paper grain mixes into the paper
-   * tooth, 0..100. The grain's feature size is derived from the feather band
-   * (a fixed number of features, floored in px) and distributed by the SAME
-   * falloff profile as `featherFalloff`, so it enters the brush body. 0 is
-   * neutral: the second `grainHeight` sample is never evaluated and every
-   * recorded stroke replays byte-identically. Bristle responses only.
+   * Spec 11 (re-indexed 2026-11-27): the Feather-noise break-up slider,
+   * 0..100. 0 is a CLEAN edge — the shipped Feather raggedness is scaled to
+   * zero; 20 is neutral, the delivered base look (and the default), and the
+   * only value that runs the shipped neutral program; 40 / 60 / 100 rise
+   * through light, medium and the full three-scale break-up. Above 20 the
+   * mark erodes inward and never paints beyond the base silhouette. Bristle
+   * responses only.
    */
   featherNoise: number
   /**
-   * Spec 11: the shape bias of the feather's opening AND the grain's body
-   * weight, 0..100. Reuses the shipped `edgeFalloffExponent` shape; 50 is
-   * the shipped opening (the `pow` is skipped, so the shipped bytes survive)
-   * and the linear grain ramp. Inert on the GRAIN while `featherNoise` is 0;
-   * it still shapes the opening at any noise.
+   * Spec 11: the shape bias of the feather's opening, 0..100. Reuses the
+   * shipped `edgeFalloffExponent` shape; 50 is the shipped opening (the
+   * `pow` is skipped, so the shipped bytes survive). Inert at `featherNoise`
+   * 0 (the clean edge has no opening to shape); it still shapes the opening
+   * at every break-up value.
    */
   featherFalloff: number
 }
@@ -139,7 +140,9 @@ export const DEFAULT_CANONICAL_PARAMS: Readonly<AquarelleCanonicalParams> = Obje
   wetSeconds: 7,
   edgeFade: 0,
   edgeFalloff: 50,
-  featherNoise: 0,
+  // Spec 11 re-index (artist ruling 2026-11-27k): 20 is the delivered base
+  // look — the neutral program — so a fresh session paints the shipped mark.
+  featherNoise: 20,
   featherFalloff: 50,
 })
 

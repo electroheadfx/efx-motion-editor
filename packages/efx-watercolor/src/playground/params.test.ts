@@ -64,7 +64,7 @@ describe('toEngineParams', () => {
 
   it('maps the seven canonical globals onto 0..1', () => {
     expect(toEngineParams({ water: 50, load: 25, flow: 100, bleed: 0, dry: 75, edge: 60, granulation: 40 }))
-      .toEqual({ size: 12 / 32, water: 0.5, load: 0.25, flow: 1, bleed: 0, dry: 0.75, edge: 0.6, granulation: 0.4, lift: 0.22, viscosity: 0, body: 0, emboss: 0, feather: 0, pickup: 1, refill: 0.6, edgeFade: 0, edgeFalloff: 0.5, featherNoise: 0, featherFalloff: 0.5, wetSeconds: 7 });
+      .toEqual({ size: 12 / 32, water: 0.5, load: 0.25, flow: 1, bleed: 0, dry: 0.75, edge: 0.6, granulation: 0.4, lift: 0.22, viscosity: 0, body: 0, emboss: 0, feather: 0, pickup: 1, refill: 0.6, edgeFade: 0, edgeFalloff: 0.5, featherNoise: 0.2, featherFalloff: 0.5, wetSeconds: 7 });
   });
 
   // Phase 64 (v2.2.0): Body and Emboss join the medium bag. 0 is neutral —
@@ -208,9 +208,9 @@ describe('toEngineParams', () => {
   });
 
   // Spec 11 (feather noise and feather falloff): two canonical 0..100 globals
-  // through the same clamp01 table every Phase 64 medium key obeys. Noise 0
-  // is neutral (the second grainHeight sample is never evaluated); falloff 50
-  // is the shipped opening (pow is skipped).
+  // through the same clamp01 table every Phase 64 medium key obeys. The
+  // re-index (2026-11-27k) makes 0 the clean edge and 20 the neutral base
+  // look; falloff 50 is the shipped opening (pow is skipped).
   it('maps the Feather noise and Feather falloff globals 0..100 onto the 0..1 medium bag', () => {
     expect(toEngineParams({ featherNoise: 0 }).featherNoise).toBe(0);
     expect(toEngineParams({ featherNoise: 50 }).featherNoise).toBe(0.5);
@@ -225,21 +225,21 @@ describe('toEngineParams', () => {
     expect(toEngineParams({ featherFalloff: -40 }).featherFalloff).toBe(0);
   });
 
-  it('replays a stroke without the feather-noise keys at the neutral defaults (noise 0, falloff 50)', () => {
-    expect(toEngineParams({ water: 50 }).featherNoise).toBe(0);
-    expect(toEngineParams(undefined).featherNoise).toBe(0);
-    expect(toEngineParams({ featherNoise: Number.NaN }).featherNoise).toBe(0);
-    expect(toEngineParams({ featherNoise: Number.POSITIVE_INFINITY }).featherNoise).toBe(0);
+  it('replays a stroke without the feather-noise keys at the neutral defaults (noise 20, falloff 50)', () => {
+    expect(toEngineParams({ water: 50 }).featherNoise).toBe(0.2);
+    expect(toEngineParams(undefined).featherNoise).toBe(0.2);
+    expect(toEngineParams({ featherNoise: Number.NaN }).featherNoise).toBe(0.2);
+    expect(toEngineParams({ featherNoise: Number.POSITIVE_INFINITY }).featherNoise).toBe(0.2);
     expect(toEngineParams({ water: 50 }).featherFalloff).toBe(0.5);
     expect(toEngineParams(undefined).featherFalloff).toBe(0.5);
     expect(toEngineParams({ featherFalloff: Number.NaN }).featherFalloff).toBe(0.5);
     expect(toEngineParams({ featherFalloff: Number.NEGATIVE_INFINITY }).featherFalloff).toBe(0.5);
   });
 
-  it('declares Feather noise 0 and Feather falloff 50 in the canonical and engine bags', () => {
-    expect(DEFAULT_CANONICAL_PARAMS.featherNoise).toBe(0);
+  it('declares Feather noise 20 and Feather falloff 50 in the canonical and engine bags', () => {
+    expect(DEFAULT_CANONICAL_PARAMS.featherNoise).toBe(20);
     expect(DEFAULT_CANONICAL_PARAMS.featherFalloff).toBe(50);
-    expect(DEFAULT_PARAMS.featherNoise).toBe(0);
+    expect(DEFAULT_PARAMS.featherNoise).toBe(0.2);
     expect(DEFAULT_PARAMS.featherFalloff).toBe(0.5);
   });
 

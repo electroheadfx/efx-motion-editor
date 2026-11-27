@@ -37,9 +37,10 @@ export type MediumId = 'watercolor' | 'acrylic'
  * stroke layer's lateral ALPHA scale, 0 neutral) and `edgeFalloff` (the
  * fade's shape bias: 0 broad / 50 linear / 100 rim).
  *
- * Spec 11 adds the brush-relative grain pair: `featherNoise` (the
- * depth-of-penetration control, 0 neutral) and `featherFalloff` (the
- * opening's shape bias — the same 0 / 50 / 100 map as `edgeFalloff`).
+ * Spec 11 adds the break-up pair: `featherNoise` (the re-indexed break-up
+ * slider — 0 clean edge, 20 the neutral base look, 100 the full break-up)
+ * and `featherFalloff` (the opening's shape bias — the same 0 / 50 / 100
+ * map as `edgeFalloff`).
  */
 export type MediumParamKey =
   | 'water'
@@ -97,7 +98,7 @@ const WATERCOLOR_PARAMS: Readonly<Record<MediumParamKey, number>> = Object.freez
   // edge (no transparency, the linear falloff shape).
   edgeFade: DEFAULT_CANONICAL_PARAMS.edgeFade,
   edgeFalloff: DEFAULT_CANONICAL_PARAMS.edgeFalloff,
-  // Spec 11: derived, not retyped — no grain, the linear shape.
+  // Spec 11: derived, not retyped — the neutral 20 / the linear shape.
   featherNoise: DEFAULT_CANONICAL_PARAMS.featherNoise,
   featherFalloff: DEFAULT_CANONICAL_PARAMS.featherFalloff,
 })
@@ -164,9 +165,10 @@ export const MEDIUMS: ReadonlyArray<MediumRecord> = Object.freeze([
       // Edge falloff 50 is the linear shape (the neutral twin's default).
       edgeFade: 0,
       edgeFalloff: 50,
-      // Spec 11: the acrylic record starts on the shipped neutral pair —
-      // no grain, the linear shape (the canonical defaults).
-      featherNoise: 0,
+      // Spec 11 re-index (2026-11-27k): the acrylic record starts on the
+      // shipped base look — Feather noise 20 is the neutral program; falloff
+      // 50 is the linear opening shape (the canonical defaults).
+      featherNoise: 20,
       featherFalloff: 50,
     }),
   }),

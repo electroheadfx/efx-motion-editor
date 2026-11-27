@@ -235,9 +235,9 @@ const RESET_EXPECTED = {
   // Spec 10: the stroke layer's pair; Reset restores both from the record.
   edgeFade: 0,
   edgeFalloff: 50,
-  // Spec 11: the brush-relative grain pair; Reset restores both from the
-  // record (0 / 50 is the shipped neutral pair).
-  featherNoise: 0,
+  // Spec 11 re-index (2026-11-27k): Reset restores the pair from the record
+  // (20 / 50 is the shipped base look).
+  featherNoise: 20,
   featherFalloff: 50,
 } as const;
 
@@ -261,7 +261,7 @@ const ACRYLIC_RESET_EXPECTED = {
   wetSeconds: 12,
   edgeFade: 0,
   edgeFalloff: 50,
-  featherNoise: 0,
+  featherNoise: 20,
   featherFalloff: 50,
 } as const;
 

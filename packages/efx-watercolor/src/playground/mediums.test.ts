@@ -97,9 +97,10 @@ describe('medium records', () => {
       wetSeconds: 7,
       edgeFade: 0,
       edgeFalloff: 50,
-      // Spec 11: the brush-relative grain is off and its falloff is the
-      // shipped 50 — the canonical pair, derived for the neutral record.
-      featherNoise: 0,
+      // Spec 11 re-index (2026-11-27k): 20 is the neutral base look and its
+      // falloff is the shipped 50 — the canonical pair, derived for the
+      // neutral record.
+      featherNoise: 20,
       featherFalloff: 50,
     })
     expect(recordOf('acrylic').params).toEqual({
@@ -124,8 +125,9 @@ describe('medium records', () => {
       // Spec 10: the shipped acrylic edge stays fully opaque, linear shape.
       edgeFade: 0,
       edgeFalloff: 50,
-      // Spec 11: the acrylic record starts on the shipped neutral pair.
-      featherNoise: 0,
+      // Spec 11 re-index: the acrylic record starts on the shipped base look
+      // — noise 20 is the neutral program, falloff 50 the linear shape.
+      featherNoise: 20,
       featherFalloff: 50,
     })
   })

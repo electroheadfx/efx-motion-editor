@@ -252,13 +252,16 @@ import { engineScaleToSize, sizeToEngineScale, toEngineParams } from '../../src/
 // chain ran at, through the engine's OWN size round trip.
 // quick 261126-v8j (Spec 11): the feather-noise report derives its band,
 // period and sampling zoom from the SHIPPED constants and twins — never a
-// re-typed literal — and reuses the one `edgeFalloffExponent` map indirectly
-// through the same constants the shader binds.
+// re-typed literal — and echoes the re-index's two derived weights from the
+// ONE tested twins (`featherNoiseDrive` / `featherEdgeClean`).
 import {
   BRISTLE_FEATHER_EDGE,
   BRISTLE_FEATHER_MIN,
   BRISTLE_FEATHER_REACH,
   bristleSampleScale,
+  featherEdgeClean,
+  FEATHER_NOISE_NEUTRAL,
+  featherNoiseDrive,
   featherNoisePeriodPx,
   featherNoiseScale,
 } from '../../src/playground/bristles'
@@ -2051,28 +2054,32 @@ function readStrokeSize(): number {
 
 // --- feather-noise (quick 261126-v8j, Spec 11) ------------------------------
 //
-// The artist's Spec 11 reading: the feather noise must enter the brush BODY
-// and the rim at every size, distributed by the shipped Edge-falloff shape.
-// This scene paints ONE straight bristle-round stroke at the artist's bag
-// (`bristleLineScript` / `bristleLineParams` — the SAME geometry the pale-line
-// gate reads) carrying the two new canonical keys, so the report can measure
-// the rim's threshold-crossing profile AND the interior grain distribution
-// along the lateral span.
+// The artist's Spec 11 law (re-indexed 2026-11-27k): slider 0 is a clean
+// edge (the shipped raggedness AND the rim's paper tooth scale to zero, so
+// the mark follows the smooth bristle silhouette), 20 the delivered base
+// look, and 40 / 60 / 100 rise through the three-scale break-up (paint
+// outside a wavy front is removed; the mark can only lose paint from the
+// base silhouette, never add). This scene paints ONE
+// straight bristle-round stroke at the artist's bag (`bristleLineScript` /
+// `bristleLineParams` — the SAME geometry the pale-line gate reads) carrying
+// the two canonical keys, so the report can measure the rim's profile, the
+// filled band and the raw digests the neutral identity is judged on.
 //
 // Operand law on THIS scene (and only this scene):
-//   --falloff  = FEATHER falloff (0..100, default 50). It shapes the rim
-//                opening AND the interior grain through the SHIPPED
-//                `edgeFalloffExponent` bias — never a second exponent map.
+//   --falloff  = FEATHER falloff (0..100, default 50). It shapes the shipped
+//                rim opening through the SHIPPED `edgeFalloffExponent` bias —
+//                never a second exponent map.
 //   --edge     = the Edge-transparency layer switch. It writes the Edge pair
 //                (`edgeFade`, `edgeFalloff`) with Edge falloff fixed at 50:
 //                the Edge falloff is out of this quick's scope, and an absent
 //                `--edge` leaves the record's amount 0 (the sheet path).
-//   --noise    = Feather noise (0..100, default 0 = shipped bytes).
+//   --noise    = Feather noise (0..100, default 20 = the neutral base look;
+//                0 is the clean edge).
 //   --feather  = the acrylic record's own Feather key (absent keeps 85).
 /** The scene's three operands, read once before any stroke. */
 function readEdgeNoise(scenario: string): number {
   const raw = new URLSearchParams(location.search).get('noise')
-  if (raw === null || raw === '') return 0
+  if (raw === null || raw === '') return FEATHER_NOISE_NEUTRAL * 100
   if (scenario !== 'feather-noise') {
     throw new Error('--noise is only valid with --scenario feather-noise')
   }
@@ -2084,9 +2091,9 @@ function readEdgeNoise(scenario: string): number {
 }
 
 /** The scene-local knob read: `edge` is the `--edge` PRESENCE (the layer
- *  switch); `noise` is the Feather-noise operand (0 when absent);
- *  `featherFalloff` is `--falloff` (50 when absent, already validated by
- *  `readEdgeKnob`). */
+ *  switch); `noise` is the Feather-noise slider (20, the neutral base, when
+ *  absent); `featherFalloff` is `--falloff` (50 when absent, already
+ *  validated by `readEdgeKnob`). */
 function readFeatherNoiseKnobs(scenario: string): {
   edge: boolean
   noise: number
@@ -2369,7 +2376,7 @@ let EDGE_LAYER_WET_UNDER = false
  *  once by `main()` before any stroke (see `readFeatherNoiseKnobs`). */
 let FEATHER_NOISE_KNOBS: { edge: boolean; noise: number; featherFalloff: number } = {
   edge: false,
-  noise: 0,
+  noise: FEATHER_NOISE_NEUTRAL * 100,
   featherFalloff: EDGE_LAYER_DEFAULT_FALLOFF,
 }
 /** 261126 (Spec 10 falloff leg): the law's midpoint station — `lateralWeight`'s
@@ -7448,6 +7455,18 @@ function featherNoiseMetrics(
   const periodPx = featherNoisePeriodPx(bandPx)
   const rimScale = featherNoiseScale(bandPx)
 
+  // The re-index echoes (artist ruling 2026-11-27k): the recorded slider, the
+  // two derived weights the shader reads, and whether the engine selects the
+  // neutral program. The twins take the NORMALISED value, exactly as
+  // `Engine.bindGather` feeds them; the neutral predicate restates the
+  // engine's own switch (drive 0, clean-edge 1, falloff 50).
+  const noiseSlider = FEATHER_NOISE_KNOBS.noise
+  const noiseNormalised = noiseSlider / 100
+  const noiseDrive = featherNoiseDrive(noiseNormalised)
+  const noiseEdgeClean = featherEdgeClean(noiseNormalised)
+  const noiseNeutral =
+    noiseDrive === 0 && noiseEdgeClean === 1 && FEATHER_NOISE_KNOBS.featherFalloff === 50
+
   // The committed across profile (postFix = the sheet the artist judges).
   const profile = (surfaces['postFix'] as Record<string, unknown> | undefined) ?? null
   const offsets = (profile?.['offsets'] as number[] | undefined) ?? []
@@ -7601,6 +7620,13 @@ function featherNoiseMetrics(
     periodPx: round4(periodPx),
     rimScale: round4(rimScale),
     featherStart: round4(featherStart),
+    // The re-index echoes: the slider is the canonical percent; the drive and
+    // clean-edge weights are the shader's own uniforms; `neutralProgram` is
+    // the engine's permutation switch for this cell.
+    slider: noiseSlider,
+    drive: round4(noiseDrive),
+    edgeClean: round4(noiseEdgeClean),
+    neutralProgram: noiseNeutral,
     effectiveFeather,
     strokeSize,
     inputs: {
