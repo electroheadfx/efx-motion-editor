@@ -465,89 +465,86 @@ export function edgeFalloffExponent(bias: number): number {
   return clamp(2 ** (2 * clamp01(bias) - 1), 0.5, 2);
 }
 
-// ------------------------- Spec 11: the feather noise's eroding front -------------------------
+// ------------------------- Spec 11: the feather noise's band-relative scale -------------------------
 //
-//  2026-11-27 (quick 261126-v8j, the artist's five-state ruling): ONE
-//  coherent noise field erodes the base shape from its boundary INWARD,
-//  progressively with the slider. The field is sampled in the STROKE frame
-//  (the 261126-rov displacement law's coordinates), isotropic, with a
-//  brush-relative feature size and a pixel floor. Removal is a THRESHOLD
-//  rise behind a soft front — never a depth fade, never outward spray:
-//  nothing can appear outside the base mark, and the kept set's level set
-//  leaves detached chunks behind the front as it deepens.
-//
-//  These values are the law's calibration; the shader reads them as
-//  uniforms and never re-types a literal, and the twins below are the one
-//  tested source of the feature size and the soft band.
+//  The feather band is radius-relative, so at small brush sizes it is
+//  narrower than the paper's cloud features and the rim reads smooth.
+//  Feather noise mixes a brush-relative grain into the paper tooth, its
+//  feature size derived from the BAND (a fixed number of features across
+//  it), with a pixel floor so the specks stay visible on tiny brushes.
+//  These values are STARTING POINTS calibrated by the `feather-noise`
+//  probe — the shader reads them as uniforms and never re-types a literal,
+//  and the twins below are the one tested source of the period and the zoom.
 
-/** The eroding front's feature size as a fraction of the dab's half-width. */
-export const FEATHER_NOISE_FEATURE_SCALE = 0.3;
-/** The feature size's pixel floor — tiny brushes stay ragged at this size. */
-export const FEATHER_NOISE_FEATURE_MIN_PX = 6;
-/** The feature size's pixel ceiling — a wide brush never carries cloud-sized bites. */
-export const FEATHER_NOISE_FEATURE_MAX_PX = 90;
+/** Spec 11: the number of grain features the band holds (the band's width / this = the period). */
+export const FEATHER_NOISE_FEATURES = 4;
+/** Spec 11: the grain's pixel floor — below it the band holds 1–2 lobes, accepted as the floor limit. */
+export const FEATHER_NOISE_MIN_PX = 2;
+/** Spec 11: the period ceiling — a wide brush never carries cloud-sized specks. */
+export const FEATHER_NOISE_MAX_PX = 16;
+/** Spec 11: the tooth's shortest period — the reference the zoom maps the derived period onto. */
+export const FEATHER_NOISE_REFERENCE_PX = 1.1;
 /**
- * The deepest front penetration at noise 100: the central spine keeps about
- * 15 % of the nominal width, and every fragment outside it is carried by the
- * same field (no second spray or spike source).
+ * Spec 11 amendment 2026-11-26b: the body profile's depth multiplier. The grain
+ * weight is `mix(FLOOR, 1, u^(e · DEPTH))` over the Edge-transparency span, so
+ * a smaller value opens the profile deeper sooner. Starting point — tuned by
+ * the `feather-noise` probe.
  */
-export const FEATHER_NOISE_DEPTH = 0.85;
+export const FEATHER_NOISE_DEPTH = 0.5;
 /**
- * The removal boundary's soft HALF-width in document px (the smoothstep's
- * `front ± this`). 1.5 px keeps the boundary a real transition — never a
- * sub-pixel cut — while staying inside the law's 1.5–3 px band. The uN
- * conversion below is clamped at both ends so tiny brushes still carry a
- * real soft band and huge brushes never lose it to fp32 underflow.
+ * Spec 11 amendment 2026-11-26d: the grain's weight on the centre line. The
+ * artist's ruling is that the grain fills the brush BODY — at Edge 100 the rim
+ * fades out, so rim-weighted grain would read as a border only. The floor keeps
+ * the paper visible (mix, never replace) while the grain spans the whole body.
+ * Starting point — tuned by the `feather-noise` probe (range 0.6–0.9).
  */
-export const FEATHER_NOISE_BLUR_PX = 1.5;
-/** The soft band's uN floor — the conversion never reads a hard cut. */
-export const FEATHER_NOISE_BLUR_MIN_U = 1e-4;
-/** The soft band's uN ceiling — a tiny brush's band never swallows the mark. */
-export const FEATHER_NOISE_BLUR_MAX_U = 0.5;
+export const FEATHER_NOISE_FLOOR = 0.75;
 /**
- * Spec 11: the BODY-WIDE threshold rise outside the front. The front removes
- * paint through the paper THRESHOLD (never a depth fade), and this lift puts
- * the threshold above any carried coverage — full-depth specks, no lanes.
+ * Spec 11 amendment 2026-11-26e (the artist's yellow-curve ruling): the
+ * BODY-WIDE threshold rise at noise 100. Swapping the tooth texture alone is
+ * invisible inside the mark — the body's coverage is ~1, so the threshold
+ * passes everywhere and a different tooth changes nothing (measured: core
+ * variation 0.0028 -> 0.0024). Raising the threshold INTO the tooth's range
+ * makes the paper punch specks through the whole body, which is the interior
+ * break-up the artist drew. Threshold-only: no depth fade, no lane risk.
+ * Starting point — tuned by the `feather-noise` probe (range 0.5–1.2).
  */
 export const FEATHER_NOISE_LIFT = 1.4;
 
 /**
- * The Feather-noise DRIVE (2026-11-27, the artist's linear ruling): the
- * recorded slider IS the drive — 0 does nothing, 20 tears the rim shallowly,
- * the body recedes from 40, and 100 erodes down to the spine. The shader
- * skips the noise block outright when the drive is 0, so slider 0 stays on
- * the neutral program.
+ * The Feather-noise DRIVE (artist-approved mapping 2026-11-27h). The recorded
+ * slider is the artist's scale; the shader reads this drive:
+ *   0 .. 20   -> 0                          (the plain block: no visible noise)
+ *   20 .. 60  -> n - 0.2                    (light fringe at 40, medium at 60)
+ *   60 .. 100 -> 0.4 + (n - 0.6) * 1.5      (the full halo at 100)
+ * Piecewise linear, so every value in between interpolates.
  */
 export function featherNoiseDrive(n: number): number {
-  if (Number.isNaN(n)) return 0;
-  return clamp01(n);
+  if (!Number.isFinite(n)) return 0;
+  const x = clamp01(n);
+  if (x <= 0.2) return 0;
+  if (x <= 0.6) return x - 0.2;
+  return 0.4 + (x - 0.6) * 1.5;
 }
 
 /**
- * `featurePx = clamp(halfWidthPx · SCALE, MIN, MAX)` — the eroding field's
- * feature size in document px. Brush-relative with a pixel floor so a tiny
- * brush still tears, and a ceiling so a huge brush never reads as weather.
- * Total: a non-finite or non-positive half-width reads the floor.
+ * Spec 11: `period = clamp(bandPx / FEATURES, MIN, MAX)` — the grain's feature
+ * period in document px, derived from the feather band's width. A non-finite
+ * or non-positive band reads the floor: a tiny brush always gets visible
+ * specks, never a zero period.
  */
-export function featherNoiseFeaturePx(halfWidthPx: number): number {
-  if (!Number.isFinite(halfWidthPx) || halfWidthPx <= 0) return FEATHER_NOISE_FEATURE_MIN_PX;
-  return clamp(
-    halfWidthPx * FEATHER_NOISE_FEATURE_SCALE,
-    FEATHER_NOISE_FEATURE_MIN_PX,
-    FEATHER_NOISE_FEATURE_MAX_PX,
-  );
+export function featherNoisePeriodPx(bandPx: number): number {
+  if (!Number.isFinite(bandPx) || bandPx <= 0) return FEATHER_NOISE_MIN_PX;
+  return clamp(bandPx / FEATHER_NOISE_FEATURES, FEATHER_NOISE_MIN_PX, FEATHER_NOISE_MAX_PX);
 }
 
 /**
- * `blurU = BLUR_PX / (halfWidthPx · anchor)` — the front's soft band in uN
- * units, where 1 is the VISUAL edge. Clamped so the band is never a hard cut
- * (fp32 underflow on a huge brush) and never swallows the whole mark on a
- * tiny brush. Total: an unusable span reads the ceiling.
+ * Spec 11: `rimScale = REFERENCE_PX / period` — the zoom the shader applies to
+ * the paper sampling coordinate, so the derived period is what the mark
+ * actually shows. Total and strictly positive: the period is never zero.
  */
-export function featherNoiseBlurU(halfWidthPx: number, anchor: number): number {
-  const span = halfWidthPx * anchor;
-  if (!Number.isFinite(span) || span <= 0) return FEATHER_NOISE_BLUR_MAX_U;
-  return clamp(FEATHER_NOISE_BLUR_PX / span, FEATHER_NOISE_BLUR_MIN_U, FEATHER_NOISE_BLUR_MAX_U);
+export function featherNoiseScale(bandPx: number): number {
+  return FEATHER_NOISE_REFERENCE_PX / featherNoisePeriodPx(bandPx);
 }
 
 // ------------------------- the trace and edge formulas (64-23) -------------------------

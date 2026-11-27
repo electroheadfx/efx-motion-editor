@@ -1,33 +1,31 @@
 // ============================================================
-//  featherNoise.test.ts — Spec 11 (2026-11-27, quick 261126-v8j):
-//  Feather noise erodes the base shape; Feather falloff shapes the opening.
+//  featherNoise.test.ts — Spec 11: Feather noise and Feather falloff.
 //
-//  The artist's five-state ruling: ONE coherent noise field erodes the
-//  base shape from its boundary INWARD, progressively with the slider.
-//  0 is the clean footprint; 20 tears the rim shallowly; 40 recedes a
-//  little; 60 breaks the outer half into chunks with a continuous core;
-//  100 leaves a thin central spine with fragments close to the mark.
-//  Removal is THRESHOLD-ONLY (a featherShift rise behind a soft front),
-//  never a depth fade and never an outward spray: nothing can appear
-//  outside the base mark, so no fingers or spikes exist by construction.
-//  Feather falloff still distributes the shipped rim opening with the
-//  SAME exponent map Edge falloff uses — one shape language, no second
-//  table.
+//  The feather band is radius-relative: at small brush sizes it is
+//  narrower than the paper's cloud features, so the rim reads smooth.
+//  Spec 11 gives the artist a brush-relative grain (Feather noise) whose
+//  FEATURE SIZE is derived from the feather band, with a pixel floor so
+//  the specks survive on tiny brushes, mixed INTO the paper tooth
+//  (never replacing it). Feather falloff distributes both the shipped
+//  rim opening and the interior grain with the SAME exponent map Edge
+//  falloff uses — one shape language, no second table.
 //
 //  Laws pinned here:
-//   1. The declared constants (feature scale / floor / ceiling, depth,
-//      soft band, lift) — the probe's calibration targets.
-//   2. `featherNoiseDrive(n)` is the recorded slider, clamped: LINEAR,
-//      total, 0 reads the neutral block.
-//   3. `featherNoiseFeaturePx(halfWidthPx)` = clamp(hw · SCALE, MIN, MAX)
-//      in document px — brush-relative, floored and capped, total.
-//   4. `featherNoiseBlurU(halfWidthPx, anchor)` = BLUR_PX / (hw · anchor),
-//      clamped to [MIN_U, MAX_U]: a real soft band, never a hard cut.
+//   1. The four starting constants (4 / 2 / 16 / 1.1) — the probe's
+//      calibration targets, so a silent drift must fail a test.
+//   2. `featherNoisePeriodPx(bandPx)` = clamp(bandPx / FEATURES, MIN, MAX):
+//      the band holds a fixed number of features, floored at 2 px and
+//      capped at 16 px. Non-finite / non-positive band -> the floor.
+//   3. `featherNoiseScale(bandPx)` = REFERENCE_PX / period: the zoom
+//      factor the shader applies to the paper sampling coordinate.
+//      Always finite and > 0, never NaN.
+//   4. `edgeFalloffExponent` is declared ONCE in the package: Spec 11
+//      reuses the shipped twin, it never adds a second exponent map.
 //   5. The law ships as a SHADER PERMUTATION: the engine's default program
 //      is the NEUTRAL gather (the pre-change source, byte-for-byte) and the
 //      EXTENDED program — the law — compiles lazily the first time the
 //      driven noise is above 0 or the falloff leaves 50. Both come from the
-//      ONE generator, and slider 0 (drive 0) stays on the neutral path.
+//      ONE generator, and slider 20 (drive 0) stays on the neutral path.
 // ============================================================
 
 import { readFileSync, readdirSync, statSync } from 'node:fs'
@@ -44,17 +42,13 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const SRC_ROOT = resolve(HERE, '..')
 
 const FEATHER_NOISE = bristleModule as unknown as {
-  FEATHER_NOISE_FEATURE_SCALE?: number
-  FEATHER_NOISE_FEATURE_MIN_PX?: number
-  FEATHER_NOISE_FEATURE_MAX_PX?: number
-  FEATHER_NOISE_DEPTH?: number
-  FEATHER_NOISE_BLUR_PX?: number
-  FEATHER_NOISE_BLUR_MIN_U?: number
-  FEATHER_NOISE_BLUR_MAX_U?: number
-  FEATHER_NOISE_LIFT?: number
+  FEATHER_NOISE_FEATURES?: number
+  FEATHER_NOISE_MIN_PX?: number
+  FEATHER_NOISE_MAX_PX?: number
+  FEATHER_NOISE_REFERENCE_PX?: number
+  featherNoisePeriodPx?: (bandPx: number) => number
+  featherNoiseScale?: (bandPx: number) => number
   featherNoiseDrive?: (n: number) => number
-  featherNoiseFeaturePx?: (halfWidthPx: number) => number
-  featherNoiseBlurU?: (halfWidthPx: number, anchor: number) => number
 }
 
 function packageSourceFiles(dir: string): string[] {
@@ -73,112 +67,80 @@ const PACKAGE_SOURCES = packageSourceFiles(SRC_ROOT).map(file => ({
 }))
 
 describe('the Spec 11 feather-noise constants', () => {
-  it('pins the declared values the probe calibrates against', () => {
-    expect(FEATHER_NOISE.FEATHER_NOISE_FEATURE_SCALE, 'the feature scale').toBe(0.3)
-    expect(FEATHER_NOISE.FEATHER_NOISE_FEATURE_MIN_PX, 'the feature floor').toBe(6)
-    expect(FEATHER_NOISE.FEATHER_NOISE_FEATURE_MAX_PX, 'the feature ceiling').toBe(90)
-    expect(FEATHER_NOISE.FEATHER_NOISE_DEPTH, 'the deepest front penetration').toBe(0.85)
-    expect(FEATHER_NOISE.FEATHER_NOISE_BLUR_PX, 'the soft band half-width').toBe(1.5)
-    expect(FEATHER_NOISE.FEATHER_NOISE_BLUR_MIN_U, 'the soft band floor').toBe(1e-4)
-    expect(FEATHER_NOISE.FEATHER_NOISE_BLUR_MAX_U, 'the soft band ceiling').toBe(0.5)
-    expect(FEATHER_NOISE.FEATHER_NOISE_LIFT, 'the front threshold rise').toBe(1.4)
-  })
-
-  it('leaves no pre-law constant alive in the package sources', () => {
-    for (const token of [
-      'FEATHER_NOISE_FEATURES',
-      'FEATHER_NOISE_MIN_PX',
-      'FEATHER_NOISE_MAX_PX',
-      'FEATHER_NOISE_REFERENCE_PX',
-      'FEATHER_NOISE_FLOOR',
-      'featherNoisePeriodPx',
-      'featherNoiseScale',
-    ]) {
-      const carriers = PACKAGE_SOURCES.filter(({ text }) => text.includes(token)).map(
-        ({ file }) => file,
-      )
-      expect(carriers, `${token} is dead and removed`).toEqual([])
-    }
+  it('pins the four starting values the probe calibrates against', () => {
+    expect(FEATHER_NOISE.FEATHER_NOISE_FEATURES, 'features across the band').toBe(4)
+    expect(FEATHER_NOISE.FEATHER_NOISE_MIN_PX, 'the pixel floor at tiny brushes').toBe(2)
+    expect(FEATHER_NOISE.FEATHER_NOISE_MAX_PX, 'the period ceiling').toBe(16)
+    expect(FEATHER_NOISE.FEATHER_NOISE_REFERENCE_PX, 'the tooth reference period').toBe(1.1)
   })
 })
 
-describe('featherNoiseDrive — the recorded slider IS the drive', () => {
-  it('is linear: 0 nothing, 20 shallow, 60 medium, 100 full', () => {
-    const drive = FEATHER_NOISE.featherNoiseDrive
-    expect(typeof drive, 'featherNoiseDrive is exported').toBe('function')
-    expect(drive!(0)).toBe(0)
-    expect(drive!(0.2)).toBeCloseTo(0.2, 12)
-    expect(drive!(0.4)).toBeCloseTo(0.4, 12)
-    expect(drive!(0.6)).toBeCloseTo(0.6, 12)
-    expect(drive!(1)).toBeCloseTo(1, 12)
+describe('featherNoisePeriodPx — the band-relative feature period', () => {
+  it('holds a fixed feature count across the band, floored at 2 px and capped at 16', () => {
+    expect(typeof FEATHER_NOISE.featherNoisePeriodPx, 'featherNoisePeriodPx is exported').toBe(
+      'function',
+    )
+    // band / 4, clamped: 8 -> 2 (the floor), 24 -> 6, 1000 -> 16 (the max).
+    expect(FEATHER_NOISE.featherNoisePeriodPx?.(8), 'band 8 sits on the floor').toBeCloseTo(2, 12)
+    expect(FEATHER_NOISE.featherNoisePeriodPx?.(24), 'band 24 reads 6').toBeCloseTo(6, 12)
+    expect(FEATHER_NOISE.featherNoisePeriodPx?.(1000), 'band 1000 sits on the cap').toBeCloseTo(
+      16,
+      12,
+    )
   })
 
-  it('is total: a non-finite slider reads the neutral block, extremes clamp', () => {
-    const drive = FEATHER_NOISE.featherNoiseDrive
-    expect(drive!(Number.NaN)).toBe(0)
-    expect(drive!(-1)).toBe(0)
-    expect(drive!(2)).toBeCloseTo(1, 12)
-    expect(drive!(Number.POSITIVE_INFINITY)).toBe(1)
-  })
-})
-
-describe('featherNoiseFeaturePx — the brush-relative field scale', () => {
-  it('reads half-width · 0.3, floored at 6 px and capped at 90 px', () => {
-    const feature = FEATHER_NOISE.featherNoiseFeaturePx
-    expect(typeof feature, 'featherNoiseFeaturePx is exported').toBe('function')
-    expect(feature?.(120), 'half-width 120 reads 36 px').toBeCloseTo(36, 12)
-    expect(feature?.(4), 'a tiny brush sits on the floor').toBeCloseTo(6, 12)
-    expect(feature?.(20), 'half-width 20 still sits on the floor').toBeCloseTo(6, 12)
-    expect(feature?.(30), 'half-width 30 reads 9 px').toBeCloseTo(9, 12)
-    expect(feature?.(1000), 'a huge brush sits on the cap').toBeCloseTo(90, 12)
+  it('is a total function: a missing band reads the floor, never NaN', () => {
+    expect(FEATHER_NOISE.featherNoisePeriodPx?.(0), 'a zero band').toBeCloseTo(2, 12)
+    expect(FEATHER_NOISE.featherNoisePeriodPx?.(-4), 'a negative band').toBeCloseTo(2, 12)
+    expect(FEATHER_NOISE.featherNoisePeriodPx?.(Number.NaN), 'a missing band').toBeCloseTo(2, 12)
+    expect(
+      FEATHER_NOISE.featherNoisePeriodPx?.(Number.POSITIVE_INFINITY),
+      'an unrepresentable band',
+    ).toBeCloseTo(2, 12)
+    expect(
+      FEATHER_NOISE.featherNoisePeriodPx?.(Number.NEGATIVE_INFINITY),
+      'an unrepresentable band',
+    ).toBeCloseTo(2, 12)
+    expect(Number.isNaN(FEATHER_NOISE.featherNoisePeriodPx?.(Number.NaN) ?? Number.NaN)).toBe(false)
   })
 
-  it('is total: a missing half-width reads the floor, never NaN', () => {
-    const feature = FEATHER_NOISE.featherNoiseFeaturePx
-    for (const value of [0, -4, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
-      expect(feature?.(value), `half-width ${value} reads the floor`).toBeCloseTo(6, 12)
-    }
-  })
-
-  it('never decreases as the brush widens and stays inside [MIN, MAX]', () => {
+  it('never decreases as the band widens and stays inside [MIN, MAX]', () => {
     let previous = 0
-    for (let halfWidth = 0; halfWidth <= 400; halfWidth += 1) {
-      const feature = FEATHER_NOISE.featherNoiseFeaturePx?.(halfWidth) ?? Number.NaN
-      expect(feature).toBeGreaterThanOrEqual(previous)
-      expect(feature).toBeGreaterThanOrEqual(FEATHER_NOISE.FEATHER_NOISE_FEATURE_MIN_PX ?? NaN)
-      expect(feature).toBeLessThanOrEqual(FEATHER_NOISE.FEATHER_NOISE_FEATURE_MAX_PX ?? NaN)
-      previous = feature
+    for (let band = 0; band <= 100; band += 1) {
+      const period = FEATHER_NOISE.featherNoisePeriodPx?.(band) ?? Number.NaN
+      expect(period).toBeGreaterThanOrEqual(previous)
+      expect(period).toBeGreaterThanOrEqual(
+        FEATHER_NOISE.FEATHER_NOISE_MIN_PX ?? Number.NaN,
+      )
+      expect(period).toBeLessThanOrEqual(FEATHER_NOISE.FEATHER_NOISE_MAX_PX ?? Number.NaN)
+      previous = period
     }
   })
 })
 
-describe('featherNoiseBlurU — the soft front, never a hard cut', () => {
-  it('converts the px half-band through the visual-edge anchor', () => {
-    const blurU = FEATHER_NOISE.featherNoiseBlurU
-    expect(typeof blurU, 'featherNoiseBlurU is exported').toBe('function')
-    expect(blurU?.(120, 0.9), 'half-width 120 reads 1.5 / 108 uN').toBeCloseTo(1.5 / 108, 12)
-    expect(blurU?.(4, 0.9), 'a tiny brush widens the band in uN').toBeCloseTo(1.5 / 3.6, 12)
+describe('featherNoiseScale — the sampling zoom the shader applies', () => {
+  it('maps the reference period onto the derived band period', () => {
+    expect(typeof FEATHER_NOISE.featherNoiseScale, 'featherNoiseScale is exported').toBe('function')
+    // REFERENCE / period: 1.1 / 2 = 0.55; 1.1 / 16 = 0.06875; 1.1 / 6 = 0.18333…
+    expect(FEATHER_NOISE.featherNoiseScale?.(0), 'band 0 reads the floor period').toBeCloseTo(
+      0.55,
+      12,
+    )
+    expect(FEATHER_NOISE.featherNoiseScale?.(1000), 'band 1000 reads the cap period').toBeCloseTo(
+      0.06875,
+      12,
+    )
+    expect(FEATHER_NOISE.featherNoiseScale?.(24), 'band 24 reads 1.1 / 6').toBeCloseTo(
+      0.18333333333333,
+      12,
+    )
   })
 
-  it('clamps both ends: never a hard cut, never the whole tiny mark', () => {
-    const blurU = FEATHER_NOISE.featherNoiseBlurU
-    expect(blurU?.(1, 0.9), 'a 1 px brush sits on the uN ceiling').toBeCloseTo(0.5, 12)
-    expect(blurU?.(1e7, 0.9), 'a huge brush sits on the uN floor').toBeCloseTo(1e-4, 12)
-  })
-
-  it('is total: an unusable span reads the ceiling, never NaN', () => {
-    const blurU = FEATHER_NOISE.featherNoiseBlurU
-    for (const [halfWidth, anchor] of [
-      [0, 0.9],
-      [-4, 0.9],
-      [Number.NaN, 0.9],
-      [Number.POSITIVE_INFINITY, 0.9],
-      [120, 0],
-    ] as const) {
-      expect(blurU?.(halfWidth, anchor), `span ${halfWidth} reads the ceiling`).toBeCloseTo(
-        0.5,
-        12,
-      )
+  it('is always finite, strictly positive and never NaN', () => {
+    for (const band of [0, -4, Number.NaN, Number.POSITIVE_INFINITY, 4, 8, 12, 24, 40, 200, 1000]) {
+      const scale = FEATHER_NOISE.featherNoiseScale?.(band) ?? Number.NaN
+      expect(Number.isFinite(scale), `band ${band} reads a finite scale`).toBe(true)
+      expect(scale, `band ${band} reads a positive scale`).toBeGreaterThan(0)
     }
   })
 })
@@ -197,16 +159,17 @@ describe('the one exponent map', () => {
 
 // ============================================================
 //  The law's source pins. The pure twins above prove the arithmetic; these
-//  prove the GLSL and the ONE gather binder carry the artist's 2026-11-27
-//  law (quick 261126-v8j):
+//  prove the GLSL and the ONE gather binder carry the law the artist approved
+//  on 2026-11-27 (rulings 2026-11-27e/f/g/h):
 //
-//   * ONE coherent noise field in the STROKE frame erodes the base shape
-//     from its boundary INWARD — removal is threshold-only, never a depth
-//     fade, never an outward spray or spike.
-//   * The field is the engine's value-noise family (three octaves, weights
-//     summing to 1), isotropic, brush-relative with px floors.
-//   * The front is `1 − DEPTH · drive · n01`, the envelope is a real soft
-//     band (`front ± blur`), and the lift is NOT scaled by Feather.
+//   * Feather noise is a DEPTH-OF-PENETRATION control, not an amplitude: a
+//     single wavy FRONT is displaced inward, paint outside it is removed, and
+//     the body inside stays plain (never a field of holes).
+//   * The front is displaced by the natural three-scale cloud (20/60/200 px)
+//     and a contained fringe + sparse outward SPIKES ride the same field.
+//   * The slider is the artist's scale; `featherNoiseDrive` maps it so that
+//     0..20 is the plain block, 40 the light fringe, 60 the medium and 100 the
+//     full halo, interpolating in between.
 //   * Feather falloff still shapes the shipped rim opening with the ONE
 //     exponent map, skipping pow at 50.
 // ============================================================
@@ -215,9 +178,6 @@ const LAW_UNIFORMS = [
   'uFeatherFalloff',
   'uFeatherNoise',
   'uFeatherNoiseAnchor',
-  'uFeatherNoiseDepth',
-  'uFeatherNoiseFeature',
-  'uFeatherNoiseBlur',
   'uFeatherNoiseLift',
 ] as const
 
@@ -244,23 +204,8 @@ describe('the Spec 11 law in BRISTLE_GATHER', () => {
       'gl.uniform1f(p.u.uFeatherNoiseAnchor!, BRISTLE_LAYER_EDGE);',
     )
     expect(ENGINE_SOURCE).toContain(
-      'gl.uniform1f(p.u.uFeatherNoiseDepth!, FEATHER_NOISE_DEPTH);',
-    )
-    expect(ENGINE_SOURCE).toContain(
-      'gl.uniform1f(p.u.uFeatherNoiseFeature!, featherNoiseFeaturePx(halfWidthPx));',
-    )
-    expect(ENGINE_SOURCE).toContain(
-      'gl.uniform1f(p.u.uFeatherNoiseBlur!, featherNoiseBlurU(halfWidthPx, BRISTLE_LAYER_EDGE));',
-    )
-    expect(ENGINE_SOURCE).toContain(
       'gl.uniform1f(p.u.uFeatherNoiseLift!, FEATHER_NOISE_LIFT);',
     )
-  })
-
-  it('computes the dab half-width ONCE for the lateral laws and the feature size', () => {
-    expect(ENGINE_SOURCE).toContain('const halfWidthPx = r * this.dh;')
-    expect(ENGINE_SOURCE).toContain('gl.uniform1f(p.u.uHalfWidthPx!, halfWidthPx);')
-    expect(ENGINE_SOURCE).not.toContain('gl.uniform1f(p.u.uHalfWidthPx!, r * this.dh);')
   })
 
   it('shapes the opening with the shipped exponent map and SKIPS pow at falloff 50', () => {
@@ -271,56 +216,31 @@ describe('the Spec 11 law in BRISTLE_GATHER', () => {
     expect(BRISTLE_GATHER).toContain('exp2(2.0 * uFeatherFalloff - 1.0)')
   })
 
-  it('erodes through ONE stroke-frame front: threshold-only, no depth fade', () => {
-    expect(BRISTLE_GATHER).toContain('if (uFeatherNoise > 0.0) {')
+  it('removes paint outside a wavy FRONT and keeps the body plain (no field of holes)', () => {
+    expect(BRISTLE_GATHER).toContain('float pen = mix(0.88, 0.35, uFeatherNoise);')
+    expect(BRISTLE_GATHER).toContain('float wobble = cloudMix(css);')
+    expect(BRISTLE_GATHER).toContain('float front = pen + wobble * 0.30;')
     expect(BRISTLE_GATHER).toContain(
-      'float uN = clamp(lateral / uFeatherNoiseAnchor, 0.0, 1.0);',
+      'float envelope = smoothstep(front - 0.015, front + 0.015, uN);',
     )
-    // The stroke frame is the 261126-rov displacement law's coordinates, with
-    // q.y's NEGATED sign: q.y < 0 is the leading half, so
-    // uAlongPx − q.y·uHalfWidthPx is the texel's own station P (S − (S − P)).
-    // The plus sign reads 2S − P — a per-DAB phase that collapsed the front
-    // to the field's minimum over ~80 dabs (a uniform shallow shrink).
-    expect(BRISTLE_GATHER).toContain(
-      'vec2 nf = vec2(q.x * uHalfWidthPx, uAlongPx - q.y * uHalfWidthPx)',
-    )
-
-    expect(BRISTLE_GATHER).toContain('/ max(uFeatherNoiseFeature, 1.0);')
-    expect(BRISTLE_GATHER).toContain(
-      'float n01 = smoothstep(-0.3, 0.7, featherNoiseFbm(nf));',
-    )
-    expect(BRISTLE_GATHER).toContain(
-      'float front = 1.0 - uFeatherNoiseDepth * uFeatherNoise * n01;',
-    )
-    // The removal boundary is a real soft band, never a sub-pixel cut.
-    expect(BRISTLE_GATHER).toContain(
-      'float envelope = smoothstep(front - uFeatherNoiseBlur, front + uFeatherNoiseBlur, uN);',
-    )
-    // DROPPED uFeather: the erosion works at Feather 0 and at Feather 85.
-    expect(BRISTLE_GATHER).toContain('featherShift += uFeatherNoiseLift * envelope;')
+    // One radial front = no detached islands in the body.
+    expect(BRISTLE_GATHER).toContain('featherShift += uFeather * uFeatherNoiseLift * envelope;')
   })
 
-  it('samples ONE coherent value-noise fbm in the field, weights summing to 1', () => {
-    expect(BRISTLE_GATHER).toContain('float featherNoiseFbm(vec2 p){')
-    expect(BRISTLE_GATHER).toContain('0.5714 * valueNoise(p)')
-    expect(BRISTLE_GATHER).toContain('0.2857 * valueNoise(p * 2.0 + vec2(17.3, 11.1))')
-    expect(BRISTLE_GATHER).toContain('0.1429 * valueNoise(p * 4.0 + vec2(31.7, 23.9))')
+  it('rides the three-scale cloud: 20 / 60 / 200 document px, summed SIGNED', () => {
+    expect(BRISTLE_GATHER).toContain('cloudNoise(css / 20.0 + 19.0)')
+    expect(BRISTLE_GATHER).toContain('cloudNoise(css / 60.0 + 71.0)')
+    expect(BRISTLE_GATHER).toContain('cloudNoise(css / 200.0 + 133.0)')
   })
 
-  it('carries NO cloud, spray, spike or outward source any more', () => {
-    for (const dead of [
-      'cloudNoise',
-      'cloudMix',
-      'float pen = mix(0.88, 0.35, uFeatherNoise);',
-      'float spray =',
-      'float spike =',
-      'float spikeField =',
-      'float band = exp(-pow(',
-      'float reach = mix(0.12, 0.40, uFeatherNoise);',
-      'featherShift -= uFeather * spike * reach;',
-    ]) {
-      expect(BRISTLE_GATHER.includes(dead), `the law no longer carries ${dead}`).toBe(false)
-    }
+  it('carries the contained fringe and the sparse outward spikes', () => {
+    // The fringe: a narrow band straddling the front, perforated by the cloud.
+    expect(BRISTLE_GATHER).toContain('float band = exp(-pow((uN - (front - 0.07)) / 0.11, 2.0));')
+    expect(BRISTLE_GATHER).toContain('float spray = clamp(max(cloudMix(css * 3.1 + 23.0), 0.0) * 14.0, 0.0, 1.3);')
+    // The spikes: sparse peaks of a slow field that reach OUTSIDE the base edge.
+    expect(BRISTLE_GATHER).toContain('float spikeField = cloudMix(css * 0.8 + 41.0);')
+    expect(BRISTLE_GATHER).toContain('float spike = smoothstep(0.10, 0.34, spikeField);')
+    expect(BRISTLE_GATHER).toContain('float reach = mix(0.12, 0.40, uFeatherNoise);')
   })
 
   it('keeps the shipped threshold expression and its anchors byte-identical', () => {
@@ -334,6 +254,19 @@ describe('the Spec 11 law in BRISTLE_GATHER', () => {
     expect(BRISTLE_GATHER).toContain(
       'float threshold = uGrain * (1.0 - height) - 0.25 + featherShift;',
     )
+  })
+
+  it('maps the artist slider onto the drive (0..20 plain, 40 light, 60 medium, 100 full)', () => {
+    const drive = FEATHER_NOISE.featherNoiseDrive
+    expect(typeof drive, 'featherNoiseDrive is exported').toBe('function')
+    expect(drive!(0)).toBe(0)
+    expect(drive!(0.2)).toBe(0)
+    expect(drive!(0.4)).toBeCloseTo(0.2, 12)
+    expect(drive!(0.6)).toBeCloseTo(0.4, 12)
+    expect(drive!(1)).toBeCloseTo(1, 12)
+    // Monotone and total: a non-finite slider reads the plain block.
+    expect(drive!(Number.NaN)).toBe(0)
+    expect(drive!(2)).toBeCloseTo(1, 12)
   })
 
   it('keeps bristleCarrierFS free of the law uniforms', () => {
@@ -350,7 +283,7 @@ describe('the Spec 11 law in BRISTLE_GATHER', () => {
 //  the added block never runs (measured: the A2 restructure still moved the
 //  noise-0 digests). The law therefore lives in a SECOND program: the
 //  engine's default is the NEUTRAL gather — the pre-change source with no
-//  field, no law uniforms and no reshuffled statement — and the EXTENDED
+//  cloud, no law uniforms and no reshuffled statement — and the EXTENDED
 //  program (the law) is compiled lazily the first time the DRIVEN noise is
 //  above 0 or the falloff leaves 50. Both variants come from ONE generator,
 //  so the rest of the gather can never diverge between them.
@@ -379,17 +312,14 @@ describe('the neutral/extended gather permutation', () => {
     expect(typeof SHADERS.BRISTLE_GATHER_NEUTRAL, 'the neutral variant is exported').toBe('string')
   })
 
-  it('keeps the neutral source free of the law — no field, no uniforms, no branch', () => {
+  it('keeps the neutral source free of the law — no cloud, no uniforms, no branch', () => {
     const neutral = SHADERS.BRISTLE_GATHER_NEUTRAL ?? ''
     for (const token of [
-      'featherNoiseFbm',
+      'cloudNoise',
+      'cloudMix',
       'uFeatherFalloff',
       'uFeatherNoise',
-      'uFeatherNoiseDepth',
-      'uFeatherNoiseFeature',
-      'uFeatherNoiseBlur',
       'uFeatherNoiseLift',
-      'q.x * uHalfWidthPx',
       'exp2(2.0 * uFeatherFalloff - 1.0)',
     ]) {
       expect(neutral.includes(token), `neutral never carries ${token}`).toBe(false)
@@ -451,12 +381,12 @@ describe('the neutral/extended gather permutation', () => {
     )
   })
 
-  it('selects by driven noise > 0 OR falloff != 50 — slider 0 stays neutral', () => {
+  it('selects by driven noise > 0 OR falloff != 50 — slider 20 stays neutral', () => {
     expect(ENGINE_SOURCE).toContain('featherNoiseDrive(this.params.featherNoise) > 0')
     expect(ENGINE_SOURCE).toContain('this.params.featherFalloff !== 0.5')
-    // The drive is the slider: 0 is the neutral program's ONLY noise value.
-    expect(FEATHER_NOISE.featherNoiseDrive?.(0)).toBe(0)
-    expect(FEATHER_NOISE.featherNoiseDrive?.(0.2)).toBeGreaterThan(0)
+    // The drive is flat across 0..20, so the slider's first stop is the
+    // neutral path: 20 reads drive 0.
+    expect(FEATHER_NOISE.featherNoiseDrive?.(0.2)).toBe(0)
     for (const which of [
       'bristleDeposit',
       'bristleCover',

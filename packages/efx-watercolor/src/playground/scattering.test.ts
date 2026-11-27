@@ -914,12 +914,11 @@ describe('64-23 — the traces in the gather and the carrier', () => {
       'shape.y + bristleContact(uAlongPx, state.z, uStreakLen) * bristleRimShare(state.y) * uRimContact,',
     )
     // The gather composes on the SAME snippet the carrier does.
-    // Spec 11: ONE composition, with the eroding-field snippet spliced in
-    // only for the law variant — the neutral variant is
-    // `${BRISTLE_NOISE}${BRISTLE_TEXTURES}`.
+    // Spec 11: ONE composition, with the cloud spliced in only for the law
+    // variant — the neutral variant is `${BRISTLE_NOISE}${BRISTLE_TEXTURES}`.
     expectContains(
       SHADERS_SOURCE,
-      "return `${BRISTLE_NOISE}${extended ? FEATHER_FIELD : ''}${BRISTLE_TEXTURES}",
+      "return `${BRISTLE_NOISE}${extended ? FEATHER_CLOUD : ''}${BRISTLE_TEXTURES}",
     )
   })
 
@@ -1002,7 +1001,7 @@ describe('64-23 — the traces in the gather and the carrier', () => {
     const bindings: Array<[string, string]> = [
       ['uAlongPx', 'alongPx'],
       ['uStrokeDistPx', 'alongPx'],
-      ['uHalfWidthPx', 'halfWidthPx'],
+      ['uHalfWidthPx', 'r * this.dh'],
       ['uStreak', 'BRISTLE_STREAK'],
       ['uStreakLen', 'BRISTLE_STREAK_LENGTH'],
       ['uStreakShare', 'BRISTLE_STREAK_SHARE'],
