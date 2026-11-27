@@ -233,7 +233,7 @@ import { WatercolorEngine, clampDocSize } from '../../src/playground/Engine'
 import { BRUSH_PRESETS } from '../../src/playground/brushes'
 import { PAPERS, type PaperPreset } from '../../src/playground/papers'
 import { MEDIUMS } from '../../src/playground/mediums'
-import { fromHalf } from '../../src/playground/half'
+import { fromHalf, toHalf } from '../../src/playground/half'
 import { createAquarelleEngineAdapter } from '../../src/adapter/engineAdapter'
 // 64-29: the texture-tip A/B registers its own deterministic mask through the
 // SHIPPED registry (never a probe-private path), so the length contract the
@@ -2310,6 +2310,523 @@ function blendProfileSet(engine: WatercolorEngine, strokeSize: number): Record<s
   }
 }
 
+// --- pickup-under (quick 261127-khp) ----------------------------------------
+//
+// The artist's defect: a bristle stroke with Pickup > 0 crossing a painted
+// under of contrasting colour inherits the under's per-bristle film as regular
+// longitudinal stripes. The pickup reads the pre-dab sheet POINTWISE
+// (`cA = mix(cA, snapA, smear)` / `cB = mix(cB, snapB.xyz, smear)`), so every
+// fragment copies the under's film sample at its own position and structure
+// narrower than a bristle run freezes into the judged film. The law this
+// quick measures replaces that under reference with a 5-tap local mean (the
+// centre plus four 1.5 px diagonal corners in the stroke frame) inside the
+// existing Pickup guard.
+//
+// The scene is the artist's own: the under is a `bristle-round` stroke at the
+// acrylic record (Size 250, Body 100, Dry 0, Pickup 100, Edge 0) from x 0.35
+// to 0.92 at y 0.52, fixed; the judged stroke is the same record in the
+// yellow at `--stroke-size`, `--pickup` and `--edge`, from x 0.10 to 0.90 at
+// the same y, so it enters the under at x = 0.35. `--under` swaps the under
+// for three controls: a plain watercolour band (`flat`), the painted under
+// box-blurred after its fix (`blurred`), and bare paper (`none`).
+//
+// The readout samples the judged body ACROSS the stroke at three x stations
+// inside the under (0.45 / 0.55 / 0.65) on the transparent export. Each
+// station's series is the RGB deviation magnitude from that station's own
+// per-channel mean; `shareSpectrum` reads its 1–3 px band (the fine aliasing
+// this quick removes) and, as a DIAGNOSTIC, its 4–32 px band (the pre-existing
+// n20 worm band), so the report can state where the defect actually lives.
+const PICKUP_UNDER_BLUE = '#1a88ec'
+const PICKUP_UNDER_YELLOW = '#f9e01c'
+const PICKUP_UNDER_UNDER_SIZE = 250
+const PICKUP_UNDER_UNDER_MUTATION = 0x6b0001
+const PICKUP_UNDER_FLAT_MUTATION = 0x6b0002
+const PICKUP_UNDER_JUDGED_MUTATION = 0x6b0003
+const PICKUP_UNDER_Y = 0.52
+const PICKUP_UNDER_UNDER_X0 = 0.35
+const PICKUP_UNDER_UNDER_X1 = 0.92
+const PICKUP_UNDER_JUDGED_X0 = 0.1
+const PICKUP_UNDER_JUDGED_X1 = 0.9
+/** The three across stations inside the under, doc-x share of the sheet. */
+const PICKUP_UNDER_STATIONS: readonly number[] = [0.45, 0.55, 0.65]
+/** The fine band the law must collapse, document px. */
+const PICKUP_UNDER_BAND_LO_PX = 1
+const PICKUP_UNDER_BAND_HI_PX = 3
+/** The perpendicular station spacing, document px — the 1.5 px law's scale. */
+const PICKUP_UNDER_STATION_PX = 0.5
+/** The boundary-bleed read window: 20 px inside the boundary, the far field
+ *  from 12 px in. */
+const PICKUP_UNDER_BLEED_SCAN_PX = 20
+const PICKUP_UNDER_BLEED_FAR_PX = 12
+
+type UnderKind = 'painted' | 'flat' | 'blurred' | 'none'
+/** The scene's operand, read once by `main()` before any stroke — module state
+ *  like `EDGE_LAYER_*`, so a refused operand can never leave a painted sheet. */
+let PICKUP_UNDER_KIND: UnderKind = 'painted'
+
+/** The `--under` operand: absent keeps the artist's painted under; refused on
+ *  every other scenario and on any unknown value. */
+function readUnderKind(scenario: string): UnderKind {
+  const raw = new URLSearchParams(location.search).get('under')
+  if (raw === null || raw === '') return 'painted'
+  if (scenario !== 'pickup-under') {
+    throw new Error('--under is only valid with --scenario pickup-under')
+  }
+  if (raw !== 'painted' && raw !== 'flat' && raw !== 'blurred' && raw !== 'none') {
+    throw new Error(`invalid under "${raw}" (expected painted, flat, blurred or none)`)
+  }
+  return raw
+}
+
+/** The under's straight drag: x 0.35 -> 0.92 at y 0.52. */
+function pickupUnderPoints(): readonly AquarellePoint[] {
+  return [
+    { x: PICKUP_UNDER_UNDER_X0, y: PICKUP_UNDER_Y, p: 0.75, tx: 0, ty: 0, tw: 0 },
+    {
+      x: (PICKUP_UNDER_UNDER_X0 + PICKUP_UNDER_UNDER_X1) / 2,
+      y: PICKUP_UNDER_Y,
+      p: 0.75,
+      tx: 0,
+      ty: 0,
+      tw: 0,
+    },
+    { x: PICKUP_UNDER_UNDER_X1, y: PICKUP_UNDER_Y, p: 0.75, tx: 0, ty: 0, tw: 0 },
+  ]
+}
+
+/** The judged stroke's drag: x 0.10 -> 0.90 at the same y, entering the under
+ *  at x = 0.35. */
+function pickupUnderJudgedPoints(): readonly AquarellePoint[] {
+  return [
+    { x: PICKUP_UNDER_JUDGED_X0, y: PICKUP_UNDER_Y, p: 0.75, tx: 0, ty: 0, tw: 0 },
+    {
+      x: (PICKUP_UNDER_JUDGED_X0 + PICKUP_UNDER_JUDGED_X1) / 2,
+      y: PICKUP_UNDER_Y,
+      p: 0.75,
+      tx: 0,
+      ty: 0,
+      tw: 0,
+    },
+    { x: PICKUP_UNDER_JUDGED_X1, y: PICKUP_UNDER_Y, p: 0.75, tx: 0, ty: 0, tw: 0 },
+  ]
+}
+
+/** The `flat` control's plain watercolour band — `whiteOverBlueScript`'s
+ *  four-point shape (p 0.8) across the under's own span, Body 100. */
+function pickupUnderFlatPoints(): readonly AquarellePoint[] {
+  return [
+    { x: PICKUP_UNDER_UNDER_X0, y: PICKUP_UNDER_Y, p: 0.8, tx: 0, ty: 0, tw: 0 },
+    { x: 0.54, y: PICKUP_UNDER_Y, p: 0.8, tx: 0, ty: 0, tw: 0 },
+    { x: 0.73, y: PICKUP_UNDER_Y, p: 0.8, tx: 0, ty: 0, tw: 0 },
+    { x: PICKUP_UNDER_UNDER_X1, y: PICKUP_UNDER_Y, p: 0.8, tx: 0, ty: 0, tw: 0 },
+  ]
+}
+
+/** The scene's script. The under carries the artist's exact recipe (Edge 0 =
+ *  the sheet path, falloff 50, Body 100 = the record's load, Dry 0, Pickup
+ *  100); the judged stroke carries the operands. `none` omits the under. */
+function pickupUnderScript(
+  kind: UnderKind,
+  strokeSize: number,
+  pickup: number | null,
+  edge: number,
+): readonly ScriptEntry[] {
+  const judged: ScriptEntry = {
+    color: PICKUP_UNDER_YELLOW,
+    points: pickupUnderJudgedPoints(),
+    mutationId: PICKUP_UNDER_JUDGED_MUTATION,
+    params: bristleLineParams(100, strokeSize, {
+      dry: 0,
+      feather: null,
+      pickup: pickup ?? 100,
+      edge,
+      falloff: 50,
+    }),
+    brushId: 'bristle-round',
+    settle: SETTLE_TICKS,
+  }
+  if (kind === 'none') return [judged]
+  const under: ScriptEntry =
+    kind === 'flat'
+      ? {
+          color: PICKUP_UNDER_BLUE,
+          points: pickupUnderFlatPoints(),
+          mutationId: PICKUP_UNDER_FLAT_MUTATION,
+          body: 100,
+          settle: SETTLE_TICKS,
+        }
+      : {
+          color: PICKUP_UNDER_BLUE,
+          points: pickupUnderPoints(),
+          mutationId: PICKUP_UNDER_UNDER_MUTATION,
+          params: bristleLineParams(100, PICKUP_UNDER_UNDER_SIZE, {
+            dry: 0,
+            feather: null,
+            pickup: 100,
+            edge: 0,
+            falloff: 50,
+          }),
+          brushId: 'bristle-round',
+          settle: SETTLE_TICKS,
+        }
+  return [under, judged]
+}
+
+/** One half-float layer's separable 5x5 box mean (a horizontal 5-tap pass then
+ *  a vertical one, clamped edges) in the half-float domain. */
+function blurHalfLayer(src: Uint16Array, w: number, h: number, ch: number): Uint16Array {
+  const flat = new Float32Array(w * h * ch)
+  for (let i = 0; i < flat.length; i += 1) flat[i] = fromHalf(src[i]!)
+  const mid = new Float32Array(flat.length)
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      for (let c = 0; c < ch; c += 1) {
+        let sum = 0
+        for (let k = -2; k <= 2; k += 1) {
+          const xx = Math.min(w - 1, Math.max(0, x + k))
+          sum += flat[(y * w + xx) * ch + c]!
+        }
+        mid[(y * w + x) * ch + c] = sum / 5
+      }
+    }
+  }
+  const out = new Uint16Array(src.length)
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      for (let c = 0; c < ch; c += 1) {
+        let sum = 0
+        for (let k = -2; k <= 2; k += 1) {
+          const yy = Math.min(h - 1, Math.max(0, y + k))
+          sum += mid[(yy * w + x) * ch + c]!
+        }
+        out[(y * w + x) * ch + c] = toHalf(sum / 5)
+      }
+    }
+  }
+  return out
+}
+
+/** The `blurred` control: the painted under's five paint layers pass one
+ *  separable 5x5 box mean, then the sheet is restored in place. The wet and
+ *  relief channels and the exact-f32 last-touch lane are carried through
+ *  untouched — the control softens the under's film and boundary BY DESIGN,
+ *  never its drying bookkeeping. */
+function blurWholeSheet(engine: WatercolorEngine, sheet: number): void {
+  const snapshot = engine.captureSheet()
+  const whole = snapshot.whole
+  if (whole.rect === null) throw new Error('blur: the sheet is blank')
+  if (whole.w !== sheet || whole.h !== sheet) throw new Error('blur: the sheet size moved')
+  const w = whole.rect.x1 - whole.rect.x0
+  const h = whole.rect.y1 - whole.rect.y0
+  for (const key of ['inkA', 'inkB', 'fixedA', 'fixedB'] as const) {
+    const src = whole.layers[key]
+    if (!(src instanceof Uint16Array)) throw new Error(`blur: ${key} is not half float`)
+    whole.layers[key] = blurHalfLayer(src, w, h, 4)
+  }
+  const cover = whole.layers.cover
+  if (!(cover instanceof Uint16Array)) throw new Error('blur: cover is not half float')
+  whole.layers.cover = blurHalfLayer(cover, w, h, 1)
+  if (!engine.restoreSheet(snapshot)) throw new Error('blur: restoreSheet refused the sheet')
+}
+
+/** One RGBA bilinear sample; raster coordinates (y down), clamped edges. */
+function rgbaBilinear(
+  data: Uint8ClampedArray,
+  w: number,
+  h: number,
+  x: number,
+  y: number,
+): [number, number, number, number] {
+  const x0 = Math.floor(x)
+  const y0 = Math.floor(y)
+  const fx = x - x0
+  const fy = y - y0
+  const at = (xx: number, yy: number, c: number): number => {
+    const px = Math.min(w - 1, Math.max(0, xx))
+    const py = Math.min(h - 1, Math.max(0, yy))
+    return data[(py * w + px) * 4 + c]!
+  }
+  const out: [number, number, number, number] = [0, 0, 0, 0]
+  for (let c = 0; c < 4; c += 1) {
+    const a = at(x0, y0, c)
+    const b = at(x0 + 1, y0, c)
+    const d = at(x0, y0 + 1, c)
+    const e = at(x0 + 1, y0 + 1, c)
+    out[c] = (a * (1 - fx) + b * fx) * (1 - fy) + (d * (1 - fx) + e * fx) * fy
+  }
+  return out
+}
+
+/** Mean VISIBLE colour (rgb + 255 - a, i.e. composited on white, 0..255) over
+ *  a raster rect. */
+function meanRgbRect(
+  data: Uint8ClampedArray,
+  w: number,
+  h: number,
+  x0: number,
+  x1: number,
+  y0: number,
+  y1: number,
+): [number, number, number] {
+  const xa = Math.max(0, Math.min(w - 1, Math.round(x0)))
+  const xb = Math.max(xa + 1, Math.min(w, Math.round(x1)))
+  const ya = Math.max(0, Math.min(h - 1, Math.round(y0)))
+  const yb = Math.max(ya + 1, Math.min(h, Math.round(y1)))
+  let r = 0
+  let g = 0
+  let b = 0
+  let n = 0
+  for (let y = ya; y < yb; y += 1) {
+    for (let x = xa; x < xb; x += 1) {
+      const i = (y * w + x) * 4
+      const a = data[i + 3]!
+      r += data[i]! + (255 - a)
+      g += data[i + 1]! + (255 - a)
+      b += data[i + 2]! + (255 - a)
+      n += 1
+    }
+  }
+  return n > 0 ? [r / n, g / n, b / n] : [255, 255, 255]
+}
+
+/** One station's across series: the visible RGB deviation magnitude from the
+ *  station's own per-channel mean, 0..255 units. Bilinear at 0.5 px. */
+function pickupUnderStationSeries(
+  data: Uint8ClampedArray,
+  w: number,
+  h: number,
+  stationX: number,
+  centreDocY: number,
+  halfWindow: number,
+): number[] {
+  const samples: Array<[number, number, number]> = []
+  for (let gy = -halfWindow; gy <= halfWindow + 1e-9; gy += PICKUP_UNDER_STATION_PX) {
+    const rasterY = h - 1 - (centreDocY + gy)
+    const rgba = rgbaBilinear(data, w, h, stationX, rasterY)
+    const a = 255 - rgba[3]
+    samples.push([rgba[0] + a, rgba[1] + a, rgba[2] + a])
+  }
+  let mr = 0
+  let mg = 0
+  let mb = 0
+  for (const s of samples) {
+    mr += s[0]
+    mg += s[1]
+    mb += s[2]
+  }
+  const n = Math.max(1, samples.length)
+  mr /= n
+  mg /= n
+  mb /= n
+  return samples.map((s) => Math.hypot(s[0] - mr, s[1] - mg, s[2] - mb))
+}
+
+/** The boundary transition's width: from the under's leading edge (x 0.35)
+ *  outward, the farthest column whose centreline colour deviates by more than
+ *  2/255 from the under's far-field mean 12..20 px inside. 0 when the
+ *  transition is sharp. */
+function pickupUnderBleed(
+  data: Uint8ClampedArray,
+  w: number,
+  h: number,
+  centreDocY: number,
+  strokeSize: number,
+): number {
+  const boundary = Math.round(PICKUP_UNDER_UNDER_X0 * w)
+  const half = Math.max(2, Math.round(strokeSize / 4))
+  const y0 = h - 1 - (centreDocY + half)
+  const y1 = h - 1 - (centreDocY - half) + 1
+  const far = meanRgbRect(
+    data,
+    w,
+    h,
+    boundary + PICKUP_UNDER_BLEED_FAR_PX,
+    boundary + PICKUP_UNDER_BLEED_SCAN_PX,
+    y0,
+    y1,
+  )
+  let worst = 0
+  for (let x = boundary; x <= boundary + PICKUP_UNDER_BLEED_SCAN_PX; x += 1) {
+    const col = meanRgbRect(data, w, h, x, x + 1, y0, y1)
+    const dev = Math.hypot(col[0] - far[0], col[1] - far[1], col[2] - far[2]) / 255
+    if (dev > 2 / 255) worst = Math.max(worst, x - boundary)
+  }
+  return worst
+}
+
+/** The scene's stripe / body / bleed readout on the committed capture. */
+function pickupUnderMetrics(
+  transparent: HTMLCanvasElement,
+  strokeSize: number,
+  underRef: readonly [number, number, number] | null,
+): Record<string, unknown> {
+  const ctx = transparent.getContext('2d')
+  if (!ctx) throw new Error('pickup-under: the export has no 2D context')
+  const w = transparent.width
+  const h = transparent.height
+  const data = ctx.getImageData(0, 0, w, h).data
+  const centreDocY = Math.round(PICKUP_UNDER_Y * h)
+  // The judged body's window, bounded by the smaller of the two brushes: the
+  // under is 250 px wide, so a larger judged stroke is profiled inside it.
+  const halfWindow = Math.max(6, Math.round(Math.min(strokeSize, PICKUP_UNDER_UNDER_SIZE) / 2) - 10)
+  const fine: Array<{ acRms: number; bandShare: number; peakPx: number }> = []
+  const wide: Array<{ acRms: number; bandShare: number; peakPx: number }> = []
+  for (const sx of PICKUP_UNDER_STATIONS) {
+    const series = pickupUnderStationSeries(data, w, h, sx * w, centreDocY, halfWindow)
+    fine.push(
+      shareSpectrum(series, {
+        stationPx: PICKUP_UNDER_STATION_PX,
+        bandLoPx: PICKUP_UNDER_BAND_LO_PX,
+        bandHiPx: PICKUP_UNDER_BAND_HI_PX,
+      }),
+    )
+    wide.push(
+      shareSpectrum(series, {
+        stationPx: PICKUP_UNDER_STATION_PX,
+        bandLoPx: BLEND_WORM_BAND_LO_PX,
+        bandHiPx: BLEND_WORM_BAND_HI_PX,
+      }),
+    )
+  }
+  const mean = (values: readonly number[]): number =>
+    values.length > 0 ? values.reduce((sum, value) => sum + value, 0) / values.length : 0
+  const median = (values: readonly number[]): number => {
+    const sorted = [...values].sort((a, b) => a - b)
+    return sorted.length > 0 ? sorted[Math.floor(sorted.length / 2)]! : 0
+  }
+  const stripeOf = (set: readonly { acRms: number; bandShare: number }[]): number =>
+    mean(set.map((s) => s.acRms * Math.sqrt(s.bandShare)))
+  const half = Math.max(2, Math.round(strokeSize / 4))
+  const y0 = h - 1 - (centreDocY + half)
+  const y1 = h - 1 - (centreDocY - half) + 1
+  const strokeRef = meanRgbRect(data, w, h, 0.24 * w, 0.26 * w, y0, y1)
+  const crossing = meanRgbRect(data, w, h, 0.45 * w, 0.85 * w, y0, y1)
+  let share = 0
+  if (underRef !== null) {
+    const axr = underRef[0] - strokeRef[0]
+    const axg = underRef[1] - strokeRef[1]
+    const axb = underRef[2] - strokeRef[2]
+    const axis2 = axr * axr + axg * axg + axb * axb
+    if (axis2 > 1e-6) {
+      share =
+        ((crossing[0] - strokeRef[0]) * axr +
+          (crossing[1] - strokeRef[1]) * axg +
+          (crossing[2] - strokeRef[2]) * axb) /
+        axis2
+    }
+  }
+  return {
+    pickupUnderStripeRms: round2(stripeOf(fine)),
+    pickupUnderStripeAc: round2(mean(fine.map((s) => s.acRms))),
+    pickupUnderStripePeakPx: round2(median(fine.map((s) => s.peakPx))),
+    pickupUnderStripeBandShare: round4(mean(fine.map((s) => s.bandShare))),
+    // The 4–32 px diagnostic band (the pre-existing n20 worm band): where the
+    // defect lives is a measured fact, never an assumption.
+    pickupUnderStripeWideRms: round2(stripeOf(wide)),
+    pickupUnderStripeWideAc: round2(mean(wide.map((s) => s.acRms))),
+    pickupUnderStripeWidePeakPx: round2(median(wide.map((s) => s.peakPx))),
+    pickupUnderStripeWideBandShare: round4(mean(wide.map((s) => s.bandShare))),
+    pickupUnderBodyShare: round4(share),
+    pickupUnderBodyMean: round2((strokeRef[0] + strokeRef[1] + strokeRef[2]) / 3),
+    pickupUnderStrokeRef: strokeRef.map((v) => round2(v)),
+    pickupUnderUnderRef: underRef === null ? null : underRef.map((v) => round2(v)),
+    pickupUnderBoundaryBleedPx: round2(pickupUnderBleed(data, w, h, centreDocY, strokeSize)),
+  }
+}
+
+/** The under's own visible colour where the judged body will cross it —
+ *  read on the sheet AFTER the under's fix (and its blur, for the blurred
+ *  control), BEFORE the judged stroke paints. */
+function pickupUnderRef(
+  engine: WatercolorEngine,
+  strokeSize: number,
+): readonly [number, number, number] {
+  const transparent = engine.exportCanvas('transparent')
+  const ctx = transparent.getContext('2d')
+  if (!ctx) throw new Error('pickup-under: the export has no 2D context')
+  const w = transparent.width
+  const h = transparent.height
+  const data = ctx.getImageData(0, 0, w, h).data
+  const centreDocY = Math.round(PICKUP_UNDER_Y * h)
+  const half = Math.max(2, Math.round(strokeSize / 4))
+  const y0 = h - 1 - (centreDocY + half)
+  const y1 = h - 1 - (centreDocY - half) + 1
+  return meanRgbRect(data, w, h, 0.45 * w, 0.65 * w, y0, y1)
+}
+
+/** `edgeLayerVisitReport`'s replay pattern for this scene: reset, pin the
+ *  stroke-start direction, replay the script once one-shot (`applyStroke`) and
+ *  once split (`renderPartialStrokes`), re-blurring between entries for the
+ *  blurred control. All three digests — the visit's and the two replays —
+ *  must agree. */
+function pickupUnderReplay(
+  adapter: ReturnType<typeof createAquarelleEngineAdapter>,
+  engine: WatercolorEngine,
+  sheet: number,
+  script: readonly ScriptEntry[],
+  kind: UnderKind,
+  visitDigest: string,
+  visitPixels: Uint8ClampedArray,
+): Record<string, unknown> {
+  const replay = (split: boolean): Digest => {
+    adapter.resetSheet()
+    pinStrokeStart(engine)
+    script.forEach((entry, index) => {
+      const stroke = makeStroke(entry)
+      if (split) {
+        // 261126 (Spec 10): the edge scenes' partial-first cadence — the
+        // whole stroke, then the completing call, then the applyStroke tail.
+        const partial = Math.max(2, Math.floor(stroke.pts.length))
+        adapter.renderPartialStrokes([{ stroke, pointCount: partial }])
+        adapter.renderPartialStrokes([{ stroke, pointCount: Number.MAX_SAFE_INTEGER }])
+        adapter.stepTick(0)
+      } else {
+        adapter.applyStroke(stroke)
+      }
+      const settle = entry.settle ?? SETTLE_TICKS
+      for (let tick = 0; tick <= settle; tick += 1) adapter.stepTick(tick)
+      adapter.fix()
+      if (kind === 'blurred' && script.length === 2 && index === 0) {
+        blurWholeSheet(engine, sheet)
+      }
+    })
+    return digestCanvas(engine.exportCanvas('transparent'))
+  }
+  const oneShot = replay(false)
+  const split = replay(true)
+  const delta = edgePixelDelta(visitPixels, oneShot.pixels)
+  return {
+    pickupUnderReplayIdentical: oneShot.digest === visitDigest && split.digest === visitDigest,
+    pickupUnderReplayDigest: oneShot.digest,
+    pickupUnderReplaySplitDigest: split.digest,
+    pickupUnderReplayMaxDelta: delta.max,
+    pickupUnderReplayDiffTexels: delta.texels,
+  }
+}
+
+/** The 1:1 crossing crop: boundary - 40 .. boundary + size + 40 px,
+ *  y +- (size/2 + 20) px, on white. */
+function pickupUnderCrop(transparent: HTMLCanvasElement, strokeSize: number): string {
+  const w = transparent.width
+  const h = transparent.height
+  const boundary = Math.round(PICKUP_UNDER_UNDER_X0 * w)
+  const x0 = Math.max(0, boundary - 40)
+  const x1 = Math.min(w, Math.round(boundary + strokeSize + 40))
+  const gy = h - 1 - Math.round(PICKUP_UNDER_Y * h)
+  const half = Math.round(strokeSize / 2 + 20)
+  const y0 = Math.max(0, gy - half)
+  const y1 = Math.min(h, gy + half)
+  const out = document.createElement('canvas')
+  out.width = Math.max(1, x1 - x0)
+  out.height = Math.max(1, y1 - y0)
+  const ctx = out.getContext('2d')!
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(0, 0, out.width, out.height)
+  ctx.imageSmoothingEnabled = false
+  ctx.drawImage(transparent, x0, y0, out.width, out.height, 0, 0, out.width, out.height)
+  return out.toDataURL('image/png')
+}
+
 // --- Spec 10: the per-stroke translucent stroke layer (spike 006) -----------
 //
 // Edge transparency is a LATERAL alpha that lets the underlayer through in
@@ -2491,8 +3008,9 @@ const EDGE_4K_REQUEST = 4096
  *  exists only on the layer path) and, since Spec 11, `feather-noise` (where
  *  `--falloff` means FEATHER falloff, and `--edge` writes the Edge pair with
  *  its Edge falloff fixed at 50 — the Edge falloff is out of that quick's
- *  scope). A value on any other scenario is refused, never silently ignored.
- *  Absent keeps the canonical defaults 0 / 50. */
+ *  scope). quick 261127-khp adds `pickup-under`, whose judged stroke carries
+ *  the same Edge pair. A value on any other scenario is refused, never
+ *  silently ignored. Absent keeps the canonical defaults 0 / 50. */
 function readEdgeKnob(name: 'edge' | 'falloff', scenario: string, fallback: number): number {
   const raw = new URLSearchParams(location.search).get(name)
   if (raw === null || raw === '') return fallback
@@ -2501,10 +3019,11 @@ function readEdgeKnob(name: 'edge' | 'falloff', scenario: string, fallback: numb
     scenario !== 'edge-rim' &&
     scenario !== 'bristle-end' &&
     scenario !== 'bristle-line' &&
-    scenario !== 'feather-noise'
+    scenario !== 'feather-noise' &&
+    scenario !== 'pickup-under'
   ) {
     throw new Error(
-      `--${name} is only valid with --scenario edge-layer, edge-rim, bristle-end, bristle-line or feather-noise`,
+      `--${name} is only valid with --scenario edge-layer, edge-rim, bristle-end, bristle-line, feather-noise or pickup-under`,
     )
   }
   const value = Number(raw)
@@ -2529,7 +3048,8 @@ function readEdgeWetUnder(scenario: string): boolean {
  *  on `edge-layer`, `edge-rim` and (the cap leg) `bristle-end`; 261126-n20
  *  adds `bristle-line` (the ridge layer arm) and `bristle-blend` (the blend
  *  scene's own judged stroke — the artist's Pickup 100 default, with 0 as the
- *  inert control). */
+ *  inert control). quick 261127-khp adds `pickup-under`, where the judged
+ *  stroke's Pickup is the scene's whole point. */
 function readEdgePickup(scenario: string): number | null {
   const raw = new URLSearchParams(location.search).get('pickup')
   if (raw === null || raw === '') return null
@@ -2538,10 +3058,11 @@ function readEdgePickup(scenario: string): number | null {
     scenario !== 'edge-rim' &&
     scenario !== 'bristle-end' &&
     scenario !== 'bristle-line' &&
-    scenario !== 'bristle-blend'
+    scenario !== 'bristle-blend' &&
+    scenario !== 'pickup-under'
   ) {
     throw new Error(
-      '--pickup is only valid with --scenario edge-layer, edge-rim, bristle-end, bristle-line or bristle-blend',
+      '--pickup is only valid with --scenario edge-layer, edge-rim, bristle-end, bristle-line, bristle-blend or pickup-under',
     )
   }
   const value = Number(raw)
@@ -2554,8 +3075,9 @@ function readEdgePickup(scenario: string): number | null {
 /** 261126-hgl: the feather operand — null keeps the acrylic record's own
  *  Feather 85. Valid on `edge-layer`, (the cap leg) `bristle-end`, `edge-rim`
  *  and, since Spec 11, `feather-noise` — the scene whose whole bar set is
- *  judged against the feather that produced it. Refused elsewhere, never
- *  silently ignored. */
+ *  judged against the feather that produced it. quick 261127-khp adds
+ *  `pickup-under` (accepted, though its judged stroke keeps the record's 85).
+ *  Refused elsewhere, never silently ignored. */
 function readEdgeFeather(scenario: string): number | null {
   const raw = new URLSearchParams(location.search).get('feather')
   if (raw === null || raw === '') return null
@@ -2563,10 +3085,11 @@ function readEdgeFeather(scenario: string): number | null {
     scenario !== 'edge-layer' &&
     scenario !== 'edge-rim' &&
     scenario !== 'bristle-end' &&
-    scenario !== 'feather-noise'
+    scenario !== 'feather-noise' &&
+    scenario !== 'pickup-under'
   ) {
     throw new Error(
-      '--feather is only valid with --scenario edge-layer, edge-rim, bristle-end or feather-noise',
+      '--feather is only valid with --scenario edge-layer, edge-rim, bristle-end, feather-noise or pickup-under',
     )
   }
   const value = Number(raw)
@@ -7919,7 +8442,11 @@ function run(
             scenario === 'edge-rim' ||
             // quick 261126-v8j (Spec 11): the feather-noise scene paints the
             // SAME bristle-round line — the gather is what carries the law.
-            scenario === 'feather-noise'
+            scenario === 'feather-noise' ||
+            // quick 261127-khp: the pickup-under scene's judged stroke is the
+            // same bristle-round line (its flat-under control overrides to
+            // the default `round` on that entry alone).
+            scenario === 'pickup-under'
           ? 'bristle-round'
           : undefined)
   // bristle-end: which end path this capture drives. Read before any stroke
@@ -7977,7 +8504,14 @@ function run(
                                     ? edgeRimScript()
                                     : scenario === 'feather-noise'
                                       ? featherNoiseScript(strokeSize)
-                                      : neutralScript(emboss, body)
+                                      : scenario === 'pickup-under'
+                                        ? pickupUnderScript(
+                                            PICKUP_UNDER_KIND,
+                                            strokeSize,
+                                            EDGE_LAYER_PICKUP,
+                                            EDGE_LAYER_AMOUNT,
+                                          )
+                                        : neutralScript(emboss, body)
 
   // 261119-pod (D-F): the scene-parameter echo — `dry` appears in the report
   // only when a script pins it, so every capture records the calibration and a
@@ -8298,13 +8832,45 @@ function run(
       }
       edgeRimBody = { under: rimBodyUnder, layer: rimBodyLayer, deposit: rimBodyDeposit }
     }
+    // quick 261127-khp: the pickup-under visit's own drive. It is the SAME
+    // split cadence its replay runs (`renderPartialStrokes` to completion, the
+    // `applyStroke` clock+tick tail as `stepTick(0)`, then the settle ticks
+    // and ONE fix), so the visit digest and both replay digests are the same
+    // measurement. Between the under's fix and the judged stroke it reads the
+    // under's own visible colour (the body-share reference lives on the sheet
+    // BEFORE the judged film paints over it) and, for the `blurred` control,
+    // box-blurs the sheet's five paint layers in place.
+    let pickupUnderUnderRef: readonly [number, number, number] | null = null
+    if (scenario === 'pickup-under') {
+      pinStrokeStart(engine)
+      let underEntry = 0
+      for (const entry of script) {
+        const stroke = makeStroke(entry)
+        const partial = Math.max(2, Math.floor(stroke.pts.length))
+        adapter.renderPartialStrokes([{ stroke, pointCount: partial }])
+        adapter.renderPartialStrokes([{ stroke, pointCount: Number.MAX_SAFE_INTEGER }])
+        adapter.stepTick(0)
+        const settle = entry.settle ?? SETTLE_TICKS
+        for (let tick = 0; tick <= settle; tick += 1) adapter.stepTick(tick)
+        adapter.fix()
+        if (script.length === 2 && underEntry === 0) {
+          if (PICKUP_UNDER_KIND === 'blurred') blurWholeSheet(engine, sheet)
+          const refStart = performance.now()
+          pickupUnderUnderRef = pickupUnderRef(engine, strokeSize)
+          captureMs += performance.now() - refStart
+        }
+        underEntry += 1
+      }
+    }
     script.forEach((entry, index) => {
       // Spec 10: the edge-layer visit drives its own split strokes above (the
       // only way to read a layer before the stroke-end merge clears it), so
       // the shared loop is a no-op here — never a second drive. 261126-hgl:
       // the rim scene drives its own two strokes for the same reason (its
-      // readout is the foreground's merge moment).
-      if (scenario === 'edge-layer' || scenario === 'edge-rim') return
+      // readout is the foreground's merge moment). quick 261127-khp: the
+      // pickup-under visit drives its own split pair above for the replay
+      // parity the scene's bar reads.
+      if (scenario === 'edge-layer' || scenario === 'edge-rim' || scenario === 'pickup-under') return
       // 64-24: the acceptance's clock-only age — the virtual clock moves, the
       // fluid does not, so "thirty seconds old" and "just re-wetted" are
       // independent facts. Applied BEFORE the entry, so the entry's own dabs
@@ -8426,7 +8992,10 @@ function run(
       scenario.startsWith('bristle-') ||
       scenario === 'edge-layer' ||
       scenario === 'edge-rim' ||
-      scenario === 'feather-noise'
+      scenario === 'feather-noise' ||
+      // quick 261127-khp: the pickup-under scene paints the same bristle
+      // line (`bristleContent`), so the film-blur exclusion applies.
+      scenario === 'pickup-under'
         ? visibleAlphaSkipped(BRISTLE_VISIBLE_ALPHA_SKIP)
         : visibleAlphaCheck(pigment.pixels, transparent.pixels, sheet)
 
@@ -8646,6 +9215,36 @@ function run(
           ? edgeRimReport(engine, sheet, transparentCanvas, edgeRimCapture, edgeRimBody)
           : {}
 
+    // quick 261127-khp: the pickup-under report. LAST for the same reason the
+    // edge report is last — its replay resets the sheet and re-drives the
+    // script, so every export digest above is already read and nothing this
+    // block reports can be perturbed by it. The recipe echoes ride every
+    // capture so a JSON can never be misread for another under kind.
+    const pickupUnderReport =
+      scenario === 'pickup-under'
+        ? {
+            pickupUnderKind: PICKUP_UNDER_KIND,
+            pickupUnderSize: strokeSize,
+            pickupUnderPickup: EDGE_LAYER_PICKUP ?? 100,
+            pickupUnderEdge: EDGE_LAYER_AMOUNT,
+            pickupUnderBlue: PICKUP_UNDER_BLUE,
+            pickupUnderYellow: PICKUP_UNDER_YELLOW,
+            pickupUnderBoundaryX: PICKUP_UNDER_UNDER_X0,
+            ...pickupUnderMetrics(transparentCanvas, strokeSize, pickupUnderUnderRef),
+            ...pickupUnderReplay(
+              adapter,
+              engine,
+              sheet,
+              script,
+              PICKUP_UNDER_KIND,
+              transparent.digest,
+              transparent.pixels,
+            ),
+            pngMid: pickupUnderCrop(transparentCanvas, strokeSize),
+            pngTransparent: transparentCanvas.toDataURL('image/png'),
+          }
+        : {}
+
     writeResult({
       gate,
       scenario,
@@ -8680,6 +9279,7 @@ function run(
       ...tipReport,
       ...embossSmoothReport,
       ...edgeReport,
+      ...pickupUnderReport,
       ...coverLifecycle,
       renderer,
       verdict: 'MEDIUM-ENGINE CAPTURED',
@@ -8753,13 +9353,14 @@ function readBrush(): string | undefined {
  *  The closed list here and the one in run.mjs must stay literal-identical:
  *  a name accepted by the parser but unknown to the probe fails at capture,
  *  and a name the probe knows but the parser rejects can never be requested.
- *  261126-n20 (issue 3) adds `bristle-blend`, the two-colour blend-worm scene. */
+ *  261126-n20 (issue 3) adds `bristle-blend`, the two-colour blend-worm scene.
+ *  quick 261127-khp adds `pickup-under`, the pickup-under aliasing scene. */
 function readScenario(): string {
   const raw = new URLSearchParams(location.search).get('scenario')
   if (raw === null || raw === '') return 'neutral'
-  if (raw !== 'cover' && raw !== 'cover-over-wet' && raw !== 'watercolor-50' && raw !== 'white-over-blue' && raw !== 'cover-advect' && raw !== 'cover-lift' && raw !== 'cover-textured' && raw !== 'red-over-blue-50' && raw !== 'bristle-edge' && raw !== 'bristle-wet' && raw !== 'bristle-line' && raw !== 'bristle-blend' && raw !== 'bristle-tip' && raw !== 'bristle-end' && raw !== 'emboss-smooth' && raw !== 'edge-layer' && raw !== 'edge-rim' && raw !== 'feather-noise') {
+  if (raw !== 'cover' && raw !== 'cover-over-wet' && raw !== 'watercolor-50' && raw !== 'white-over-blue' && raw !== 'cover-advect' && raw !== 'cover-lift' && raw !== 'cover-textured' && raw !== 'red-over-blue-50' && raw !== 'bristle-edge' && raw !== 'bristle-wet' && raw !== 'bristle-line' && raw !== 'bristle-blend' && raw !== 'bristle-tip' && raw !== 'bristle-end' && raw !== 'emboss-smooth' && raw !== 'edge-layer' && raw !== 'edge-rim' && raw !== 'feather-noise' && raw !== 'pickup-under') {
     throw new Error(
-      `invalid scenario "${raw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue", "cover-advect", "cover-lift", "cover-textured", "red-over-blue-50", "bristle-edge", "bristle-wet", "bristle-line", "bristle-blend", "feather-noise", "bristle-end", "emboss-smooth", "edge-layer", "edge-rim" or "bristle-tip")`,
+      `invalid scenario "${raw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue", "cover-advect", "cover-lift", "cover-textured", "red-over-blue-50", "bristle-edge", "bristle-wet", "bristle-line", "bristle-blend", "feather-noise", "bristle-end", "emboss-smooth", "edge-layer", "edge-rim", "pickup-under" or "bristle-tip")`,
     )
   }
   return raw
@@ -8824,6 +9425,9 @@ function main(): void {
     // (refused off this scene), the `--edge` layer switch and the `--falloff`
     // value already read above (on this scene it means FEATHER falloff).
     FEATHER_NOISE_KNOBS = readFeatherNoiseKnobs(scenario)
+    // quick 261127-khp: the pickup-under operand — refused off its scene and
+    // on any unknown value, so a typo can never silently paint another control.
+    PICKUP_UNDER_KIND = readUnderKind(scenario)
     sheet = readSize()
     brush = readBrush()
     emboss = readEmboss()

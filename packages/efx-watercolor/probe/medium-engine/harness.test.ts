@@ -2352,10 +2352,11 @@ describe('the edge-layer gate (Spec 10)', () => {
       // layer operands; 261126-hgl's `edge-rim` reads them too, 261126-n20
       // adds `bristle-line` (the ridge layer arm), and quick 261126-v8j's
       // `feather-noise` reads them as FEATHER falloff / the Edge switch, so
-      // the refusal names all five scenes.
+      // the refusal names all five scenes; quick 261127-khp's `pickup-under`
+      // judges the same Edge pair on its own scene.
       expectContains(
         PROBE,
-        '`--${name} is only valid with --scenario edge-layer, edge-rim, bristle-end, bristle-line or feather-noise`',
+        '`--${name} is only valid with --scenario edge-layer, edge-rim, bristle-end, bristle-line, feather-noise or pickup-under`',
       )
       expectContains(
         PROBE,
@@ -2367,18 +2368,18 @@ describe('the edge-layer gate (Spec 10)', () => {
       )
       expectContains(
         RUN,
-        '--edge is only valid with --scenario edge-layer, edge-rim, bristle-end, bristle-line or feather-noise',
+        '--edge is only valid with --scenario edge-layer, edge-rim, bristle-end, bristle-line, feather-noise or pickup-under',
       )
       expectContains(
         RUN,
-        '--falloff is only valid with --scenario edge-layer, edge-rim, bristle-end, bristle-line or feather-noise',
+        '--falloff is only valid with --scenario edge-layer, edge-rim, bristle-end, bristle-line, feather-noise or pickup-under',
       )
       expectContains(RUN, '`&edge=${edge}`')
       expectContains(RUN, '`&falloff=${falloff}`')
     })
 
     it('reads the layer knobs on bristle-line only with --edge as the switch', () => {
-      expectContains(RUN, "const LAYER_SCENES = ['edge-layer', 'edge-rim', 'bristle-end', 'bristle-line']")
+      expectContains(RUN, "const LAYER_SCENES = ['edge-layer', 'edge-rim', 'bristle-end', 'bristle-line', 'pickup-under']")
       expectContains(PROBE, 'readLineOverrides(),')
       expectContains(
         PROBE,
@@ -2399,7 +2400,7 @@ describe('the edge-layer gate (Spec 10)', () => {
       // moved with the operand law, never silently.
       expectContains(
         RUN,
-        "const LAYER_SCENES = ['edge-layer', 'edge-rim', 'bristle-end', 'bristle-line']",
+        "const LAYER_SCENES = ['edge-layer', 'edge-rim', 'bristle-end', 'bristle-line', 'pickup-under']",
       )
     })
 
@@ -2474,7 +2475,7 @@ describe('the edge-layer gate (Spec 10)', () => {
       // enumeration (an operand not enumerated never reaches the page).
       expectContains(
         RUN,
-        '--stroke-size is only valid with --scenario bristle-line, bristle-end, bristle-blend or feather-noise',
+        '--stroke-size is only valid with --scenario bristle-line, bristle-end, bristle-blend, feather-noise or pickup-under',
       )
       expectContains(RUN, "const noise = readEndPercent('--noise', ['feather-noise'])")
       expectContains(RUN, '`&noise=${noise}`')
@@ -3185,7 +3186,7 @@ describe('the blend share-spectrum detector (261126-n20 task 3)', () => {
     expectContains(RUN, "const PICKUP_SCENES = [...LAYER_SCENES, 'bristle-blend']")
     expectContains(
       PROBE,
-      "'--pickup is only valid with --scenario edge-layer, edge-rim, bristle-end, bristle-line or bristle-blend'",
+      "'--pickup is only valid with --scenario edge-layer, edge-rim, bristle-end, bristle-line, bristle-blend or pickup-under'",
     )
     expectContains(RUN, "scenario !== 'bristle-blend'")
     // The other knobs stay refused on it.
@@ -3213,6 +3214,56 @@ describe('the blend share-spectrum detector (261126-n20 task 3)', () => {
     expectContains(PROBE, 'alongSum += detrendedRms(series)')
     // The console report prints the blend line.
     expectContains(RUN, 'blend      : COMMITTED size')
+  })
+
+  it('registers the pickup-under scene, its under operand and its readout (261127-khp task 1)', () => {
+    // The scenario enters BOTH closed lists, appended LAST so every earlier
+    // adjacency pin survives as a prefix; the message names it BEFORE the
+    // final "bristle-tip" clause, so the `or "bristle-tip")` pins stay green.
+    expectContains(PROBE, "raw !== 'feather-noise' && raw !== 'pickup-under'")
+    expectContains(RUN, "scenarioRaw !== 'feather-noise' && scenarioRaw !== 'pickup-under'")
+    expectContains(PROBE, '"edge-rim", "pickup-under" or "bristle-tip"')
+    expectContains(RUN, '"edge-rim", "pickup-under" or "bristle-tip"')
+    // The `--under` operand: parsed in run.mjs, refused off the scene and on
+    // any unknown value, forwarded through the explicit pageQuery enumeration.
+    expectContains(RUN, "const underFlag = args.indexOf('--under')")
+    expectContains(RUN, '`invalid --under "${underRaw}" (expected painted, flat, blurred or none)`')
+    expectContains(RUN, "console.error('--under is only valid with --scenario pickup-under')")
+    expectContains(RUN, "(under === undefined ? '' : `&under=${under}`)")
+    expectContains(PROBE, 'function readUnderKind(scenario: string): UnderKind {')
+    expectContains(PROBE, "throw new Error('--under is only valid with --scenario pickup-under')")
+    expectContains(PROBE, '`invalid under "${raw}" (expected painted, flat, blurred or none)`')
+    // The scene constants: the artist's exact pair.
+    expectContains(PROBE, "const PICKUP_UNDER_BLUE = '#1a88ec'")
+    expectContains(PROBE, "const PICKUP_UNDER_YELLOW = '#f9e01c'")
+    expectContains(PROBE, 'const PICKUP_UNDER_UNDER_SIZE = 250')
+    // The blurred control: the five paint layers' half-float box mean, the
+    // sheet restored in place (wet/relief/lastTouch skipped by name).
+    expectContains(PROBE, 'function blurWholeSheet(engine: WatercolorEngine, sheet: number): void {')
+    expectContains(PROBE, 'whole.layers[key] = blurHalfLayer(src, w, h, 4)')
+    expectContains(PROBE, "from '../../src/playground/half'")
+    // The report: the recipe echoes, the stripe spectrum (fine + the 4-32 px
+    // diagnostic), the body share, the bleed, the replay verdict and the crop.
+    expectContains(PROBE, 'pickupUnderKind: PICKUP_UNDER_KIND,')
+    expectContains(PROBE, 'pickupUnderSize: strokeSize,')
+    expectContains(PROBE, 'pickupUnderPickup: EDGE_LAYER_PICKUP ?? 100,')
+    expectContains(PROBE, 'pickupUnderEdge: EDGE_LAYER_AMOUNT,')
+    expectContains(PROBE, 'pickupUnderStripeRms:')
+    expectContains(PROBE, 'pickupUnderStripePeakPx:')
+    expectContains(PROBE, 'pickupUnderStripeWideRms:')
+    expectContains(PROBE, 'pickupUnderBodyShare:')
+    expectContains(PROBE, 'pickupUnderBoundaryBleedPx:')
+    expectContains(PROBE, 'pickupUnderReplayIdentical:')
+    expectContains(PROBE, 'pngMid: pickupUnderCrop(transparentCanvas, strokeSize),')
+    expectContains(PROBE, 'PICKUP_UNDER_KIND = readUnderKind(scenario)')
+    // The visit skips the shared drive and rides the split cadence its replay
+    // re-runs, so the two digests are the same measurement.
+    expectContains(
+      PROBE,
+      "if (scenario === 'edge-layer' || scenario === 'edge-rim' || scenario === 'pickup-under') return",
+    )
+    expectContains(PROBE, "if (scenario === 'pickup-under') {")
+    expectContains(PROBE, 'pinStrokeStart(engine)')
   })
 })
 

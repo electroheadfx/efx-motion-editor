@@ -311,6 +311,26 @@
 //                                     yellow understory + one judged stroke;
 //                                     across share spectrum (worm bars)
 //
+//  quick 261127-khp adds `--scenario pickup-under` — the pickup-under
+//  aliasing scene. The artist's exact pair: a `#1a88ec` bristle-round under
+//  (Size 250, acrylic record, Pickup 100, Dry 0, Edge 0) from x 0.35 to 0.92
+//  at y 0.52, fixed; then a `#f9e01c` judged stroke (same record,
+//  `--stroke-size`, `--pickup`, `--edge` with falloff 50) from x 0.10 to 0.90
+//  at the same y, settled and fixed. The report carries the run-scale stripe
+//  spectrum (0.5 px stations, the 1–3 px band plus a 4–32 px diagnostic), the
+//  body under-share, the boundary bleed, the replay digests, the recipe
+//  echoes and a 1:1 crossing crop. `--under painted|flat|blurred|none`
+//  selects the under kind (painted is the artist's recipe; flat is a plain
+//  watercolour band; blurred box-blurs the five paint layers after the
+//  under's fix; none is bare paper). The flag is refused on every other
+//  scenario and on any unknown value.
+//             [--scenario pickup-under]
+//                                     blue bristle under + yellow judged
+//                                     stroke; stripe/bleed/replay readout
+//             [--under <painted|flat|blurred|none>]
+//                                     pickup-under only: which under the judged
+//                                     stroke crosses (default painted)
+//
 //  The scenario closed lists here and in probe.ts (readScenario) must stay
 //  literal-identical: a name accepted here but unknown to the probe fails at
 //  capture, and a name the probe knows but this parser rejects can never be
@@ -336,7 +356,7 @@ const gateFlag = args.indexOf('--gate')
 const gate = gateFlag >= 0 ? args[gateFlag + 1] : undefined
 if (!gate) {
   console.error(
-    'usage: node run.mjs --gate <name> [--scenario cover|cover-over-wet|cover-advect|cover-lift|watercolor-50|white-over-blue|cover-textured|red-over-blue-50|bristle-edge|bristle-wet|bristle-line|bristle-blend|bristle-end|bristle-tip|emboss-smooth|edge-layer|edge-rim|feather-noise] [--edge <0..100>] [--falloff <0..100>] [--noise <0..100>] [--pickup <0..100>] [--wet-under] [--emboss <-100..100>] [--body <0..100>] [--light <0..4>] [--size <32..4096>] [--brush <id>] [--wet-mode <0|1>] [--texture <mask id>] [--drive <stop|lift|decay|mouse|mouse-lift|bake>] [--stroke-size <1..800>] [--dry <0..100>] [--feather <0..100>] [--release <0..1>]   (e.g. neutral-identity; --feather also on --scenario edge-layer / edge-rim; --noise / --falloff on --scenario feather-noise)',
+    'usage: node run.mjs --gate <name> [--scenario cover|cover-over-wet|cover-advect|cover-lift|watercolor-50|white-over-blue|cover-textured|red-over-blue-50|bristle-edge|bristle-wet|bristle-line|bristle-blend|bristle-end|bristle-tip|emboss-smooth|edge-layer|edge-rim|feather-noise|pickup-under] [--edge <0..100>] [--falloff <0..100>] [--noise <0..100>] [--pickup <0..100>] [--under <painted|flat|blurred|none>] [--wet-under] [--emboss <-100..100>] [--body <0..100>] [--light <0..4>] [--size <32..4096>] [--brush <id>] [--wet-mode <0|1>] [--texture <mask id>] [--drive <stop|lift|decay|mouse|mouse-lift|bake>] [--stroke-size <1..800>] [--dry <0..100>] [--feather <0..100>] [--release <0..1>]   (e.g. neutral-identity; --feather also on --scenario edge-layer / edge-rim; --noise / --falloff on --scenario feather-noise; --under on --scenario pickup-under)',
   )
   console.error(
     '       every operand except --gate is optional and additive; an omitted operand writes no key/value, so the neutral gate keeps reproducing the committed baseline',
@@ -403,9 +423,9 @@ const scenarioFlag = args.indexOf('--scenario')
 const scenarioRaw = scenarioFlag >= 0 ? args[scenarioFlag + 1] : undefined
 let scenario
 if (scenarioRaw !== undefined) {
-  if (scenarioRaw !== 'cover' && scenarioRaw !== 'cover-over-wet' && scenarioRaw !== 'watercolor-50' && scenarioRaw !== 'white-over-blue' && scenarioRaw !== 'cover-advect' && scenarioRaw !== 'cover-lift' && scenarioRaw !== 'cover-textured' && scenarioRaw !== 'red-over-blue-50' && scenarioRaw !== 'bristle-edge' && scenarioRaw !== 'bristle-wet' && scenarioRaw !== 'bristle-line' && scenarioRaw !== 'bristle-blend' && scenarioRaw !== 'bristle-tip' && scenarioRaw !== 'bristle-end' && scenarioRaw !== 'emboss-smooth' && scenarioRaw !== 'edge-layer' && scenarioRaw !== 'edge-rim' && scenarioRaw !== 'feather-noise') {
+  if (scenarioRaw !== 'cover' && scenarioRaw !== 'cover-over-wet' && scenarioRaw !== 'watercolor-50' && scenarioRaw !== 'white-over-blue' && scenarioRaw !== 'cover-advect' && scenarioRaw !== 'cover-lift' && scenarioRaw !== 'cover-textured' && scenarioRaw !== 'red-over-blue-50' && scenarioRaw !== 'bristle-edge' && scenarioRaw !== 'bristle-wet' && scenarioRaw !== 'bristle-line' && scenarioRaw !== 'bristle-blend' && scenarioRaw !== 'bristle-tip' && scenarioRaw !== 'bristle-end' && scenarioRaw !== 'emboss-smooth' && scenarioRaw !== 'edge-layer' && scenarioRaw !== 'edge-rim' && scenarioRaw !== 'feather-noise' && scenarioRaw !== 'pickup-under') {
     console.error(
-      `invalid --scenario "${scenarioRaw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue", "cover-advect", "cover-lift", "cover-textured", "red-over-blue-50", "bristle-edge", "bristle-wet", "bristle-line", "bristle-blend", "feather-noise", "bristle-end", "emboss-smooth", "edge-layer", "edge-rim" or "bristle-tip")`,
+      `invalid --scenario "${scenarioRaw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue", "cover-advect", "cover-lift", "cover-textured", "red-over-blue-50", "bristle-edge", "bristle-wet", "bristle-line", "bristle-blend", "feather-noise", "bristle-end", "emboss-smooth", "edge-layer", "edge-rim", "pickup-under" or "bristle-tip")`,
     )
     process.exit(1)
   }
@@ -422,7 +442,7 @@ if (scenarioRaw !== undefined) {
 // 261126-n20 (issue 2): `bristle-line` joins as the ridge task's layer arm —
 // the lateral MIN field exists only on the layer path, so a ridge that appears
 // only there is a different mechanism from the sheet path the artist used.
-const LAYER_SCENES = ['edge-layer', 'edge-rim', 'bristle-end', 'bristle-line']
+const LAYER_SCENES = ['edge-layer', 'edge-rim', 'bristle-end', 'bristle-line', 'pickup-under']
 // quick 261126-v8j (Spec 11): `feather-noise` reads the same two operands —
 // on THAT scene `--falloff` means FEATHER falloff, and `--edge` writes the
 // Edge pair with its Edge falloff fixed at 50. LAYER_SCENES itself stays the
@@ -439,7 +459,7 @@ if (edgeRaw !== undefined) {
     process.exit(1)
   }
   if (!layerScene) {
-    console.error('--edge is only valid with --scenario edge-layer, edge-rim, bristle-end, bristle-line or feather-noise')
+    console.error('--edge is only valid with --scenario edge-layer, edge-rim, bristle-end, bristle-line, feather-noise or pickup-under')
     process.exit(1)
   }
   edge = value
@@ -455,7 +475,7 @@ if (falloffRaw !== undefined) {
     process.exit(1)
   }
   if (!layerScene) {
-    console.error('--falloff is only valid with --scenario edge-layer, edge-rim, bristle-end, bristle-line or feather-noise')
+    console.error('--falloff is only valid with --scenario edge-layer, edge-rim, bristle-end, bristle-line, feather-noise or pickup-under')
     process.exit(1)
   }
   falloff = value
@@ -481,7 +501,7 @@ if (pickupRaw !== undefined) {
   }
   if (!PICKUP_SCENES.includes(scenario)) {
     console.error(
-      '--pickup is only valid with --scenario edge-layer, edge-rim, bristle-end, bristle-line or bristle-blend',
+      '--pickup is only valid with --scenario edge-layer, edge-rim, bristle-end, bristle-line, bristle-blend or pickup-under',
     )
     process.exit(1)
   }
@@ -542,9 +562,11 @@ if (strokeSizeRaw !== undefined) {
     scenario !== 'bristle-end' &&
     scenario !== 'bristle-blend' &&
     // quick 261126-v8j (Spec 11): the feather-noise sweep's size axis.
-    scenario !== 'feather-noise'
+    scenario !== 'feather-noise' &&
+    // quick 261127-khp: the pickup-under scene's judged-stroke size axis.
+    scenario !== 'pickup-under'
   ) {
-    console.error('--stroke-size is only valid with --scenario bristle-line, bristle-end, bristle-blend or feather-noise')
+    console.error('--stroke-size is only valid with --scenario bristle-line, bristle-end, bristle-blend, feather-noise or pickup-under')
     process.exit(1)
   }
   strokeSize = value
@@ -700,6 +722,24 @@ const feather = readEndPercent('--feather', EDGE_KNOB_SCENES)
 // The feather-noise operand (Spec 11): 0..100, this scene only. `--falloff`
 // on the same scene means FEATHER falloff (see EDGE_KNOB_SCENES above).
 const noise = readEndPercent('--noise', ['feather-noise'])
+// quick 261127-khp: the pickup-under operand — which under the judged stroke
+// crosses. `painted` is the artist's recipe (absent keeps it); the other three
+// are the scene's own controls. Refused off the scene and on any unknown
+// value, so a typo can never silently paint bare paper.
+const underFlag = args.indexOf('--under')
+const underRaw = underFlag >= 0 ? args[underFlag + 1] : undefined
+let under
+if (underRaw !== undefined) {
+  if (underRaw !== 'painted' && underRaw !== 'flat' && underRaw !== 'blurred' && underRaw !== 'none') {
+    console.error(`invalid --under "${underRaw}" (expected painted, flat, blurred or none)`)
+    process.exit(1)
+  }
+  if (scenario !== 'pickup-under') {
+    console.error('--under is only valid with --scenario pickup-under')
+    process.exit(1)
+  }
+  under = underRaw
+}
 
 const releaseFlag = args.indexOf('--release')
 const releaseRaw = releaseFlag >= 0 ? args[releaseFlag + 1] : undefined
@@ -746,6 +786,9 @@ const pageQuery =
   // enumeration — an operand parsed but not forwarded never reaches the page,
   // and every noise-100 cell would render at noise 0.
   (noise === undefined ? '' : `&noise=${noise}`) +
+  // quick 261127-khp: same law as `--noise` above — an operand parsed but not
+  // forwarded never reaches the page, and every cell would paint `painted`.
+  (under === undefined ? '' : `&under=${under}`) +
   (release === undefined ? '' : `&release=${release}`)
 const resultPath = join(outDir, `${gate}.json`)
 
