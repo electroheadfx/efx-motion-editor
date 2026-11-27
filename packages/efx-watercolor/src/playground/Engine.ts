@@ -34,7 +34,10 @@ import {
   bristleContactPressure,
   bristleCount,
   bristleSampleScale,
+  featherNoiseBlurU,
   featherNoiseDrive,
+  featherNoiseFeaturePx,
+  FEATHER_NOISE_DEPTH,
   FEATHER_NOISE_LIFT,
   gatherSoftness,
   LAST_TOUCH_DRY_SECONDS,
@@ -4018,9 +4021,9 @@ export class WatercolorEngine {
 
   /**
    * Spec 11 (2026-11-27): the gather program for the CURRENT params. The
-   * shipped (neutral) programs stay bound until the DRIVEN noise leaves the
-   * flat 0..20 block or the falloff leaves 50; the law variants compile once,
-   * on that first non-neutral draw — never at construction.
+   * shipped (neutral) programs stay bound while the driven noise is 0 and the
+   * falloff is 50; the law variants compile once, on that first non-neutral
+   * draw — never at construction.
    */
   private gatherProgram(
     which: 'bristleDeposit' | 'bristleCover' | 'bristleRelief' | 'bristleCoverLayer',
@@ -4042,6 +4045,9 @@ export class WatercolorEngine {
 
   private bindGather(p: Program, x: number, y: number, r: number, angle: number, pr: number, alongPx: number, endCap = false): void {
     const { gl, g } = this;
+    // The dab's half-width in doc texels — one quantity for the gather's
+    // lateral laws and the feather noise's brush-relative feature size.
+    const halfWidthPx = r * this.dh;
     gl.uniform1i(p.u.uPaintA!, g.bindTex(0, this.bristles.read.tex[0]!));
     gl.uniform1i(p.u.uPaintB!, g.bindTex(1, this.bristles.read.tex[1]!));
     gl.uniform1i(p.u.uState!, g.bindTex(2, this.bristles.read.tex[2]!));
@@ -4074,14 +4080,17 @@ export class WatercolorEngine {
     gl.uniform1f(p.u.uLayerEdge!, BRISTLE_LAYER_EDGE);
     gl.uniform1f(p.u.uEdgeFade!, clamp(this.params.edgeFade, 0, 1));
     gl.uniform1f(p.u.uEdgeFalloff!, clamp(this.params.edgeFalloff, 0, 1));
-    // Spec 11: the feather noise/falloff pair and the front's two constants.
+    // Spec 11: the feather noise/falloff pair and the front's constants.
     // Bound unconditionally like Spec 10's pair: the ONE gather binder feeds
     // every consumer, and the neutral program does not declare them (missing
     // locations are null). The constants arrive from bristles.ts.
     gl.uniform1f(p.u.uFeatherFalloff!, clamp(this.params.featherFalloff, 0, 1));
     gl.uniform1f(p.u.uFeatherNoise!, clamp(featherNoiseDrive(this.params.featherNoise), 0, 1));
-    // The grain shares Edge transparency's lateral span: 1 at the VISUAL edge.
+    // The front shares Edge transparency's lateral span: 1 at the VISUAL edge.
     gl.uniform1f(p.u.uFeatherNoiseAnchor!, BRISTLE_LAYER_EDGE);
+    gl.uniform1f(p.u.uFeatherNoiseDepth!, FEATHER_NOISE_DEPTH);
+    gl.uniform1f(p.u.uFeatherNoiseFeature!, featherNoiseFeaturePx(halfWidthPx));
+    gl.uniform1f(p.u.uFeatherNoiseBlur!, featherNoiseBlurU(halfWidthPx, BRISTLE_LAYER_EDGE));
     gl.uniform1f(p.u.uFeatherNoiseLift!, FEATHER_NOISE_LIFT);
     // The end's takeoff is the same threshold mechanism on the leading
     // frontier: the last running dab's uncovered band opens into tooth
@@ -4095,7 +4104,7 @@ export class WatercolorEngine {
     gl.uniform1f(p.u.uDryCapFull!, BRISTLE_DRY_CAP_FULL);
     gl.uniform1f(p.u.uAlongPx!, alongPx);
     gl.uniform1f(p.u.uStrokeDistPx!, alongPx);
-    gl.uniform1f(p.u.uHalfWidthPx!, r * this.dh);
+    gl.uniform1f(p.u.uHalfWidthPx!, halfWidthPx);
     // A catch-up dab has no following dab to cover its trailing half, so its
     // cap fades BOTH halves (the artist's pen end block); 0 keeps a running
     // dab's leading-only cap and its exact core deposit.

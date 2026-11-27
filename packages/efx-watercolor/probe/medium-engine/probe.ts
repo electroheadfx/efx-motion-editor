@@ -250,17 +250,19 @@ import { buildBrushForStroke } from '../../src/playground/brushBridge'
 import { engineScaleToSize, sizeToEngineScale, toEngineParams } from '../../src/playground/params'
 // quick 261125-rtc: the report names the effective sampling factor the dab
 // chain ran at, through the engine's OWN size round trip.
-// quick 261126-v8j (Spec 11): the feather-noise report derives its band,
-// period and sampling zoom from the SHIPPED constants and twins — never a
-// re-typed literal — and reuses the one `edgeFalloffExponent` map indirectly
-// through the same constants the shader binds.
+// quick 261126-v8j (Spec 11): the feather-noise report echoes the eroding
+// front's own knobs from the SHIPPED constants and twins — the drive, the
+// brush-relative feature size and the soft band — never a re-typed literal.
 import {
   BRISTLE_FEATHER_EDGE,
   BRISTLE_FEATHER_MIN,
   BRISTLE_FEATHER_REACH,
+  BRISTLE_LAYER_EDGE,
   bristleSampleScale,
-  featherNoisePeriodPx,
-  featherNoiseScale,
+  featherNoiseBlurU,
+  featherNoiseDrive,
+  featherNoiseFeaturePx,
+  FEATHER_NOISE_DEPTH,
 } from '../../src/playground/bristles'
 import { pigmentFromHex } from '../../src/playground/spectral'
 // Spec 10: the CPU band mirror (`displayBasisGLSL`'s own tables and epsilon)
@@ -7345,23 +7347,17 @@ function midBodyCrop(transparent: HTMLCanvasElement): string {
 //
 // The report's measurement basis is the SAME across profile the pale-line gate
 // reads (`lineProfileSet`, committed surface): per-offset cover / dark / ink
-// averaged over the mid-body x window. The feather-noise block derives the
-// band, period and sampling zoom from the SHIPPED constants and twins (never
-// re-typed literals), then walks that profile for the spec's two questions:
-// does the grain break the rim (crossings, opening, extents) and does it
-// enter the body with the falloff profile (variation by band)?
+// averaged over the mid-body x window. The feather-noise block echoes the
+// eroding front's knobs from the SHIPPED constants and twins (never re-typed
+// literals) and walks that profile for the base-shape readings: the opening
+// crossing, the silhouette extents and the ink's actual lateral reach.
 /** `straightLine` stamps p = 0.75; `scriptPressure` passes it through. */
 const FN_SAMPLE_PRESSURE = 0.75
-/** The across high-pass window: wider than 2× the 16 px period cap, so a
- *  single feature spans less than half the window and is preserved whole. */
-const FN_PROFILE_HP_WINDOW = 41
-/** A run shorter than two rows is threshold chatter, not a feature. */
-const FN_FEATURE_RUN_MIN_PX = 2
 /** The feature floor: a visible step on 8-bit paper (1/255) with a margin. */
 const FN_FEATURE_FLOOR = Math.max(0.004, 1 / 255)
 /** The silhouette's own extent: the last row at 5 % of the body peak. */
 const FN_OUTER_FRACTION = 0.05
-/** The crop reads every size at the same RELATIVE scale (2.5 half-widths). */
+/** The crop reads every size at the same RELATIVE scale (4 half-widths). */
 const FN_CROP_SCALE = 4.0
 const FN_CROP_MIN_HALF = 64
 const FN_CROP_MAX_HALF = 540
@@ -7373,34 +7369,6 @@ const FN_HALF_WIDTH_TOLERANCE = 0.1
 function featherNoiseCrop(transparent: HTMLCanvasElement, halfWindow: number): string {
   const mid = Math.round(0.5 * transparent.width)
   return endCrop(transparent, mid - halfWindow, mid + halfWindow, 1)
-}
-
-/** One side's feature count on the high-passed dark profile, restricted to
- *  the feather band (lateral = |offset| / halfWidthPx in
- *  [featherStart, BRISTLE_FEATHER_EDGE]). Runs of |hp| >= the feature floor
- *  are closed across single-row gaps (a 1 px dip below the floor does not
- *  split one lobe) and counted only when at least 2 px long. */
-function featherNoiseFeatures(
-  offsets: readonly number[],
-  hp: readonly number[],
-  halfWidthPx: number,
-  bandLo: number,
-  bandHi: number,
-  sign: 1 | -1,
-): number {
-  if (halfWidthPx <= 0) return 0
-  const flags: boolean[] = []
-  for (let i = 0; i < offsets.length; i += 1) {
-    const o = offsets[i]!
-    if (sign > 0 ? o <= 0 : o >= 0) continue
-    const u = Math.abs(o) / halfWidthPx
-    if (u < bandLo || u > bandHi) continue
-    flags.push(Math.abs(hp[i]!) >= FN_FEATURE_FLOOR)
-  }
-  for (let i = 1; i < flags.length - 1; i += 1) {
-    if (!flags[i] && flags[i - 1] && flags[i + 1]) flags[i] = true
-  }
-  return runLengths(flags).filter((n) => n >= FN_FEATURE_RUN_MIN_PX).length
 }
 
 /** The scene's whole readout. Pure measurement: every threshold and constant
@@ -7444,9 +7412,14 @@ function featherNoiseMetrics(
   const featherStart =
     BRISTLE_FEATHER_EDGE *
     (1 - (BRISTLE_FEATHER_MIN + (BRISTLE_FEATHER_REACH - BRISTLE_FEATHER_MIN) * uFeather))
-  const bandPx = (BRISTLE_FEATHER_EDGE - featherStart) * halfWidthPx
-  const periodPx = featherNoisePeriodPx(bandPx)
-  const rimScale = featherNoiseScale(bandPx)
+  // The eroding front's knobs, from the shipped constants and twins: the
+  // recorded slider -> drive, the brush-relative feature size and the soft
+  // band (uN), plus the deepest penetration at that drive. The probe echoes
+  // them so a capture can never silently describe another law.
+  const drive = featherNoiseDrive(Number(bag['featherNoise'] ?? 0) / 100)
+  const featurePx = featherNoiseFeaturePx(halfWidthPx)
+  const blurU = featherNoiseBlurU(halfWidthPx, BRISTLE_LAYER_EDGE)
+  const frontDepth = FEATHER_NOISE_DEPTH * drive
 
   // The committed across profile (postFix = the sheet the artist judges).
   const profile = (surfaces['postFix'] as Record<string, unknown> | undefined) ?? null
@@ -7499,58 +7472,16 @@ function featherNoiseMetrics(
   const openingClamped = plusOpen === null || minusOpen === null
   const openingHalfOffsetPx = ((plusOpen ?? maxPlus) + (minusOpen ?? maxMinus)) / 2
 
-  // The grain distribution: RMS of the profile's high-pass inside the three
-  // lateral bands (u = |offset| / halfWidthPx; core [0, 0.33), mid
-  // [0.33, 0.66), rim [0.66, 1]). The rim is the feather band; the core is
-  // where falloff 0 must reach and falloff 100 must not. Samples per band are
-  // recorded so a capture whose band exceeds the sampled span is visible.
-  const hp = boxcarHighpass(dark, FN_PROFILE_HP_WINDOW)
-  const bandValues: { core: number[]; mid: number[]; rim: number[] } = {
-    core: [],
-    mid: [],
-    rim: [],
-  }
-  for (let i = 0; i < offsets.length; i += 1) {
-    const u = halfWidthPx > 0 ? Math.abs(offsets[i]!) / halfWidthPx : Number.POSITIVE_INFINITY
-    if (u < 0.33) bandValues.core.push(hp[i]!)
-    else if (u < 0.66) bandValues.mid.push(hp[i]!)
-    else if (u <= 1) bandValues.rim.push(hp[i]!)
-  }
-  const variationByBand = {
-    core: round4(seriesStats(bandValues.core).rms),
-    mid: round4(seriesStats(bandValues.mid).rms),
-    rim: round4(seriesStats(bandValues.rim).rms),
-    samples: {
-      core: bandValues.core.length,
-      mid: bandValues.mid.length,
-      rim: bandValues.rim.length,
-    },
-  }
-
-  // The band's feature count, per side (the band width is one side's width);
-  // the report carries the larger side and both counts.
-  const bandLo = featherStart
-  const bandHi = BRISTLE_FEATHER_EDGE
-  const featurePlus = featherNoiseFeatures(offsets, hp, halfWidthPx, bandLo, bandHi, 1)
-  const featureMinus = featherNoiseFeatures(offsets, hp, halfWidthPx, bandLo, bandHi, -1)
-
-  // ONE pixel scan over the mid-body station feeds two readings:
-  //  - the envelope: the outermost row whose STRONGEST pixel still carries ink
-  //    above the resolution floor. This is the footprint-law cross-check — the
-  //    mean across profile above averages the station's dab scalloping and the
-  //    rim's soft threshold, under-reading the aperture by ~1-2 px at small
-  //    sizes; the envelope is the ink's actual lateral reach, the quantity
-  //    uRadius bounds.
-  //  - the rim's rag: ink<->paper transitions ALONG the stroke on the rim-band
-  //    rows (u in [uFeatherEdge, 1], both sides), thresholded at half each
-  //    row's own peak so the reading is scale-free; the mean per row is
-  //    reported.
+  // ONE pixel scan over the mid-body station: the envelope is the outermost
+  // row whose STRONGEST pixel still carries ink above the resolution floor.
+  // This is the footprint-law cross-check — the mean across profile above
+  // averages the station's dab scalloping and the rim's soft threshold,
+  // under-reading the aperture by ~1-2 px at small sizes; the envelope is the
+  // ink's actual lateral reach, the quantity uRadius bounds.
   const pixels = transparent.getContext('2d')!.getImageData(0, 0, dw, dh).data
   const centre = Math.round(LINE_Y * dh)
   const px0 = Math.round(LINE_PROFILE_X0 * dw)
   const px1 = Math.round(LINE_PROFILE_X1 * dw)
-  let crossings = 0
-  let rimRows = 0
   let plusEnvelope = 0
   let minusEnvelope = 0
   if (halfWidthPx > 0) {
@@ -7558,31 +7489,16 @@ function featherNoiseMetrics(
       const gy = centre + o
       if (gy < 0 || gy >= dh) continue
       const cr = dh - 1 - gy
-      const u = Math.abs(o) / halfWidthPx
-      const rimRow = u >= BRISTLE_FEATHER_EDGE && u <= 1
       let rowPeak = 0
-      const values: number[] | null = rimRow ? [] : null
       for (let x = px0; x < px1; x += 1) {
         const i4 = (cr * dw + x) * 4
         const v = 1 - Math.min(pixels[i4]!, pixels[i4 + 1]!, pixels[i4 + 2]!) / 255
         if (v > rowPeak) rowPeak = v
-        if (values !== null) values.push(v)
       }
       if (rowPeak >= FN_FEATURE_FLOOR) {
         if (o > 0) plusEnvelope = Math.max(plusEnvelope, o)
         else if (o < 0) minusEnvelope = Math.max(minusEnvelope, -o)
       }
-      if (values === null || rowPeak < FN_FEATURE_FLOOR) continue
-      const thr = 0.5 * rowPeak
-      let prev = false
-      let rowCrossings = 0
-      for (const v of values) {
-        const on = v >= thr
-        if (on !== prev) rowCrossings += 1
-        prev = on
-      }
-      crossings += rowCrossings
-      rimRows += 1
     }
   }
   const measuredHalfWidthPx = (plusEnvelope + minusEnvelope) / 2
@@ -7597,12 +7513,17 @@ function featherNoiseMetrics(
   return {
     radiusPx: round2(radiusPx),
     halfWidthPx: round2(halfWidthPx),
-    bandPx: round2(bandPx),
-    periodPx: round4(periodPx),
-    rimScale: round4(rimScale),
     featherStart: round4(featherStart),
     effectiveFeather,
     strokeSize,
+    // The eroding front's own echo: slider -> drive, feature px, soft band
+    // uN, and the deepest penetration at this slider. `anchor` is the visual
+    // edge the uN coordinate is measured against (BRISTLE_LAYER_EDGE).
+    drive: round4(drive),
+    featurePx: round2(featurePx),
+    blurU: round4(blurU),
+    frontDepth: round4(frontDepth),
+    anchor: BRISTLE_LAYER_EDGE,
     inputs: {
       paramsSize: round4(engineSize),
       pressure: round4(pressure),
@@ -7613,11 +7534,6 @@ function featherNoiseMetrics(
       speedThin: preset.speedThin,
     },
     profile: { offsets, dark, cover },
-    variationByBand,
-    featureCount: Math.max(featurePlus, featureMinus),
-    featureSides: { plus: featurePlus, minus: featureMinus },
-    rimCrossings: rimRows > 0 ? round4(crossings / rimRows) : 0,
-    rimRows,
     openingHalfOffsetPx: round2(openingHalfOffsetPx),
     openingClamped,
     outerExtentPx: round2(outerExtentPx),
@@ -8493,12 +8409,12 @@ function run(
         : {}
 
     // quick 261126-v8j (Spec 11): the feather-noise scene's readout — the
-    // band / period / sampling-zoom echo derived from the shipped constants,
-    // the committed across profiles, the grain's by-band RMS, the band's
-    // feature count, the rim's along crossings, the opening / silhouette
-    // walks and the footprint-law cross-check. `pngCrop` is a 1:1 mid-body
-    // crop at a constant 2.5 half-widths, so sizes compare at one relative
-    // scale (the base64 is lifted out to disk by run.mjs, never left here).
+    // eroding front's knob echo derived from the shipped constants (drive,
+    // feature px, soft band, depth), the committed across profiles, the
+    // opening / silhouette walks and the footprint-law cross-check.
+    // `pngCrop` is a 1:1 mid-body crop at a constant 4 half-widths, so sizes
+    // compare at one relative scale (the base64 is lifted out to disk by
+    // run.mjs, never left here).
     const featherNoiseReport =
       scenario === 'feather-noise'
         ? (() => {
