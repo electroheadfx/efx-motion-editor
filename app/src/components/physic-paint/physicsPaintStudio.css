@@ -548,9 +548,16 @@ button.destructive {
   margin-inline: auto;
 }
 
+/* 261127 (artist's ruling): the action quartet reads smaller than the first
+   cut — 36px boxes with 16px glyphs, still taller than the rail's 35px. */
 .physics-paint-topbar-actions .physics-paint-icon-button {
-  width: 43px;
-  height: 43px;
+  width: 36px;
+  height: 36px;
+}
+
+.physics-paint-topbar-actions .physics-paint-icon-button img {
+  width: 16px;
+  height: 16px;
 }
 
 /* 261127 (artist's ruling): Undo | Redo read as ONE grouped button — a single
@@ -601,8 +608,18 @@ button.destructive {
    These rules MUST follow .physics-paint-topbar-control's display:flex — the
    descendant selector keeps them winning at equal source order. */
 @media (min-width: 1181px) {
+  /* 261127: the Medium (acrylic) knobs leave in their own order — Emboss
+     first, then Feather noise — each tier measured against the minimum widths
+     (5 controls ≈ 5 × 140 + 5 × 10 + 155 actions = 905). The watercolor tiers
+     below are inert here (those rows are not rendered for Medium). */
+  @container (max-width: 900px) {
+    .physics-paint-topbar-primary .physics-paint-topbar-optional-emboss { display: none; }
+  }
   @container (max-width: 795px) {
     .physics-paint-topbar-primary .physics-paint-topbar-optional-edges { display: none; }
+  }
+  @container (max-width: 750px) {
+    .physics-paint-topbar-primary .physics-paint-topbar-optional-feather { display: none; }
   }
   @container (max-width: 645px) {
     .physics-paint-topbar-primary .physics-paint-topbar-optional-water { display: none; }
@@ -610,8 +627,14 @@ button.destructive {
 }
 
 @media (max-width: 1180px) {
+  @container (max-width: 765px) {
+    .physics-paint-topbar-primary .physics-paint-topbar-optional-emboss { display: none; }
+  }
   @container (max-width: 687px) {
     .physics-paint-topbar-primary .physics-paint-topbar-optional-edges { display: none; }
+  }
+  @container (max-width: 650px) {
+    .physics-paint-topbar-primary .physics-paint-topbar-optional-feather { display: none; }
   }
   @container (max-width: 564px) {
     .physics-paint-topbar-primary .physics-paint-topbar-optional-water { display: none; }

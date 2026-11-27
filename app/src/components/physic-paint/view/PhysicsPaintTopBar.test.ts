@@ -163,18 +163,51 @@ describe('PhysicsPaintTopBar small-width responsiveness (36.15-06 fix)', () => {
     expect(hideAt, 'hide rule must follow the control display rule').toBeGreaterThan(controlAt);
   });
 
+  it('hides the Medium knobs in order — Emboss first, then Feather noise (261127)', () => {
+    const styles = css();
+    const body = stripComments(topBarSource());
+    expect(body).toContain('class="physics-paint-topbar-optional-emboss"');
+    expect(body).toContain('class="physics-paint-topbar-optional-feather"');
+    // Wide tiers: Emboss hides before Feather (900 → 750); both out-rank the
+    // control display rule by source order, like the watercolor tiers.
+    const controlAt = styles.indexOf('.physics-paint-topbar-control {');
+    const wideStart = styles.indexOf('@media (min-width: 1181px) {');
+    const narrowStart = styles.indexOf('@media (max-width: 1180px) {');
+    const wide = styles.slice(wideStart, narrowStart);
+    const narrow = styles.slice(narrowStart, styles.indexOf('.physics-paint-segmented-row {'));
+    const embossSelector = '.physics-paint-topbar-primary .physics-paint-topbar-optional-emboss';
+    const featherSelector = '.physics-paint-topbar-primary .physics-paint-topbar-optional-feather';
+    for (const block of [wide, narrow]) {
+      expect(block.indexOf(embossSelector), 'Emboss has a tier').toBeGreaterThan(-1);
+      expect(block.indexOf(featherSelector), 'Feather has a tier').toBeGreaterThan(-1);
+    }
+    expect(wide).toContain('@container (max-width: 900px)');
+    expect(wide).toContain('@container (max-width: 750px)');
+    expect(narrow).toContain('@container (max-width: 765px)');
+    expect(narrow).toContain('@container (max-width: 650px)');
+    expect(wide, 'Emboss hides at the widest threshold').toContain(
+      '@container (max-width: 900px) {\n    ' + embossSelector,
+    );
+    expect(narrow, 'Emboss hides at the widest narrow threshold').toContain(
+      '@container (max-width: 765px) {\n    ' + embossSelector,
+    );
+    expect(styles.indexOf(embossSelector), 'hide rules follow the control rule').toBeGreaterThan(controlAt);
+    expect(styles.indexOf(featherSelector), 'hide rules follow the control rule').toBeGreaterThan(controlAt);
+  });
+
   it('hides Water at the deepest threshold, inside the existing media blocks (261029-hy2 CR-02)', () => {
     const styles = css();
-    const wideStart = styles.indexOf('@media (min-width: 1181px) {\n  @container (max-width: 795px)');
-    const narrowStart = styles.indexOf('@media (max-width: 1180px) {\n  @container (max-width: 687px)');
+    const wideStart = styles.indexOf('@container (max-width: 900px)');
+    const narrowStart = styles.indexOf('@container (max-width: 765px)');
     const chainEnd = styles.indexOf('.physics-paint-segmented-row {');
     expect(wideStart, 'the wide hide-chain block exists').toBeGreaterThan(-1);
     expect(narrowStart, 'the narrow hide-chain block exists').toBeGreaterThan(wideStart);
     expect(chainEnd, 'the hide chain is followed by the next base rule').toBeGreaterThan(narrowStart);
     const wide = styles.slice(wideStart, narrowStart);
     const narrow = styles.slice(narrowStart, chainEnd);
-    // 3 visible controls = 3 × 140 + 2 × 10 = 440 / 3 × 115 + 2 × 8 = 361,
-    // plus the action quartet's 206 / 204 → 646 / 565.
+    // 3 visible controls = 3 × 140 + 3 × 10 = 450 / 3 × 115 + 3 × 8 = 369,
+    // plus the action quartet's ~155 → 605 / 524; the shipped thresholds stay
+    // conservative.
     expect(wide).toContain('@container (max-width: 645px)');
     expect(narrow).toContain('@container (max-width: 564px)');
     const waterSelector = '.physics-paint-topbar-primary .physics-paint-topbar-optional-water';
@@ -1378,8 +1411,12 @@ describe('quick-261112 top-bar action cluster', () => {
     const actions = getCssRuleBlock(styles, '.physics-paint-topbar-actions {');
     expect(actions, 'auto margins split the free space the settings leave').toContain('margin-inline: auto');
     const buttons = getCssRuleBlock(styles, '.physics-paint-topbar-actions .physics-paint-icon-button {');
-    expect(buttons).toContain('height: 43px');
-    expect(buttons).toContain('width: 43px');
+    // 261127: the quartet shrank from 43px to 36px with 16px glyphs.
+    expect(buttons).toContain('height: 36px');
+    expect(buttons).toContain('width: 36px');
+    const glyphs = getCssRuleBlock(styles, '.physics-paint-topbar-actions .physics-paint-icon-button img {');
+    expect(glyphs).toContain('width: 16px');
+    expect(glyphs).toContain('height: 16px');
     // The primary cluster stays the flexible query container — the trio lives
     // INSIDE it, so its width still tracks the bar and the knobs keep hiding.
     const primary = getCssRuleBlock(styles, '.physics-paint-topbar-primary {');

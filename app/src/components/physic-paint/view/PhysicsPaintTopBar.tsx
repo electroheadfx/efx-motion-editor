@@ -331,7 +331,7 @@ export function TopBarRebakeButton({
       aria-label="Re-render from script"
       onClick={onRebakeScript}
     >
-      <RefreshCcwDot size={18} />
+      <RefreshCcwDot size={16} />
     </button>
   );
 }
@@ -357,7 +357,7 @@ export function TopBarDryButton({ disabled }: { disabled: boolean }) {
       aria-label="Dry"
       onClick={() => emitAquarelleDry(aquarelleRecordClock())}
     >
-      <Wind size={18} />
+      <Wind size={16} />
     </button>
   );
 }
@@ -664,6 +664,7 @@ export function PhysicsPaintTopBar({
                   void commitAquarelleSelectionParam('featherNoise', value);
                 }}
                 disabled={disabled}
+                class="physics-paint-topbar-optional-feather"
               />
             )}
             {/* 2026-11-27 (artist's live ruling): Emboss belongs to the Medium
@@ -681,6 +682,7 @@ export function PhysicsPaintTopBar({
                   void commitAquarelleSelectionParam('emboss', value);
                 }}
                 disabled={disabled}
+                class="physics-paint-topbar-optional-emboss"
               />
             )}
             {/* 2026-11-27 (artist's live ruling): Pigment on the top bar —
