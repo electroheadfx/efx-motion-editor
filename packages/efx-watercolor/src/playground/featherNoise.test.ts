@@ -220,8 +220,10 @@ describe('the Spec 11 law in BRISTLE_GATHER', () => {
     expect(BRISTLE_GATHER).toContain('float pen = mix(0.88, 0.35, uFeatherNoise);')
     expect(BRISTLE_GATHER).toContain('float wobble = cloudMix(css);')
     expect(BRISTLE_GATHER).toContain('float front = pen + wobble * 0.30;')
+    // Softness fix (2026-11-27): the ±0.015 band read as a hard cut; ±0.035 blurs
+    // only the removal boundary, threshold-only.
     expect(BRISTLE_GATHER).toContain(
-      'float envelope = smoothstep(front - 0.015, front + 0.015, uN);',
+      'float envelope = smoothstep(front - 0.035, front + 0.035, uN);',
     )
     // One radial front = no detached islands in the body.
     expect(BRISTLE_GATHER).toContain('featherShift += uFeather * uFeatherNoiseLift * envelope;')

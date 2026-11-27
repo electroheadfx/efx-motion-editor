@@ -1044,7 +1044,9 @@ uniform float uFeatherNoiseLift;     // the front's threshold rise at noise 100 
     float pen = mix(0.88, 0.35, uFeatherNoise);
     float wobble = cloudMix(css);
     float front = pen + wobble * 0.30;
-    float envelope = smoothstep(front - 0.015, front + 0.015, uN);
+    // The removal boundary is blurred ±0.035 (2026-11-27 softness fix): the ±0.015
+    // band read as a hard cut against the fine 20 px cloud scale.
+    float envelope = smoothstep(front - 0.035, front + 0.035, uN);
     // A CONTAINED scatter (artist ruling 2026-11-27f): just outside the front
     // the removal weakens, so isolated specks survive there instead of a clean
     // cut - the loose fray of fn-pen4, but held to a thin band so it never
