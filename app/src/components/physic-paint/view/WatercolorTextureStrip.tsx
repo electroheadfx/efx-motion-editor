@@ -9,10 +9,14 @@
 //  top-bar popover (compact).
 //
 //  Order: Default (no texture — the response's own procedural tip),
-//  then the machine library's rows in catalog order. quick 261116-inu:
-//  import is the ONLY way to obtain a texture; there are no
-//  compile-time built-ins and nothing is project-scoped. A picked
-//  texture is a library row, not an "import".
+//  then the 22 bundled Wootha tips, then the machine library's rows in
+//  catalog order. quick 261127-uxj: the bundled tips are APP ASSETS
+//  (`wc/default-*`, loaded at boot from `app/src/assets/brush-tips/`);
+//  the machine library stays the only source of USER textures and the
+//  only delete/rotation authority. quick 261116-inu: import is the
+//  ONLY way to obtain a user texture; there are no compile-time
+//  built-ins and nothing is project-scoped. A picked texture is a
+//  bundled asset or a library row, never an "import".
 //
 //  Every chip paints the engine's real grayscale mask
 //  (watercolorMaskChip → strokeTipData): live, bake and chip resolve
@@ -37,6 +41,7 @@ import {
   libraryRows,
   unavailableTipIds,
 } from '../../../stores/aquarelleBrushCatalog';
+import { builtinBrushTips } from '../../../stores/builtinBrushTips';
 import {
   aquarelleSelectedTextureId,
   aquarelleSelectedTipId,
@@ -44,7 +49,7 @@ import {
 } from './aquarelleRecordState';
 import { blitMaskChip } from './watercolorMaskChip';
 
-interface TextureEntry {
+export interface TextureEntry {
   /** null is the Default chip: no texture, the response's own tip. */
   readonly id: string | null;
   readonly name: string;
@@ -52,23 +57,26 @@ interface TextureEntry {
 }
 
 /**
- * Default first, then the machine library's rows in catalog order. A row can
- * be unavailable (its stored file is missing or undecodable on this machine);
- * the Default chip never is.
+ * THE ordering law (exported so the tests pin it): Default first, then the 22
+ * bundled app assets in manifest order, then the machine library's rows in
+ * catalog order. A library row can be unavailable (its stored file is missing
+ * or undecodable on this machine); the Default chip never is, and a bundled
+ * tip is simply absent when its asset failed to load.
  */
-function textureEntries(
+export function textureEntries(
+  bundled: readonly AquarelleTip[],
   imports: readonly AquarelleTip[],
   unavailableIds: ReadonlySet<string>,
 ): TextureEntry[] {
+  const toEntry = (tip: AquarelleTip): TextureEntry => ({
+    id: tip.id,
+    name: tip.name,
+    unavailable: unavailableIds.has(tip.id),
+  });
   return [
     { id: null, name: 'Default', unavailable: false },
-    ...imports.map(
-      (tip): TextureEntry => ({
-        id: tip.id,
-        name: tip.name,
-        unavailable: unavailableIds.has(tip.id),
-      }),
-    ),
+    ...bundled.map(toEntry),
+    ...imports.map(toEntry),
   ];
 }
 
@@ -128,6 +136,7 @@ function TextureChip(props: {
 export function WatercolorTextureStrip(props: { compact?: boolean }) {
   // Narrow signal reads (efx-preact-reactivity rule 5): one read per signal
   // per render, no signal write in this body.
+  const bundled = builtinBrushTips.value;
   const imports = customBrushTips.value;
   const unavailableIds = unavailableTipIds.value;
   // quick 261116-inu / Task 10: one read of the rows this render, so each chip
@@ -154,7 +163,7 @@ export function WatercolorTextureStrip(props: { compact?: boolean }) {
       data-compact={compact ? 'true' : 'false'}
       data-catalog-generation={catalogGeneration}
     >
-      {textureEntries(imports, unavailableIds).map((entry) => (
+      {textureEntries(bundled, imports, unavailableIds).map((entry) => (
         <TextureChip
           key={entry.id ?? 'default'}
           entry={entry}

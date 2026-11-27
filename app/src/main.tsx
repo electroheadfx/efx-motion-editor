@@ -6,6 +6,7 @@ import {invoke} from '@tauri-apps/api/core';
 import {App} from './app';
 import {initTempProjectDir} from './lib/projectDir';
 import {loadBrushLibrary} from './lib/brushLibrary';
+import {loadBuiltinBrushTips} from './stores/builtinBrushTips';
 import {initTheme} from './lib/themeManager';
 import {guardUnsavedChanges} from './lib/unsavedGuard';
 import {startAutoSave} from './lib/autoSave';
@@ -100,7 +101,12 @@ if (window.location.pathname === '/physics-paint') {
       // window.location.reload();
     }
   }, 1000);
-  import('./components/physic-paint/PhysicsPaintStudio').then(({ PhysicsPaintStudio }) => {
+  // quick 261127-uxj: the bundled Wootha tips are registered in THIS realm's
+  // engine registry before the first render, so every Textures surface lists
+  // them and a chip stamps its real mask. Never rejects — a failed load just
+  // leaves the surfaces to Default + imports.
+  import('./components/physic-paint/PhysicsPaintStudio').then(async ({ PhysicsPaintStudio }) => {
+    await loadBuiltinBrushTips();
     render(<PhysicsPaintStudio />, root);
   });
 } else {
@@ -112,6 +118,11 @@ if (window.location.pathname === '/physics-paint') {
     // before the first render, so any project open can replay a stroke. It
     // never rejects — a failed scan degrades to an empty catalog.
     await loadBrushLibrary();
+    // quick 261127-uxj: the 22 bundled Wootha tips are APP ASSETS — registered
+    // in this realm's registry before the first render, beside the library
+    // load. Never rejects; a failed asset leaves the surfaces to Default +
+    // imports.
+    await loadBuiltinBrushTips();
     render(<App />, root);
     startAutoSave();
     // 261101-o2m (D-05): mirror the Studio's Draft gate so the autosave above
