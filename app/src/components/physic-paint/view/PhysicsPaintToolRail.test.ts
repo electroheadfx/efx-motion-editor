@@ -327,7 +327,7 @@ describe('WatercolorRail — the wireframe gates (61-13 Task 3)', () => {
     const paint = directChildren(nav).slice(0, 5);
     expect(paint.map((node) => node.props?.title)).toEqual([
       'Medium (B) — turn wireframe off to paint',
-      'Watercolor (A) — turn wireframe off to paint',
+      'Watercolor (N) — turn wireframe off to paint',
       'Water (W) — turn wireframe off to paint',
       'Pen (P) — turn wireframe off to paint',
       'Eraser (E) — turn wireframe off to paint',
@@ -368,7 +368,7 @@ describe('WatercolorRail — the wireframe gates (61-13 Task 3)', () => {
     const paint = directChildren(nav).slice(0, 5);
     expect(paint.map((node) => node.props?.title)).toEqual([
       'Medium (B)',
-      'Watercolor (A)',
+      'Watercolor (N)',
       'Water (W) — needs standing water',
       'Pen (P)',
       'Eraser (E)',
@@ -387,7 +387,7 @@ describe('WatercolorRail — the wireframe gates (61-13 Task 3)', () => {
     expect(select, 'the Select button is rendered').toBeTruthy();
     // `selectAvailable` is TRUE: the disable reason is the wireframe gate alone.
     expect(select.props?.disabled).toBe(true);
-    expect(select.props?.title).toBe('Select (M) — turn wireframe off to select');
+    expect(select.props?.title).toBe('Select (A) — turn wireframe off to select');
     // The rendered bindings are the shipped ones — only the inert state and
     // its reason change.
     expect(select.props?.['aria-label']).toBe('Select');
@@ -398,7 +398,7 @@ describe('WatercolorRail — the wireframe gates (61-13 Task 3)', () => {
   it('restores the shipped Select copy and enablement when the latch clears', () => {
     // quick 261121-mtu: Move/Edit moved from bare A (now the Watercolor tool) to
     // bare M; Shift+A is untouched.
-    const SHIPPED_SELECT_TITLE = 'Select (M) — click or M toggles Select on/off and returns to the previous tool · Shift+A enters Select and selects every stroke (press again to deselect all) · Tab cycles the filter Paint → Eraser → All while Select is on · Drag moves the selected stroke · Corner handles scale · Edge handles resize width or height · Top handle rotates · Backspace deletes the selected stroke · < sends the selected stroke one step back · > one step forward';
+    const SHIPPED_SELECT_TITLE = 'Select (A) — click or A toggles Select on/off and returns to the previous tool · Shift+A enters Select and selects every stroke (press again to deselect all) · Tab cycles the filter Paint → Eraser → All while Select is on · Drag moves the selected stroke · Corner handles scale · Edge handles resize width or height · Top handle rotates · Backspace deletes the selected stroke · < sends the selected stroke one step back · > one step forward';
     const enabled = button(renderRail({ selectAvailable: signal(true) }), 'aquarelle-select-toggle')!;
     expect(enabled.props?.title).toBe(SHIPPED_SELECT_TITLE);
     expect(enabled.props?.disabled).toBe(false);
@@ -459,7 +459,7 @@ describe('WatercolorRail — 61-25 UI-01/UI-05', () => {
     const paint = directChildren(nav).slice(0, 5);
     expect(paint.map((node) => node.props?.title)).toEqual([
       'Medium (B) — turn wireframe off to paint',
-      'Watercolor (A) — turn wireframe off to paint',
+      'Watercolor (N) — turn wireframe off to paint',
       'Water (W) — turn wireframe off to paint',
       'Pen (P) — turn wireframe off to paint',
       'Eraser (E) — turn wireframe off to paint',

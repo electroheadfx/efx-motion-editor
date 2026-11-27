@@ -35,8 +35,8 @@ export const PHYSICS_PAINT_SHORTCUT_GROUPS: ShortcutGroup[] = [
       // 2026-11-27 (artist's live ruling): B still selects the paint tool,
       // which reads "Medium" in the rail tooltip.
       {keys: 'B', description: 'Medium'},
-      // quick 261121-mtu: A is the Watercolor paint tool (Move/Edit moved to M).
-      {keys: 'A', description: 'Watercolor'},
+      // 2026-11-27: N is the Watercolor paint tool (Move/Edit is bare A).
+      {keys: 'N', description: 'Watercolor'},
       {keys: 'W', description: 'Water (needs standing water)'},
       {keys: 'E', description: 'Eraser'},
       {keys: 'P', description: 'Pen'},
@@ -53,7 +53,7 @@ export const PHYSICS_PAINT_SHORTCUT_GROUPS: ShortcutGroup[] = [
   {
     title: 'Move/Edit',
     entries: [
-      {keys: 'M', description: 'Toggle Move/Edit (Select)'},
+      {keys: 'A', description: 'Toggle Move/Edit (Select)'},
       {keys: '⇧A', description: 'Select / deselect all strokes'},
       {keys: 'Tab', description: 'Cycle stroke filter (Paint → Eraser → All)'},
       {keys: 'Delete / ⌫', description: 'Delete the selected stroke'},
@@ -132,5 +132,5 @@ export const PHYSICS_PAINT_CONTEXT_COPY: Record<
   {label: string; detail: string}
 > = {
   'move-edit': {label: 'Move/Edit', detail: 'shortcuts for selecting and editing strokes'},
-  sections: {label: 'All shortcuts', detail: 'press M for Move/Edit tips, or browse every Studio group'},
+  sections: {label: 'All shortcuts', detail: 'press A for Move/Edit tips, or browse every Studio group'},
 };

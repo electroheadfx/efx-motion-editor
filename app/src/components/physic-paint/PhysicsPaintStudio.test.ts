@@ -3223,7 +3223,7 @@ describe('261022-pim watercolor stroke select surface', () => {
     // Better hover text: the M shortcut (quick 261121-mtu moved it from A, now
     // the Watercolor tool), the drag, the Backspace delete and the 261022-ujp
     // Space step live on it.
-    expect(watercolorRail).toContain('Select (M) — click or M toggles Select on/off and returns to the previous tool · Shift+A enters Select and selects every stroke (press again to deselect all) · Tab cycles the filter Paint → Eraser → All while Select is on · Drag moves the selected stroke · Corner handles scale · Edge handles resize width or height · Top handle rotates · Backspace deletes the selected stroke · < sends the selected stroke one step back · > one step forward');
+    expect(watercolorRail).toContain('Select (A) — click or A toggles Select on/off and returns to the previous tool · Shift+A enters Select and selects every stroke (press again to deselect all) · Tab cycles the filter Paint → Eraser → All while Select is on · Drag moves the selected stroke · Corner handles scale · Edge handles resize width or height · Top handle rotates · Backspace deletes the selected stroke · < sends the selected stroke one step back · > one step forward');
     // 261027-klx: the Brush module tool set (and its Move tooltip) left with
     // engine 1 — the aquarelle rail is the only tool surface left.
     expect(toolRail).not.toContain('Move — Cmd toggles Move on/off');

@@ -32,7 +32,7 @@ const TOOLS: ReadonlyArray<{
   { id: 'brush', label: 'Medium', shortcut: 'B', Icon: Paintbrush },
   // 2026-11-27 (artist's live ruling): Watercolor wears the assembled
   // brush + droplet mark; Water takes the double droplet.
-  { id: 'watercolor', label: 'Watercolor', shortcut: 'A', Icon: WatercolorToolIcon, iconSize: 16 },
+  { id: 'watercolor', label: 'Watercolor', shortcut: 'N', Icon: WatercolorToolIcon, iconSize: 16 },
   { id: 'water', label: 'Water', shortcut: 'W', Icon: Droplets },
   { id: 'pen', label: 'Pen', shortcut: 'P', Icon: Pen },
   { id: 'lift', label: 'Eraser', shortcut: 'E', Icon: Eraser },

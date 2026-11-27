@@ -692,11 +692,11 @@ describe('isPhysicsPaintShortcutTarget', () => {
   });
 });
 
-describe('Studio tool shortcuts (B / A / W / P / E / D)', () => {
+describe('Studio tool shortcuts (B / N / W / P / E / D)', () => {
   it.each([
     ['b', 'brush'],
-    // quick 261121-mtu: A is the Watercolor paint tool; Move/Edit moved to M.
-    ['a', 'watercolor'],
+    // 2026-11-27: N is the Watercolor paint tool; Move/Edit is bare A.
+    ['n', 'watercolor'],
     ['w', 'water'],
     ['p', 'pen'],
     ['e', 'lift'],
@@ -733,7 +733,7 @@ describe('Studio tool shortcuts (B / A / W / P / E / D)', () => {
 
   it.each([
     ['b', 'brush'],
-    ['a', 'watercolor'],
+    ['n', 'watercolor'],
     ['e', 'lift'],
     ['p', 'pen'],
   ] as const)('never consults the gate for a bare %s key', (key, tool) => {
@@ -749,10 +749,10 @@ describe('Studio tool shortcuts (B / A / W / P / E / D)', () => {
     expect(canSelectWater).not.toHaveBeenCalled();
   });
 
-  it('toggles the Move/Edit surface on a bare M key', () => {
-    // quick 261121-mtu: Move/Edit moved from bare A (now the Watercolor tool)
-    // to bare M. Shift+A stays the select-all switch.
-    const { handlers, preventDefault } = dispatch('m', new TestHTMLElement('canvas') as unknown as EventTarget);
+  it('toggles the Move/Edit surface on a bare A key', () => {
+    // 2026-11-27: Move/Edit is bare A (Watercolor moved to N). Shift+A stays
+    // the select-all switch.
+    const { handlers, preventDefault } = dispatch('a', new TestHTMLElement('canvas') as unknown as EventTarget);
     expect(handlers.toggleAquarelleSelect).toHaveBeenCalledOnce();
     expect(preventDefault).toHaveBeenCalledOnce();
   });
@@ -996,7 +996,8 @@ describe('Physics Paint guarded track CRUD shortcuts (47-03, TML-02/Pitfall m4)'
   });
 
   it('fires only with meta or ctrl held, never on a bare letter', () => {
-    const bare = dispatch('n');
+    // Bare Q is unbound in the Studio (bare N is the Watercolor tool).
+    const bare = dispatch('q');
     expect(bare.handlers.addTrack).not.toHaveBeenCalled();
     expect(bare.preventDefault).not.toHaveBeenCalled();
 

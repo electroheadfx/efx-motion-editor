@@ -2752,9 +2752,9 @@ export function PhysicsPaintStudio() {
     brushDefaultsLandedRef.current = true;
     applyAquarelleBrushDefaults(aquarelleSelectedTipId.value);
   }, [canvasHeight]);
-  // 261029: the Studio tool shortcuts. B / A / W / E / P pick a painting tool
-  // and leave Move/Edit mode (quick 261121-mtu: A is the Watercolor tool);
-  // M toggles the Move/Edit (Select) surface — leaving resumes the previous
+  // 261029: the Studio tool shortcuts. N / B / W / E / P pick a painting tool
+  // and leave Move/Edit mode (N is the Watercolor tool);
+  // A toggles the Move/Edit (Select) surface — leaving resumes the previous
   // paint tool, which the surface never replaced; Tab cycles the stroke-type
   // filter Paint → Eraser → All while Move/Edit is on.
   // Every read is `.peek()` — the Studio render body never subscribes a

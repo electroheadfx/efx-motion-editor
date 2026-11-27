@@ -69,7 +69,7 @@ const WATERCOLOR_RAIL_TOOLS: ReadonlyArray<{
   // 2026-11-27 (artist's live ruling): the tool reads "Medium" (the
   // acrylic/brush family); the B shortcut is unchanged.
   { id: 'brush', label: 'Medium', shortcut: 'B', Icon: Paintbrush },
-  { id: 'watercolor', label: 'Watercolor', shortcut: 'A', Icon: WatercolorToolIcon, iconSize: 24 },
+  { id: 'watercolor', label: 'Watercolor', shortcut: 'N', Icon: WatercolorToolIcon, iconSize: 24 },
   { id: 'water', label: 'Water', shortcut: 'W', Icon: Droplets },
   { id: 'pen', label: 'Pen', shortcut: 'P', Icon: Pen },
   { id: 'lift', label: 'Eraser', shortcut: 'E', Icon: Eraser },
@@ -212,8 +212,8 @@ export function WatercolorRail({
         data-testid="aquarelle-select-toggle"
         disabled={railDisabled || wireframeActive || !selectAvailable.value}
         title={wireframeActive
-          ? 'Select (M) — turn wireframe off to select'
-          : "Select (M) — click or M toggles Select on/off and returns to the previous tool · Shift+A enters Select and selects every stroke (press again to deselect all) · Tab cycles the filter Paint → Eraser → All while Select is on · Drag moves the selected stroke · Corner handles scale · Edge handles resize width or height · Top handle rotates · Backspace deletes the selected stroke · < sends the selected stroke one step back · > one step forward"}
+          ? 'Select (A) — turn wireframe off to select'
+          : "Select (A) — click or A toggles Select on/off and returns to the previous tool · Shift+A enters Select and selects every stroke (press again to deselect all) · Tab cycles the filter Paint → Eraser → All while Select is on · Drag moves the selected stroke · Corner handles scale · Edge handles resize width or height · Top handle rotates · Backspace deletes the selected stroke · < sends the selected stroke one step back · > one step forward"}
         aria-label="Select"
         aria-pressed={selectActive}
         onClick={() => toggleAquarelleSelectMode()}
