@@ -12,6 +12,13 @@
  * none may contain the retired prefix. The prefix is BUILT at runtime
  * (`['wc/', 'builtin-'].join('')`) so this file never matches itself.
  *
+ * quick 261127-uxj — the 22 bundled Wootha tips do NOT reopen this: they are a
+ * different concept, read-only APP ASSETS loaded at boot under the
+ * `wc/default-*` id namespace (never machine-library rows, never in
+ * `customBrushTips` or the cross-realm payload). The retired compile-time
+ * texture ids stay forbidden, this scan's roots and literal stay unchanged,
+ * and the bundled namespace is what keeps both laws strict.
+ *
  * No whitelist and no skip list: a name that needs the old prefix belongs to
  * a deleted concept, not to an exception. A failure names the file and line,
  * so a miss is a lookup, not a hunt.

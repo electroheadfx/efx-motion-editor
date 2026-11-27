@@ -1,0 +1,114 @@
+{
+  "tips": [
+    {
+      "id": "wc/default-wootha-002",
+      "name": "Wootha 002",
+      "file": "wootha-002.mask"
+    },
+    {
+      "id": "wc/default-wootha-003",
+      "name": "Wootha 003",
+      "file": "wootha-003.mask"
+    },
+    {
+      "id": "wc/default-wootha-017",
+      "name": "Wootha 017",
+      "file": "wootha-017.mask"
+    },
+    {
+      "id": "wc/default-wootha-024",
+      "name": "Wootha 024",
+      "file": "wootha-024.mask"
+    },
+    {
+      "id": "wc/default-wootha-026",
+      "name": "Wootha 026",
+      "file": "wootha-026.mask"
+    },
+    {
+      "id": "wc/default-wootha-027",
+      "name": "Wootha 027",
+      "file": "wootha-027.mask"
+    },
+    {
+      "id": "wc/default-wootha-028",
+      "name": "Wootha 028",
+      "file": "wootha-028.mask"
+    },
+    {
+      "id": "wc/default-wootha-029",
+      "name": "Wootha 029",
+      "file": "wootha-029.mask"
+    },
+    {
+      "id": "wc/default-wootha-032",
+      "name": "Wootha 032",
+      "file": "wootha-032.mask"
+    },
+    {
+      "id": "wc/default-wootha-035",
+      "name": "Wootha 035",
+      "file": "wootha-035.mask"
+    },
+    {
+      "id": "wc/default-wootha-048",
+      "name": "Wootha 048",
+      "file": "wootha-048.mask"
+    },
+    {
+      "id": "wc/default-wootha-050",
+      "name": "Wootha 050",
+      "file": "wootha-050.mask"
+    },
+    {
+      "id": "wc/default-wootha-064",
+      "name": "Wootha 064",
+      "file": "wootha-064.mask"
+    },
+    {
+      "id": "wc/default-wootha-charcoal-001",
+      "name": "Wootha Charcoal 001",
+      "file": "wootha-charcoal-001.mask"
+    },
+    {
+      "id": "wc/default-wootha-charcoal-002",
+      "name": "Wootha Charcoal 002",
+      "file": "wootha-charcoal-002.mask"
+    },
+    {
+      "id": "wc/default-wootha-charcoal-006",
+      "name": "Wootha Charcoal 006",
+      "file": "wootha-charcoal-006.mask"
+    },
+    {
+      "id": "wc/default-wootha-charcoal-009",
+      "name": "Wootha Charcoal 009",
+      "file": "wootha-charcoal-009.mask"
+    },
+    {
+      "id": "wc/default-wootha-charcoal-010",
+      "name": "Wootha Charcoal 010",
+      "file": "wootha-charcoal-010.mask"
+    },
+    {
+      "id": "wc/default-wootha-charcoal-011",
+      "name": "Wootha Charcoal 011",
+      "file": "wootha-charcoal-011.mask"
+    },
+    {
+      "id": "wc/default-wootha-charcoal-017",
+      "name": "Wootha Charcoal 017",
+      "file": "wootha-charcoal-017.mask"
+    },
+    {
+      "id": "wc/default-wootha-charcoal-020",
+      "name": "Wootha Charcoal 020",
+      "file": "wootha-charcoal-020.mask"
+    },
+    {
+      "id": "wc/default-wootha-charcoal-023",
+      "name": "Wootha Charcoal 023",
+      "file": "wootha-charcoal-023.mask"
+    }
+  ]
+}
