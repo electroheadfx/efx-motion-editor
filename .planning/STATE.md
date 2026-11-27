@@ -732,8 +732,8 @@ Items acknowledged and carried forward from previous milestone close:
 | 70 | Studio paint: Emboss on the top bar (0-5); Paint tab order Reset → dropdown → Brush size → Grain → groups; Grain back from Paper tab under every medium; paint tool reads Medium (B unchanged) (UAT approved 2026-11-27) | 2026-11-27 | 01c6f2e37 | — |
 | 71 | Studio Watercolor icon: droplet outlined (no fill) and a bit smaller | 2026-11-27 | 9d7304b54 | — |
 | 72 | Studio top bar + Paint tab: Emboss is Medium-only (watercolor no longer renders it); Pigment takes the freed top-bar seat in Watercolor mode | 2026-11-27 | f063e8182 | — |
-| 73 | Studio top bar: Undo/Redo grouped into one segmented button; Brush size slider grows into free width (480px cap); every slider/stepper value selects its text on focus so typing replaces it | 2026-11-27 | cd3bf96c9 | — |
-| 74 | Studio top bar follow-up: action icons shrink to 36px boxes / 16px glyphs; the Medium bar hides Emboss first, then Feather noise, as the settings area narrows | 2026-11-27 | 62c446ad9 | — |
+| 73 | Studio top bar: Undo/Redo grouped into one segmented button; Brush size slider grows into free width (480px cap); every slider/stepper value selects its text on focus so typing replaces it (UAT approved 2026-11-27) | 2026-11-27 | cd3bf96c9 | — |
+| 74 | Studio top bar follow-up: action icons shrink to 36px boxes / 16px glyphs; the Medium bar hides Emboss first, then Feather noise, as the settings area narrows (UAT approved 2026-11-27) | 2026-11-27 | 62c446ad9 | — |
 
 ## Roadmap Evolution
 
