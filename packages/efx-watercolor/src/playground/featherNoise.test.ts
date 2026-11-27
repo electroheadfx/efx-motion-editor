@@ -220,10 +220,13 @@ describe('the Spec 11 law in BRISTLE_GATHER', () => {
     expect(BRISTLE_GATHER).toContain('float pen = mix(0.88, 0.35, uFeatherNoise);')
     expect(BRISTLE_GATHER).toContain('float wobble = cloudMix(css);')
     expect(BRISTLE_GATHER).toContain('float front = pen + wobble * 0.30;')
-    // Softness fix (2026-11-27): the ±0.015 band read as a hard cut; ±0.035 blurs
-    // only the removal boundary, threshold-only.
+    // Softness fix (2026-11-27): the band is a fixed DOCUMENT-px blur of the
+    // removal boundary, threshold-only — in uN units a thin stroke still cut.
     expect(BRISTLE_GATHER).toContain(
-      'float envelope = smoothstep(front - 0.035, front + 0.035, uN);',
+      'float bandUN = clamp(3.5 / max(uHalfWidthPx, 1.0), 0.035, 0.25);',
+    )
+    expect(BRISTLE_GATHER).toContain(
+      'float envelope = smoothstep(front - bandUN, front + bandUN, uN);',
     )
     // One radial front = no detached islands in the body.
     expect(BRISTLE_GATHER).toContain('featherShift += uFeather * uFeatherNoiseLift * envelope;')
@@ -233,6 +236,22 @@ describe('the Spec 11 law in BRISTLE_GATHER', () => {
     expect(BRISTLE_GATHER).toContain('cloudNoise(css / 20.0 + 19.0)')
     expect(BRISTLE_GATHER).toContain('cloudNoise(css / 60.0 + 71.0)')
     expect(BRISTLE_GATHER).toContain('cloudNoise(css / 200.0 + 133.0)')
+  })
+
+  it('builds the cloud from GRADIENT noise and tears the front at fiber scale (2026-11-27)', () => {
+    // The artist's Perlin ruling: gradient interpolation, not the value-noise
+    // lattice — four rotated octaves of it, same three document scales.
+    expect(BRISTLE_GATHER).toContain('v += a * cloudPerlin(q);')
+    expect(BRISTLE_GATHER).toContain('dot(cloudGrad(cell), f)')
+    expect(BRISTLE_GATHER).not.toContain('v += a * valueNoise(q);')
+    // The boundary tears at a fixed ±1.3 DOCUMENT px, independent of brush
+    // size: the lateral coordinate gets the displacement, uN normalises after.
+    expect(BRISTLE_GATHER).toContain(
+      'float fiber = perlinNoise2(css / 2.6 + 61.0) * (1.3 / max(uHalfWidthPx, 1.0));',
+    )
+    expect(BRISTLE_GATHER).toContain(
+      'float uN = clamp((lateral + fiber) / uFeatherNoiseAnchor, 0.0, 1.0);',
+    )
   })
 
   it('carries the contained fringe and the sparse outward spikes', () => {
@@ -319,6 +338,8 @@ describe('the neutral/extended gather permutation', () => {
     for (const token of [
       'cloudNoise',
       'cloudMix',
+      'cloudPerlin',
+      'float fiber',
       'uFeatherFalloff',
       'uFeatherNoise',
       'uFeatherNoiseLift',

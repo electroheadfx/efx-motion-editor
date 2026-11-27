@@ -950,22 +950,35 @@ void main(){
 // ============================================================
 
 const FEATHER_CLOUD = `
-// Spec 11 (2026-11-26f, the artist's cloud ruling): a natural FRACTAL cloud —
-// four octaves of the same value noise, each rotated and offset so the lattice
-// never lines up and no axis-aligned squares survive, normalised to 0..1. The
-// feather noise's body break-up rides THIS, not a thresholded paper tooth: a
-// tooth cut hard reads pixelised, a cloud changes over a brush-relative
-// distance and reads organic. The caller samples it in document space.
+// Spec 11 (2026-11-27, the artist's PERLIN ruling — value noise read as hard
+// pillowy blobs): a natural FRACTAL cloud built from GRADIENT (Perlin) noise.
+// Four octaves of the same gradient noise, each rotated and offset so the
+// lattice never lines up; gradient interpolation has no flat lattice
+// plateaus, so the field keeps moving at every scale. Normalised to 0..1.
+// The caller samples it in document space.
+vec2 cloudGrad(vec2 cell){
+  return vec2(hash21(cell + vec2(37.0, 17.0)), hash21(cell + vec2(71.0, 53.0))) * 2.0 - 1.0;
+}
+float cloudPerlin(vec2 p){
+  vec2 cell = floor(p);
+  vec2 f = p - cell;
+  vec2 u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
+  float n00 = dot(cloudGrad(cell), f);
+  float n10 = dot(cloudGrad(cell + vec2(1.0, 0.0)), f - vec2(1.0, 0.0));
+  float n01 = dot(cloudGrad(cell + vec2(0.0, 1.0)), f - vec2(0.0, 1.0));
+  float n11 = dot(cloudGrad(cell + vec2(1.0, 1.0)), f - vec2(1.0, 1.0));
+  return 1.8 * mix(mix(n00, n10, u.x), mix(n01, n11, u.x), u.y);
+}
 float cloudNoise(vec2 p){
   float v = 0.0;
   float a = 0.5;
   vec2 q = p;
   for (int i = 0; i < 4; i++) {
-    v += a * valueNoise(q);
+    v += a * cloudPerlin(q);
     q = vec2(q.x * 2.03 - q.y * 0.71, q.x * 0.71 + q.y * 2.03) + 37.13;
     a *= 0.5;
   }
-  return v / 0.9375;
+  return 0.5 + 0.5 * v / 0.9375;
 }
 // 2026-11-26h (the artist's three-scale ruling): THREE FIXED document scales
 // mixed into ONE field — 20 px, 60 px and 200 px across (each a four-octave
@@ -1032,7 +1045,12 @@ uniform float uFeatherNoiseLift;     // the front's threshold rise at noise 100 
   // Gated by uFeather, so Feather 0 is inert; noise 0 makes the block dead.
   float height = mix(grainHeight(css, uAxis), 0.5, rimCalm);
   if (uFeatherNoise * uFeather > 0.0) {
-    float uN = clamp(lateral / uFeatherNoiseAnchor, 0.0, 1.0);
+    // FIBER TEAR (2026-11-27, the artist's softness ruling): the boundary is a
+    // fixed ±1.3 DOCUMENT-px gradient-noise displacement of the lateral
+    // coordinate, not a brush-relative one — a thin stroke frays at the same
+    // physical scale as a wide one instead of cutting along a smooth contour.
+    float fiber = perlinNoise2(css / 2.6 + 61.0) * (1.3 / max(uHalfWidthPx, 1.0));
+    float uN = clamp((lateral + fiber) / uFeatherNoiseAnchor, 0.0, 1.0);
     // Feather noise is the DEPTH OF PENETRATION (artist ruling 2026-11-27):
     // paint outside a wavy FRONT is removed, everything inside it stays solid,
     // so the middle keeps a plain stroke shape at every density and the noise
@@ -1044,9 +1062,12 @@ uniform float uFeatherNoiseLift;     // the front's threshold rise at noise 100 
     float pen = mix(0.88, 0.35, uFeatherNoise);
     float wobble = cloudMix(css);
     float front = pen + wobble * 0.30;
-    // The removal boundary is blurred ±0.035 (2026-11-27 softness fix): the ±0.015
-    // band read as a hard cut against the fine 20 px cloud scale.
-    float envelope = smoothstep(front - 0.035, front + 0.035, uN);
+    // The removal boundary is blurred by a fixed ~3.5 DOCUMENT px (2026-11-27
+    // softness fix): in uN units the band shrinks with the brush, so thin
+    // strokes still cut whatever the uN width. Clamped to 0.25 uN so a tiny
+    // mark keeps a usable core, floored at the approved 0.035 for wide marks.
+    float bandUN = clamp(3.5 / max(uHalfWidthPx, 1.0), 0.035, 0.25);
+    float envelope = smoothstep(front - bandUN, front + bandUN, uN);
     // A CONTAINED scatter (artist ruling 2026-11-27f): just outside the front
     // the removal weakens, so isolated specks survive there instead of a clean
     // cut - the loose fray of fn-pen4, but held to a thin band so it never
