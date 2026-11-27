@@ -25,12 +25,14 @@ const TOOLS: ReadonlyArray<{
   label: string;
   shortcut?: string;
   Icon: (props: { size?: number }) => ComponentChildren;
+  /** Overrides the 16px row glyph — the stacked mark needs the room. */
+  iconSize?: number;
 }> = Object.freeze([
   // 2026-11-27 (artist's live ruling): the tool reads "Medium" (B unchanged).
   { id: 'brush', label: 'Medium', shortcut: 'B', Icon: Paintbrush },
   // 2026-11-27 (artist's live ruling): Watercolor wears the assembled
   // brush + droplet mark; Water takes the double droplet.
-  { id: 'watercolor', label: 'Watercolor', shortcut: 'A', Icon: WatercolorToolIcon },
+  { id: 'watercolor', label: 'Watercolor', shortcut: 'A', Icon: WatercolorToolIcon, iconSize: 13 },
   { id: 'water', label: 'Water', shortcut: 'W', Icon: Droplets },
   { id: 'pen', label: 'Pen', shortcut: 'P', Icon: Pen },
   { id: 'lift', label: 'Eraser', shortcut: 'E', Icon: Eraser },
@@ -57,7 +59,7 @@ export function AquarelleToolRow() {
         gap: '4px',
       }}
     >
-      {TOOLS.map(({ id, label, shortcut, Icon }) => {
+      {TOOLS.map(({ id, label, shortcut, Icon, iconSize }) => {
         const isActive = !selectActive && active === id;
         const waterGated = id === 'water' && !wetAvailable;
         return (
@@ -90,7 +92,7 @@ export function AquarelleToolRow() {
               overflow: 'hidden',
             }}
           >
-            <Icon size={16} />
+            <Icon size={iconSize ?? 16} />
             <span
               style={{
                 fontSize: '10px',

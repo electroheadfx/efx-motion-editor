@@ -68,7 +68,7 @@ describe('Hand removed from the Studio tool rail (261107-sg3)', () => {
     ]) {
       expect(rail).toContain(`data-testid="${testId}"`);
     }
-    expect(rail).toContain('{WATERCOLOR_RAIL_TOOLS.map(({ id, label, shortcut, Icon }) => {');
+    expect(rail).toContain('{WATERCOLOR_RAIL_TOOLS.map(({ id, label, shortcut, Icon, iconSize }) => {');
   });
 });
 

@@ -3227,7 +3227,7 @@ describe('261022-pim watercolor stroke select surface', () => {
     // 261027-klx: the Brush module tool set (and its Move tooltip) left with
     // engine 1 — the aquarelle rail is the only tool surface left.
     expect(toolRail).not.toContain('Move — Cmd toggles Move on/off');
-    expect(watercolorRail).toContain('{WATERCOLOR_RAIL_TOOLS.map(({ id, label, shortcut, Icon }) => {');
+    expect(watercolorRail).toContain('{WATERCOLOR_RAIL_TOOLS.map(({ id, label, shortcut, Icon, iconSize }) => {');
   });
 
   it('greys Select and makes the A toggle inert when there is no live script', () => {
