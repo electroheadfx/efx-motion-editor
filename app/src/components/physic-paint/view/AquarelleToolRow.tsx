@@ -25,7 +25,8 @@ const TOOLS: ReadonlyArray<{
   shortcut?: string;
   Icon: (props: { size?: number }) => ComponentChildren;
 }> = Object.freeze([
-  { id: 'brush', label: 'Brush', shortcut: 'B', Icon: Paintbrush },
+  // 2026-11-27 (artist's live ruling): the tool reads "Medium" (B unchanged).
+  { id: 'brush', label: 'Medium', shortcut: 'B', Icon: Paintbrush },
   { id: 'watercolor', label: 'Watercolor', shortcut: 'A', Icon: Droplet },
   { id: 'water', label: 'Water', shortcut: 'W', Icon: WavesArrowDown },
   { id: 'pen', label: 'Pen', shortcut: 'P', Icon: Pen },

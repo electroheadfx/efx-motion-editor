@@ -32,7 +32,9 @@ export const PHYSICS_PAINT_SHORTCUT_GROUPS: ShortcutGroup[] = [
   {
     title: 'Paint Tools',
     entries: [
-      {keys: 'B', description: 'Brush'},
+      // 2026-11-27 (artist's live ruling): B still selects the paint tool,
+      // which reads "Medium" in the rail tooltip.
+      {keys: 'B', description: 'Medium'},
       // quick 261121-mtu: A is the Watercolor paint tool (Move/Edit moved to M).
       {keys: 'A', description: 'Watercolor'},
       {keys: 'W', description: 'Water (needs standing water)'},

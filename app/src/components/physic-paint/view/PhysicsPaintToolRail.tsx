@@ -62,7 +62,9 @@ const WATERCOLOR_RAIL_TOOLS: ReadonlyArray<{
   shortcut?: string;
   Icon: (props: { size?: number }) => ComponentChildren;
 }> = Object.freeze([
-  { id: 'brush', label: 'Brush', shortcut: 'B', Icon: Paintbrush },
+  // 2026-11-27 (artist's live ruling): the tool reads "Medium" (the
+  // acrylic/brush family); the B shortcut is unchanged.
+  { id: 'brush', label: 'Medium', shortcut: 'B', Icon: Paintbrush },
   { id: 'watercolor', label: 'Watercolor', shortcut: 'A', Icon: Droplet },
   { id: 'water', label: 'Water', shortcut: 'W', Icon: WavesArrowDown },
   { id: 'pen', label: 'Pen', shortcut: 'P', Icon: Pen },

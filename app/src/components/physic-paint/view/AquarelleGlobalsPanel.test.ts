@@ -319,7 +319,7 @@ describe('AquarelleGlobalsPanel sliders (I-02)', () => {
 });
 
 describe('AquarelleGlobalsPanel Reset (I-02 / T-261017-WMW-01)', () => {
-  it('renders a Reset control under the Medium dropdown, before the rows', () => {
+  it('renders a Reset control first, above the Medium dropdown', () => {
     const tree = renderPanel();
     const buttons = [...walk(tree)].filter((n) => n.type === 'button');
     const reset = buttons.find((b) => b.props?.['data-testid'] === 'aquarelle-params-reset');
@@ -329,6 +329,10 @@ describe('AquarelleGlobalsPanel Reset (I-02 / T-261017-WMW-01)', () => {
       textContent(tree).indexOf('Reset'),
       'Reset leads the tab content',
     ).toBeLessThan(textContent(tree).indexOf('Viscosity'));
+    expect(
+      textContent(tree).indexOf('Reset'),
+      'Reset precedes the dropdown',
+    ).toBeLessThan(textContent(tree).indexOf('Medium'));
   });
 
   it('Reset restores the active medium record through setAquarelleParam and never writes size or lift', () => {
@@ -413,12 +417,17 @@ describe('AquarelleGlobalsPanel Reset (I-02 / T-261017-WMW-01)', () => {
 
 // Phase 64 (D-01/D-03/D-07) — the medium dropdown leads the Paint tab.
 describe('Phase 64 medium dropdown', () => {
-  it('leads the panel with the dropdown row and names the selected medium', () => {
+  it('leads the panel with Reset, then the dropdown row naming the selected medium', () => {
     const tree = renderPanel();
     const root = findTestId(tree, 'aquarelle-globals-panel');
     expect(root, 'panel root must render').toBeTruthy();
-    const firstChild = childrenOf(root!)[0] as TestVNode | undefined;
-    expect(firstChild?.props?.['data-testid'], 'the medium row is first').toBe(
+    // 2026-11-27 (artist's live ruling): Reset opens the tab; the medium row
+    // follows it.
+    const children = childrenOf(root!) as TestVNode[];
+    expect(children[0]?.props?.['data-testid'], 'Reset is first').toBe(
+      'aquarelle-params-reset',
+    );
+    expect(children[1]?.props?.['data-testid'], 'the medium row follows').toBe(
       'aquarelle-medium-row',
     );
     const trigger = findTestId(tree, 'aquarelle-medium-trigger');
@@ -433,7 +442,8 @@ describe('Phase 64 medium dropdown', () => {
     const sliders = [...walk(tree)].filter(
       (node) => node.props?.['data-testid'] === 'slider-stepper',
     );
-    expect(sliders, 'eight row sliders for Brush + Watercolor').toHaveLength(GLOBAL_LABELS.length);
+    // Eight context rows + the tab's fixed Grain row.
+    expect(sliders, 'the eight group rows plus Grain').toHaveLength(GLOBAL_LABELS.length + 1);
     expect(GLOBAL_LABELS).toHaveLength(8);
     const ordered = collectOrderedLabels(tree).filter((label) =>
       (GLOBAL_LABELS as readonly string[]).includes(label),
@@ -496,8 +506,8 @@ describe('Phase 64 medium dropdown', () => {
     expect(sliderLabels).not.toContain('wetSeconds');
     expect(sliderLabels).not.toContain('Wet seconds');
     expect(sliderLabels).not.toContain('Wet Seconds');
-    // 2026-11-27: eight rows in the default context (Grain moved to Paper).
-    expect(sliderLabels).toHaveLength(8);
+    // 2026-11-27: eight group rows + the fixed Grain row in the default context.
+    expect(sliderLabels).toHaveLength(9);
   });
 
   it('moves the canonical viscosity key through the one seam on change and release', () => {
@@ -935,6 +945,7 @@ describe('tool x medium context rows (quick 261121-mtu)', () => {
     // amplitude row is hidden in every context. Emboss closes the tab in its
     // own trailing Relief section.
     expect(labels).toEqual([
+      'Grain',
       'Pigment',
       'Pickup',
       'Opacity',
@@ -954,7 +965,6 @@ describe('tool x medium context rows (quick 261121-mtu)', () => {
       'Flow',
       'Bleed',
       'Edges',
-      'Grain',
       'Feather',
       'Edge transparency',
       'Edge falloff',
@@ -990,6 +1000,7 @@ describe('tool x medium context rows (quick 261121-mtu)', () => {
     applyAquarelleMedium('watercolor');
     const labels = renderedSliders();
     expect(labels).toEqual([
+      'Grain',
       'Viscosity',
       'Pigment',
       'Water',
@@ -1008,9 +1019,10 @@ describe('tool x medium context rows (quick 261121-mtu)', () => {
 
   it('the Eraser shows the Lift row alone and the Water tool its fluid set', () => {
     aquarelleActiveTool.value = 'lift';
-    expect(renderedSliders()).toEqual(['Lift']);
+    expect(renderedSliders()).toEqual(['Grain', 'Lift']);
     aquarelleActiveTool.value = 'water';
     expect(renderedSliders()).toEqual([
+      'Grain',
       'Viscosity',
       'Dry speed',
       'Flow',

@@ -1,3 +1,4 @@
+import type { ComponentChildren } from 'preact';
 import { AquarelleGlobalsPanel } from './AquarelleGlobalsPanel';
 
 /**
@@ -11,10 +12,10 @@ import { AquarelleGlobalsPanel } from './AquarelleGlobalsPanel';
  * which owns the record seam (`emitAquarelleDry(aquarelleRecordClock())`).
  * Never shows mode selectors (D-14).
  */
-export function WatercolorModuleSection() {
+export function WatercolorModuleSection(props: { children?: ComponentChildren } = {}) {
   return (
     <div class="physics-paint-module-section" data-module="watercolor">
-      <AquarelleGlobalsPanel />
+      <AquarelleGlobalsPanel>{props.children}</AquarelleGlobalsPanel>
     </div>
   );
 }

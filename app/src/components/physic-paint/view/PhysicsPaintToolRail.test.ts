@@ -177,10 +177,12 @@ describe('WatercolorRail — the fifth entry (D-05 / C-01)', () => {
     );
     expect(matches).toHaveLength(1);
 
-    // quick 261121-mtu: the row is Brush · Watercolor · Water · Pen · Eraser —
+    // quick 261121-mtu: the row is Medium · Watercolor · Water · Pen · Eraser —
     // five payload tools, the engine still sees four (`watercolor → brush`).
+    // 2026-11-27 (artist's live ruling): the first tool reads "Medium" in the
+    // tooltip; its B shortcut is unchanged.
     const paintTitles = ordered.slice(0, 5).map((node) => String(node.props?.title ?? ''));
-    expect(paintTitles[0]?.startsWith('Brush')).toBe(true);
+    expect(paintTitles[0]?.startsWith('Medium')).toBe(true);
     expect(paintTitles[1]?.startsWith('Watercolor')).toBe(true);
     expect(paintTitles[2]?.startsWith('Water')).toBe(true);
     expect(paintTitles[3]?.startsWith('Pen')).toBe(true);
@@ -324,7 +326,7 @@ describe('WatercolorRail — the wireframe gates (61-13 Task 3)', () => {
     const nav = renderRail();
     const paint = directChildren(nav).slice(0, 5);
     expect(paint.map((node) => node.props?.title)).toEqual([
-      'Brush (B) — turn wireframe off to paint',
+      'Medium (B) — turn wireframe off to paint',
       'Watercolor (A) — turn wireframe off to paint',
       'Water (W) — turn wireframe off to paint',
       'Pen (P) — turn wireframe off to paint',
@@ -365,7 +367,7 @@ describe('WatercolorRail — the wireframe gates (61-13 Task 3)', () => {
     const nav = renderRail();
     const paint = directChildren(nav).slice(0, 5);
     expect(paint.map((node) => node.props?.title)).toEqual([
-      'Brush (B)',
+      'Medium (B)',
       'Watercolor (A)',
       'Water (W) — needs standing water',
       'Pen (P)',
@@ -456,7 +458,7 @@ describe('WatercolorRail — 61-25 UI-01/UI-05', () => {
     const nav = renderRail();
     const paint = directChildren(nav).slice(0, 5);
     expect(paint.map((node) => node.props?.title)).toEqual([
-      'Brush (B) — turn wireframe off to paint',
+      'Medium (B) — turn wireframe off to paint',
       'Watercolor (A) — turn wireframe off to paint',
       'Water (W) — turn wireframe off to paint',
       'Pen (P) — turn wireframe off to paint',

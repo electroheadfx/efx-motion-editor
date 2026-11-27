@@ -145,11 +145,11 @@ function renderModule(): TestVNode {
   return materialize(WatercolorModuleSection()) as TestVNode;
 }
 
-const TOOLS = ['Brush', 'Watercolor', 'Water', 'Pen', 'Eraser'] as const;
+const TOOLS = ['Medium', 'Watercolor', 'Water', 'Pen', 'Eraser'] as const;
 const DRY_TOOLTIP = 'Flash-dry the sheet (F). Recorded in the script.';
 
 describe('AquarelleToolRow (AQUA-02 / D-13)', () => {
-  it('renders exactly 5 tools with labels Brush, Watercolor, Water, Pen, Eraser', () => {
+  it('renders exactly 5 tools with labels Medium, Watercolor, Water, Pen, Eraser', () => {
     setAquarelleTool('brush');
     const tree = renderToolRow();
     const labels = buttonLabels(tree);
@@ -223,7 +223,7 @@ describe('AquarelleToolRow (AQUA-02 / D-13)', () => {
       String(b.props?.class ?? '').includes('active'),
     );
     expect(activeInPaint).toHaveLength(1);
-    expect(textContent(activeInPaint[0]!).trim()).toContain('Brush');
+    expect(textContent(activeInPaint[0]!).trim()).toContain('Medium');
   });
 });
 

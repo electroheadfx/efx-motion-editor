@@ -471,32 +471,33 @@ export function PhysicsPaintRightPanel({
       <section class="physics-paint-right-section physics-paint-options-tabs-section">
         {effectiveToolTab === 'paint' ? (
           <div class="physics-paint-options-tab-panel physics-paint-options-tab-panel-tool" role="tabpanel" aria-label="Paint options">
-            {/* 261018-f15 C2: the Brush size pair at the TOP of the Paint tab is
-                a second home over the SAME handler the top bar uses
-                (write-through, never a second setter). Water color has no
-                global opacity; its Pigment (`load`) lives on the top bar and in
-                the module globals below. */}
-            <div class="paint-tab-size-opacity" data-paint-tab-size-opacity style={{ display: 'flex', flexDirection: 'column', gap: '11px', paddingBottom: '8px' }}>
-              {/* quick 261116-inu / Task 8: the SAME px mapping as the top
-                  bar — one handler, one law, no second size state. */}
-              <SliderStepper
-                id="paint-tab-brush-size"
-                label="Brush size"
-                value={aquarellePaintSizePx()}
-                step={1}
-                min={PAINT_SIZE_MIN_PX}
-                max={PAINT_SIZE_MAX_PX}
-                ariaLabel="Brush size"
-                onChange={(value) => onBrushSizeChange(aquarellePaintCanonicalFromPx(value))}
-                onCommit={(value) => {
-                  void commitAquarelleSelectionParam('size', aquarellePaintCanonicalFromPx(value));
-                }}
-              />
-            </div>
+            {/* 261018-f15 C2: the Brush size pair is a second home over the
+                SAME handler the top bar uses (write-through, never a second
+                setter). 2026-11-27 (artist's live ruling): it rides INSIDE the
+                module mount so the tab order reads Reset → Medium dropdown →
+                Brush size → Grain → the parameter groups. */}
             {/* 56-02 (D-05) / 261017-w4x I-05 (Q3): MODULE-ONLY block — Water
                 color is the only module left after engine-1 removal. The shared
                 Opacity option-group left with I-05. */}
-            <WatercolorModuleSection />
+            <WatercolorModuleSection>
+              <div class="paint-tab-size-opacity" data-paint-tab-size-opacity style={{ display: 'flex', flexDirection: 'column', gap: '11px', paddingBottom: '8px' }}>
+                {/* quick 261116-inu / Task 8: the SAME px mapping as the top
+                    bar — one handler, one law, no second size state. */}
+                <SliderStepper
+                  id="paint-tab-brush-size"
+                  label="Brush size"
+                  value={aquarellePaintSizePx()}
+                  step={1}
+                  min={PAINT_SIZE_MIN_PX}
+                  max={PAINT_SIZE_MAX_PX}
+                  ariaLabel="Brush size"
+                  onChange={(value) => onBrushSizeChange(aquarellePaintCanonicalFromPx(value))}
+                  onCommit={(value) => {
+                    void commitAquarelleSelectionParam('size', aquarellePaintCanonicalFromPx(value));
+                  }}
+                />
+              </div>
+            </WatercolorModuleSection>
           </div>
         ) : effectiveToolTab === 'background' ? (
           // 49-06 (S5): a selected Bg clip shows the Background Clip properties

@@ -2,14 +2,15 @@
 //  AquarelleGlobalsPanel — the medium dropdown, the context-driven
 //  parameter groups + Reset. This is the Paint-tab content.
 //
-//  Phase 64 (D-01/D-07/D-22): the panel LEADS with the medium
-//  dropdown, then Reset, then the slider rows. quick 261122-gys:
-//  a pick binds a preset of the picked group AND applies the whole
-//  record in one move (pickAquarelleMedium), then closes — the
-//  label, the rows and the brush always describe the same medium,
-//  and the selected name is shown truthfully, with no "edited"
-//  marker. 2026-11-27 (artist's live ruling): Reset always sits at
-//  the top, directly under the dropdown.
+//  Phase 64 (D-01/D-07/D-22): the panel LEADS with Reset, then the
+//  medium dropdown, then the tab's fixed top rows (Brush size and
+//  Grain, supplied by the right panel), then the context groups.
+//  quick 261122-gys: a pick binds a preset of the picked group AND
+//  applies the whole record in one move (pickAquarelleMedium), then
+//  closes — the label, the rows and the brush always describe the
+//  same medium, and the selected name is shown truthfully, with no
+//  "edited" marker. 2026-11-27 (artist's live ruling): Reset opens
+//  the tab, above the dropdown.
 //
 //  quick 261121-mtu: the flat twelve-row list is gone. The rows
 //  and their seven group headings come from ONE pure selector,
@@ -46,7 +47,7 @@
 //  The Brush response block lives in BrushResponsePanel (I-02).
 // ============================================================
 
-import type { TargetedMouseEvent } from 'preact';
+import type { ComponentChildren, TargetedMouseEvent } from 'preact';
 import { useEffect, useRef } from 'preact/hooks';
 import { DEFAULT_MEDIUM_ID, MEDIUMS, mediumById } from '@efxlab/efx-watercolor';
 import { RuleSectionHeader } from '../../shared/RuleSectionHeader';
@@ -107,7 +108,7 @@ function GlobalSlider(props: {
   );
 }
 
-export function AquarelleGlobalsPanel() {
+export function AquarelleGlobalsPanel(props: { children?: ComponentChildren } = {}) {
   // Narrow signal reads (efx-preact-reactivity rule 5) — each .value
   // read subscribes this panel to that signal only.
   const params = aquarelleParams.value;
@@ -198,6 +199,23 @@ export function AquarelleGlobalsPanel() {
 
   return (
     <div class="physics-paint-option-group" data-testid="aquarelle-globals-panel">
+      {/* 2026-11-27 (artist's live ruling): the Paint tab opens with Reset,
+          then the Medium dropdown, then the tab's fixed top rows (Brush size
+          and Grain, supplied by the right panel as children), then the
+          context-driven parameter groups. */}
+      <button
+        type="button"
+        data-testid="aquarelle-params-reset"
+        onClick={onReset}
+        class="physics-paint-text-button"
+        style={{
+          display: 'block',
+          width: '100%',
+        }}
+      >
+        Reset
+      </button>
+
       <div class="physics-paint-option-row" data-testid="aquarelle-medium-row">
         <button
           type="button"
@@ -219,21 +237,6 @@ export function AquarelleGlobalsPanel() {
           <span data-testid="aquarelle-medium-name">{selectedMedium.name}</span>
         </button>
       </div>
-
-      {/* 2026-11-27 (artist's live ruling): Reset always sits at the top of
-          the Paint tab, directly under the Medium dropdown. */}
-      <button
-        type="button"
-        data-testid="aquarelle-params-reset"
-        onClick={onReset}
-        class="physics-paint-text-button"
-        style={{
-          display: 'block',
-          width: '100%',
-        }}
-      >
-        Reset
-      </button>
 
       {menuOpen && menuAnchor !== null ? (
         <div
@@ -275,6 +278,17 @@ export function AquarelleGlobalsPanel() {
           </div>
         </div>
       ) : null}
+
+      {/* The tab's fixed top rows from the right panel: the shared Brush size
+          control (write-through) and, right after it, the Grain control —
+          available under every medium (2026-11-27 artist's ruling). */}
+      {props.children}
+      <GlobalSlider
+        label="Grain"
+        value={params.granulation}
+        onChange={onGlobalChange('granulation')}
+        onCommit={onGlobalCommit('granulation')}
+      />
 
       {groups.map((group) => (
         <div key={group.id} data-testid={`aquarelle-param-group-${group.id}`}>

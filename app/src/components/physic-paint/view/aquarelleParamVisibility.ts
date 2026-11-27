@@ -39,8 +39,9 @@
 //  0..5 test band in a trailing Relief section; the display relief is
 //  lit again and the Medium record defaults it to 0. The signed band's
 //  negative half is retired from the ROW; the engine still honours a
-//  negative recorded emboss. The Grain row's control moved to the Paper
-//  tab, so the row is hidden here (the key keeps its Reset/persistence).
+//  negative recorded emboss. The Grain row's control is a fixed Paint-tab
+//  top row (after Brush size), so the group row is hidden here (the key
+//  keeps its Reset/persistence).
 // ============================================================
 
 import { DEFAULT_MEDIUM_ID, type MediumId } from '@efxlab/efx-watercolor';
@@ -219,11 +220,12 @@ export const AQUARELLE_PARAM_ROWS: readonly AquarelleParamRow[] = Object.freeze(
   Object.freeze({ key: 'flow', label: 'Flow', group: 'watercolor', paint: WATERCOLOR_ONLY, water: true }),
   Object.freeze({ key: 'bleed', label: 'Bleed', group: 'watercolor', paint: WATERCOLOR_ONLY, water: true }),
   Object.freeze({ key: 'edge', label: 'Edges', group: 'watercolor', paint: WATERCOLOR_ONLY, water: true }),
-  // 2026-11-27 (artist's live ruling): the Grain control moves to the Paper
-  // tab (it is a global paint/paper knob to the artist, available under every
-  // medium). The ROW stays in the table — hidden in every context — so the
-  // medium record, the Reset key set, the per-stroke bag and the persistence
-  // keep their shape (the Feather precedent).
+  // 2026-11-27 (artist's live ruling): the Grain control is the Paint tab's
+  // FIXED top row, rendered right after Brush size under every medium (it is
+  // a global knob to the artist, not a Watercolor-only group row). The ROW
+  // stays in the table — hidden from the group list — so the medium record,
+  // the Reset key set, the per-stroke bag and the persistence keep their
+  // shape (the Feather precedent).
   Object.freeze({
     key: 'granulation',
     label: 'Grain',

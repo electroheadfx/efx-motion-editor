@@ -232,12 +232,17 @@ describe('panel split shell — shared block', () => {
     expect(paintTab.indexOf('shared-opacity'), 'paint-tab must not host shared-opacity').toBe(-1);
     expect(paintTab.indexOf('physics-paint-shared-block'), 'shared wrapper must leave').toBe(-1);
     expect(paintTab.indexOf('<SectionLabel text="Opacity"'), 'Opacity option-group must leave').toBe(-1);
-    // The size pair sits ABOVE the module switch.
+    // 2026-11-27 (artist's live ruling): the size pair rides INSIDE the
+    // module mount so the tab order is Reset → dropdown → Brush size → Grain.
     const pairAt = paintTab.indexOf('paint-tab-size-opacity');
     const moduleAt = paintTab.indexOf('WatercolorModuleSection');
-    expect(pairAt, 'size/opacity pair must mount').toBeGreaterThan(-1);
+    expect(pairAt, 'size pair must mount').toBeGreaterThan(-1);
     expect(moduleAt, 'module switch must remain').toBeGreaterThan(-1);
-    expect(pairAt, 'pair precedes the module switch').toBeLessThan(moduleAt);
+    expect(pairAt, 'pair rides inside the module switch').toBeGreaterThan(moduleAt);
+    expect(
+      paintTab.indexOf('</WatercolorModuleSection>', pairAt),
+      'the pair closes inside the mount',
+    ).toBeGreaterThan(pairAt);
     // The pair writes through the top-bar handler (no second setter). Water
     // color has no global opacity control — its Pigment (`load`) lives on the
     // top bar and in the module globals, so the Brush opacity seam left with

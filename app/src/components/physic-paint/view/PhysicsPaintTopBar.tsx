@@ -46,9 +46,9 @@ import { isAquarelleParamRowVisible } from './aquarelleParamVisibility';
  *
  * 2026-11-27 (artist's live ruling): the top bar mirrors the Paint panel's
  * row law instead of a hand-rolled list. Pigment left the bar (it lives in
- * Paint & reservoir); Pickup, Opacity and Feather noise take its seat for the
- * Medium context, and the watercolor-only Edges / Grain knobs now disappear
- * with their panel rows instead of staying as dead controls.
+ * Paint & reservoir); Pickup, Opacity, Feather noise and Emboss take its seat
+ * for the Medium context, and the watercolor-only Edges / Grain knobs now
+ * disappear with their panel rows instead of staying as dead controls.
  *
  * 261018-f15 C1: Water / Edges / Grain follow the primary control in Water
  * color mode and write setAquarelleParam('water' | 'edge' | 'granulation') —
@@ -474,6 +474,7 @@ export function PhysicsPaintTopBar({
   const pickupRowVisible = isAquarelleParamRowVisible(activeTool, selectedMediumId, 'pickup');
   const opacityRowVisible = isAquarelleParamRowVisible(activeTool, selectedMediumId, 'edgeFade');
   const featherNoiseRowVisible = isAquarelleParamRowVisible(activeTool, selectedMediumId, 'featherNoise');
+  const embossRowVisible = isAquarelleParamRowVisible(activeTool, selectedMediumId, 'emboss');
   const edgesRowVisible = isAquarelleParamRowVisible(activeTool, selectedMediumId, 'edge');
 
   return (
@@ -652,6 +653,22 @@ export function PhysicsPaintTopBar({
                 onChange={(value) => setAquarelleParam('featherNoise', value)}
                 onCommit={(value) => {
                   void commitAquarelleSelectionParam('featherNoise', value);
+                }}
+                disabled={disabled}
+              />
+            )}
+            {/* 2026-11-27 (artist's live ruling): Emboss on the top bar — the
+                row's own 0..5 test band (aquarelleParamVisibility). */}
+            {embossRowVisible && (
+              <TopBarSlider
+                id="physics-aquarelle-emboss"
+                label="Emboss"
+                min={0}
+                max={5}
+                value={aquarelleParams.value.emboss}
+                onChange={(value) => setAquarelleParam('emboss', value)}
+                onCommit={(value) => {
+                  void commitAquarelleSelectionParam('emboss', value);
                 }}
                 disabled={disabled}
               />

@@ -639,7 +639,7 @@ describe('261017-vcn top bar slim (I-04 remainder)', () => {
       (node) => typeof (node as AnyVNode).props?.label === 'string',
     ) as AnyVNode[];
     const labels = controls.map((s) => s.props.label);
-    expect(labels).toEqual(['Brush size', 'Pickup', 'Opacity', 'Feather noise']);
+    expect(labels).toEqual(['Brush size', 'Pickup', 'Opacity', 'Feather noise', 'Emboss']);
     expect(labels).not.toContain('Pigment');
     expect(labels).not.toContain('Grain scale');
     // The retired rows leave the render tree.
@@ -691,7 +691,7 @@ describe('261018-f15 watercolor top-bar aquarelle globals', () => {
         (node) => typeof (node as AnyVNode).props?.label === 'string',
       ) as AnyVNode[];
       const labels = controls.map((s) => s.props.label);
-      expect(labels).toEqual(['Brush size', 'Water', 'Edges']);
+      expect(labels).toEqual(['Brush size', 'Emboss', 'Water', 'Edges']);
     } finally {
       vi.doUnmock('../../shared/activeModule');
       vi.doUnmock('./aquarelleRecordState');
@@ -706,6 +706,7 @@ describe('261018-f15 watercolor top-bar aquarelle globals', () => {
     expect(body).toContain("setAquarelleParam('edge'");
     expect(body).toContain("setAquarelleParam('pickup'");
     expect(body).toContain("setAquarelleParam('featherNoise'");
+    expect(body).toContain("setAquarelleParam('emboss'");
     // Opacity writes the stored transparency key inverted (100 = opaque).
     expect(body).toContain("setAquarelleParam('edgeFade', 100 - value)");
     // 2026-11-27: Pigment and Grain left the top bar (Paint & reservoir / the
@@ -717,8 +718,8 @@ describe('261018-f15 watercolor top-bar aquarelle globals', () => {
     // 261027-klx: one module — no branch gate.
     expect(body).not.toContain('isWatercolor');
     // Every optional knob is gated through the shared row law (one import +
-    // five call sites).
-    expect(body.split('isAquarelleParamRowVisible').length - 1).toBe(6);
+    // six call sites).
+    expect(body.split('isAquarelleParamRowVisible').length - 1).toBe(7);
     // Optional knobs carry the query-hidden classes.
     expect(body).toContain('physics-paint-topbar-optional-edges');
   });
@@ -1189,6 +1190,7 @@ describe('quick 261111-ucf top-bar slider release commits', () => {
       ['physics-aquarelle-pickup', 'pickup'],
       ['physics-aquarelle-opacity', 'edgeFade'],
       ['physics-aquarelle-feather-noise', 'featherNoise'],
+      ['physics-aquarelle-emboss', 'emboss'],
     ];
 
     for (const [id] of released) {
@@ -1217,9 +1219,9 @@ describe('quick 261111-ucf top-bar slider release commits', () => {
         : id === 'physics-aquarelle-opacity' ? 63 : 37;
       expect(calls[calls.length - 1]!.patch, `${id} forwards ${key}`).toEqual({ params: { [key]: expected } });
     }
-    expect(calls, 'one patch per release').toHaveLength(4);
+    expect(calls, 'one patch per release').toHaveLength(5);
     expect(calls.map((call) => call.ids)).toEqual([
-      [10701], [10701], [10701], [10701],
+      [10701], [10701], [10701], [10701], [10701],
     ]);
   });
 
@@ -1234,6 +1236,7 @@ describe('quick 261111-ucf top-bar slider release commits', () => {
       for (const visible of [
         'physics-aquarelle-water',
         'physics-aquarelle-edges',
+        'physics-aquarelle-emboss',
       ]) {
         expect(watercolorById(visible), `the Watercolor bar renders ${visible}`).toBeDefined();
       }
@@ -1260,6 +1263,7 @@ describe('quick 261111-ucf top-bar slider release commits', () => {
         'physics-aquarelle-pickup',
         'physics-aquarelle-opacity',
         'physics-aquarelle-feather-noise',
+        'physics-aquarelle-emboss',
       ]) {
         expect(acrylicById(visible), `the Medium bar renders ${visible}`).toBeDefined();
       }

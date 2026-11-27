@@ -98,8 +98,14 @@ describe('261017-fz3 PaperPicker single home', () => {
     expect(paintTab.indexOf('BrushModuleSection'), 'Brush module section must leave').toBe(-1);
     const pairAt = paintTab.indexOf('paint-tab-size-opacity');
     const moduleSwitchIndex = paintTab.indexOf('WatercolorModuleSection');
-    expect(pairAt, 'size/opacity pair must mount').toBeGreaterThan(-1);
-    expect(pairAt, 'pair precedes the module switch').toBeLessThan(moduleSwitchIndex);
+    expect(pairAt, 'size pair must mount').toBeGreaterThan(-1);
+    // 2026-11-27 (artist's live ruling): the pair rides INSIDE the module
+    // mount so the tab order is Reset → dropdown → Brush size → Grain.
+    expect(pairAt, 'pair rides inside the module switch').toBeGreaterThan(moduleSwitchIndex);
+    expect(
+      paintTab.indexOf('</WatercolorModuleSection>', pairAt),
+      'the pair closes inside the mount',
+    ).toBeGreaterThan(pairAt);
     expect(moduleSwitchIndex).toBeGreaterThan(paintTab.indexOf('MODULE-ONLY block'));
   });
 });
@@ -213,16 +219,8 @@ describe('64-09 Paper & Light tab', () => {
         `${label} row must sit below the paper picker`,
       ).toBeGreaterThan(groupAt);
     }
-    // 2026-11-27 (artist's live ruling): the Grain row joined the tab above
-    // the Light group — four steppers, two option groups.
-    expect(
-      body.match(/<SliderStepper\b/g) ?? [],
-      'the Grain row plus the three light rows',
-    ).toHaveLength(4);
-    expect(
-      body.match(/physics-paint-option-group/g) ?? [],
-      'the Grain and Light option groups',
-    ).toHaveLength(2);
+    expect(body.match(/<SliderStepper\b/g) ?? [], 'exactly the three light rows').toHaveLength(3);
+    expect(body.match(/physics-paint-option-group/g) ?? [], 'one light option group').toHaveLength(1);
   });
 
   it('reads the document light with the package default — never a retyped triple', () => {
@@ -283,9 +281,8 @@ describe('64-09 Paper & Light tab', () => {
         `onChange={(value) => props.onLightChange?.({ ${field}: value })}`,
       );
     }
-    // The three light rows + the Grain row each commit and change.
-    expect(body.match(/onCommit=\{/g) ?? [], 'four rows commit').toHaveLength(4);
-    expect(body.match(/onChange=\{/g) ?? [], 'four rows change').toHaveLength(4);
+    expect(body.match(/onCommit=\{/g) ?? [], 'exactly the three rows commit').toHaveLength(3);
+    expect(body.match(/onChange=\{/g) ?? [], 'exactly the three rows change').toHaveLength(3);
     // The commit port is the Studio handler; the view still never persists.
     expect(body, 'the tab never calls the store mutation').not.toContain('setDocumentLight');
     // One-field patches only: the commit never rebuilds the triple.

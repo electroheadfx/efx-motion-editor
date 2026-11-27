@@ -547,9 +547,6 @@ describe('the seam audit (64-12 MED-28)', () => {
     ).toEqual([
       'AquarelleGlobalsPanel.tsx',
       'PhysicsPaintTopBar.tsx',
-      // 2026-11-27 (artist's live ruling): the Grain control moved into the
-      // Paper tab — it is a shipped globals surface now.
-      'RightPanelPaperTab.tsx',
       'aquarelleRecordState.ts',
     ]);
     // "Each beside its definition": one definition, the ONE tool-pick seam
