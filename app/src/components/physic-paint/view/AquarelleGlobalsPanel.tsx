@@ -1,16 +1,19 @@
 // ============================================================
-//  AquarelleGlobalsPanel — the medium dropdown, the context-driven
-//  parameter groups + Reset. This is the Paint-tab content.
+//  AquarelleGlobalsPanel — the tool dropdown, the brush-response
+//  dropdown, the context-driven parameter groups + Reset. This is the
+//  Paint-tab content.
 //
 //  Phase 64 (D-01/D-07/D-22): the panel LEADS with Reset, then the
-//  medium dropdown, then the tab's fixed top rows (Brush size and
-//  Grain, supplied by the right panel), then the context groups.
-//  quick 261122-gys: a pick binds a preset of the picked group AND
-//  applies the whole record in one move (pickAquarelleMedium), then
-//  closes — the label, the rows and the brush always describe the
-//  same medium, and the selected name is shown truthfully, with no
-//  "edited" marker. 2026-11-27 (artist's live ruling): Reset opens
-//  the tab, above the dropdown.
+//  dropdown, then the tab's fixed top rows (Brush size and Grain,
+//  supplied by the right panel), then the context groups.
+//  2026-11-27 (artist's live ruling): the Medium dropdown becomes the
+//  five-tool selector (Medium · Watercolor · Water · Pen · Eraser) with
+//  a single label, and a second dropdown below it picks the BRUSH
+//  RESPONSE the active tool exposes. quick 261122-gys stays true: a
+//  re-pick of the ACTIVE paint tool restores a drifted medium record
+//  (pickAquarelleMedium); a switch applies the record inside
+//  selectAquarellePaintTool. The selected names are shown truthfully,
+//  with no "edited" marker.
 //
 //  quick 261121-mtu: the flat twelve-row list is gone. The rows
 //  and their seven group headings come from ONE pure selector,
@@ -52,22 +55,35 @@ import { useEffect, useRef } from 'preact/hooks';
 import { DEFAULT_MEDIUM_ID, MEDIUMS, mediumById } from '@efxlab/efx-watercolor';
 import { RuleSectionHeader } from '../../shared/RuleSectionHeader';
 import { SliderStepper } from '../../shared/SliderStepper';
+import { AQUARELLE_TOOL_LABELS, AQUARELLE_TOOL_ORDER } from './AquarelleToolRow';
 import {
   aquarelleActiveTool,
-  aquarelleMediumMenuAnchor,
-  aquarelleMediumMenuOpen,
   aquarelleParams,
+  aquarelleResponseMenuAnchor,
+  aquarelleResponseMenuOpen,
   aquarelleSelectedMediumId,
+  aquarelleSelectedTipId,
+  aquarelleToolMenuAnchor,
+  aquarelleToolMenuOpen,
   pickAquarelleMedium,
-  setAquarelleMediumMenuOpen,
+  selectAquarellePaintTool,
   setAquarelleParam,
+  setAquarelleResponseMenuOpen,
+  setAquarelleToolMenuOpen,
   type AquarelleGlobalKey,
 } from './aquarelleRecordState';
 import { visibleAquarelleParamGroups } from './aquarelleParamVisibility';
 import {
   commitAquarelleSelectionParam,
   commitAquarelleSelectionParams,
+  pickAquarelleBrush,
 } from './aquarellePaintControls';
+import { brushGroupsForTool, brushPresetsForTool } from './brushToolFamily';
+import { aquarelleHasWetPaint } from './aquarelleWetPaintGate';
+import {
+  aquarelleSelectionEditActive,
+  setAquarelleSelectMode,
+} from './aquarelleStrokeSelection';
 
 const GLOBAL_MIN = 0;
 const GLOBAL_MAX = 100;
@@ -114,25 +130,40 @@ export function AquarelleGlobalsPanel(props: { children?: ComponentChildren } = 
   const params = aquarelleParams.value;
   const activeTool = aquarelleActiveTool.value;
   const selectedMediumId = aquarelleSelectedMediumId.value;
-  const menuOpen = aquarelleMediumMenuOpen.value;
-  const menuAnchor = aquarelleMediumMenuAnchor.value;
-  const menuRef = useRef<HTMLDivElement>(null);
+  const selectedTipId = aquarelleSelectedTipId.value;
+  const toolMenuOpen = aquarelleToolMenuOpen.value;
+  const toolMenuAnchor = aquarelleToolMenuAnchor.value;
+  const responseMenuOpen = aquarelleResponseMenuOpen.value;
+  const responseMenuAnchor = aquarelleResponseMenuAnchor.value;
+  const wetAvailable = aquarelleHasWetPaint.value;
+  const toolMenuRef = useRef<HTMLDivElement>(null);
+  const responseMenuRef = useRef<HTMLDivElement>(null);
 
   // Phase 64 (D-01/D-07): the popover close contract mirrors
   // PhysicsPaintTextureMenu — captured pointerdown and Escape listeners only
-  // while open, removed on close. The trigger owns its own toggle, so its
-  // pointerdown must not race this close.
+  // while a menu is open, removed on close. Each trigger owns its own toggle,
+  // so its pointerdown must not race this close (both carry the shared
+  // popover-trigger marker).
   useEffect(() => {
-    if (!menuOpen) return undefined;
+    if (!toolMenuOpen && !responseMenuOpen) return undefined;
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target as Node | null;
-      if (target && menuRef.current?.contains(target)) return;
-      if (target instanceof Element && target.closest('[data-aquarelle-medium-trigger]')) return;
-      setAquarelleMediumMenuOpen(false);
+      if (target && (
+        toolMenuRef.current?.contains(target) === true ||
+        responseMenuRef.current?.contains(target) === true
+      )) {
+        return;
+      }
+      if (target instanceof Element && target.closest('[data-aquarelle-popover-trigger]')) {
+        return;
+      }
+      setAquarelleToolMenuOpen(false);
+      setAquarelleResponseMenuOpen(false);
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
-      setAquarelleMediumMenuOpen(false);
+      setAquarelleToolMenuOpen(false);
+      setAquarelleResponseMenuOpen(false);
       event.preventDefault();
       event.stopPropagation();
     };
@@ -142,7 +173,7 @@ export function AquarelleGlobalsPanel(props: { children?: ComponentChildren } = 
       window.removeEventListener('pointerdown', onPointerDown, true);
       window.removeEventListener('keydown', onKeyDown, true);
     };
-  }, [menuOpen]);
+  }, [toolMenuOpen, responseMenuOpen]);
 
   const onGlobalChange = (key: AquarelleGlobalKey) => (value: number) => {
     setAquarelleParam(key, value);
@@ -173,25 +204,48 @@ export function AquarelleGlobalsPanel(props: { children?: ComponentChildren } = 
     void commitAquarelleSelectionParams(next);
   };
 
-  // Phase 64: the trigger toggles with its own viewport anchor (event handler
-  // only — never a render-body write). A second press closes.
-  const toggleMediumMenu = (event: TargetedMouseEvent<HTMLButtonElement>) => {
-    if (menuOpen) {
-      setAquarelleMediumMenuOpen(false);
+  // Phase 64: a trigger toggles with its own viewport anchor (event handler
+  // only — never a render-body write), and opening one closes the other. A
+  // second press closes.
+  const toggleToolMenu = (event: TargetedMouseEvent<HTMLButtonElement>) => {
+    if (toolMenuOpen) {
+      setAquarelleToolMenuOpen(false);
       return;
     }
+    setAquarelleResponseMenuOpen(false);
     const rect = event.currentTarget.getBoundingClientRect();
-    setAquarelleMediumMenuOpen(true, { left: rect.left, top: rect.bottom + 6 });
+    setAquarelleToolMenuOpen(true, { left: rect.left, top: rect.bottom + 6 });
   };
 
-  const selectedMedium =
-    mediumById(selectedMediumId ?? DEFAULT_MEDIUM_ID) ?? MEDIUMS[0];
+  const toggleResponseMenu = (event: TargetedMouseEvent<HTMLButtonElement>) => {
+    if (responseMenuOpen) {
+      setAquarelleResponseMenuOpen(false);
+      return;
+    }
+    setAquarelleToolMenuOpen(false);
+    const rect = event.currentTarget.getBoundingClientRect();
+    setAquarelleResponseMenuOpen(true, { left: rect.left, top: rect.bottom + 6 });
+  };
+
   const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1440;
   const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 900;
   // Same viewport clamp as the brush and texture popovers (212px + 8px gutter).
-  const menuLeft = menuAnchor === null ? 8 : Math.max(8, Math.min(menuAnchor.left, viewportWidth - 220));
-  const menuMaxHeight =
-    menuAnchor === null ? 320 : Math.max(120, viewportHeight - menuAnchor.top - 8);
+  const menuLeft = (anchor: { left: number } | null) =>
+    anchor === null ? 8 : Math.max(8, Math.min(anchor.left, viewportWidth - 220));
+  const menuMaxHeight = (anchor: { top: number } | null) =>
+    anchor === null ? 320 : Math.max(120, viewportHeight - anchor.top - 8);
+
+  // 2026-11-27 (artist's live ruling): the response dropdown follows the TOOL.
+  // Only the paint tools own a family — Medium shows every non-watercolor
+  // preset, Watercolor its own group; Water / Pen / Eraser carry no family, so
+  // the row is absent for them. A tip outside the family (a stale pick, a
+  // utility-tool pick) shows the family's first preset, which is also what the
+  // menu marks, so the label and the checked item can never disagree.
+  const responseVisible = activeTool === 'brush' || activeTool === 'watercolor';
+  const toolResponses = brushPresetsForTool(activeTool);
+  const shownResponse = responseVisible
+    ? toolResponses.find((preset) => preset.id === selectedTipId) ?? toolResponses[0]
+    : undefined;
 
   // quick 261121-mtu: the ONE source of rendered rows and headings — a pure,
   // side-effect-free selector over (active tool, selected medium).
@@ -200,9 +254,9 @@ export function AquarelleGlobalsPanel(props: { children?: ComponentChildren } = 
   return (
     <div class="physics-paint-option-group" data-testid="aquarelle-globals-panel">
       {/* 2026-11-27 (artist's live ruling): the Paint tab opens with Reset,
-          then the Medium dropdown, then the tab's fixed top rows (Brush size
-          and Grain, supplied by the right panel as children), then the
-          context-driven parameter groups. */}
+          then the Tool dropdown, then the Brush response dropdown (paint tools
+          only), then the tab's fixed top rows (Brush size and Grain, supplied
+          by the right panel as children), then the context-driven groups. */}
       <button
         type="button"
         data-testid="aquarelle-params-reset"
@@ -216,14 +270,14 @@ export function AquarelleGlobalsPanel(props: { children?: ComponentChildren } = 
         Reset
       </button>
 
-      <div class="physics-paint-option-row" data-testid="aquarelle-medium-row">
+      <div class="physics-paint-option-row" data-testid="aquarelle-tool-row">
         <button
           type="button"
-          data-testid="aquarelle-medium-trigger"
-          data-aquarelle-medium-trigger
+          data-testid="aquarelle-tool-trigger"
+          data-aquarelle-popover-trigger
           class="physics-paint-text-button"
           aria-haspopup="menu"
-          aria-expanded={menuOpen}
+          aria-expanded={toolMenuOpen}
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -231,47 +285,129 @@ export function AquarelleGlobalsPanel(props: { children?: ComponentChildren } = 
             width: '100%',
             gap: '8px',
           }}
-          onClick={toggleMediumMenu}
+          onClick={toggleToolMenu}
         >
-          <span>Medium</span>
-          <span data-testid="aquarelle-medium-name">{selectedMedium.name}</span>
+          <span>Tool</span>
+          <span data-testid="aquarelle-tool-name">{AQUARELLE_TOOL_LABELS[activeTool]}</span>
         </button>
       </div>
 
-      {menuOpen && menuAnchor !== null ? (
+      {toolMenuOpen && toolMenuAnchor !== null ? (
         <div
-          ref={menuRef}
+          ref={toolMenuRef}
           class="physics-paint-brush-menu"
           role="menu"
-          aria-label="Medium"
-          data-testid="aquarelle-medium-menu"
+          aria-label="Tool"
+          data-testid="aquarelle-tool-menu"
           style={{
-            left: `${menuLeft}px`,
-            top: `${menuAnchor.top}px`,
-            maxHeight: `${menuMaxHeight}px`,
+            left: `${menuLeft(toolMenuAnchor)}px`,
+            top: `${toolMenuAnchor.top}px`,
+            maxHeight: `${menuMaxHeight(toolMenuAnchor)}px`,
             overflowY: 'auto',
           }}
         >
           <div class="physics-paint-brush-menu-list">
-            {MEDIUMS.map((medium) => {
-              const active = medium.id === selectedMediumId;
+            {AQUARELLE_TOOL_ORDER.map((id) => {
+              const active = id === activeTool;
+              // 261029-lel: Water only acts on live standing water — grey it
+              // while the sheet is dry (same gate as the row and the shortcut).
+              const waterGated = id === 'water' && !wetAvailable;
               return (
                 <button
-                  key={medium.id}
+                  key={id}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={active}
+                  disabled={waterGated}
+                  class={`physics-paint-brush-menu-item${active ? ' active' : ''}`}
+                  data-testid={`aquarelle-tool-item-${id}`}
+                  title={waterGated ? 'Water (W) — needs standing water' : undefined}
+                  onClick={() => {
+                    // The early return keeps the dry-sheet law true even when
+                    // a caller invokes the handler directly.
+                    if (id === 'water' && !aquarelleHasWetPaint.peek()) return;
+                    const wasActive = aquarelleActiveTool.peek() === id;
+                    setAquarelleToolMenuOpen(false);
+                    // 261022-pim: picking a paint tool returns to painting.
+                    setAquarelleSelectMode(false);
+                    // quick 261121-mtu: the ONE tool-pick seam (same as the row).
+                    selectAquarellePaintTool(id);
+                    // quick 261122-gys stays true: re-picking the ACTIVE paint
+                    // tool restores a drifted medium record; a switch already
+                    // applied the record inside the seam.
+                    if (wasActive && (id === 'brush' || id === 'watercolor')) {
+                      pickAquarelleMedium(brushGroupsForTool(id)[0]!);
+                    }
+                  }}
+                >
+                  <span class="physics-paint-brush-menu-name">{AQUARELLE_TOOL_LABELS[id]}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+
+      {shownResponse !== undefined ? (
+        <div class="physics-paint-option-row" data-testid="aquarelle-response-row">
+          <button
+            type="button"
+            data-testid="aquarelle-response-trigger"
+            data-aquarelle-popover-trigger
+            class="physics-paint-text-button"
+            aria-haspopup="menu"
+            aria-expanded={responseMenuOpen}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              width: '100%',
+              gap: '8px',
+            }}
+            onClick={toggleResponseMenu}
+          >
+            <span>Brush response</span>
+            <span data-testid="aquarelle-response-name">{shownResponse.name}</span>
+          </button>
+        </div>
+      ) : null}
+
+      {shownResponse !== undefined && responseMenuOpen && responseMenuAnchor !== null ? (
+        <div
+          ref={responseMenuRef}
+          class="physics-paint-brush-menu"
+          role="menu"
+          aria-label="Brush response"
+          data-testid="aquarelle-response-menu"
+          style={{
+            left: `${menuLeft(responseMenuAnchor)}px`,
+            top: `${responseMenuAnchor.top}px`,
+            maxHeight: `${menuMaxHeight(responseMenuAnchor)}px`,
+            overflowY: 'auto',
+          }}
+        >
+          <div class="physics-paint-brush-menu-list">
+            {toolResponses.map((preset) => {
+              const active = preset.id === shownResponse.id;
+              return (
+                <button
+                  key={preset.id}
                   type="button"
                   role="menuitemradio"
                   aria-checked={active}
                   class={`physics-paint-brush-menu-item${active ? ' active' : ''}`}
-                  data-testid={`aquarelle-medium-item-${medium.id}`}
+                  data-testid={`aquarelle-response-item-${preset.id}`}
+                  title={preset.hint}
                   onClick={() => {
-                    // quick 261122-gys: a pick binds a preset of the picked
-                    // group AND applies its record (D-03: re-picking restores
-                    // a drifted record — the store decides what is written).
-                    pickAquarelleMedium(medium.id);
-                    setAquarelleMediumMenuOpen(false);
+                    setAquarelleResponseMenuOpen(false);
+                    // 261029-eur WR-03: leave Select mode before the pick
+                    // UNLESS a non-empty selection is armed — the same law
+                    // the library card follows.
+                    if (!aquarelleSelectionEditActive()) setAquarelleSelectMode(false);
+                    void pickAquarelleBrush(preset.id);
                   }}
                 >
-                  <span class="physics-paint-brush-menu-name">{medium.name}</span>
+                  <span class="physics-paint-brush-menu-name">{preset.name}</span>
                 </button>
               );
             })}

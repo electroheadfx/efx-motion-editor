@@ -1,10 +1,10 @@
 // ============================================================
-//  RightPanelPaperTab — the Paper & Light tab content (UI
+//  RightPanelPaperTab — the Paper/Light tab content (UI
 //  checklist rows 6/7/10). The display-paper picker (paperPass
 //  fond, D-09/D-10/D-12 + PAPER-01/04) — NOT Dry / cuisson.
 //  261017-vcn I-04 remainder: paper + background + grain pair.
 //  Phase 64-09 (MED-17 / D-06): the three light rows sit BELOW
-//  the paper-grain pair, in the tab that becomes `Paper & Light`.
+//  the paper-grain pair, in the tab that becomes `Paper/Light`.
 //  The values ARE the paint-layer document's light — resolved by
 //  the Studio and written through its one handler — never local
 //  state, never a second signal, never a retyped default (D-09:

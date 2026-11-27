@@ -2,12 +2,15 @@
  * 261017-wmw I-02 — AquarelleGlobalsPanel contract pins.
  *
  * Laws pinned here (one file per visual unit):
- *   Phase 64 (D-01/D-07): the medium dropdown is the FIRST child row and names
- *   the selected medium; quick 261124-iq9: two items render in the fixed order
- *   (Watercolor, Gouache) — the acrylic record is DISPLAYED as Gouache
- *   quick 261122-gys: a dropdown pick binds a preset of the picked group —
+ *   Phase 64 (D-01/D-07): the Tool dropdown is the FIRST child row and names
+ *   the ACTIVE TOOL; 2026-11-27 (artist's live ruling): it lists the five
+ *   tools (Medium, Watercolor, Water, Pen, Eraser) with ONE label, replacing
+ *   the old "Medium … Medium" medium row. Below it, the Brush response
+ *   dropdown lists the presets the active paint tool exposes — and it is
+ *   absent for Water / Pen / Eraser, which own no family
+ *   quick 261122-gys: a paint-tool pick binds a preset of the tool's family —
  *   the in-group tip is kept, else the family's last pick, else the group's
- *   first (acrylic falls back to Bristle Round)
+ *   first (Medium falls back to Bristle Round)
  *   quick 261121-mtu: the panel renders the six context groups from the ONE
  *   pure selector (`aquarelleParamVisibility.ts`, spec §8), driven by the
  *   active TOOL plus the selected MEDIUM. Default context (Brush + Watercolor)
@@ -43,17 +46,21 @@ import {
   aquarelleActiveTool,
   aquarelleLastBrushFamilyTipId,
   aquarelleLastTipByGroup,
-  aquarelleMediumMenuAnchor,
-  aquarelleMediumMenuOpen,
   aquarelleParams,
+  aquarelleResponseMenuAnchor,
+  aquarelleResponseMenuOpen,
   aquarelleSelectedMediumId,
   aquarelleSelectedTipId,
+  aquarelleToolMenuAnchor,
+  aquarelleToolMenuOpen,
   applyAquarelleMedium,
   recordAquarelleStroke,
   selectAquarelleTip,
-  setAquarelleMediumMenuOpen,
   setAquarelleParam,
+  setAquarelleResponseMenuOpen,
+  setAquarelleToolMenuOpen,
 } from './aquarelleRecordState';
+import { aquarelleHasWetPaint } from './aquarelleWetPaintGate';
 import {
   setAquarelleSelectMode,
   setAquarelleSelectionEditPort,
@@ -206,7 +213,11 @@ const GLOBAL_LABELS = [
 /** Display names in the fixed MEDIUM_IDS order (quick 261124-iq9: the acrylic
  *  record is displayed as "Gouache"; the old gouache/pastel/graphite media are
  *  retired). */
-const MEDIUM_NAMES = ['Watercolor', 'Medium'] as const;
+/** 2026-11-27: the Tool dropdown's five names, row order (AquarelleToolRow). */
+const TOOL_NAMES = ['Medium', 'Watercolor', 'Water', 'Pen', 'Eraser'] as const;
+const TOOL_IDS = ['brush', 'watercolor', 'water', 'pen', 'lift'] as const;
+/** The Medium tool's family, in shipped table order. */
+const MEDIUM_RESPONSE_NAMES = ['Gouache Round', 'Pen 1B'] as const;
 
 /** quick 261122-gys — Reset restores the ACTIVE MEDIUM RECORD (supersedes
  *  quick 261121-mtu's ×100 playground DEFAULT_PARAMS). This literal is the
@@ -273,8 +284,11 @@ beforeEach(() => {
   // quick 261121-mtu: the panel's rows are (tool, medium)-driven; the default
   // context these suites describe is the Brush tool.
   aquarelleActiveTool.value = 'brush';
-  aquarelleMediumMenuOpen.value = false;
-  aquarelleMediumMenuAnchor.value = null;
+  aquarelleHasWetPaint.value = true;
+  aquarelleToolMenuOpen.value = false;
+  aquarelleToolMenuAnchor.value = null;
+  aquarelleResponseMenuOpen.value = false;
+  aquarelleResponseMenuAnchor.value = null;
   // quick 261122-gys: the dropdown binds a preset of the picked group, so the
   // tip and its session memory are part of this suite's fixture.
   aquarelleSelectedTipId.value = null;
@@ -309,10 +323,12 @@ describe('AquarelleGlobalsPanel sliders (I-02)', () => {
     expect(/\bsize\b/i.test(text), 'found size text in panel').toBe(false);
   });
 
-  it('renders nothing but the 13 sliders + Reset (no response chrome)', () => {
+  it('renders the Tool and Brush response rows, with no Tip multiplier chrome', () => {
     const tree = renderPanel();
     const text = textContent(tree);
-    expect(text).not.toContain('Brush response');
+    // 2026-11-27: the panel now owns the response picker; the retired
+    // BrushResponsePanel instruction never comes back.
+    expect(text, 'the response row renders').toContain('Brush response');
     expect(text).not.toContain('Select a brush to edit response');
     const labels = collectLabels(tree);
     expect(labels.some((l) => l === 'Tip'), 'Tip multiplier leaked in').toBe(false);
@@ -320,7 +336,7 @@ describe('AquarelleGlobalsPanel sliders (I-02)', () => {
 });
 
 describe('AquarelleGlobalsPanel Reset (I-02 / T-261017-WMW-01)', () => {
-  it('renders a Reset control first, above the Medium dropdown', () => {
+  it('renders a Reset control first, above the Tool dropdown', () => {
     const tree = renderPanel();
     const buttons = [...walk(tree)].filter((n) => n.type === 'button');
     const reset = buttons.find((b) => b.props?.['data-testid'] === 'aquarelle-params-reset');
@@ -417,25 +433,39 @@ describe('AquarelleGlobalsPanel Reset (I-02 / T-261017-WMW-01)', () => {
 });
 
 // Phase 64 (D-01/D-03/D-07) — the medium dropdown leads the Paint tab.
-describe('Phase 64 medium dropdown', () => {
-  it('leads the panel with Reset, then the dropdown row naming the selected medium', () => {
+describe('Phase 64 tool + response dropdowns', () => {
+  it('leads the panel with Reset, then the Tool row, then the Brush response row', () => {
     const tree = renderPanel();
     const root = findTestId(tree, 'aquarelle-globals-panel');
     expect(root, 'panel root must render').toBeTruthy();
-    // 2026-11-27 (artist's live ruling): Reset opens the tab; the medium row
-    // follows it.
+    // 2026-11-27 (artist's live ruling): Reset opens the tab; the Tool row
+    // follows it, and the Brush response row sits under the Tool row.
     const children = childrenOf(root!) as TestVNode[];
     expect(children[0]?.props?.['data-testid'], 'Reset is first').toBe(
       'aquarelle-params-reset',
     );
-    expect(children[1]?.props?.['data-testid'], 'the medium row follows').toBe(
-      'aquarelle-medium-row',
+    expect(children[1]?.props?.['data-testid'], 'the Tool row follows').toBe(
+      'aquarelle-tool-row',
     );
-    const trigger = findTestId(tree, 'aquarelle-medium-trigger');
+    const trigger = findTestId(tree, 'aquarelle-tool-trigger');
     expect(trigger, 'the trigger must render').toBeTruthy();
     const text = textContent(trigger);
-    expect(text, 'the row names the control').toContain('Medium');
-    expect(text, 'the row names the selected medium').toContain('Watercolor');
+    expect(text, 'the row names the control').toContain('Tool');
+    expect(text, 'the row names the active tool').toContain('Medium');
+    // The old "Medium … Medium" duplicate is retired: the value appears once.
+    expect((text.match(/Medium/g) ?? []), 'no duplicated value label').toHaveLength(1);
+    const responseTrigger = findTestId(tree, 'aquarelle-response-trigger');
+    expect(responseTrigger, 'the response row must render').toBeTruthy();
+    expect(textContent(responseTrigger), 'the response row names the brush').toContain(
+      'Gouache Round',
+    );
+    const renderedRows = children.filter(
+      (child): child is TestVNode => typeof child === 'object' && child !== null,
+    );
+    const responseRowIndex = renderedRows.findIndex(
+      (child) => child.props?.['data-testid'] === 'aquarelle-response-row',
+    );
+    expect(responseRowIndex, 'the response row sits right under the Tool row').toBe(2);
   });
 
   it('renders the seven default-context rows below the dropdown in Matrix 2 order', () => {
@@ -556,86 +586,97 @@ describe('Phase 64 medium dropdown', () => {
   });
 
   it('renders no menu until the popover state opens', () => {
-    expect(findTestId(renderPanel(), 'aquarelle-medium-menu')).toBeUndefined();
+    const tree = renderPanel();
+    expect(findTestId(tree, 'aquarelle-tool-menu')).toBeUndefined();
+    expect(findTestId(tree, 'aquarelle-response-menu')).toBeUndefined();
   });
 
-  it('lists the five D-18 names in the fixed order and marks the selection', () => {
-    setAquarelleMediumMenuOpen(true, { left: 20, top: 200 });
+  it('lists the five tools in row order and marks the active one', () => {
+    setAquarelleToolMenuOpen(true, { left: 20, top: 200 });
     const tree = renderPanel();
-    const menu = findTestId(tree, 'aquarelle-medium-menu');
+    const menu = findTestId(tree, 'aquarelle-tool-menu');
     expect(menu, 'an open popover must render').toBeTruthy();
     expect(menu!.props?.['role']).toBe('menu');
-    expect(menu!.props?.['aria-label']).toBe('Medium');
+    expect(menu!.props?.['aria-label']).toBe('Tool');
     const items = [...walk(menu!)].filter((node) => {
       const id = node.props?.['data-testid'];
-      return typeof id === 'string' && id.startsWith('aquarelle-medium-item-');
+      return typeof id === 'string' && id.startsWith('aquarelle-tool-item-');
     });
-    expect(items, 'one item per medium').toHaveLength(2);
-    expect(items.map((item) => textContent(item).trim())).toEqual([...MEDIUM_NAMES]);
-    expect(items[0]!.props?.['aria-checked'], 'Watercolor is selected').toBe(true);
-    expect(items[1]!.props?.['aria-checked'], 'Gouache is not').toBe(false);
+    expect(items, 'one item per tool').toHaveLength(TOOL_NAMES.length);
+    expect(items.map((item) => textContent(item).trim())).toEqual([...TOOL_NAMES]);
+    expect(
+      items.map((item) =>
+        String(item.props?.['data-testid']).replace('aquarelle-tool-item-', ''),
+      ),
+      'the ids follow the row order',
+    ).toEqual([...TOOL_IDS]);
+    expect(items.map((item) => item.props?.['aria-checked'])).toEqual([
+      true,
+      false,
+      false,
+      false,
+      false,
+    ]);
     const active = items.filter((item) => String(item.props?.['class'] ?? '').includes('active'));
     expect(active, 'exactly one active row').toHaveLength(1);
   });
 
   it('opens from the trigger with the row anchor and closes on a second press', () => {
-    const trigger = findTestId(renderPanel(), 'aquarelle-medium-trigger');
+    const trigger = findTestId(renderPanel(), 'aquarelle-tool-trigger');
     expect(trigger, 'the trigger must render').toBeTruthy();
     (trigger!.props?.['onClick'] as (event: unknown) => void)({
       currentTarget: { getBoundingClientRect: () => ({ left: 24, bottom: 96 }) },
     });
-    expect(aquarelleMediumMenuOpen.value).toBe(true);
-    expect(aquarelleMediumMenuAnchor.value).toEqual({ left: 24, top: 102 });
-    const reopened = findTestId(renderPanel(), 'aquarelle-medium-trigger');
+    expect(aquarelleToolMenuOpen.value).toBe(true);
+    expect(aquarelleToolMenuAnchor.value).toEqual({ left: 24, top: 102 });
+    const reopened = findTestId(renderPanel(), 'aquarelle-tool-trigger');
     (reopened!.props?.['onClick'] as (event?: unknown) => void)();
-    expect(aquarelleMediumMenuOpen.value).toBe(false);
+    expect(aquarelleToolMenuOpen.value).toBe(false);
   });
 
-  it('applies the picked record in one bag write and closes the menu', () => {
-    setAquarelleMediumMenuOpen(true, { left: 20, top: 200 });
-    const item = findTestId(renderPanel(), 'aquarelle-medium-item-acrylic');
-    expect(item, 'the acrylic item must render').toBeTruthy();
-    let writes = 0;
-    const stop = aquarelleParams.subscribe(() => {
-      writes += 1;
-    });
-    writes = 0;
+  it('picking Medium applies the acrylic record and closes the menu', () => {
+    aquarelleActiveTool.value = 'watercolor';
+    aquarelleSelectedMediumId.value = 'watercolor';
+    setAquarelleToolMenuOpen(true, { left: 20, top: 200 });
+    const item = findTestId(renderPanel(), 'aquarelle-tool-item-brush');
+    expect(item, 'the Medium item must render').toBeTruthy();
     (item!.props?.['onClick'] as () => void)();
-    stop();
-    // quick 261124-tje: the record is one spread assignment, the Gouache
-    // brush bag (the dropdown lands bristle-round) a second.
-    expect(writes, 'the record then the brush bag, two spread assignments').toBe(2);
     // D-25 retuned the acrylic record: water 26 (was 8 before the retune).
     expect(aquarelleParams.value.water, 'acrylic water').toBe(26);
     expect(aquarelleParams.value.body, 'acrylic body').toBe(100);
     expect(aquarelleSelectedMediumId.value).toBe('acrylic');
-    expect(aquarelleMediumMenuOpen.value).toBe(false);
+    expect(aquarelleActiveTool.value).toBe('brush');
+    expect(aquarelleToolMenuOpen.value).toBe(false);
   });
 
-  it('re-picking the selected medium restores a drifted neutral record', () => {
+  it('re-picking the active Medium tool restores a drifted record', () => {
+    // The seam writes nothing here (same tool, same group, agreeing label);
+    // the restore is the pick law quick 261122-gys still guarantees.
+    aquarelleSelectedMediumId.value = 'acrylic';
+    aquarelleSelectedTipId.value = 'bristle-round';
     setAquarelleParam('water', 91);
-    setAquarelleMediumMenuOpen(true, { left: 20, top: 200 });
-    const item = findTestId(renderPanel(), 'aquarelle-medium-item-watercolor');
+    setAquarelleToolMenuOpen(true, { left: 20, top: 200 });
+    const item = findTestId(renderPanel(), 'aquarelle-tool-item-brush');
     (item!.props?.['onClick'] as () => void)();
-    expect(aquarelleParams.value.water, 'the neutral record land back').toBe(50);
-    expect(aquarelleParams.value.load).toBe(50);
-    expect(aquarelleSelectedMediumId.value).toBe('watercolor');
+    expect(aquarelleParams.value.water, 'the acrylic record lands back').toBe(26);
+    expect(aquarelleParams.value.load).toBe(100);
+    expect(aquarelleSelectedMediumId.value).toBe('acrylic');
   });
 
-  // quick 261122-gys — the dropdown binds a preset of the picked group, so
-  // the label, the panel rows and the brush can never disagree.
-  // quick 261124-iq9: the Gouache medium is the acrylic record; its group has
-  // exactly one member, so an acrylic pick always lands on bristle-round.
-  it('a dropdown pick of Gouache selects Bristle Round and the acrylic record', () => {
+  // quick 261122-gys — a paint-tool pick binds a preset of the tool's family,
+  // so the label, the panel rows and the brush can never disagree.
+  it('a pick of Medium selects Gouache Round and the acrylic record', () => {
+    aquarelleActiveTool.value = 'watercolor';
+    aquarelleSelectedMediumId.value = 'watercolor';
     selectAquarelleTip('round');
     applyAquarelleMedium('watercolor');
-    setAquarelleMediumMenuOpen(true, { left: 20, top: 200 });
-    const item = findTestId(renderPanel(), 'aquarelle-medium-item-acrylic');
+    setAquarelleToolMenuOpen(true, { left: 20, top: 200 });
+    const item = findTestId(renderPanel(), 'aquarelle-tool-item-brush');
     (item!.props?.['onClick'] as () => void)();
-    expect(aquarelleSelectedTipId.value, 'the acrylic landing brush').toBe('bristle-round');
+    expect(aquarelleSelectedTipId.value, 'the Medium landing brush').toBe('bristle-round');
     expect(aquarelleSelectedMediumId.value).toBe('acrylic');
     expect(aquarelleParams.value.body).toBe(100);
-    // quick 261124-tje: the Gouache bag lands LAST — feather 100 (not the
+    // quick 261124-tje: the Medium bag lands LAST — feather 100 (not the
     // record's 85) and dry 0 (not the record's 70), size 40 px.
     expect(aquarelleParams.value.feather).toBe(100);
     expect(aquarelleParams.value.dry).toBe(0);
@@ -644,22 +685,32 @@ describe('Phase 64 medium dropdown', () => {
     expect(aquarelleParams.value.wetSeconds).toBe(12);
   });
 
-  it('a dropdown pick of Watercolor keeps an in-group tip (detail)', () => {
+  it('a pick of Watercolor keeps an in-group tip (detail)', () => {
     selectAquarelleTip('detail');
     aquarelleSelectedMediumId.value = 'acrylic';
-    setAquarelleMediumMenuOpen(true, { left: 20, top: 200 });
-    const item = findTestId(renderPanel(), 'aquarelle-medium-item-watercolor');
+    setAquarelleToolMenuOpen(true, { left: 20, top: 200 });
+    const item = findTestId(renderPanel(), 'aquarelle-tool-item-watercolor');
     (item!.props?.['onClick'] as () => void)();
     expect(aquarelleSelectedTipId.value, 'the in-group tip is kept').toBe('detail');
     expect(aquarelleSelectedMediumId.value).toBe('watercolor');
   });
 
-  it('a first-ever dropdown pick of Watercolor lands on Round', () => {
-    setAquarelleMediumMenuOpen(true, { left: 20, top: 200 });
-    const item = findTestId(renderPanel(), 'aquarelle-medium-item-watercolor');
+  it('a first-ever pick of Watercolor lands on Round', () => {
+    setAquarelleToolMenuOpen(true, { left: 20, top: 200 });
+    const item = findTestId(renderPanel(), 'aquarelle-tool-item-watercolor');
     (item!.props?.['onClick'] as () => void)();
     expect(aquarelleSelectedTipId.value, 'the watercolor family default').toBe('round');
     expect(aquarelleSelectedMediumId.value).toBe('watercolor');
+  });
+
+  it('greys the Water item while the sheet is dry and refuses the pick', () => {
+    aquarelleHasWetPaint.value = false;
+    setAquarelleToolMenuOpen(true, { left: 20, top: 200 });
+    const item = findTestId(renderPanel(), 'aquarelle-tool-item-water');
+    expect(item, 'the Water item must render').toBeTruthy();
+    expect(item!.props?.['disabled'], 'Water is gated on standing water').toBe(true);
+    (item!.props?.['onClick'] as () => void)();
+    expect(aquarelleActiveTool.value, 'the dry-sheet pick is refused').toBe('brush');
   });
 
   it('draws no edited marker after a manual global tweak', () => {
@@ -679,19 +730,78 @@ describe('Phase 64 medium dropdown', () => {
     expect(body).toContain("event.key !== 'Escape'");
     expect(body).toContain('event.preventDefault();');
     expect(body).toContain('event.stopPropagation();');
-    expect(body).toContain('}, [menuOpen]);');
+    expect(body).toContain('}, [toolMenuOpen, responseMenuOpen]);');
     expect(body, 'signals only — never useState').not.toContain('useState');
-    expect(body).toContain('data-aquarelle-medium-trigger');
-    // quick 261122-gys: the dropdown binds a preset of the picked group AND
-    // applies the record through the ONE store handler.
-    expect(body).toContain('pickAquarelleMedium(medium.id);');
+    expect(body).toContain('data-aquarelle-popover-trigger');
+    // quick 261122-gys stays true through the re-pick branch: the panel binds
+    // a preset of the tool's family through the ONE store handler, and never
+    // calls the record applier itself.
+    expect(body).toContain('pickAquarelleMedium(brushGroupsForTool(id)[0]!);');
     expect(body, 'the panel never calls the record applier itself').not.toContain(
       'applyAquarelleMedium(',
     );
-    expect(body.split('MEDIUMS.map(').length - 1, 'one item list').toBe(1);
+    expect(body.split('AQUARELLE_TOOL_ORDER.map(').length - 1, 'one tool item list').toBe(1);
+    expect(body.split('toolResponses.map(').length - 1, 'one response item list').toBe(1);
     expect(body).toContain('role="menuitemradio"');
     expect(body).toContain('aria-checked={active}');
-    expect(body).toContain('data-testid="aquarelle-medium-menu"');
+    expect(body).toContain('data-testid="aquarelle-tool-menu"');
+    expect(body).toContain('data-testid="aquarelle-response-menu"');
+  });
+});
+
+describe('Brush response dropdown (2026-11-27)', () => {
+  it('lists the Medium family in table order and marks the shown response', () => {
+    setAquarelleResponseMenuOpen(true, { left: 20, top: 240 });
+    const tree = renderPanel();
+    const menu = findTestId(tree, 'aquarelle-response-menu');
+    expect(menu, 'an open response popover must render').toBeTruthy();
+    expect(menu!.props?.['role']).toBe('menu');
+    expect(menu!.props?.['aria-label']).toBe('Brush response');
+    const items = [...walk(menu!)].filter((node) => {
+      const id = node.props?.['data-testid'];
+      return typeof id === 'string' && id.startsWith('aquarelle-response-item-');
+    });
+    expect(items, 'one item per Medium response').toHaveLength(MEDIUM_RESPONSE_NAMES.length);
+    expect(items.map((item) => textContent(item).trim())).toEqual([...MEDIUM_RESPONSE_NAMES]);
+    // No tip picked yet: the label and the checked item agree on the family's
+    // first response (the same landing the engine would use).
+    expect(items.map((item) => item.props?.['aria-checked'])).toEqual([true, false]);
+    expect(textContent(findTestId(tree, 'aquarelle-response-trigger'))).toContain(
+      MEDIUM_RESPONSE_NAMES[0],
+    );
+  });
+
+  it('picking a response selects that brush and closes the menu', async () => {
+    setAquarelleResponseMenuOpen(true, { left: 20, top: 240 });
+    const item = findTestId(renderPanel(), 'aquarelle-response-item-pen');
+    expect(item, 'the Pen 1B item must render').toBeTruthy();
+    (item!.props?.['onClick'] as () => void)();
+    await Promise.resolve();
+    expect(aquarelleSelectedTipId.value, 'the picked response').toBe('pen');
+    expect(aquarelleActiveTool.value, 'a Medium response keeps the Medium tool').toBe('brush');
+    expect(aquarelleResponseMenuOpen.value).toBe(false);
+  });
+
+  it('shows the watercolor family alone on the Watercolor tool', () => {
+    aquarelleActiveTool.value = 'watercolor';
+    selectAquarelleTip('round');
+    setAquarelleResponseMenuOpen(true, { left: 20, top: 240 });
+    const menu = findTestId(renderPanel(), 'aquarelle-response-menu');
+    const ids = [...walk(menu!)]
+      .map((node) => node.props?.['data-testid'])
+      .filter((id): id is string => typeof id === 'string' && id.startsWith('aquarelle-response-item-'))
+      .map((id) => id.replace('aquarelle-response-item-', ''));
+    expect(ids, 'no Medium response under Watercolor').not.toContain('bristle-round');
+    expect(ids, 'the selected watercolor response is listed').toContain('round');
+  });
+
+  it('renders no response row for Water, Pen or Eraser', () => {
+    for (const tool of ['water', 'pen', 'lift'] as const) {
+      aquarelleActiveTool.value = tool;
+      const tree = renderPanel();
+      expect(findTestId(tree, 'aquarelle-response-row'), `${tool} owns no family`).toBeUndefined();
+      expect(findTestId(tree, 'aquarelle-response-trigger'), `${tool} hides the trigger`).toBeUndefined();
+    }
   });
 });
 

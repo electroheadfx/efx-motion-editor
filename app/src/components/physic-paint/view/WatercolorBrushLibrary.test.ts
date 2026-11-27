@@ -624,7 +624,7 @@ describe('WatercolorBrushLibrary texture strip (quick-261115-oh9)', () => {
     replaceUnavailableTipIds([]);
   });
 
-  it('renders the row above the grid: Default, then library rows', () => {
+  it('renders the row below the grid: Default, then library rows', () => {
     addCustomBrushTip(CUSTOM_TIP);
     try {
       const tree = renderLibrary();
@@ -632,11 +632,17 @@ describe('WatercolorBrushLibrary texture strip (quick-261115-oh9)', () => {
       const stripIndex = nodes.findIndex(
         (n) => n.props?.['data-testid'] === 'watercolor-texture-strip',
       );
-      const sectionIndex = nodes.findIndex(
-        (n) => n.props?.['data-testid'] === 'watercolor-brush-section-watercolor',
+      const lastSectionIndex = nodes.reduce(
+        (last, node, index) =>
+          String(node.props?.['data-testid'] ?? '').startsWith('watercolor-brush-section-')
+            ? index
+            : last,
+        -1,
       );
       expect(stripIndex, 'texture row renders').toBeGreaterThanOrEqual(0);
-      expect(stripIndex, 'texture row sits above the grid').toBeLessThan(sectionIndex);
+      // 2026-11-27 (artist's live ruling): the Tips brush section closes the
+      // library, so the texture row sits BELOW the response sections.
+      expect(stripIndex, 'texture row sits below the grid').toBeGreaterThan(lastSectionIndex);
       const stripChips = textureChipNodes(tree);
       // quick 261116-inu: no compile-time built-ins — Default, then the rows.
       expect(stripChips[0]!.props?.['data-testid']).toBe('watercolor-texture-chip-default');
@@ -827,17 +833,28 @@ describe('WatercolorBrushLibrary import row and unavailable tips (63-06)', () =>
     );
   }
 
-  it('renders one import toolbar row above the grid with a hidden PNG/JPEG input', () => {
+  it('renders one import toolbar row in the Tips brush section below the grid', () => {
     const tree = renderLibrary();
     const nodes = [...walk(tree)];
     const rowIndex = nodes.findIndex(
       (n) => n.props?.['data-testid'] === 'watercolor-brush-import-row',
     );
-    const sectionIndex = nodes.findIndex(
-      (n) => n.props?.['data-testid'] === 'watercolor-brush-section-watercolor',
+    const tipsIndex = nodes.findIndex(
+      (n) => n.props?.['data-testid'] === 'watercolor-tips-section',
+    );
+    const lastSectionIndex = nodes.reduce(
+      (last, node, index) =>
+        String(node.props?.['data-testid'] ?? '').startsWith('watercolor-brush-section-')
+          ? index
+          : last,
+      -1,
     );
     expect(rowIndex, 'import row renders').toBeGreaterThanOrEqual(0);
-    expect(rowIndex, 'import row sits above the grid').toBeLessThan(sectionIndex);
+    // 2026-11-27 (artist's live ruling): the Tips brush section CLOSES the
+    // library — the responses lead, the textures follow.
+    expect(tipsIndex, 'the Tips brush section renders').toBeGreaterThan(lastSectionIndex);
+    expect(rowIndex, 'import row sits below the response grid').toBeGreaterThan(lastSectionIndex);
+    expect(rowIndex, 'import row lives inside the Tips brush section').toBeGreaterThan(tipsIndex);
     const fileInputs = nodes.filter(
       (n) => n.type === 'input' && n.props?.['type'] === 'file',
     );

@@ -11,10 +11,11 @@
 //     nothing. A response card is never a texture and never a
 //     project import.
 //   · the TEXTURE — an optional mask that replaces the footprint and
-//     nothing else. The WatercolorTextureStrip texture row above the
-//     grid is that axis: Default first (the response's own tip), then
-//     the three compile-time built-ins, then the project imports, each
-//     chip painting the engine's real grayscale mask.
+//     nothing else. The Tips brush section that CLOSES the library
+//     holds that axis: the WatercolorTextureStrip row (Default first —
+//     the response's own tip — then the project imports, each chip
+//     painting the engine's real grayscale mask) plus the import
+//     control, below the response sections (2026-11-27 artist's ruling).
 //
 //  The texture row also owns the import controls: one import button
 //  plus a hidden PNG/JPEG file input. An import selects on arrival:
@@ -357,20 +358,6 @@ export function WatercolorBrushLibrary() {
         gap: '8px',
       }}
     >
-      {/* The texture axis above the grid: the shared strip plus the ONE
-          import control (63-06 D-01). */}
-      <div
-        data-testid="watercolor-brush-import-row"
-        style={{
-          gridColumn: '1 / -1',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '6px',
-        }}
-      >
-        <WatercolorTextureStrip />
-        <WatercolorTextureImport />
-      </div>
       {brushSectionsForTool(activeTool).map((section) => (
         <BrushSection
           key={section.group}
@@ -388,6 +375,42 @@ export function WatercolorBrushLibrary() {
           ))}
         </BrushSection>
       ))}
+      {/* 2026-11-27 (artist's live ruling): the texture axis now CLOSES the
+          library — the responses lead, then the Tips brush section holding the
+          shared strip and the ONE import control (63-06 D-01). */}
+      <section
+        data-testid="watercolor-tips-section"
+        style={{
+          gridColumn: '1 / -1',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '6px',
+        }}
+      >
+        <div
+          class="watercolor-brush-section-title"
+          style={{
+            fontSize: '10px',
+            fontWeight: 700,
+            letterSpacing: '0.06em',
+            textTransform: 'uppercase',
+            color: 'var(--sidebar-text-secondary, #9aa5b1)',
+          }}
+        >
+          Tips brush
+        </div>
+        <div
+          data-testid="watercolor-brush-import-row"
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '6px',
+          }}
+        >
+          <WatercolorTextureStrip />
+          <WatercolorTextureImport />
+        </div>
+      </section>
     </div>
   );
 }

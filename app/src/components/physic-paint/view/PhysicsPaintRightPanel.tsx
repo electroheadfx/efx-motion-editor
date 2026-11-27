@@ -102,7 +102,7 @@ export interface PhysicsPaintRightPanelProps {
    * 64-09 (MED-17 / D-06): the paint-layer document's emboss light and its ONE
    * change handler, beside the paper/grain pair — the same per-document record
    * the paper rides (D-08). Optional so every existing caller keeps compiling;
-   * an absent light renders the package default in the Paper & Light tab.
+   * an absent light renders the package default in the Paper/Light tab.
    */
   light?: LightSettings;
   onLightChange?: (patch: Partial<LightSettings>) => void;
@@ -139,9 +139,10 @@ const TOP_PANE_TAB_LABELS: Readonly<
   // 261029-hy2: the Settings TAB is retired — its content moved into the
   // floating Settings sheet opened from the top of this tab.
   brush: 'Brush',
-  // 64-09 (D-06): the Paper tab becomes `Paper & Light` — the three light rows
-  // live below the paper-grain pair. The tab id and order stay untouched.
-  paper: 'Paper & Light',
+  // 64-09 (D-06): the Paper tab becomes `Paper/Light` (2026-11-27 artist's
+  // ruling — the ampersand read too wide) — the three light rows live below
+  // the paper-grain pair. The tab id and order stay untouched.
+  paper: 'Paper/Light',
   // quick-261023-ors: the LAST tab — read-only script-memory gauge + purge.
   memory: 'Memory',
 });

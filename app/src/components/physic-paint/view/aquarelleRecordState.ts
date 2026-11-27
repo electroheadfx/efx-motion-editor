@@ -10,7 +10,7 @@
 //  second bag.
 // ============================================================
 
-import { signal } from '@preact/signals';
+import { signal, type Signal } from '@preact/signals';
 import {
   DEFAULT_AQUARELLE_CURVE_MODE,
   DIFFUSION_CAP,
@@ -421,32 +421,50 @@ function rememberAquarelleTipPick(presetId: string): void {
 }
 
 /**
- * Phase 64 (D-01): the Paint-tab medium dropdown popover. Studio UI state
- * only, never persisted — the selected medium itself stays on
- * aquarelleSelectedMediumId. `anchor` is the trigger row's viewport rect
- * corner; the menu renders viewport-fixed under it.
+ * 2026-11-27 (artist's live ruling): the Paint tab carries TWO popovers — the
+ * TOOL dropdown (Medium · Watercolor · Water · Pen · Eraser) and, under it,
+ * the BRUSH RESPONSE dropdown. Studio UI state only, never persisted: the
+ * tool stays on aquarelleActiveTool and the response on aquarelleSelectedTipId.
+ * `anchor` is the trigger row's viewport rect corner; the menu renders
+ * viewport-fixed under it.
  */
-export const aquarelleMediumMenuOpen = signal(false);
-export const aquarelleMediumMenuAnchor = signal<{ left: number; top: number } | null>(null);
+interface PopoverState {
+  readonly open: Signal<boolean>;
+  readonly anchor: Signal<{ left: number; top: number } | null>;
+  set: (open: boolean, anchor?: { left: number; top: number }) => void;
+}
 
 /**
  * Compare-then-write (efx-preact-reactivity rule 3). The anchor is only
  * meaningful while opening, and a plain close never rewrites it — the mirror
  * of setAquarelleTextureMenuOpen. Event handlers only, never a render body.
  */
-export function setAquarelleMediumMenuOpen(
-  open: boolean,
-  anchor?: { left: number; top: number },
-): void {
-  if (open && anchor) {
-    const current = aquarelleMediumMenuAnchor.value;
-    if (!current || current.left !== anchor.left || current.top !== anchor.top) {
-      aquarelleMediumMenuAnchor.value = { ...anchor };
+function createPopoverState(): PopoverState {
+  const open = signal(false);
+  const anchor = signal<{ left: number; top: number } | null>(null);
+  const set = (next: boolean, at?: { left: number; top: number }): void => {
+    if (next && at) {
+      const current = anchor.value;
+      if (!current || current.left !== at.left || current.top !== at.top) {
+        anchor.value = { ...at };
+      }
     }
-  }
-  if (aquarelleMediumMenuOpen.value === open) return;
-  aquarelleMediumMenuOpen.value = open;
+    if (open.value === next) return;
+    open.value = next;
+  };
+  return { open, anchor, set };
 }
+
+const toolPopover = createPopoverState();
+const responsePopover = createPopoverState();
+
+export const aquarelleToolMenuOpen = toolPopover.open;
+export const aquarelleToolMenuAnchor = toolPopover.anchor;
+export const setAquarelleToolMenuOpen = toolPopover.set;
+
+export const aquarelleResponseMenuOpen = responsePopover.open;
+export const aquarelleResponseMenuAnchor = responsePopover.anchor;
+export const setAquarelleResponseMenuOpen = responsePopover.set;
 
 /**
  * quick 261116-inu / Task 8: TWO sizes, one law, no shared state. The PAINT

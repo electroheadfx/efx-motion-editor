@@ -530,9 +530,9 @@ describe('the seam audit (64-12 MED-28)', () => {
       'aquarellePaintControls.ts',
       'aquarelleRecordState.ts',
     ]);
-    // quick 261122-gys: the Paint-tab dropdown no longer calls the medium
-    // handler directly — it calls `pickAquarelleMedium`, which binds a preset
-    // of the picked group and then applies the record in the store.
+    // quick 261122-gys: the Paint-tab dropdown never calls the medium handler
+    // directly — its re-pick branch calls `pickAquarelleMedium`, which binds a
+    // preset of the tool's family and then applies the record in the store.
     expect(
       filesMatching(sources, 'applyAquarelleMedium('),
       'the definition and the pick seam only (no panel)',
@@ -570,6 +570,7 @@ describe('the seam audit (64-12 MED-28)', () => {
     const surfaces: ReadonlyArray<[string, number]> = [
       ['WatercolorBrushLibrary.tsx', 1],
       ['PhysicsPaintBrushMenu.tsx', 1],
+      ['AquarelleGlobalsPanel.tsx', 1],
       ['BrushesDocker.tsx', 2],
     ];
     for (const [file, callSites] of surfaces) {

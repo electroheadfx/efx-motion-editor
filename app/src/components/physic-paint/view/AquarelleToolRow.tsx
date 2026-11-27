@@ -28,6 +28,8 @@ const TOOLS: ReadonlyArray<{
   /** Overrides the 16px row glyph — the composite mark needs the room. */
   iconSize?: number;
 }> = Object.freeze([
+  // ORDER IS THE UX: the Paint tab's TOOL dropdown lists these five in this
+  // order, so the row and the dropdown can never disagree (2026-11-27).
   // 2026-11-27 (artist's live ruling): the tool reads "Medium" (B unchanged).
   { id: 'brush', label: 'Medium', shortcut: 'B', Icon: Paintbrush },
   // 2026-11-27 (artist's live ruling): Watercolor wears the assembled
@@ -37,6 +39,15 @@ const TOOLS: ReadonlyArray<{
   { id: 'pen', label: 'Pen', shortcut: 'P', Icon: Pen },
   { id: 'lift', label: 'Eraser', shortcut: 'E', Icon: Eraser },
 ]);
+
+/** The Paint-tab TOOL dropdown reads the row's own labels and order. */
+export const AQUARELLE_TOOL_ORDER: readonly AquarelleTool[] = Object.freeze(
+  TOOLS.map((tool) => tool.id),
+);
+
+export const AQUARELLE_TOOL_LABELS: Readonly<Record<AquarelleTool, string>> = Object.freeze(
+  Object.fromEntries(TOOLS.map((tool) => [tool.id, tool.label])) as Record<AquarelleTool, string>,
+);
 
 export function AquarelleToolRow() {
   const active = aquarelleActiveTool.value;

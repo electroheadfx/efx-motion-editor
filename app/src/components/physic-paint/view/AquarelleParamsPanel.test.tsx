@@ -13,7 +13,9 @@
  *          fourteen keys, record order) via setAquarelleParam and never
  *          writes size (top-bar owns it). The ×100 DEFAULT_PARAMS law is
  *          retired.
- *   I-01   the Brush response block is NOT in this panel (I-02 owns that move)
+ *   I-01   no Brush response BLOCK here — 2026-11-27 adds the response
+ *          PICKER dropdown only; the I-02 collapsible and its Tip/Wet-round
+ *          multiplier rows stay retired
  *   Record-path commit: a recorded stroke carries the live param bag in
  *   AquarelleStrokePayload.params and the selected multipliers in toolOverrides.
  *
@@ -271,13 +273,15 @@ describe('AquarelleParamsPanel Reset (I-01 / T-261017-WMW-01)', () => {
   });
 });
 
-describe('AquarelleParamsPanel has no Brush response block (I-01 / I-02)', () => {
-  it('does not render the Brush response collapsible or placeholder', () => {
+describe('AquarelleParamsPanel owns the response picker, not a response block (I-01 / I-02)', () => {
+  it('renders the Brush response dropdown and no multiplier rows', () => {
     aquarelleSelectedTipId.value = null;
     const tree = renderPanel();
     const text = textContent(tree);
-    expect(text, 'Brush response header must leave this panel').not.toContain('Brush response');
-    expect(text, 'response placeholder must leave this panel').not.toContain(
+    // 2026-11-27 (artist's live ruling): the response picker joins the Paint
+    // tab. The retired I-02 collapsible and its placeholder never come back.
+    expect(text, 'the response picker renders').toContain('Brush response');
+    expect(text, 'response placeholder stays retired').not.toContain(
       'Select a brush to edit response',
     );
     const labels = collectLabels(tree);

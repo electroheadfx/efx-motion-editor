@@ -290,16 +290,18 @@ describe('brush library sections (64-11 MED-27)', () => {
     ])
   })
 
-  it('keeps the texture row above the first section and never inside a section', () => {
+  it('keeps the texture row below the last section and never inside a section', () => {
     const tree = renderLibrary()
-    const firstSection = EXPECTED_SECTION_IDS[0]!
+    const lastSection = EXPECTED_SECTION_IDS[EXPECTED_SECTION_IDS.length - 1]!
     const stripIndex = indexOfTestId(tree, 'watercolor-texture-strip')
     const importRowIndex = indexOfTestId(tree, 'watercolor-brush-import-row')
-    const sectionIndex = indexOfTestId(tree, firstSection)
+    const sectionIndex = indexOfTestId(tree, lastSection)
     expect(stripIndex, 'texture strip renders').toBeGreaterThanOrEqual(0)
     expect(importRowIndex, 'import row renders').toBeGreaterThanOrEqual(0)
-    expect(stripIndex, 'texture strip above the first section').toBeLessThan(sectionIndex)
-    expect(importRowIndex, 'import row above the first section').toBeLessThan(sectionIndex)
+    // 2026-11-27 (artist's live ruling): the Tips brush section closes the
+    // library — the response sections lead.
+    expect(stripIndex, 'texture strip below the last section').toBeGreaterThan(sectionIndex)
+    expect(importRowIndex, 'import row below the last section').toBeGreaterThan(sectionIndex)
     for (const section of sectionNodes(tree)) {
       const ids = [...walk(section)].map(testIdOf)
       expect(ids, `${testIdOf(section)} has no texture strip`).not.toContain('watercolor-texture-strip')

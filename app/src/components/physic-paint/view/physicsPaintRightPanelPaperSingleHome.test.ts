@@ -200,11 +200,11 @@ describe('261017-vcn I-04 remainder paper-tab single home', () => {
   });
 });
 
-// Phase 64 (64-09 / MED-17 / D-06) — the Paper & Light tab. Source-scan pins
+// Phase 64 (64-09 / MED-17 / D-06) — the Paper/Light tab. Source-scan pins
 // over the files this suite already reads (the node vitest env never mounts
 // the panel): three controlled rows BELOW the grain pair, fed by the document
 // light, writing through the one Studio handler and never touching the store.
-describe('64-09 Paper & Light tab', () => {
+describe('64-09 Paper/Light tab', () => {
   it('renders the three light rows below the paper picker, in one Light group', () => {
     const body = stripComments(paperTabSource);
     const pickerAt = body.indexOf('<PaperPicker');
