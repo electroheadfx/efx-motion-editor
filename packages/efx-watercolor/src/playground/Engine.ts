@@ -34,14 +34,8 @@ import {
   bristleContactPressure,
   bristleCount,
   bristleSampleScale,
-  FEATHER_NOISE_DEPTH,
   featherNoiseDrive,
-  FEATHER_NOISE_FEATURES,
-  FEATHER_NOISE_FLOOR,
   FEATHER_NOISE_LIFT,
-  FEATHER_NOISE_MAX_PX,
-  FEATHER_NOISE_MIN_PX,
-  FEATHER_NOISE_REFERENCE_PX,
   gatherSoftness,
   LAST_TOUCH_DRY_SECONDS,
   makeBristles,
@@ -567,6 +561,16 @@ export class WatercolorEngine {
   private g: GL;
   private gl: WebGL2RenderingContext;
   private programs: Record<string, Program>;
+  /**
+   * Spec 11 (the identity gate): the law-bearing gather programs, compiled on
+   * first use. The shipped programs above stay the NEUTRAL (pre-change) text,
+   * so a session that never touches the two new sliders runs exactly the old
+   * bytes; moving one compiles these once and binds them from then on.
+   */
+  private gatherLaw: Record<
+    'bristleDeposit' | 'bristleCover' | 'bristleRelief' | 'bristleCoverLayer',
+    Program
+  > | null = null;
   private canvasSize: [number, number] = [1, 1];
   private dpr = 1;
   private view = { x: 0, y: 0, w: 1, h: 1 };   // document placement in canvas px
@@ -818,11 +822,15 @@ export class WatercolorEngine {
     // write, same rule — outside the pinned literal (twenty-three stays).
     // Post-UAT 2026-11-19 (GAP-1): D-21's Body-mask program is gone — Body
     // is the film's opacity on the bristle path, not a second film's erode.
-    this.programs.bristleDeposit = this.g.program(S.bristleDepositFS);
-    this.programs.bristleCover = this.g.program(S.bristleCoverFS);
+    // Spec 11 (the identity gate): the DEFAULT programs are the NEUTRAL gather
+    // — literally the pre-change source, so the at-rest bytes never move. The
+    // law-bearing variants compile lazily in `gatherProgram`, the first time
+    // the driven noise is above 0 or the falloff leaves 50.
+    this.programs.bristleDeposit = this.g.program(S.bristleDepositNeutralFS);
+    this.programs.bristleCover = this.g.program(S.bristleCoverNeutralFS);
     // Post-UAT (2026-11-21): the bristle thickness deposit, same rule —
     // outside the pinned literal. The gather's coverage IS its mask.
-    this.programs.bristleRelief = this.g.program(S.bristleReliefFS);
+    this.programs.bristleRelief = this.g.program(S.bristleReliefNeutralFS);
     // 64-24 (D-24): the touch refresh, same rule — outside the pinned literal
     // (twenty-three stays). The delivery law's third pass.
     this.programs.bristleTouch = this.g.program(S.bristleTouchFS);
@@ -834,7 +842,7 @@ export class WatercolorEngine {
     // the pinned literal (twenty-three stays). One clear, one two-attachment
     // dab write, and the three merge passes.
     this.programs.strokeLayerClear = this.g.program(S.strokeLayerClearFS);
-    this.programs.bristleCoverLayer = this.g.program(S.bristleCoverLayerFS);
+    this.programs.bristleCoverLayer = this.g.program(S.bristleCoverLayerNeutralFS);
     this.programs.strokeLayerMerge = this.g.program(S.strokeLayerMergeFS);
     this.programs.strokeLayerCover = this.g.program(S.strokeLayerCoverFS);
     this.programs.strokeLayerRelief = this.g.program(S.strokeLayerReliefFS);
@@ -3575,7 +3583,7 @@ export class WatercolorEngine {
    */
   private bristleReliefPass(x: number, y: number, r: number, angle: number, amount: number, pr: number, alongPx: number, endCap = false): void {
     const { gl, g } = this;
-    const p = this.programs.bristleRelief;
+    const p = this.gatherProgram('bristleRelief');
     p.bind();
     this.bindGather(p, x, y, r, angle, pr, alongPx, endCap);
     gl.uniform1f(p.u.uAmount!, amount);
@@ -3613,7 +3621,7 @@ export class WatercolorEngine {
    */
   private bristleReliefErode(x: number, y: number, r: number, angle: number, amount: number, pr: number, alongPx: number, endCap = false): void {
     const { gl, g } = this;
-    const p = this.programs.bristleRelief;
+    const p = this.gatherProgram('bristleRelief');
     p.bind();
     this.bindGather(p, x, y, r, angle, pr, alongPx, endCap);
     gl.uniform1f(p.u.uAmount!, amount);
@@ -4008,6 +4016,30 @@ export class WatercolorEngine {
     return q * (1 + q * q);
   }
 
+  /**
+   * Spec 11 (2026-11-27): the gather program for the CURRENT params. The
+   * shipped (neutral) programs stay bound until the DRIVEN noise leaves the
+   * flat 0..20 block or the falloff leaves 50; the law variants compile once,
+   * on that first non-neutral draw — never at construction.
+   */
+  private gatherProgram(
+    which: 'bristleDeposit' | 'bristleCover' | 'bristleRelief' | 'bristleCoverLayer',
+  ): Program {
+    if (!this.featherLawActive()) return this.programs[which]!;
+    this.gatherLaw ??= {
+      bristleDeposit: this.g.program(S.bristleDepositExtendedFS),
+      bristleCover: this.g.program(S.bristleCoverExtendedFS),
+      bristleRelief: this.g.program(S.bristleReliefExtendedFS),
+      bristleCoverLayer: this.g.program(S.bristleCoverLayerExtendedFS),
+    };
+    return this.gatherLaw[which];
+  }
+
+  /** The permutation switch: the DRIVEN noise > 0, or falloff off the linear 50. */
+  private featherLawActive(): boolean {
+    return featherNoiseDrive(this.params.featherNoise) > 0 || this.params.featherFalloff !== 0.5;
+  }
+
   private bindGather(p: Program, x: number, y: number, r: number, angle: number, pr: number, alongPx: number, endCap = false): void {
     const { gl, g } = this;
     gl.uniform1i(p.u.uPaintA!, g.bindTex(0, this.bristles.read.tex[0]!));
@@ -4042,18 +4074,12 @@ export class WatercolorEngine {
     gl.uniform1f(p.u.uLayerEdge!, BRISTLE_LAYER_EDGE);
     gl.uniform1f(p.u.uEdgeFade!, clamp(this.params.edgeFade, 0, 1));
     gl.uniform1f(p.u.uEdgeFalloff!, clamp(this.params.edgeFalloff, 0, 1));
-    // Spec 11: the feather noise/falloff pair and the band's four constants.
+    // Spec 11: the feather noise/falloff pair and the front's two constants.
     // Bound unconditionally like Spec 10's pair: the ONE gather binder feeds
-    // every consumer, and a program that does not declare them gets null
-    // locations. The constants arrive from bristles.ts — never re-typed here.
+    // every consumer, and the neutral program does not declare them (missing
+    // locations are null). The constants arrive from bristles.ts.
     gl.uniform1f(p.u.uFeatherFalloff!, clamp(this.params.featherFalloff, 0, 1));
     gl.uniform1f(p.u.uFeatherNoise!, clamp(featherNoiseDrive(this.params.featherNoise), 0, 1));
-    gl.uniform1f(p.u.uFeatherNoiseFeatures!, FEATHER_NOISE_FEATURES);
-    gl.uniform1f(p.u.uFeatherNoiseMinPx!, FEATHER_NOISE_MIN_PX);
-    gl.uniform1f(p.u.uFeatherNoiseMaxPx!, FEATHER_NOISE_MAX_PX);
-    gl.uniform1f(p.u.uFeatherNoiseRefPx!, FEATHER_NOISE_REFERENCE_PX);
-    gl.uniform1f(p.u.uFeatherNoiseDepth!, FEATHER_NOISE_DEPTH);
-    gl.uniform1f(p.u.uFeatherNoiseFloor!, FEATHER_NOISE_FLOOR);
     // The grain shares Edge transparency's lateral span: 1 at the VISUAL edge.
     gl.uniform1f(p.u.uFeatherNoiseAnchor!, BRISTLE_LAYER_EDGE);
     gl.uniform1f(p.u.uFeatherNoiseLift!, FEATHER_NOISE_LIFT);
@@ -4195,7 +4221,7 @@ export class WatercolorEngine {
       this.bristleLayerInk(rect, x, y, r, angle, bodyAlpha, pr, scatter, alongPx, endCap);
       return;
     }
-    const d = this.programs.bristleDeposit;
+    const d = this.gatherProgram('bristleDeposit');
     d.bind();
     this.bindGather(d, x, y, r, angle, pr, alongPx, endCap);
     gl.uniform1f(d.u.uScatter!, scatter);
@@ -4225,7 +4251,7 @@ export class WatercolorEngine {
     //    artist's 2026-11-20 ruling): a MAX was tried and reverted — it
     //    jumped the channel to the strongest dab, every edge went smooth and
     //    hard, and Feather 0 lost its bristle texture along with Feather 100.
-    const c = this.programs.bristleCover;
+    const c = this.gatherProgram('bristleCover');
     c.bind();
     this.bindGather(c, x, y, r, angle, pr, alongPx, endCap);
     gl.uniform1f(c.u.uCoverTarget!, bodyAlpha);
@@ -4346,7 +4372,7 @@ export class WatercolorEngine {
     }
     const layerInk = this.layerInk!.read;   // the previous film (sampled)
     const layerOut = this.layerInk!.write;  // this dab's target (written)
-    const d = this.programs.bristleDeposit;
+    const d = this.gatherProgram('bristleDeposit');
     d.bind();
     this.bindGather(d, x, y, r, angle, pr, alongPx, endCap);
     // 261126 (edge-leg): the layer re-reads the same untouched sheet every
@@ -4377,7 +4403,7 @@ export class WatercolorEngine {
     // 3) the film: cover blended (the shipped law), the lateral MIN over the
     //    layer's covering dabs. Per-attachment state — WebGL2 cannot mix
     //    ONE_MINUS_SRC_ALPHA and MIN in one equation.
-    const c = this.programs.bristleCoverLayer;
+    const c = this.gatherProgram('bristleCoverLayer');
     c.bind();
     this.bindGather(c, x, y, r, angle, pr, alongPx, endCap);
     // Same smoothing as the deposit draw: the cover's smear target shares

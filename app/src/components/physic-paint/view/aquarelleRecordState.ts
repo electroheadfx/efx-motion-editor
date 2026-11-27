@@ -123,6 +123,17 @@ export interface AquarelleGlobalParams {
    */
   edgeFade: number;
   edgeFalloff: number;
+  /**
+   * Spec 11 (Feather noise / Feather falloff): the brush-relative grain pair,
+   * 0..100. `featherNoise` is the artist's scale — the drive is flat across
+   * 0..20 (the plain block), then light at 40, medium at 60 and the full halo
+   * at 100. `featherFalloff` shapes the opening with the shipped exponent map
+   * (0 broad / 50 linear / 100 rim). Both ride the record loop and the
+   * selection write allowlist; the engine switches to the law program the
+   * first time the driven noise is above 0 or the falloff leaves 50.
+   */
+  featherNoise: number;
+  featherFalloff: number;
 }
 
 export type AquarelleGlobalKey = keyof AquarelleGlobalParams;
@@ -146,6 +157,8 @@ export const AQUARELLE_GLOBAL_KEYS: readonly AquarelleGlobalKey[] = Object.freez
   'wetSeconds',
   'edgeFade',
   'edgeFalloff',
+  'featherNoise',
+  'featherFalloff',
 ] as const);
 
 export const DEFAULT_AQUARELLE_PARAMS: Readonly<AquarelleGlobalParams> = Object.freeze({
@@ -168,6 +181,9 @@ export const DEFAULT_AQUARELLE_PARAMS: Readonly<AquarelleGlobalParams> = Object.
   // Spec 10: the shipped edge — no transparency, the linear falloff shape.
   edgeFade: 0,
   edgeFalloff: 50,
+  // Spec 11: no grain, the linear shape — the shipped at-rest pair.
+  featherNoise: 0,
+  featherFalloff: 50,
 });
 
 /** D-08 multiplier band. */

@@ -132,8 +132,8 @@ const PICKUP_HIDDEN: readonly MediumId[] = Object.freeze(['watercolor']);
 const ACRYLIC_HIDDEN: readonly MediumId[] = Object.freeze(['acrylic']);
 
 /**
- * The fifteen rows in Matrix 2's order (fourteen canvas rows + the
- * Eraser-context Lift row). The 15-key count is what makes the Reset
+ * The seventeen rows in Matrix 2's order (sixteen canvas rows + the
+ * Eraser-context Lift row). The 17-key count is what makes the Reset
  * key set (`rows - lift` + `body`) reproduce the shipped patch.
  */
 export const AQUARELLE_PARAM_ROWS: readonly AquarelleParamRow[] = Object.freeze([
@@ -180,6 +180,11 @@ export const AQUARELLE_PARAM_ROWS: readonly AquarelleParamRow[] = Object.freeze(
   // and amount 0 is the shipped opaque edge.
   Object.freeze({ key: 'edgeFade', label: 'Edge transparency', group: 'edge', paint: BRISTLE_MEDIA }),
   Object.freeze({ key: 'edgeFalloff', label: 'Edge falloff', group: 'edge', paint: BRISTLE_MEDIA }),
+  // Spec 11: the brush-relative grain pair. Same BRISTLE_MEDIA law and the
+  // same GlobalSlider; `featherNoise` 0 is the plain block and the drive is
+  // flat up to 20, while `featherFalloff` 50 is the shipped opening.
+  Object.freeze({ key: 'featherNoise', label: 'Feather noise', group: 'edge', paint: BRISTLE_MEDIA }),
+  Object.freeze({ key: 'featherFalloff', label: 'Feather falloff', group: 'edge', paint: BRISTLE_MEDIA }),
   Object.freeze({ key: 'flow', label: 'Flow', group: 'watercolor', paint: WATERCOLOR_ONLY, water: true }),
   Object.freeze({ key: 'bleed', label: 'Bleed', group: 'watercolor', paint: WATERCOLOR_ONLY, water: true }),
   Object.freeze({ key: 'edge', label: 'Edges', group: 'watercolor', paint: WATERCOLOR_ONLY, water: true }),

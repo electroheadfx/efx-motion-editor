@@ -892,7 +892,8 @@ describe('tool x medium context rows (quick 261121-mtu)', () => {
   it('Gouache (the acrylic record) shows its bristle rows only', () => {
     applyAquarelleMedium('acrylic');
     const labels = renderedSliders();
-    // Spec 10: the two edge knobs join the bristle context, after Feather.
+    // Spec 10 / Spec 11: the four edge knobs join the bristle context, after
+    // Feather — the grain pair follows the edge pair in the same group.
     expect(labels).toEqual([
       'Pigment',
       'Pickup',
@@ -900,6 +901,8 @@ describe('tool x medium context rows (quick 261121-mtu)', () => {
       'Feather',
       'Edge transparency',
       'Edge falloff',
+      'Feather noise',
+      'Feather falloff',
     ]);
     // quick 261124-iq9: Viscosity and Water are hidden for the Gouache paint
     // context; Refill and every fluid-only row stay off the bristle path too.

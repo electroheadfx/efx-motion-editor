@@ -584,9 +584,19 @@ describe('the composition of order and opacity (MED-36)', () => {
 
 describe('64-22 — the bristle gather rides the one curve (T-64-72)', () => {
   it('declares one shared gather snippet and rebuilds the carrier on the exported helper', () => {
+    // Spec 11: ONE generator emits both variants (the law-bearing one and the
+    // neutral pre-change one); there is still exactly ONE gather law.
     expect(
-      (SHADERS_SOURCE.match(/export const BRISTLE_GATHER/g) ?? []).length,
-      'one shared gather snippet',
+      (SHADERS_SOURCE.match(/export function bristleGatherSource\(/g) ?? []).length,
+      'one shared gather generator',
+    ).toBe(1)
+    expect(
+      (SHADERS_SOURCE.match(/export const BRISTLE_GATHER = /g) ?? []).length,
+      'one extended gather constant',
+    ).toBe(1)
+    expect(
+      (SHADERS_SOURCE.match(/export const BRISTLE_GATHER_NEUTRAL = /g) ?? []).length,
+      'one neutral gather constant',
     ).toBe(1)
     expect(
       (SHADERS_SOURCE.match(/Gathered gatherBristle\(/g) ?? []).length,
@@ -873,7 +883,12 @@ describe('post-UAT — the bristle Body mask is gone, Body is film opacity', () 
 // ============================================================
 
 describe('64-23 — the traces in the gather and the carrier', () => {
-  const gather = sliceBetween(SHADERS_SOURCE, 'export const BRISTLE_GATHER', '// 64-22 — the ink deposit')
+  // Spec 11: the gather body lives inside the ONE generator (both variants).
+  const gather = sliceBetween(
+    SHADERS_SOURCE,
+    'export function bristleGatherSource(',
+    '// 64-22 — the ink deposit',
+  )
   const carrier = sliceBetween(SHADERS_SOURCE, 'export const bristleCarrierFS', 'export const BRISTLE_GATHER')
 
   it('shares one noise family between the carrier and the gather', () => {
@@ -899,7 +914,12 @@ describe('64-23 — the traces in the gather and the carrier', () => {
       'shape.y + bristleContact(uAlongPx, state.z, uStreakLen) * bristleRimShare(state.y) * uRimContact,',
     )
     // The gather composes on the SAME snippet the carrier does.
-    expectContains(SHADERS_SOURCE, 'export const BRISTLE_GATHER = `${BRISTLE_NOISE}${FEATHER_CLOUD}${BRISTLE_TEXTURES}')
+    // Spec 11: ONE composition, with the cloud spliced in only for the law
+    // variant — the neutral variant is `${BRISTLE_NOISE}${BRISTLE_TEXTURES}`.
+    expectContains(
+      SHADERS_SOURCE,
+      "return `${BRISTLE_NOISE}${extended ? FEATHER_CLOUD : ''}${BRISTLE_TEXTURES}",
+    )
   })
 
   it('builds grainHeight from three bands in two coordinate systems (§4.4)', () => {
@@ -1222,8 +1242,14 @@ describe('64-24 — the wetness gate and the touch refresh (D-24)', () => {
 // ============================================================
 
 describe('261119-pod — the §3.3 smear, the snapshot and the four-side Feather', () => {
+  // Spec 11: the gather law now lives inside the ONE generator (both variants);
+  // the slice starts there, not at the exported constant lines.
   const gather = () =>
-    sliceBetween(SHADERS_SOURCE, 'export const BRISTLE_GATHER', 'export const bristleDepositFS')
+    sliceBetween(
+      SHADERS_SOURCE,
+      'export function bristleGatherSource(',
+      'export const BRISTLE_GATHER = ',
+    )
   const deposit = () =>
     sliceBetween(SHADERS_SOURCE, 'export const bristleDepositFS', 'export const bristleCoverFS')
   const cover = () =>

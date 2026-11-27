@@ -981,7 +981,98 @@ float cloudMix(vec2 css){
   return fine * 0.40 + medium * 0.33 + broad * 0.27;
 }
 `;
-export const BRISTLE_GATHER = `${BRISTLE_NOISE}${FEATHER_CLOUD}${BRISTLE_TEXTURES}
+// ============================================================
+//  THE GATHER GENERATOR (Spec 11, the identity gate — 2026-11-27).
+//
+//  Adding code to a program shifts the driver's codegen by ~1 LSB even when
+//  the new block never runs. The law therefore ships as a PERMUTATION from
+//  this ONE generator:
+//    * `extended = false` — the NEUTRAL gather, literally the pre-change
+//      source: no cloud, no law uniforms, no reshuffled statement. The
+//      engine runs it at rest and for every slider value at or below 20.
+//    * `extended = true`  — the law-bearing gather (cloud + falloff + front).
+//  The rest of the program is the same text in both variants, so they can
+//  never drift.
+// ============================================================
+export function bristleGatherSource(extended: boolean): string {
+  // The law fragments live INSIDE the generator — one source, two variants.
+// Spec 11 — the law's uniforms, declared ONLY by the extended variant.
+  const FEATHER_LAW_UNIFORMS = `// Spec 11 (feather noise): the artist's two knobs. The falloff reuses the
+// shipped 2^(2b-1) shape (the tested twin edgeFalloffExponent is its only
+// source — no second table); the noise is a depth-of-penetration control
+// whose front rides the three-scale cloud.
+uniform float uFeatherFalloff;       // the opening shape bias (0..1, 0.5 shipped)
+uniform float uFeatherNoise;         // the DRIVEN penetration amount (0..1, 0 shipped)
+uniform float uFeatherNoiseAnchor;   // 1 at the VISUAL edge (BRISTLE_LAYER_EDGE — the Edge-transparency span)
+uniform float uFeatherNoiseLift;     // the front's threshold rise at noise 100 (LIFT, 2026-11-26e)
+`;
+// Spec 11 — the law's statements, kept out of the neutral variant. The
+// featherShift below the falloff branch is PRE's statement VERBATIM in BOTH
+// variants (a hoisted temporary moved the driver's codegen by ~1 LSB); the
+// falloff branch and the noise block are the only new expressions.
+  const FEATHER_LAW_BODY = `  // Spec 11 — Feather falloff: ONE shape language. The shipped 2^(2b-1) bias
+  // (the tested twin edgeFalloffExponent is its single source) shapes the rim
+  // opening. Falloff 50 is the shipped opening: pow(x, 1.0) is not guaranteed
+  // exact, so the neutral branch skips it outright.
+  // Amendment A2 (2026-11-26): the line above the branch is PRE's statement
+  // VERBATIM — no hoisted temporary; a temporary moved the driver's codegen by
+  // 1 LSB and broke byte identity at sizes 12 / 40 / 200.
+  if (uFeatherFalloff != 0.5) {
+    featherShift = uFeather * uFeatherShift
+                 * pow(smoothstep(featherStart, uFeatherEdge, lateral), exp2(2.0 * uFeatherFalloff - 1.0));
+  }
+  // Spec 11 — Feather noise: a brush-relative paper grain mixed INTO the
+  // paper tooth (mix, never replace), its feature size derived from the
+  // feather BAND — a fixed number of features across it, floored in px so
+  // tiny brushes stay ragged. Its weight spans the SAME lateral coordinate
+  // Edge transparency uses (0 on the centre line, 1 at the VISUAL edge,
+  // uFeatherNoiseAnchor = BRISTLE_LAYER_EDGE), with a floor so the grain
+  // fills the brush BODY: at Edge 100 the rim is transparent, so rim-weighted
+  // grain would read as nothing but a border (artist ruling 2026-11-26d).
+  // Gated by uFeather, so Feather 0 is inert; noise 0 makes the block dead.
+  float height = mix(grainHeight(css, uAxis), 0.5, rimCalm);
+  if (uFeatherNoise * uFeather > 0.0) {
+    float uN = clamp(lateral / uFeatherNoiseAnchor, 0.0, 1.0);
+    // Feather noise is the DEPTH OF PENETRATION (artist ruling 2026-11-27):
+    // paint outside a wavy FRONT is removed, everything inside it stays solid,
+    // so the middle keeps a plain stroke shape at every density and the noise
+    // never punches detached islands. The wobble is the natural three-scale
+    // cloud (20/60/200 px) at a SMALL amplitude - the organic look of
+    // fn-front2 / fn-front, not a geometric contour (artist ruling 2026-11-27e:
+    // the drawn red shape was an intent, not a target).
+    // 20 barely touches the rim; 40 thins it; 100 keeps HALF the width of 40.
+    float pen = mix(0.88, 0.35, uFeatherNoise);
+    float wobble = cloudMix(css);
+    float front = pen + wobble * 0.30;
+    float envelope = smoothstep(front - 0.015, front + 0.015, uN);
+    // A CONTAINED scatter (artist ruling 2026-11-27f): just outside the front
+    // the removal weakens, so isolated specks survive there instead of a clean
+    // cut - the loose fray of fn-pen4, but held to a thin band so it never
+    // sprays far from the mark.
+    featherShift += uFeather * uFeatherNoiseLift * envelope;
+    // LOST SPECKS around the front (artist ruling 2026-11-27f): a narrow band
+    // straddling the front, perforated by the fine cloud, so a little paint
+    // detaches there like fn-pen4 - contained to the edge, never the body.
+    float band = exp(-pow((uN - (front - 0.07)) / 0.11, 2.0));
+    float spray = clamp(max(cloudMix(css * 3.1 + 23.0), 0.0) * 14.0, 0.0, 1.3);
+    featherShift += uFeather * uFeatherNoiseLift * band * spray;
+    // SPIKES (artist ruling 2026-11-27g): sparse peaks of a SLOW field where the
+    // noise reaches further OUT than the base edge — scattered paint thrown
+    // past the silhouette up to the yellow envelope. The same peaks cancel the
+    // front erosion, so the base shape is not cut there; it is bulged and
+    // frayed instead. Sparse because only the top of the slow field fires.
+    float spikeField = cloudMix(css * 0.8 + 41.0);
+    float spike = smoothstep(0.10, 0.34, spikeField);
+    float reach = mix(0.12, 0.40, uFeatherNoise);
+    featherShift -= uFeather * uFeatherNoiseLift * envelope * 0.90 * spike;
+    featherShift -= uFeather * spike * reach;
+  }
+`;
+  // The neutral gather's height statement, at its PRE position (before the
+// Feather comment block) — the extended variant moves it below featherShift.
+  const NEUTRAL_HEIGHT = `  float height = mix(grainHeight(css, uAxis), 0.5, rimCalm);
+`;
+  return `${BRISTLE_NOISE}${extended ? FEATHER_CLOUD : ''}${BRISTLE_TEXTURES}
 uniform vec2 uPoint;
 uniform vec2 uAxis;          // across axis (unit, doc frame)
 uniform float uRadius;       // half-width in doc heights
@@ -996,22 +1087,7 @@ uniform float uFeatherEdge;  // silhouette radius, in nominal footprint units
 uniform float uFeatherCap;   // leading end cap, fraction of the radius (all Feathers)
 uniform float uFeatherMin;   // the threshold shift's start anchor, fraction of the silhouette
 uniform float uFeatherShift; // the rim threshold rise at F100 (BRISTLE_FEATHER_SHIFT)
-// Spec 11 (feather noise): the TWO knobs and the band's four constants. The
-// falloff reuses the shipped 2^(2b-1) shape (the tested twin
-// edgeFalloffExponent is its only source — no second table); the noise's
-// period is derived from the feather band, floored in px, and its body
-// weight is the SAME exponent. Every constant is bound from bristles.ts.
-uniform float uFeatherFalloff;       // the opening AND grain shape bias (0..1, 0.5 shipped)
-uniform float uFeatherNoise;         // the grain amount (0..1, 0 shipped)
-uniform float uFeatherNoiseFeatures; // features across the band (FEATURES)
-uniform float uFeatherNoiseMinPx;    // the period floor (MIN_PX)
-uniform float uFeatherNoiseMaxPx;    // the period ceiling (MAX_PX)
-uniform float uFeatherNoiseRefPx;    // the tooth reference period (REFERENCE_PX)
-uniform float uFeatherNoiseDepth;    // the body profile's depth (DEPTH, 2026-11-26b)
-uniform float uFeatherNoiseFloor;    // the grain's weight on the centre line (FLOOR, 2026-11-26d)
-uniform float uFeatherNoiseAnchor;   // 1 at the VISUAL edge (BRISTLE_LAYER_EDGE — the Edge-transparency span)
-uniform float uFeatherNoiseLift;     // the body-wide threshold rise at noise 100 (LIFT, 2026-11-26e)
-uniform float uTakeoffShift; // the leading frontier's threshold rise (BRISTLE_TAKEOFF_SHIFT)
+${extended ? FEATHER_LAW_UNIFORMS : ''}uniform float uTakeoffShift; // the leading frontier's threshold rise (BRISTLE_TAKEOFF_SHIFT)
 uniform float uCapGain;      // the along-cap fade's gain (BRISTLE_CAP_GAIN)
 uniform float uDrySpeed;     // the Dry slider, 0..1
 uniform float uDryCapFloor;  // the end cap's share at Dry 0
@@ -1320,7 +1396,7 @@ Gathered gatherBristle(vec2 uv){
   // dry (measured on the Dry-55 tail); calming the threshold never adds paint.
   vec2 css = uv * uSheet;
   float rimCalm = (1.0 - uFeather) * smoothstep(0.45, 0.75, lateral);
-  // 2026-11-22 (UAT row 3): the feather opens the edge through the PAPER
+${extended ? '' : NEUTRAL_HEIGHT}  // 2026-11-22 (UAT row 3): the feather opens the edge through the PAPER
   // THRESHOLD, never through a depth multiplier. A depth fade gives a pale
   // texel a small deposit weight a, and the deposit is
   // ink <- ink*(1-a) + carried*a: small a means a LONG memory (a = 0.15
@@ -1333,70 +1409,8 @@ Gathered gatherBristle(vec2 uv){
   // lane, and the rag comes from the paper itself, which has no along
   // period. F0 is untouched (uFeather scales the shift to zero).
   float featherStart = uFeatherEdge * (1.0 - mix(uFeatherMin, uFeatherReach, uFeather));
-  // Spec 11 — Feather falloff: ONE shape language. The shipped 2^(2b-1) bias
-  // (the tested twin edgeFalloffExponent is its single source) shapes the rim
-  // opening below AND the grain's body weight further down. Falloff 50 is the
-  // shipped opening: pow(x, 1.0) is not guaranteed exact, so the neutral
-  // branch skips it outright and the shipped bytes survive byte-identically.
-  // Amendment A2 (2026-11-26): the line below is PRE's statement VERBATIM — no
-  // hoisted temporary. A temporary moved the driver's codegen by 1 LSB and
-  // broke byte identity at sizes 12 / 40 / 200; the shaped form is the only
-  // new expression and it lives inside a uniform-gated branch that never runs
-  // at 50.
   float featherShift = uFeather * uFeatherShift * smoothstep(featherStart, uFeatherEdge, lateral);
-  if (uFeatherFalloff != 0.5) {
-    featherShift = uFeather * uFeatherShift
-                 * pow(smoothstep(featherStart, uFeatherEdge, lateral), exp2(2.0 * uFeatherFalloff - 1.0));
-  }
-  // Spec 11 — Feather noise: a brush-relative paper grain mixed INTO the
-  // paper tooth (mix, never replace), its feature size derived from the
-  // feather BAND — a fixed number of features across it, floored in px so
-  // tiny brushes stay ragged. Its weight spans the SAME lateral coordinate
-  // Edge transparency uses (0 on the centre line, 1 at the VISUAL edge,
-  // uFeatherNoiseAnchor = BRISTLE_LAYER_EDGE), with a floor so the grain
-  // fills the brush BODY: at Edge 100 the rim is transparent, so rim-weighted
-  // grain would read as nothing but a border (artist ruling 2026-11-26d).
-  // Gated by uFeather, so Feather 0 is inert; noise 0 makes the block dead,
-  // so the second grainHeight sample (six valueNoise taps) is never evaluated
-  // on the shipped path. PRE's height line below is VERBATIM (amendment A2).
-  float height = mix(grainHeight(css, uAxis), 0.5, rimCalm);
-  if (uFeatherNoise * uFeather > 0.0) {
-    float uN = clamp(lateral / uFeatherNoiseAnchor, 0.0, 1.0);
-    // Feather noise is the DEPTH OF PENETRATION (artist ruling 2026-11-27):
-    // paint outside a wavy FRONT is removed, everything inside it stays solid,
-    // so the middle keeps a plain stroke shape at every density and the noise
-    // never punches detached islands. The wobble is the natural three-scale
-    // cloud (20/60/200 px) at a SMALL amplitude - the organic look of
-    // fn-front2 / fn-front, not a geometric contour (artist ruling 2026-11-27e:
-    // the drawn red shape was an intent, not a target).
-    // 20 barely touches the rim; 40 thins it; 100 keeps HALF the width of 40.
-    float pen = mix(0.88, 0.35, uFeatherNoise);
-    float wobble = cloudMix(css);
-    float front = pen + wobble * 0.30;
-    float envelope = smoothstep(front - 0.015, front + 0.015, uN);
-    // A CONTAINED scatter (artist ruling 2026-11-27f): just outside the front
-    // the removal weakens, so isolated specks survive there instead of a clean
-    // cut - the loose fray of fn-pen4, but held to a thin band so it never
-    // sprays far from the mark.
-    featherShift += uFeather * uFeatherNoiseLift * envelope;
-    // LOST SPECKS around the front (artist ruling 2026-11-27f): a narrow band
-    // straddling the front, perforated by the fine cloud, so a little paint
-    // detaches there like fn-pen4 - contained to the edge, never the body.
-    float band = exp(-pow((uN - (front - 0.07)) / 0.11, 2.0));
-    float spray = clamp(max(cloudMix(css * 3.1 + 23.0), 0.0) * 14.0, 0.0, 1.3);
-    featherShift += uFeather * uFeatherNoiseLift * band * spray;
-    // SPIKES (artist ruling 2026-11-27g): sparse peaks of a SLOW field where the
-    // noise reaches further OUT than the base edge — scattered paint thrown
-    // past the silhouette up to the yellow envelope. The same peaks cancel the
-    // front erosion, so the base shape is not cut there; it is bulged and
-    // frayed instead. Sparse because only the top of the slow field fires.
-    float spikeField = cloudMix(css * 0.8 + 41.0);
-    float spike = smoothstep(0.10, 0.34, spikeField);
-    float reach = mix(0.12, 0.40, uFeatherNoise);
-    featherShift -= uFeather * uFeatherNoiseLift * envelope * 0.90 * spike;
-    featherShift -= uFeather * spike * reach;
-  }
-  float threshold = uGrain * (1.0 - height) - 0.25 + featherShift;
+${extended ? FEATHER_LAW_BODY : ''}  float threshold = uGrain * (1.0 - height) - 0.25 + featherShift;
   // 2026-11-23 (the acrylic end-block debug): the stroke's TAKEOFF. A stroke
   // ends on its last RUNNING dab's leading half — every earlier dab's leading
   // rect is repainted by the dabs ahead, so the frontier that survives is
@@ -1543,6 +1557,12 @@ Gathered gatherBristle(vec2 uv){
   return g;
 }
 `;
+}
+
+/** The law-bearing gather — the extended variant. */
+export const BRISTLE_GATHER = bristleGatherSource(true);
+/** The NEUTRAL gather — literally the pre-change source, byte-for-byte. */
+export const BRISTLE_GATHER_NEUTRAL = bristleGatherSource(false);
 
 // 64-22 — the ink deposit. The gathered coefficients are the carried
 // values ALREADY in the engine's coefficient space, and the gather's
@@ -2694,3 +2714,38 @@ export const displayFS = displaySource(false);
  * bound by an export.
  */
 export const displayLayerFS = displaySource(true);
+
+// ============================================================
+//  Spec 11 — the NEUTRAL gather consumers (the identity gate).
+//
+//  Each consumer above composes `${HEADER}${BRISTLE_GATHER}`; the neutral
+//  program must be the same consumer with the pre-change gather, byte for
+//  byte. Deriving it from the ONE text (replacing the gather substring)
+//  proves the rest of the program can never drift between the variants.
+//  The engine builds these at construction and compiles the extended ones
+//  lazily, the first time the driven feather noise is above 0 or the
+//  falloff leaves 50.
+// ============================================================
+// The EXTENDED variants keep the shipped consumer names (that IS their text);
+// these explicit aliases name the permutation at the selection site.
+export const bristleDepositExtendedFS = bristleDepositFS;
+export const bristleCoverExtendedFS = bristleCoverFS;
+export const bristleReliefExtendedFS = bristleReliefFS;
+export const bristleCoverLayerExtendedFS = bristleCoverLayerFS;
+
+export const bristleDepositNeutralFS = bristleDepositFS.replace(
+  BRISTLE_GATHER,
+  () => BRISTLE_GATHER_NEUTRAL,
+);
+export const bristleCoverNeutralFS = bristleCoverFS.replace(
+  BRISTLE_GATHER,
+  () => BRISTLE_GATHER_NEUTRAL,
+);
+export const bristleReliefNeutralFS = bristleReliefFS.replace(
+  BRISTLE_GATHER,
+  () => BRISTLE_GATHER_NEUTRAL,
+);
+export const bristleCoverLayerNeutralFS = bristleCoverLayerFS.replace(
+  BRISTLE_GATHER,
+  () => BRISTLE_GATHER_NEUTRAL,
+);
