@@ -1,7 +1,7 @@
 // ============================================================
 //  WatercolorToolIcon — the Watercolor tool's composite mark
 //  (artist's ruling, 2026-11-27): the brush upper-right and a
-//  large outlined droplet lower-left, diagonally arranged.
+//  large filled droplet lower-left, diagonally arranged.
 //
 //  One inline SVG so both glyphs share a single stroke weight
 //  (1.5 units, the apparent weight of an 18px lucide icon) and
@@ -58,7 +58,7 @@ export function WatercolorToolIcon({ size = 24 }: { size?: number }): ComponentC
         transform={`translate(${DROP.x} ${DROP.y}) scale(${DROP.scale})`}
         stroke-width={STROKE_UNITS / DROP.scale}
       >
-        <path d={DROP_PATH} />
+        <path d={DROP_PATH} fill="currentColor" />
       </g>
     </svg>
   );
