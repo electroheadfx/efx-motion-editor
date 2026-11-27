@@ -4,10 +4,10 @@ milestone: v2.2.0
 current_phase: 64
 status: completed
 stopped_at: Phase 64 complete — all phases complete
-last_updated: "2026-11-27T19:54:52.413Z"
+last_updated: "2026-11-27T20:04:27.036Z"
 last_activity: 2026-11-27
 last_activity_desc: Quick 261127-khp MEASURED NEGATIVE — pickup-under stripes are a ~23 px band, not 1-3 px; probe scene delivered, no law shipped
-state_head: 9d7304b5444281d0bee4a05ab2f2ad8b905d7b78
+state_head: f063e81823d1b26e96181fc50cdc67c5176b7fcd
 progress:
   total_phases: 2
   completed_phases: 2
@@ -731,6 +731,7 @@ Items acknowledged and carried forward from previous milestone close:
 | 69 | Studio paint: Emboss defaults 0 at a 0-5 band in a trailing Relief section; top bar gains Feather noise; Grain moves to the Paper tab; Reset under the dropdown; acrylic renamed Medium (UAT approved 2026-11-27) | 2026-11-27 | 2261b7ef0 | — |
 | 70 | Studio paint: Emboss on the top bar (0-5); Paint tab order Reset → dropdown → Brush size → Grain → groups; Grain back from Paper tab under every medium; paint tool reads Medium (B unchanged) (UAT approved 2026-11-27) | 2026-11-27 | 01c6f2e37 | — |
 | 71 | Studio Watercolor icon: droplet outlined (no fill) and a bit smaller | 2026-11-27 | 9d7304b54 | — |
+| 72 | Studio top bar + Paint tab: Emboss is Medium-only (watercolor no longer renders it); Pigment takes the freed top-bar seat in Watercolor mode | 2026-11-27 | f063e8182 | — |
 
 ## Roadmap Evolution
 
