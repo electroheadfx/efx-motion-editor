@@ -717,8 +717,16 @@ describe('64-22 — the bristle gather rides the one curve (T-64-72)', () => {
       (programs.match(/this\.g\.program\(/g) ?? []).length,
       'the pinned literal keeps twenty-three programs',
     ).toBe(23)
-    expectContains(ENGINE_SOURCE, 'this.programs.bristleDeposit = this.g.program(S.bristleDepositFS);')
-    expectContains(ENGINE_SOURCE, 'this.programs.bristleCover = this.g.program(S.bristleCoverFS);')
+    // Spec 11 (the identity gate): the DEFAULT programs are the neutral gather;
+    // the law variants compile lazily the first time a slider needs them.
+    expectContains(
+      ENGINE_SOURCE,
+      'this.programs.bristleDeposit = this.g.program(S.bristleDepositNeutralFS);',
+    )
+    expectContains(
+      ENGINE_SOURCE,
+      'this.programs.bristleCover = this.g.program(S.bristleCoverNeutralFS);',
+    )
     const alloc = sliceBetween(ENGINE_SOURCE, 'private allocateTargets()', 'private allocateHistory()')
     expect(
       (alloc.match(/this\.\w+ = g\.(?:double|target)\(/g) ?? []).length,
@@ -1647,10 +1655,11 @@ describe('261119-pod — the §3.3 smear, the snapshot and the four-side Feather
     expectNotContains(bind, 'uWetMode')
   })
 
-  // 261119-pod — Feather is the reference's SOFTNESS only, so the gather is
-  // ONE program from ONE snippet: no second variant to select and no #ifdef
-  // region that could perturb the Feather-0 codegen.
-  it('runs ONE gather program from ONE snippet — no feather variant, no ramp injector', () => {
+  // 261119-pod — Feather is the reference's SOFTNESS only: no #ifdef region
+  // and no ramp injector. Spec 11's law is a SECOND source built by the SAME
+  // generator and selected at program level (neutral by default, law lazily),
+  // never a compile-time variant of the shipped (neutral) program.
+  it('feeds every gather program from ONE generator — no ramp injector', () => {
     expectContains(SHADERS_SOURCE, 'export const BRISTLE_GATHER')
     expectNotContains(SHADERS_SOURCE, '#ifdef BRISTLE_FEATHER_RAMP')
     expectNotContains(SHADERS_SOURCE, '#define BRISTLE_FEATHER_RAMP')
@@ -1658,16 +1667,16 @@ describe('261119-pod — the §3.3 smear, the snapshot and the four-side Feather
     expectNotContains(ENGINE_SOURCE, 'bristleFeatherVariant')
     expectNotContains(ENGINE_SOURCE, 'bristleDepositRamp')
     expectNotContains(ENGINE_SOURCE, 'bristleCoverRamp')
-    // The one deposit and the one cover program are registered once, outside
-    // the pinned literal (which stays twenty-three), and used directly.
+    // The neutral deposit and cover programs are registered once, outside the
+    // pinned literal (which stays twenty-three), and selected by the helper.
     const literal = sliceBetween(ENGINE_SOURCE, 'this.programs = {', '};')
     expect(
       (literal.match(/this\.g\.program\(/g) ?? []).length,
       'twenty-three in the pinned literal',
     ).toBe(23)
     const ink = sliceBetween(ENGINE_SOURCE, 'private bristleInk(', 'private bristleSnapshot(')
-    expectContains(ink, 'const d = this.programs.bristleDeposit;')
-    expectContains(ink, 'const c = this.programs.bristleCover;')
+    expectContains(ink, "const d = this.gatherProgram('bristleDeposit');")
+    expectContains(ink, "const c = this.gatherProgram('bristleCover');")
     expectContains(ink, 'd.bind();')
     expectContains(ink, 'c.bind();')
   })

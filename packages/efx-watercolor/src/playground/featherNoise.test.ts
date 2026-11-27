@@ -21,6 +21,11 @@
 //      Always finite and > 0, never NaN.
 //   4. `edgeFalloffExponent` is declared ONCE in the package: Spec 11
 //      reuses the shipped twin, it never adds a second exponent map.
+//   5. The law ships as a SHADER PERMUTATION: the engine's default program
+//      is the NEUTRAL gather (the pre-change source, byte-for-byte) and the
+//      EXTENDED program — the law — compiles lazily the first time the
+//      driven noise is above 0 or the falloff leaves 50. Both come from the
+//      ONE generator, and slider 20 (drive 0) stays on the neutral path.
 // ============================================================
 
 import { readFileSync, readdirSync, statSync } from 'node:fs'
@@ -30,6 +35,7 @@ import { describe, expect, it } from 'vitest'
 // The namespace cast keeps a not-yet-exported symbol a clean per-test
 // assertion failure instead of a module-load error for the whole suite.
 import * as bristleModule from './bristles'
+import * as shadersModule from './shaders'
 import { BRISTLE_GATHER, bristleCarrierFS } from './shaders'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -266,6 +272,128 @@ describe('the Spec 11 law in BRISTLE_GATHER', () => {
   it('keeps bristleCarrierFS free of the law uniforms', () => {
     for (const name of LAW_UNIFORMS) {
       expect(bristleCarrierFS.includes(name), `${name} never reaches the carrier`).toBe(false)
+    }
+  })
+})
+
+// ============================================================
+//  The neutral/extended permutation — the identity gate (2026-11-27).
+//
+//  Adding code to a program shifts the driver's codegen by ~1 LSB even when
+//  the added block never runs (measured: the A2 restructure still moved the
+//  noise-0 digests). The law therefore lives in a SECOND program: the
+//  engine's default is the NEUTRAL gather — the pre-change source with no
+//  cloud, no law uniforms and no reshuffled statement — and the EXTENDED
+//  program (the law) is compiled lazily the first time the DRIVEN noise is
+//  above 0 or the falloff leaves 50. Both variants come from ONE generator,
+//  so the rest of the gather can never diverge between them.
+// ============================================================
+
+const SHADERS = shadersModule as unknown as {
+  bristleGatherSource?: (extended: boolean) => string
+  BRISTLE_GATHER_NEUTRAL?: string
+  bristleDepositFS?: string
+  bristleCoverFS?: string
+  bristleReliefFS?: string
+  bristleCoverLayerFS?: string
+  bristleDepositNeutralFS?: string
+  bristleCoverNeutralFS?: string
+  bristleReliefNeutralFS?: string
+  bristleCoverLayerNeutralFS?: string
+}
+
+describe('the neutral/extended gather permutation', () => {
+  it('builds both variants from the ONE generator', () => {
+    expect(typeof SHADERS.bristleGatherSource, 'bristleGatherSource is exported').toBe('function')
+    expect(SHADERS.bristleGatherSource?.(true), 'extended is the law source').toBe(BRISTLE_GATHER)
+    expect(SHADERS.bristleGatherSource?.(false), 'neutral is the shipped source').toBe(
+      SHADERS.BRISTLE_GATHER_NEUTRAL,
+    )
+    expect(typeof SHADERS.BRISTLE_GATHER_NEUTRAL, 'the neutral variant is exported').toBe('string')
+  })
+
+  it('keeps the neutral source free of the law — no cloud, no uniforms, no branch', () => {
+    const neutral = SHADERS.BRISTLE_GATHER_NEUTRAL ?? ''
+    for (const token of [
+      'cloudNoise',
+      'cloudMix',
+      'uFeatherFalloff',
+      'uFeatherNoise',
+      'uFeatherNoiseLift',
+      'exp2(2.0 * uFeatherFalloff - 1.0)',
+    ]) {
+      expect(neutral.includes(token), `neutral never carries ${token}`).toBe(false)
+    }
+  })
+
+  it('keeps the neutral gather in PRE order: height before featherStart, one threshold', () => {
+    const neutral = SHADERS.BRISTLE_GATHER_NEUTRAL ?? ''
+    const height = 'float height = mix(grainHeight(css, uAxis), 0.5, rimCalm);'
+    expect(neutral.split(height).length - 1, 'one height statement').toBe(1)
+    expect(neutral.indexOf(height), 'height precedes featherStart').toBeLessThan(
+      neutral.indexOf('float featherStart ='),
+    )
+    expect(neutral).toContain(
+      'float featherShift = uFeather * uFeatherShift * smoothstep(featherStart, uFeatherEdge, lateral);',
+    )
+    expect(neutral).toContain('float threshold = uGrain * (1.0 - height) - 0.25 + featherShift;')
+  })
+
+  it('exports a neutral consumer for every gather program, law-free', () => {
+    const pairs = [
+      ['bristleDepositNeutralFS', 'bristleDepositFS'],
+      ['bristleCoverNeutralFS', 'bristleCoverFS'],
+      ['bristleReliefNeutralFS', 'bristleReliefFS'],
+      ['bristleCoverLayerNeutralFS', 'bristleCoverLayerFS'],
+    ] as const
+    for (const [neutralName, extendedName] of pairs) {
+      const neutral = SHADERS[neutralName]
+      expect(typeof neutral, `${neutralName} is exported`).toBe('string')
+      expect(neutral, `${neutralName} composes the neutral gather`).toContain(
+        SHADERS.BRISTLE_GATHER_NEUTRAL,
+      )
+      expect(neutral, `${neutralName} never carries the law`).not.toContain('uFeatherNoise')
+      expect(SHADERS[extendedName], `${extendedName} keeps the law`).toContain('uFeatherNoise')
+    }
+  })
+
+  it('runs the neutral programs by default and compiles the law variants lazily', () => {
+    expect(ENGINE_SOURCE).toContain(
+      'this.programs.bristleDeposit = this.g.program(S.bristleDepositNeutralFS);',
+    )
+    expect(ENGINE_SOURCE).toContain(
+      'this.programs.bristleCover = this.g.program(S.bristleCoverNeutralFS);',
+    )
+    expect(ENGINE_SOURCE).toContain(
+      'this.programs.bristleRelief = this.g.program(S.bristleReliefNeutralFS);',
+    )
+    expect(ENGINE_SOURCE).toContain(
+      'this.programs.bristleCoverLayer = this.g.program(S.bristleCoverLayerNeutralFS);',
+    )
+    // Lazy: the extended sources compile inside the selector, never the ctor.
+    expect(ENGINE_SOURCE).toContain('this.gatherLaw ??= {')
+    expect(ENGINE_SOURCE).toContain('this.g.program(S.bristleDepositExtendedFS)')
+    expect(ENGINE_SOURCE).toContain('this.g.program(S.bristleCoverExtendedFS)')
+    expect(ENGINE_SOURCE).toContain('this.g.program(S.bristleReliefExtendedFS)')
+    expect(ENGINE_SOURCE).toContain('this.g.program(S.bristleCoverLayerExtendedFS)')
+    expect(ENGINE_SOURCE).not.toContain(
+      'this.programs.bristleDeposit = this.g.program(S.bristleDepositFS);',
+    )
+  })
+
+  it('selects by driven noise > 0 OR falloff != 50 — slider 20 stays neutral', () => {
+    expect(ENGINE_SOURCE).toContain('featherNoiseDrive(this.params.featherNoise) > 0')
+    expect(ENGINE_SOURCE).toContain('this.params.featherFalloff !== 0.5')
+    // The drive is flat across 0..20, so the slider's first stop is the
+    // neutral path: 20 reads drive 0.
+    expect(FEATHER_NOISE.featherNoiseDrive?.(0.2)).toBe(0)
+    for (const which of [
+      'bristleDeposit',
+      'bristleCover',
+      'bristleRelief',
+      'bristleCoverLayer',
+    ]) {
+      expect(ENGINE_SOURCE).toContain(`this.gatherProgram('${which}')`)
     }
   })
 })

@@ -459,7 +459,7 @@ describe('bristleReliefFS — thickness follows the real bristle mark', () => {
 
   it('registers outside the pinned literal and binds the shared gather', () => {
     expect(ENGINE_SOURCE).toContain(
-      'this.programs.bristleRelief = this.g.program(S.bristleReliefFS);',
+      'this.programs.bristleRelief = this.g.program(S.bristleReliefNeutralFS);',
     )
     const pass = sliceBetween(
       ENGINE_SOURCE,
@@ -531,7 +531,7 @@ describe('signed emboss (quick 261123-hr5)', () => {
 
   it('subtracts through the bristle gather for a bristle response, thickness target only', () => {
     const erode = sliceBetween(ENGINE_SOURCE, 'private bristleReliefErode(', 'private brushInk(')
-    expect(erode).toContain('const p = this.programs.bristleRelief;')
+    expect(erode).toContain("const p = this.gatherProgram('bristleRelief');")
     expect(erode).toContain('this.bindGather(p, x, y, r, angle, pr, alongPx, endCap);')
     expect(erode).toContain('gl.uniform1f(p.u.uAmount!, amount);')
     expect(erode).toContain('gl.blendFunc(gl.ZERO, gl.ONE_MINUS_SRC_COLOR);')

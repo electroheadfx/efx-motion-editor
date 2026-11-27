@@ -1,7 +1,7 @@
 // ============================================================
 //  Medium records (Phase 64, MED-07 / MED-08 / MED-09).
 //
-//  The two built-ins are plain frozen data over exactly the sixteen
+//  The two built-ins are plain frozen data over exactly the eighteen
 //  medium keys. Everything here is restated as literals — the
 //  amendment table, the key list, the display names — so a dropped
 //  key or a drifted number fails the pin instead of moving it.
@@ -12,8 +12,8 @@ import { DEFAULT_CANONICAL_PARAMS } from './params'
 import { DEFAULT_MEDIUM_ID, MEDIUM_IDS, MEDIUMS, mediumById } from './mediums'
 import { bodyCurve } from './scattering'
 
-// The sixteen medium keys: the amendment table's column order, then
-// 64-22's four (D-22 / §3.1 / §6) and Spec 10's pair.
+// The eighteen medium keys: the amendment table's column order, then
+// 64-22's four (D-22 / §3.1 / §6), Spec 10's pair and Spec 11's pair.
 const MEDIUM_KEYS = [
   'water',
   'load',
@@ -31,6 +31,8 @@ const MEDIUM_KEYS = [
   'wetSeconds',
   'edgeFade',
   'edgeFalloff',
+  'featherNoise',
+  'featherFalloff',
 ] as const
 
 /** Resolve a record and fail as an assertion (never a load error) when absent. */
@@ -60,7 +62,7 @@ describe('medium records', () => {
     expect(mediumById('graphite')).toBeNull()
   })
 
-  it('carries exactly the sixteen medium keys and never size or lift', () => {
+  it('carries exactly the eighteen medium keys and never size or lift', () => {
     expect(MEDIUMS).toHaveLength(2)
     for (const medium of MEDIUMS) {
       expect(Object.keys(medium.params).sort(), `${medium.id} keys`).toEqual(
@@ -95,6 +97,10 @@ describe('medium records', () => {
       wetSeconds: 7,
       edgeFade: 0,
       edgeFalloff: 50,
+      // Spec 11: the brush-relative grain is off and its falloff is the
+      // shipped 50 — the canonical pair, derived for the neutral record.
+      featherNoise: 0,
+      featherFalloff: 50,
     })
     expect(recordOf('acrylic').params).toEqual({
       water: 26,
@@ -118,6 +124,9 @@ describe('medium records', () => {
       // Spec 10: the shipped acrylic edge stays fully opaque, linear shape.
       edgeFade: 0,
       edgeFalloff: 50,
+      // Spec 11: the acrylic record starts on the shipped neutral pair.
+      featherNoise: 0,
+      featherFalloff: 50,
     })
   })
 

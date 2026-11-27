@@ -116,7 +116,7 @@ describe('the medium keys in the live bag', () => {
     expect(AQUARELLE_GLOBAL_KEYS).toContain('pickup');
     expect(AQUARELLE_GLOBAL_KEYS).toContain('refill');
     expect(AQUARELLE_GLOBAL_KEYS).toContain('wetSeconds');
-    expect(AQUARELLE_GLOBAL_KEYS).toHaveLength(18);
+    expect(AQUARELLE_GLOBAL_KEYS).toHaveLength(20);
     expect(DEFAULT_AQUARELLE_PARAMS.feather).toBe(0);
     // 261119-pod (D-A): Pickup opens at 100 — the reference's §6 default.
     expect(DEFAULT_AQUARELLE_PARAMS.pickup).toBe(100);
@@ -158,7 +158,26 @@ describe('the medium keys in the live bag', () => {
     expect(snapped.params.edgeFalloff).toBe(90);
   });
 
-  it('keeps the bag at exactly the eighteen canonical keys', () => {
+  // Spec 11 (Feather noise / Feather falloff): the pair rides the SAME key
+  // list, defaults and snapshot as every other medium key.
+  it('carries featherNoise and featherFalloff in the key list, the defaults and the snapshot', () => {
+    expect(AQUARELLE_GLOBAL_KEYS).toContain('featherNoise');
+    expect(AQUARELLE_GLOBAL_KEYS).toContain('featherFalloff');
+    expect(DEFAULT_AQUARELLE_PARAMS.featherNoise).toBe(0);
+    expect(DEFAULT_AQUARELLE_PARAMS.featherFalloff).toBe(50);
+    expect(aquarelleParams.value.featherNoise).toBe(0);
+    expect(aquarelleParams.value.featherFalloff).toBe(50);
+    const fresh = snapshotAquarelleRecord();
+    expect(fresh.params.featherNoise).toBe(0);
+    expect(fresh.params.featherFalloff).toBe(50);
+    setAquarelleParam('featherNoise', 60);
+    setAquarelleParam('featherFalloff', 20);
+    const snapped = snapshotAquarelleRecord();
+    expect(snapped.params.featherNoise).toBe(60);
+    expect(snapped.params.featherFalloff).toBe(20);
+  });
+
+  it('keeps the bag at exactly the twenty canonical keys', () => {
     expect(Object.keys(aquarelleParams.value).sort()).toEqual([
       'bleed',
       'body',
@@ -168,6 +187,8 @@ describe('the medium keys in the live bag', () => {
       'edgeFalloff',
       'emboss',
       'feather',
+      'featherFalloff',
+      'featherNoise',
       'flow',
       'granulation',
       'lift',
@@ -289,13 +310,15 @@ describe('applyAquarelleMedium', () => {
     // keeps the visible cover (any Body above 0 takes the coverage composite).
     expect(aquarelleParams.value.body).toBe(100);
     expect(aquarelleParams.value.emboss).toBe(3);
-    // 64-22 / Spec 10: all sixteen medium keys land in the one write.
+    // 64-22 / Spec 10 / Spec 11: all eighteen medium keys land in the one write.
     expect(aquarelleParams.value.feather).toBe(85);
     expect(aquarelleParams.value.pickup).toBe(100);
     expect(aquarelleParams.value.refill).toBe(0);
     expect(aquarelleParams.value.wetSeconds).toBe(12);
     expect(aquarelleParams.value.edgeFade, 'no transparency on the shipped edge').toBe(0);
     expect(aquarelleParams.value.edgeFalloff, 'the linear falloff shape').toBe(50);
+    expect(aquarelleParams.value.featherNoise, 'the shipped grain is off').toBe(0);
+    expect(aquarelleParams.value.featherFalloff, 'the linear grain shape').toBe(50);
     expect(aquarelleParams.value.size, 'a medium never resizes the brush').toBe(77);
     expect(aquarelleParams.value.lift, 'a medium never changes the eraser').toBe(33);
     expect(aquarelleSelectedMediumId.value).toBe('acrylic');
