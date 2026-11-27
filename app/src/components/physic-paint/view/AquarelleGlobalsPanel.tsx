@@ -24,7 +24,7 @@
 //  Medium · Paint & reservoir · Drying · Noise · Watercolor only ·
 //  Relief · Eraser (2026-11-27: the Transparency group is retired — one
 //  global Transparency row now sits in Paint & reservoir under Pickup;
-//  Emboss closes the tab in the trailing Relief section).
+//  Relief is the Medium (acrylic) context's Emboss section).
 //
 //  Param keys stay water/load/flow/bleed/edge/granulation/dry/
 //  viscosity/body/feather/pickup/refill/emboss — `body` rides the

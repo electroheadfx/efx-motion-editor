@@ -1,6 +1,6 @@
 import type { TargetedMouseEvent } from 'preact';
 import type { ReadonlySignal } from '@preact/signals';
-import { BRUSH_PRESETS } from '@efxlab/efx-watercolor';
+import { BRUSH_PRESETS, DEFAULT_MEDIUM_ID } from '@efxlab/efx-watercolor';
 import { ChevronDown, Eraser, Grid2x2, Paintbrush, RefreshCcwDot, Wind } from 'lucide-preact';
 import { SliderStepper } from '../../shared/SliderStepper';
 import { getPhysicsPaintEngineStatusTone } from './physicsPaintWorkflowPresentation';
@@ -45,10 +45,10 @@ import { isAquarelleParamRowVisible } from './aquarelleParamVisibility';
  * background.
  *
  * 2026-11-27 (artist's live ruling): the top bar mirrors the Paint panel's
- * row law instead of a hand-rolled list. Pigment left the bar (it lives in
- * Paint & reservoir); Pickup, Opacity, Feather noise and Emboss take its seat
- * for the Medium context, and the watercolor-only Edges / Grain knobs now
- * disappear with their panel rows instead of staying as dead controls.
+ * row law instead of a hand-rolled list. Pickup, Opacity, Feather noise and
+ * Emboss render for the Medium (acrylic) context; Pigment is the Watercolor
+ * context's knob, and the watercolor-only Edges / Grain knobs disappear with
+ * their panel rows instead of staying as dead controls.
  *
  * 261018-f15 C1: Water / Edges / Grain follow the primary control in Water
  * color mode and write setAquarelleParam('water' | 'edge' | 'granulation') —
@@ -468,13 +468,17 @@ export function PhysicsPaintTopBar({
   // 2026-11-27 (artist's live ruling): EVERY top-bar paint knob is gated by
   // the SAME row law the Paint panel renders, so a row the panel hides can
   // never keep a dead top-bar slider alive. For the Medium (acrylic) context
-  // that means Water, Edges and Grain leave the bar, while Pickup, Opacity
-  // and Feather noise take the retired Pigment seat.
+  // that means Water, Edges, Pigment and Grain leave the bar, while Pickup,
+  // Opacity, Feather noise and Emboss render. Pigment is the Watercolor
+  // context's knob — Emboss belongs to the Medium context.
   const waterRowVisible = isAquarelleParamRowVisible(activeTool, selectedMediumId, 'water');
   const pickupRowVisible = isAquarelleParamRowVisible(activeTool, selectedMediumId, 'pickup');
   const opacityRowVisible = isAquarelleParamRowVisible(activeTool, selectedMediumId, 'edgeFade');
   const featherNoiseRowVisible = isAquarelleParamRowVisible(activeTool, selectedMediumId, 'featherNoise');
   const embossRowVisible = isAquarelleParamRowVisible(activeTool, selectedMediumId, 'emboss');
+  const pigmentRowVisible =
+    isAquarelleParamRowVisible(activeTool, selectedMediumId, 'load') &&
+    (selectedMediumId ?? DEFAULT_MEDIUM_ID) === 'watercolor';
   const edgesRowVisible = isAquarelleParamRowVisible(activeTool, selectedMediumId, 'edge');
 
   return (
@@ -657,8 +661,9 @@ export function PhysicsPaintTopBar({
                 disabled={disabled}
               />
             )}
-            {/* 2026-11-27 (artist's live ruling): Emboss on the top bar — the
-                row's own 0..5 test band (aquarelleParamVisibility). */}
+            {/* 2026-11-27 (artist's live ruling): Emboss belongs to the Medium
+                (acrylic) context — its own 0..5 band; the watercolor context
+                never renders it. */}
             {embossRowVisible && (
               <TopBarSlider
                 id="physics-aquarelle-emboss"
@@ -669,6 +674,23 @@ export function PhysicsPaintTopBar({
                 onChange={(value) => setAquarelleParam('emboss', value)}
                 onCommit={(value) => {
                   void commitAquarelleSelectionParam('emboss', value);
+                }}
+                disabled={disabled}
+              />
+            )}
+            {/* 2026-11-27 (artist's live ruling): Pigment on the top bar —
+                Watercolor mode only; the Medium (acrylic) context keeps
+                Pickup / Opacity / Feather noise / Emboss. */}
+            {pigmentRowVisible && (
+              <TopBarSlider
+                id="physics-aquarelle-pigment"
+                label="Pigment"
+                min={0}
+                max={100}
+                value={aquarelleParams.value.load}
+                onChange={(value) => setAquarelleParam('load', value)}
+                onCommit={(value) => {
+                  void commitAquarelleSelectionParam('load', value);
                 }}
                 disabled={disabled}
               />

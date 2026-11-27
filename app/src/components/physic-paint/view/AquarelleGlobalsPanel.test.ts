@@ -8,12 +8,14 @@
  *   quick 261122-gys: a dropdown pick binds a preset of the picked group —
  *   the in-group tip is kept, else the family's last pick, else the group's
  *   first (acrylic falls back to Bristle Round)
- *   quick 261121-mtu: the panel renders the seven context groups from the ONE
+ *   quick 261121-mtu: the panel renders the six context groups from the ONE
  *   pure selector (`aquarelleParamVisibility.ts`, spec §8), driven by the
  *   active TOOL plus the selected MEDIUM. Default context (Brush + Watercolor)
- *   is eight rows in the order Viscosity, Pigment, Water, Dry speed, Flow,
- *   Bleed, Edges, Emboss — decision B hides Refill for watercolor, Pickup and
- *   Feather are bristle-only, and the Grain control moved to the Paper tab.
+ *   is seven rows in the order Viscosity, Pigment, Water, Dry speed, Flow,
+ *   Bleed, Edges — decision B hides Refill for watercolor, Pickup and
+ *   Feather are bristle-only, and the Grain control is a fixed Paint-tab row.
+ *   2026-11-27: Emboss is the Medium (acrylic) context's trailing Relief row —
+ *   the watercolor context never renders it.
  *   The old flat playground order is SUPERSEDED by the group order. Post-UAT
  *   2026-11-22: `body` rides the bag and the Reset law but has NO row — the
  *   compositor's alpha is max(pigment-darkness, cover), so Body only reads on
@@ -188,9 +190,9 @@ function collectOrderedLabels(tree: TestVNode): string[] {
  *  Post-UAT 2026-11-22: Body has NO row (kept in the bag and the Reset law). */
 // Default context = Brush + Watercolor. rev 3: Pickup is the bristle
 // carrier/gather smear only, so the fluid context hides it alongside Refill
-// and Feather. 2026-11-27 (artist's live ruling): the Grain control moved to
-// the Paper tab, so the context renders eight rows, and Emboss closes the
-// tab in its own trailing Relief section.
+// and Feather. 2026-11-27 (artist's live ruling): the Grain control is the
+// fixed Paint-tab top row and Emboss is Medium-only, so the watercolor
+// context renders seven group rows.
 const GLOBAL_LABELS = [
   'Viscosity',
   'Pigment',
@@ -199,7 +201,6 @@ const GLOBAL_LABELS = [
   'Flow',
   'Bleed',
   'Edges',
-  'Emboss',
 ] as const;
 
 /** Display names in the fixed MEDIUM_IDS order (quick 261124-iq9: the acrylic
@@ -437,19 +438,19 @@ describe('Phase 64 medium dropdown', () => {
     expect(text, 'the row names the selected medium').toContain('Watercolor');
   });
 
-  it('renders the eight default-context rows below the dropdown in Matrix 2 order', () => {
+  it('renders the seven default-context rows below the dropdown in Matrix 2 order', () => {
     const tree = renderPanel();
     const sliders = [...walk(tree)].filter(
       (node) => node.props?.['data-testid'] === 'slider-stepper',
     );
-    // Eight context rows + the tab's fixed Grain row.
-    expect(sliders, 'the eight group rows plus Grain').toHaveLength(GLOBAL_LABELS.length + 1);
-    expect(GLOBAL_LABELS).toHaveLength(8);
+    // Seven context rows + the tab's fixed Grain row.
+    expect(sliders, 'the seven group rows plus Grain').toHaveLength(GLOBAL_LABELS.length + 1);
+    expect(GLOBAL_LABELS).toHaveLength(7);
     const ordered = collectOrderedLabels(tree).filter((label) =>
       (GLOBAL_LABELS as readonly string[]).includes(label),
     );
     expectGlobalOrder(ordered);
-    expect(ordered).toHaveLength(8);
+    expect(ordered).toHaveLength(7);
     // quick 261121-mtu: decision B hides Refill for watercolor, rev 3 hides
     // Pickup (bristle-program-only), and Feather is bristle-only. None of the
     // three may appear in the default context.
@@ -462,9 +463,7 @@ describe('Phase 64 medium dropdown', () => {
     expect(index('Water'), 'Water opens Drying').toBe(2);
     expect(index('Dry speed'), 'Dry speed follows Water').toBe(3);
     expect(index('Flow'), 'Flow opens Watercolor only').toBe(4);
-    // 2026-11-27 (artist's live ruling): Emboss closes the tab in its own
-    // trailing Relief section.
-    expect(index('Emboss'), 'Emboss closes the list').toBe(7);
+    expect(ordered).not.toContain('Emboss');
   });
 
   it('renders the non-empty group headings in the fixed order', () => {
@@ -474,12 +473,12 @@ describe('Phase 64 medium dropdown', () => {
       return typeof id === 'string' && id.startsWith('aquarelle-param-group-');
     });
     // Default context (Brush + Watercolor): the Noise group is EMPTY (Feather
-    // and the noise pair are bristle-only, so the heading drops), the Eraser
-    // group never renders outside the Eraser, and Relief closes the tab.
+    // and the noise pair are bristle-only, so the heading drops) and the
+    // Eraser group never renders outside the Eraser.
     expect(groups.map((group) => group.props?.['data-testid']).join('|')).toBe(
-      'aquarelle-param-group-medium|aquarelle-param-group-paint|aquarelle-param-group-drying|aquarelle-param-group-watercolor|aquarelle-param-group-relief',
+      'aquarelle-param-group-medium|aquarelle-param-group-paint|aquarelle-param-group-drying|aquarelle-param-group-watercolor',
     );
-    const headings = ['Medium', 'Paint & reservoir', 'Drying', 'Watercolor only', 'Relief'];
+    const headings = ['Medium', 'Paint & reservoir', 'Drying', 'Watercolor only'];
     const texts = groups.map((group) => textContent(group));
     for (let i = 0; i < headings.length; i += 1) {
       expect(texts[i]!.startsWith(headings[i]!), `heading ${headings[i]}`).toBe(true);
@@ -506,8 +505,8 @@ describe('Phase 64 medium dropdown', () => {
     expect(sliderLabels).not.toContain('wetSeconds');
     expect(sliderLabels).not.toContain('Wet seconds');
     expect(sliderLabels).not.toContain('Wet Seconds');
-    // 2026-11-27: eight group rows + the fixed Grain row in the default context.
-    expect(sliderLabels).toHaveLength(9);
+    // 2026-11-27: seven group rows + the fixed Grain row in the default context.
+    expect(sliderLabels).toHaveLength(8);
   });
 
   it('moves the canonical viscosity key through the one seam on change and release', () => {
@@ -532,8 +531,7 @@ describe('Phase 64 medium dropdown', () => {
     applyAquarelleMedium('acrylic');
     // The raw tree keeps GlobalSlider's props (the stored value and the row's
     // own callbacks); invoking the component yields the SliderStepper vnode
-    // with the DISPLAYED value and the inverted callbacks (same pattern as the
-    // signed-Emboss band test).
+    // with the DISPLAYED value and the inverted callbacks.
     const slider = (): TestVNode => {
       const row = [...walk(AquarelleGlobalsPanel())].find(
         (node) =>
@@ -876,9 +874,9 @@ describe('quick 261111-ucf globals release commits + Reset batch', () => {
   });
 });
 
-// 2026-11-27 (artist's live ruling): Emboss returns to the UI as a 0..5
-// low-value test band, rendered on the track, the typed-entry commit clamp
-// and the readout, while every other global row keeps the 0..100 band.
+// 2026-11-27 (artist's live ruling): Emboss is the Medium (acrylic) context's
+// 0..5 low-value test band, rendered on the track, the typed-entry commit
+// clamp and the readout, while every other global row keeps the 0..100 band.
 describe('261127 emboss 0..5 test band', () => {
   function sliderProps(label: string): { value: number; min: number; max: number } {
     const row = [...walk(AquarelleGlobalsPanel())].find(
@@ -893,6 +891,7 @@ describe('261127 emboss 0..5 test band', () => {
   }
 
   it('pins min 0 and max 5 on the Emboss row (both drag and typed commits)', () => {
+    applyAquarelleMedium('acrylic');
     setAquarelleParam('emboss', 3);
     const props = sliderProps('Emboss');
     expect(props.min, 'the test-row floor').toBe(0);
@@ -901,6 +900,7 @@ describe('261127 emboss 0..5 test band', () => {
   });
 
   it('reads a value outside the band as the nearest cap', () => {
+    applyAquarelleMedium('acrylic');
     setAquarelleParam('emboss', 40);
     expect(sliderProps('Emboss').value, 'an out-of-band value reads as the ceiling').toBe(5);
     setAquarelleParam('emboss', -40);
@@ -908,9 +908,18 @@ describe('261127 emboss 0..5 test band', () => {
   });
 
   it('leaves every other global row on the 0..100 band', () => {
-    const viscosity = sliderProps('Viscosity');
-    expect(viscosity.min).toBe(0);
-    expect(viscosity.max).toBe(100);
+    applyAquarelleMedium('acrylic');
+    const opacity = sliderProps('Opacity');
+    expect(opacity.min).toBe(0);
+    expect(opacity.max).toBe(100);
+  });
+
+  it('never renders the Emboss row in the watercolor context', () => {
+    applyAquarelleMedium('watercolor');
+    const labels = [...walk(AquarelleGlobalsPanel())]
+      .map((node) => node.props?.['label'])
+      .filter((label) => typeof label === 'string');
+    expect(labels).not.toContain('Emboss');
   });
 });
 
@@ -974,8 +983,8 @@ describe('tool x medium context rows (quick 261121-mtu)', () => {
     }
   });
 
-  // 2026-11-27: the Medium panel renders its knobs as FOUR labelled sections —
-  // Paint & reservoir (now carrying the global Transparency), Drying, Noise
+  // 2026-11-27: the Medium panel renders its knobs as FOUR labelled sections
+  // — Paint & reservoir (now carrying the global Transparency), Drying, Noise
   // and the trailing Relief (Emboss) — in the fixed group order (the
   // exact-list assertion also forbids any extra group heading). The Medium
   // group is empty (Viscosity is hidden there) so its heading drops.
@@ -996,7 +1005,7 @@ describe('tool x medium context rows (quick 261121-mtu)', () => {
     }
   });
 
-  it('Watercolor shows its eight rows with no Refill, Pickup or Feather', () => {
+  it('Watercolor shows its seven rows with no Refill, Pickup or Feather', () => {
     applyAquarelleMedium('watercolor');
     const labels = renderedSliders();
     expect(labels).toEqual([
@@ -1008,7 +1017,6 @@ describe('tool x medium context rows (quick 261121-mtu)', () => {
       'Flow',
       'Bleed',
       'Edges',
-      'Emboss',
     ]);
     expect(labels.includes('Refill'), 'Refill is absent for watercolor').toBe(false);
     // rev 3: Pickup is the bristle carrier+gather smear only — dead on the
@@ -1041,7 +1049,6 @@ describe('tool x medium context rows (quick 261121-mtu)', () => {
       'aquarelle-param-group-paint',
       'aquarelle-param-group-drying',
       'aquarelle-param-group-watercolor',
-      'aquarelle-param-group-relief',
     ]);
   });
 });

@@ -35,13 +35,13 @@
 //  `wetSeconds` has no row (it is seconds, not a 0..100 global) —
 //  neither appears in `AQUARELLE_PARAM_ROWS` by design.
 //
-//  2026-11-27 (artist's live ruling): Emboss returns to the UI as a
-//  0..5 test band in a trailing Relief section; the display relief is
-//  lit again and the Medium record defaults it to 0. The signed band's
-//  negative half is retired from the ROW; the engine still honours a
-//  negative recorded emboss. The Grain row's control is a fixed Paint-tab
-//  top row (after Brush size), so the group row is hidden here (the key
-//  keeps its Reset/persistence).
+//  2026-11-27 (artist's live ruling): Emboss is the Medium (acrylic)
+//  context's row — it has nothing to do with watercolor, so the watercolor
+//  context no longer renders it in the Paint tab or the top bar. The row
+//  keeps its 0..5 test band and the trailing Relief section for acrylic.
+//  The Grain row's control is a fixed Paint-tab top row (after Brush
+//  size), so the group row is hidden here (the key keeps its
+//  Reset/persistence).
 // ============================================================
 
 import { DEFAULT_MEDIUM_ID, type MediumId } from '@efxlab/efx-watercolor';
@@ -110,15 +110,13 @@ export interface VisibleAquarelleParamGroup {
  *  (`edgeFade`, relabelled Transparency) and lives in Paint & reservoir under
  *  Pickup; its falloff row is gone with the lateral law. `noise` keeps the
  *  break-up pair (Feather noise / Feather falloff, Spec 11). `relief` is the
- *  trailing Emboss section (2026-11-27). */
+ *  Medium (acrylic) context's trailing Emboss section. */
 export const AQUARELLE_PARAM_GROUPS: readonly AquarelleParamGroup[] = Object.freeze([
   Object.freeze({ id: 'medium', label: 'Medium' }),
   Object.freeze({ id: 'paint', label: 'Paint & reservoir' }),
   Object.freeze({ id: 'drying', label: 'Drying' }),
   Object.freeze({ id: 'noise', label: 'Noise' }),
   Object.freeze({ id: 'watercolor', label: 'Watercolor only' }),
-  // 2026-11-27 (artist's live ruling): Emboss moves to its own trailing
-  // section — the Paint tab ends with the relief setup.
   Object.freeze({ id: 'relief', label: 'Relief' }),
   Object.freeze({ id: 'eraser', label: 'Eraser' }),
 ]);
@@ -126,11 +124,10 @@ export const AQUARELLE_PARAM_GROUPS: readonly AquarelleParamGroup[] = Object.fre
 /** Post-UAT (2026-11-21): emboss relief is very hard above 15, so the
  *  row's band is capped here — this is the ONE home of the cap (the
  *  panel only forwards `row.max`).
- *  2026-11-27 (artist's live ruling): the row is back for a low-value
- *  test — 0..5 — in the trailing Relief section, and the Medium record
- *  defaults it to 0. The engine still honours a negative recorded
- *  emboss (the row no longer offers one). This pair is the ONE home of
- *  the band (the panel only forwards `row.min/max`). */
+ *  2026-11-27 (artist's live ruling): the row keeps its 0..5 test band
+ *  for the Medium (acrylic) context only — watercolor never renders it.
+ *  The engine still honours a negative recorded emboss (the row no longer
+ *  offers one). This pair is the ONE home of the band. */
 const EMBOSS_MIN = 0;
 const EMBOSS_MAX = 5;
 
@@ -234,11 +231,17 @@ export const AQUARELLE_PARAM_ROWS: readonly AquarelleParamRow[] = Object.freeze(
     water: true,
     hidden: true,
   }),
-  // 2026-11-27 (artist's live ruling): the Emboss setup closes the Paint tab —
-  // its own trailing Relief section, tested at 0..5. The display relief was
-  // gated off on 2026-11-23 (the first-order heightmap shade turns to speckle
-  // as strokes accumulate); it is lit again for this test. See RELIEF_BUMP.
-  Object.freeze({ key: 'emboss', label: 'Emboss', group: 'relief', min: EMBOSS_MIN, max: EMBOSS_MAX, paint: 'all' }),
+  // 2026-11-27 (artist's live ruling): Emboss closes the Medium (acrylic)
+  // Paint tab — its own trailing Relief section, tested at 0..5. It is NOT a
+  // watercolor row: the watercolor context never renders it.
+  Object.freeze({
+    key: 'emboss',
+    label: 'Emboss',
+    group: 'relief',
+    min: EMBOSS_MIN,
+    max: EMBOSS_MAX,
+    paint: BRISTLE_MEDIA,
+  }),
   Object.freeze({ key: 'lift', label: 'Lift', group: 'eraser', lift: true }),
 ]);
 

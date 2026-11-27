@@ -151,10 +151,10 @@ function collectOrderedLabels(tree: TestVNode): string[] {
   return [...seen];
 }
 
-/** quick 261121-mtu: the seven classic labels in the default context's group
- *  order (spec §8) — Paint & reservoir (Pigment), Drying (Water, Dry speed),
- *  Watercolor only (Flow, Bleed, Edges), and the trailing Relief (Emboss).
- *  2026-11-27: the Grain control moved to the Paper tab. */
+/** quick 261121-mtu: the classic labels in the default context's group order
+ *  (spec §8) — Paint & reservoir (Pigment), Drying (Water, Dry speed),
+ *  Watercolor only (Flow, Bleed, Edges). 2026-11-27: the Grain control is a
+ *  fixed Paint-tab row and Emboss left the UI. */
 const GLOBAL_LABELS = [
   'Pigment',
   'Water',
@@ -162,7 +162,6 @@ const GLOBAL_LABELS = [
   'Flow',
   'Bleed',
   'Edges',
-  'Emboss',
 ] as const;
 
 /** quick 261122-gys: Reset is RECORD-driven — these seven keys come from the
@@ -187,7 +186,7 @@ beforeEach(() => {
 });
 
 describe('AquarelleParamsPanel globals (AQUA-04 / D-05 / D-06 / I-01)', () => {
-  it('renders the 7 named global slider labels', () => {
+  it('renders the 6 named global slider labels', () => {
     const tree = renderPanel();
     const labels = collectLabels(tree);
     for (const name of GLOBAL_LABELS) {
@@ -195,7 +194,7 @@ describe('AquarelleParamsPanel globals (AQUA-04 / D-05 / D-06 / I-01)', () => {
     }
   });
 
-  it('renders the 7 globals in group order Pigment, Water, Dry speed, Flow, Bleed, Edges, Emboss', () => {
+  it('renders the 6 globals in group order Pigment, Water, Dry speed, Flow, Bleed, Edges', () => {
     const tree = renderPanel();
     const ordered = collectOrderedLabels(tree).filter((l) =>
       (GLOBAL_LABELS as readonly string[]).includes(l),
