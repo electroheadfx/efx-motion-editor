@@ -1,6 +1,6 @@
 ---
 name: efx-studio-paint
-description: Studio paint engine (Physic Paint / watercolor + acrylic bristle media). The shipped compositing laws — pigment replacement with coverage, the Body cliff, live-over-committed parity, KEY = CACHE (a key opens on its committed image and strokes are never replayed), the sheet cache and re-render adoption, the capture merge, per-stroke seeds, first-paint pickup parity, cache cost — plus the seams, files, verification gates and debugging discipline for any change to what the artist sees. Load before touching the aquarelle engine, its Studio layers, the key/sheet path, the capture merge, brush/mutation recording, or any medium record.
+description: Studio paint engine (Physic Paint / watercolor + acrylic bristle media). The shipped compositing laws — pigment replacement with coverage, the Body cliff, the per-stroke Edge-transparency stroke layer and its shared falloff law (lateralWeight, coefficient-space merge, live/committed parity), the feather-noise threshold law (0 clean / 20 base / 40–100 three-scale breakup; the neutral/extended shader permutation) and the Transparency/Noise panel split (the legacy Feather row is hidden), live-over-committed parity, KEY = CACHE (a key opens on its committed image and strokes are never replayed), the sheet cache and re-render adoption, the capture merge, per-stroke seeds, first-paint pickup parity, cache cost — plus the seams, files, verification gates and debugging discipline for any change to what the artist sees. Load before touching the aquarelle engine, its Studio layers, the key/sheet path, the capture merge, brush/mutation recording, or any medium record.
 ---
 
 <context>
@@ -54,6 +54,121 @@ Consequences, and they are not negotiable:
   acrylic 100). Never ship a Body on the invisible cliff, pinned in
   `mediums.test.ts`.
 </the-one-law>
+
+<edge-law>
+## Transparency and Noise (bristle only, shipped 2026-11-26 / 2026-11-27)
+
+Bristle responses (Gouache, Pen) gain two panel sections. **Transparency**:
+**Edge transparency** (`edgeFade`, 0..100, default 0) and **Edge falloff**
+(`edgeFalloff`, 0..100, default 50). **Noise**: **Feather noise**
+(`featherNoise`, 0..100, default 20) and **Feather falloff** (`featherFalloff`,
+0..100, default 50). The legacy **Feather** amplitude row is HIDDEN in every
+context (`hidden: true`, Emboss precedent): its key stays in
+`AQUARELLE_GLOBAL_KEYS`, both medium records (Gouache 85) and the per-stroke
+bag, and the engine still reads it, but the panel exposes no standalone row —
+the feather-noise re-index owns that raggedness. Watercolor never sees these
+rows and renders identically.
+
+**Amount 0 is a branch, never a value.** `edgeFade === 0` (or a non-bristle
+tool) never allocates a layer and never draws a merge — the shipped deposit
+renders byte-identically (`layerAllocated false`, `mergeDraws 0`). Keep the
+predicate in `Engine.layerStrokeActive()`.
+
+**The stroke layer.** While a stroke with `edgeFade > 0` is live, its dabs
+render into a transient LAYER instead of the sheet (lazy, 40 B/px: ink pair
+RGBA16F, film [cover_L, lateral], relief, merge scratch). Inside the layer the
+one-lerp runs unchanged and there is no settled `fixed` pool; the sheet's
+cover, relief and last-touch are untouched by the stroke's paint. The layer
+commits ONCE at stroke end, inside the stroke's undo transaction, before the
+stroke is cleared. Every abandon path discards it; document recreates forget
+it.
+
+**The lateral law — ONE shape shared by the merge and the live display**
+(`LATERAL_WEIGHT` / `STROKE_LAYER_ALPHA`):
+
+    u     = clamp(|across| / BRISTLE_LAYER_EDGE, 0, 1)   // MIN over covering dabs
+    e     = 2^(2·falloff − 1)  ∈ [0.5, 2]                // the tested twin edgeFalloffExponent
+    A     = 1 − amount · u^e                             // NO interior plateau
+    aEff  = A · cover_L
+
+`BRISTLE_LAYER_EDGE` is 0.9 of the nominal footprint: u = 0 on the centre line,
+u = 1 at the stroke's VISUAL edge. Falloff 0 is broad (the fade reaches
+mid-width), 50 the shipped linear shape, 100 rim (solid middle, fade only at
+the silhouette); the outer silhouette never moves and at amount 100 the visual
+edge is fully transparent. The retired 0.30 interior plateau read as a solid
+core — do not bring it back.
+
+**The commit is a coefficient-space lerp, never a display-band mix.** Per
+texel, over the stroke rect:
+
+    film_out   = mix(film_sheet, film_layer, aEff)        // component-wise absorbs + S
+    ink        = film_out − fixed                         // storage form
+    cover_out  = 1 − (1 − cover_S) · (1 − aEff)           // the union
+    relief_out = relief_S + aEff · relief_L
+
+Two exact endpoints skip the mix (aEff ≈ 1 writes the layer raw, ≈ 0 copies the
+sheet). Three passes write the sheet's WRITE halves and the rect is copied
+back — never a swap. Averaging reconstructed Kubelka-Munk reflectance bands
+(the retired band/Levenberg-Marquardt encoder) produced the pale lavender
+fringe; no band or display-space mix may re-enter.
+
+**Live = committed.** While a layer is open the live compositor binds
+`displayLayerFS`: the SAME coefficient mix pointwise, then one display
+reconstruction. Exports bind `displayFS` and never see the layer samplers, so
+capture, cache and bake stay layer-blind. The merge is pointwise, so the
+layer's own feather noise and grain survive verbatim.
+
+**Layer cover ≠ sheet cover.** The layer's cover smear is suppressed: its cover
+is the stroke's own film, not a pull toward the under; colour pickup rides the
+layer's ink. The sheet path keeps the shipped smear arm.
+
+**Feather noise — the shipped threshold law (UAT approved 2026-11-27).** The
+slider is re-indexed around the shipped look: **0 = clean edge**, **20 = the
+shipped base (default)**, 40 light, 60 medium, **100 full breakup**; linear
+between anchors. In `bristles.ts`:
+
+    featherEdgeClean(n) = smoothstep(0, 0.2, n)      // 0 at 0 -> clean; 1 from 20 up
+    featherNoiseDrive(n) = clamp01((n - 0.2) / 0.8)  // 0 at 20; 1 at 100
+
+At 0 the shipped raggedness is scaled away (`featherShift *= uFeatherEdgeClean`)
+and the rim paper tooth is calmed (`rimClean`), so the mark follows the smooth
+bristle silhouette. Above 20 the raggedness is fully restored and the breakup
+runs. The breakup is a DEPTH-OF-PENETRATION threshold in the gather: paint
+outside a wavy front is removed, everything inside stays solid, so the core is
+continuous at every value and no detached islands enter the body:
+
+    uN       = clamp(lateral / BRISTLE_LAYER_EDGE, 0, 1)   // the SAME lateral coordinate
+    front    = mix(0.88, 0.35, drive) + cloudMix(css) * 0.30
+    envelope = smoothstep(front - 0.04, front + 0.04, uN)
+    featherShift += uFeather * LIFT * envelope            // paint outside the front removed
+    featherShift += uFeather * LIFT * band * spray        // contained fringe specks
+    featherShift -= uFeather * LIFT * envelope * 0.90 * spike
+    featherShift -= uFeather * spike * reach              // sparse peaks cancel erosion
+    featherShift = max(featherShift, shippedShift)       // never paint beyond the base mark
+
+`cloudMix` is THREE fixed document scales — 20 / 60 / 200 px — of a four-octave
+rotated value-noise fractal, mixed 0.40 / 0.33 / 0.27. The footprint floor lets
+chips cancel the erosion but never paint beyond the base silhouette. Gate:
+`uFeather > 0` (Feather 0 inert). NEVER a depth fade, a body hole-punch, a
+single smooth erosion field (the rejected "noodle" shrink) or a uniform fine
+chip field (the rejected "animal fur"); the 3-noise mix is the approved
+character.
+
+**Feather falloff** reuses the same shape language: ONE exponent map
+(`edgeFalloffExponent`, `2^(2·b − 1)`, 0.5 = shipped, `pow` skipped at exactly
+0.5). It shapes the rim opening only, never the noise drive.
+
+**The permutation is the identity mechanism.** `bristleGatherSource(extended)`
+is the ONE generator: the NEUTRAL gather is the pre-change source; the EXTENDED
+gather carries the law and its uniforms. `Engine.gatherProgram()` compiles the
+extended programs LAZILY on the first draw where drive > 0, clean < 1, or
+featherFalloff ≠ 0.5. At slider 20 + falloff 50 the neutral program runs, so
+the default render is byte-identical to the pre-change baseline by
+construction. Never make the law unconditional.
+
+The two laws compose because the stroke-layer commit is pointwise. Detail and
+measured facts: `references/edge-transparency.md`.
+</edge-law>
 
 <parity-rules>
 ## Live / committed parity (shipped 2026-11-21)
@@ -170,6 +285,12 @@ paint paths to "make the test pass".
 | Restored capture branch | `PhysicsPaintStudio.tsx` (`handleAquarelleCaptureFrame` → `base: null` while `aquarelleSheetSeeded`) |
 | First-paint probe / cache cost | `packages/efx-watercolor/probe/pickup-collapse/` (`app-live`, `app-bake`, `app-seedcost`) |
 | Per-stroke seed parity | `engineAdapter.ts` (`strokeRandomForMutationId`), `paintMutationLedger.ts` |
+| Edge stroke layer lifecycle | `playground/Engine.ts` (`layerStrokeActive`, `ensureLayer`, `openLayer`, `commitLayer`, `discardLayer`, `mergeStrokeLayer`, `bindLayerAlpha`) |
+| Lateral falloff law / live layer display | `shaders.ts` (`LATERAL_WEIGHT`, `STROKE_LAYER_ALPHA`, `bristleCoverLayerFS`, `strokeLayerMergeFS`, `strokeLayerCoverFS`, `strokeLayerReliefFS`, `displayLayerFS`), `bristles.ts` (`edgeFalloffExponent`, `BRISTLE_LAYER_EDGE`) |
+| Edge/noise rows / records / payload | `aquarelleParamVisibility.ts` (the `transparency` and `noise` groups; the legacy `feather` row is `hidden: true`), `aquarelleRecordState.ts` (`AQUARELLE_GLOBAL_KEYS`, defaults), `params.ts`, `mediums.ts` |
+| Feather-noise threshold law / permutation | `shaders.ts` (`bristleGatherSource`, `FEATHER_CLOUD`, `FEATHER_LAW_BODY`), `bristles.ts` (`featherNoiseDrive`, `featherEdgeClean`, `FEATHER_NOISE_NEUTRAL`, `FEATHER_NOISE_LIFT`), `Engine.ts` (`featherLawActive`, `gatherProgram`, `bindGather`) |
+| Edge probe | `probe/medium-engine/` (`edge-layer` scenario, `baselines/edge-layer-neutral.json`, `compare.mjs --edge-structural`) |
+| Feather-noise probe | `probe/medium-engine/featherNoise.mjs` — the five-state sweep (slider 0 / 20 / 40 / 60 / 100 × Feather 85 / 0) and its six bars |
 | Medium records / the Body cliff | `playground/mediums.ts`, `mediums.test.ts`, probe `probe/chalk-deposit` |
 | Live surface | `app/src/components/physic-paint/engine/AquarelleCanvasLayer.tsx` |
 | Committed base display | `.../engine/AquarelleCachedBaseLayer.tsx` (pigment-alpha conversion; steps aside while composited) |
@@ -195,6 +316,19 @@ Known caveats:
   the first strokes do not pick up/blend with the committed base until ONE
   manual re-render adopts the bake's sheet. That residual is by design; never
   "fix" it by replaying strokes.
+- Edge transparency / falloff are bristle-only and amount 0 is a structural
+  bypass. The layer is transient: capture, cache, export and bake are
+  layer-blind and see only the merged sheet; undo/redo ride the stroke's own
+  transaction. Layer memory is 40 B/px measured (≈160 MiB at 2048²).
+- The stroke-end merge is pointwise in coefficient space, so the layer's own
+  feather noise and grain survive verbatim — any future band fit or spatial
+  pre-encode would smooth them.
+- The legacy Feather row is hidden on purpose: the feather-noise slider owns
+  the edge raggedness (0 zeroes it, 20 = the shipped base, 20+ breaks it up).
+  Do not un-hide the row or add a second edge-noise control without a new
+  artist decision. Feather noise is threshold-only — never a depth fade or a
+  band/reflectance mix — and the slider-20 neutral program must stay
+  byte-identical to the pre-change gather.
 </seams-and-files>
 
 <gates>
@@ -210,9 +344,23 @@ Known caveats:
   response must report painted texels > 0 on its own medium record
 - cache cost: `app-seedcost --sheet WxH --base-samples N`; record the capture
   and restore phases
+- Edge identity: `probe/medium-engine --gate edge-layer-neutral` +
+  `compare.mjs --edge-structural` — amount-0 digests identical,
+  `layerAllocated false`, `mergeDraws 0`
+- Edge falloff: `--falloff-sweep` — midpoint alpha strictly orders
+  broad (0) < linear (50) < rim (100) on both sides; `cover_L` is
+  falloff-independent
+- Edge live rows: amount 100 at falloff 0/50/100 over paper and over a
+  committed base; undo/redo one edit; leave/reopen + forced re-render parity
+- Feather-noise probe: `probe/medium-engine` five-state sweep
+  (`featherNoise.mjs`) — slider 20 / falloff 50 digests byte-identical to the
+  pre-change baseline, slider 0 differs by design, driven states never exceed
+  the base footprint and never fall below it when clean, the core erodes
+  progressively with a surviving spine, footprint ≥ 80 % of base, Feather 0
+  inert
 - probe scene(s) for the touched surface through the real engine
 - live UAT row naming the exact surface (live / committed / re-render)
 
 Reference detail: `references/compositing-parity.md`,
-`references/live-seed.md`.
+`references/edge-transparency.md`, `references/live-seed.md`.
 </gates>

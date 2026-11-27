@@ -46,7 +46,8 @@ requirements-completed: [PP-SPLIT-GROUPS, PP-HIDE-FEATHER, PP-PANEL-PINS, PP-GAT
 duration: 2min
 completed: 2026-11-27
 completed_at: 2026-11-27
-status: incomplete
+uat_approved_at: 2026-11-27
+status: complete
 ---
 
 # Quick 261127-jox Plan 01: Paint panel — split the bristle Edge group Summary
@@ -105,7 +106,9 @@ Each task was committed atomically on `dev`:
 
 1. **Task 1: Split the group table and hide the legacy Feather row (law + unit pins)** — `e508e82fa` (feat)
 2. **Task 2: Pin the rendered panel — Gouache two sections, Watercolor unchanged** — `7e817f9af` (test)
-3. **Task 3: Gates + SUMMARY** — no code commit (gates only; this SUMMARY is the orchestrator's docs commit)
+3. **Task 3: Gates + SUMMARY** — no code commit (gates only). The orchestrator's
+   docs commit is `28bd9a6b6` (PLAN, SUMMARY, STATE); the UAT-close docs commit
+   updates this SUMMARY, STATE and the `efx-studio-paint` skill.
 
 Measured plan ledger: `23a450784..7e817f9af` = 2 commits (`git rev-list --count`).
 
@@ -126,17 +129,17 @@ Measured plan ledger: `23a450784..7e817f9af` = 2 commits (`git rev-list --count`
 | Package typecheck | `pnpm --dir packages/efx-watercolor check` | PASS — exit 0 |
 | Package build | `pnpm --dir packages/efx-watercolor build` | PASS — ESM + DTS build success |
 
-## Live UAT Rows — ALL UNCLAIMED
+## Live UAT Rows — APPROVED (artist, 2026-11-27)
 
-> Per the project's no-done-before-UAT law, **no row is claimed as passed**.
-> The code is **automated-ready**, pending the artist's live UAT.
+> The artist approved the live UAT on 2026-11-27 ("approvated UAT"). All four
+> rows passed; the quick is closed.
 
 | # | Surface | Row | Status |
 |---|---|---|---|
-| 1 | Gouache (acrylic record) paint panel | Two sections — Transparency (Edge transparency, Edge falloff) then Noise (Feather noise, Feather falloff) — four bristle rows and no Feather row | **UNCLAIMED** |
-| 2 | Watercolor paint panel | Unchanged — eight rows, headings Medium / Paint & reservoir / Drying / Watercolor only, no Transparency/Noise heading, no Feather | **UNCLAIMED** |
-| 3 | Reset in the Gouache context | Silent — no row appears/disappears; the hidden feather key returns to the record's 85 (Feather noise 20 unchanged) | **UNCLAIMED** |
-| 4 | Studio top bar | Unchanged — no Feather slider before or after | **UNCLAIMED** |
+| 1 | Gouache (acrylic record) paint panel | Two sections — Transparency (Edge transparency, Edge falloff) then Noise (Feather noise, Feather falloff) — four bristle rows and no Feather row | **PASSED** |
+| 2 | Watercolor paint panel | Unchanged — eight rows, headings Medium / Paint & reservoir / Drying / Watercolor only, no Transparency/Noise heading, no Feather | **PASSED** |
+| 3 | Reset in the Gouache context | Silent — no row appears/disappears; the hidden feather key returns to the record's 85 (Feather noise 20 unchanged) | **PASSED** |
+| 4 | Studio top bar | Unchanged — no Feather slider before or after | **PASSED** |
 
 ## Decisions Made
 
@@ -154,10 +157,9 @@ None — plan executed exactly as written.
 
 ## Issues Encountered
 
-None. The two artist in-progress skill files
-(`.claude/skills/efx-studio-paint/SKILL.md` modified,
-`.claude/skills/efx-studio-paint/references/edge-transparency.md` untracked)
-were left unstaged and untouched. Nothing was pushed. No package,
+None. The executor left the artist's two in-progress skill files untouched;
+after the artist's UAT approval they were updated with the Transparency/Noise
+split and committed with this close. Nothing was pushed. No package,
 `aquarelleRecordState.ts`, medium-record or schema file was modified.
 
 ## Threat Flags
@@ -168,13 +170,14 @@ the two new visibility tests plus the untouched, re-run Reset batch suites.
 
 ## Next Phase Readiness
 
-Automated-ready for the artist's live UAT. Docs follow-up for the orchestrator:
-the `efx-studio-paint` skill / its `edge-transparency` reference still says "the
-`edge` group" and should name the Transparency/Noise split after UAT.
+UAT APPROVED live 2026-11-27; the quick is closed. The `efx-studio-paint` skill
+now names the Transparency/Noise split, the hidden legacy Feather row and the
+shipped feather-noise law, including its probe gates and traps.
 
 ## Self-Check: PASSED
 
 - All four modified app files and this SUMMARY exist on disk.
-- Task commits `e508e82fa` and `7e817f9af` are ancestors of HEAD.
+- Task commits `e508e82fa` and `7e817f9af`, the docs commit `28bd9a6b6` and
+  the UAT-close docs commit are ancestors of HEAD after the close.
 - No uncommitted diff remains on the four app files.
-- The artist's two in-progress skill files are untouched and unstaged; nothing pushed.
+- Nothing pushed.
