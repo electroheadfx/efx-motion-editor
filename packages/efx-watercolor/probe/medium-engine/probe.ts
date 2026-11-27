@@ -7362,9 +7362,9 @@ const FN_FEATURE_FLOOR = Math.max(0.004, 1 / 255)
 /** The silhouette's own extent: the last row at 5 % of the body peak. */
 const FN_OUTER_FRACTION = 0.05
 /** The crop reads every size at the same RELATIVE scale (2.5 half-widths). */
-const FN_CROP_SCALE = 2.5
+const FN_CROP_SCALE = 4.0
 const FN_CROP_MIN_HALF = 64
-const FN_CROP_MAX_HALF = 256
+const FN_CROP_MAX_HALF = 540
 /** The law is the source, the measurement the proof: a divergence beyond
  *  10 % is a named FAIL, never a silent pass. */
 const FN_HALF_WIDTH_TOLERANCE = 0.1

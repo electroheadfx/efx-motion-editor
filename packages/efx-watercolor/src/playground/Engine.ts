@@ -34,7 +34,11 @@ import {
   bristleContactPressure,
   bristleCount,
   bristleSampleScale,
+  FEATHER_NOISE_DEPTH,
+  featherNoiseDrive,
   FEATHER_NOISE_FEATURES,
+  FEATHER_NOISE_FLOOR,
+  FEATHER_NOISE_LIFT,
   FEATHER_NOISE_MAX_PX,
   FEATHER_NOISE_MIN_PX,
   FEATHER_NOISE_REFERENCE_PX,
@@ -4043,11 +4047,16 @@ export class WatercolorEngine {
     // every consumer, and a program that does not declare them gets null
     // locations. The constants arrive from bristles.ts — never re-typed here.
     gl.uniform1f(p.u.uFeatherFalloff!, clamp(this.params.featherFalloff, 0, 1));
-    gl.uniform1f(p.u.uFeatherNoise!, clamp(this.params.featherNoise, 0, 1));
+    gl.uniform1f(p.u.uFeatherNoise!, clamp(featherNoiseDrive(this.params.featherNoise), 0, 1));
     gl.uniform1f(p.u.uFeatherNoiseFeatures!, FEATHER_NOISE_FEATURES);
     gl.uniform1f(p.u.uFeatherNoiseMinPx!, FEATHER_NOISE_MIN_PX);
     gl.uniform1f(p.u.uFeatherNoiseMaxPx!, FEATHER_NOISE_MAX_PX);
     gl.uniform1f(p.u.uFeatherNoiseRefPx!, FEATHER_NOISE_REFERENCE_PX);
+    gl.uniform1f(p.u.uFeatherNoiseDepth!, FEATHER_NOISE_DEPTH);
+    gl.uniform1f(p.u.uFeatherNoiseFloor!, FEATHER_NOISE_FLOOR);
+    // The grain shares Edge transparency's lateral span: 1 at the VISUAL edge.
+    gl.uniform1f(p.u.uFeatherNoiseAnchor!, BRISTLE_LAYER_EDGE);
+    gl.uniform1f(p.u.uFeatherNoiseLift!, FEATHER_NOISE_LIFT);
     // The end's takeoff is the same threshold mechanism on the leading
     // frontier: the last running dab's uncovered band opens into tooth
     // specks instead of ending on a straight wall.

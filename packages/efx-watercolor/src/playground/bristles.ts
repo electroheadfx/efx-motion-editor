@@ -484,6 +484,48 @@ export const FEATHER_NOISE_MIN_PX = 2;
 export const FEATHER_NOISE_MAX_PX = 16;
 /** Spec 11: the tooth's shortest period — the reference the zoom maps the derived period onto. */
 export const FEATHER_NOISE_REFERENCE_PX = 1.1;
+/**
+ * Spec 11 amendment 2026-11-26b: the body profile's depth multiplier. The grain
+ * weight is `mix(FLOOR, 1, u^(e · DEPTH))` over the Edge-transparency span, so
+ * a smaller value opens the profile deeper sooner. Starting point — tuned by
+ * the `feather-noise` probe.
+ */
+export const FEATHER_NOISE_DEPTH = 0.5;
+/**
+ * Spec 11 amendment 2026-11-26d: the grain's weight on the centre line. The
+ * artist's ruling is that the grain fills the brush BODY — at Edge 100 the rim
+ * fades out, so rim-weighted grain would read as a border only. The floor keeps
+ * the paper visible (mix, never replace) while the grain spans the whole body.
+ * Starting point — tuned by the `feather-noise` probe (range 0.6–0.9).
+ */
+export const FEATHER_NOISE_FLOOR = 0.75;
+/**
+ * Spec 11 amendment 2026-11-26e (the artist's yellow-curve ruling): the
+ * BODY-WIDE threshold rise at noise 100. Swapping the tooth texture alone is
+ * invisible inside the mark — the body's coverage is ~1, so the threshold
+ * passes everywhere and a different tooth changes nothing (measured: core
+ * variation 0.0028 -> 0.0024). Raising the threshold INTO the tooth's range
+ * makes the paper punch specks through the whole body, which is the interior
+ * break-up the artist drew. Threshold-only: no depth fade, no lane risk.
+ * Starting point — tuned by the `feather-noise` probe (range 0.5–1.2).
+ */
+export const FEATHER_NOISE_LIFT = 1.4;
+
+/**
+ * The Feather-noise DRIVE (artist-approved mapping 2026-11-27h). The recorded
+ * slider is the artist's scale; the shader reads this drive:
+ *   0 .. 20   -> 0                          (the plain block: no visible noise)
+ *   20 .. 60  -> n - 0.2                    (light fringe at 40, medium at 60)
+ *   60 .. 100 -> 0.4 + (n - 0.6) * 1.5      (the full halo at 100)
+ * Piecewise linear, so every value in between interpolates.
+ */
+export function featherNoiseDrive(n: number): number {
+  if (!Number.isFinite(n)) return 0;
+  const x = clamp01(n);
+  if (x <= 0.2) return 0;
+  if (x <= 0.6) return x - 0.2;
+  return 0.4 + (x - 0.6) * 1.5;
+}
 
 /**
  * Spec 11: `period = clamp(bandPx / FEATURES, MIN, MAX)` — the grain's feature

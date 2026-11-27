@@ -42,6 +42,7 @@ const FEATHER_NOISE = bristleModule as unknown as {
   FEATHER_NOISE_REFERENCE_PX?: number
   featherNoisePeriodPx?: (bandPx: number) => number
   featherNoiseScale?: (bandPx: number) => number
+  featherNoiseDrive?: (n: number) => number
 }
 
 function packageSourceFiles(dir: string): string[] {
@@ -151,92 +152,119 @@ describe('the one exponent map', () => {
 })
 
 // ============================================================
-//  The law's source pins (Task 2). The pure twins above prove the
-//  arithmetic; these prove the GLSL and the ONE gather binder carry the
-//  same law: six uniforms declared and bound, the shaped opening with the
-//  falloff-50 pow skip, the guarded falloff-profile grain mix, the shipped
-//  threshold anchors untouched, and no Spec 11 uniform in the carrier.
+//  The law's source pins. The pure twins above prove the arithmetic; these
+//  prove the GLSL and the ONE gather binder carry the law the artist approved
+//  on 2026-11-27 (rulings 2026-11-27e/f/g/h):
+//
+//   * Feather noise is a DEPTH-OF-PENETRATION control, not an amplitude: a
+//     single wavy FRONT is displaced inward, paint outside it is removed, and
+//     the body inside stays plain (never a field of holes).
+//   * The front is displaced by the natural three-scale cloud (20/60/200 px)
+//     and a contained fringe + sparse outward SPIKES ride the same field.
+//   * The slider is the artist's scale; `featherNoiseDrive` maps it so that
+//     0..20 is the plain block, 40 the light fringe, 60 the medium and 100 the
+//     full halo, interpolating in between.
+//   * Feather falloff still shapes the shipped rim opening with the ONE
+//     exponent map, skipping pow at 50.
 // ============================================================
 
-const SIX_FEATHER_UNIFORMS = [
+const LAW_UNIFORMS = [
   'uFeatherFalloff',
   'uFeatherNoise',
-  'uFeatherNoiseFeatures',
-  'uFeatherNoiseMinPx',
-  'uFeatherNoiseMaxPx',
-  'uFeatherNoiseRefPx',
+  'uFeatherNoiseAnchor',
+  'uFeatherNoiseLift',
 ] as const
 
 const ENGINE_SOURCE =
   PACKAGE_SOURCES.find(({ file }) => file === 'playground/Engine.ts')?.text ?? ''
 
 describe('the Spec 11 law in BRISTLE_GATHER', () => {
-  it('declares the six uniforms beside the shipped feather anchors', () => {
-    for (const name of SIX_FEATHER_UNIFORMS) {
+  it('declares the law uniforms beside the shipped feather anchors', () => {
+    for (const name of LAW_UNIFORMS) {
       expect(BRISTLE_GATHER.includes(`uniform float ${name};`), `${name} is declared`).toBe(true)
     }
   })
 
-  it('binds every uniform from the ONE gather binder (params + bristles.ts constants)', () => {
+  it('binds every law uniform from the ONE gather binder', () => {
     expect(ENGINE_SOURCE).toContain(
       'gl.uniform1f(p.u.uFeatherFalloff!, clamp(this.params.featherFalloff, 0, 1));',
     )
+    // The slider is the artist's scale; the DRIVE is what the shader reads.
     expect(ENGINE_SOURCE).toContain(
-      'gl.uniform1f(p.u.uFeatherNoise!, clamp(this.params.featherNoise, 0, 1));',
+      'gl.uniform1f(p.u.uFeatherNoise!, clamp(featherNoiseDrive(this.params.featherNoise), 0, 1));',
+    )
+    // The front's anchor is the Edge-transparency span, never a re-typed 0.9.
+    expect(ENGINE_SOURCE).toContain(
+      'gl.uniform1f(p.u.uFeatherNoiseAnchor!, BRISTLE_LAYER_EDGE);',
     )
     expect(ENGINE_SOURCE).toContain(
-      'gl.uniform1f(p.u.uFeatherNoiseFeatures!, FEATHER_NOISE_FEATURES);',
-    )
-    expect(ENGINE_SOURCE).toContain('gl.uniform1f(p.u.uFeatherNoiseMinPx!, FEATHER_NOISE_MIN_PX);')
-    expect(ENGINE_SOURCE).toContain('gl.uniform1f(p.u.uFeatherNoiseMaxPx!, FEATHER_NOISE_MAX_PX);')
-    expect(ENGINE_SOURCE).toContain(
-      'gl.uniform1f(p.u.uFeatherNoiseRefPx!, FEATHER_NOISE_REFERENCE_PX);',
+      'gl.uniform1f(p.u.uFeatherNoiseLift!, FEATHER_NOISE_LIFT);',
     )
   })
 
   it('shapes the opening with the shipped exponent map and SKIPS pow at falloff 50', () => {
-    // The one shape language: 2^(2b-1) — the tested twin edgeFalloffExponent's
-    // expression, never a second table.
-    expect(BRISTLE_GATHER).toContain('float e = exp2(2.0 * uFeatherFalloff - 1.0);')
-    // pow(x, 1.0) is not guaranteed exact: the neutral half skips it so the
-    // shipped bytes survive byte-identically.
-    expect(BRISTLE_GATHER).toContain('float shaped = (uFeatherFalloff == 0.5) ? s : pow(s, e);')
-    expect(BRISTLE_GATHER).toContain('float featherShift = uFeather * uFeatherShift * shaped;')
+    expect(BRISTLE_GATHER).toContain(
+      'float featherShift = uFeather * uFeatherShift * smoothstep(featherStart, uFeatherEdge, lateral);',
+    )
+    expect(BRISTLE_GATHER).toContain('if (uFeatherFalloff != 0.5) {')
+    expect(BRISTLE_GATHER).toContain('exp2(2.0 * uFeatherFalloff - 1.0)')
   })
 
-  it('evaluates the second grainHeight sample only inside the w guard (noise 0 skips it)', () => {
-    // amount x Feather x the falloff profile — the grain speaks the Edge
-    // transparency language, so falloff 0 reaches deep and 100 hugs the rim.
-    expect(BRISTLE_GATHER).toContain('float w = uFeatherNoise * uFeather * bodyW;')
-    const guard = /if \(w > ([^)]+)\) \{/.exec(BRISTLE_GATHER)
-    expect(guard, 'the grain mix is guarded by w').not.toBeNull()
-    const start = guard!.index + guard![0].length
-    const block = BRISTLE_GATHER.slice(start, BRISTLE_GATHER.indexOf('}', start))
-    expect(block).toContain(
-      'float periodPx = clamp(bandPx / uFeatherNoiseFeatures, uFeatherNoiseMinPx, uFeatherNoiseMaxPx);',
+  it('removes paint outside a wavy FRONT and keeps the body plain (no field of holes)', () => {
+    expect(BRISTLE_GATHER).toContain('float pen = mix(0.88, 0.35, uFeatherNoise);')
+    expect(BRISTLE_GATHER).toContain('float wobble = cloudMix(css);')
+    expect(BRISTLE_GATHER).toContain('float front = pen + wobble * 0.30;')
+    expect(BRISTLE_GATHER).toContain(
+      'float envelope = smoothstep(front - 0.015, front + 0.015, uN);',
     )
-    expect(block).toContain('float rimScale = uFeatherNoiseRefPx / periodPx;')
-    expect(block).toContain('float rimGrain = grainHeight(css * rimScale, uAxis);')
-    // mix, never replace: the paper stays visible at every setting.
-    expect(block).toContain('height = mix(heightPaper, rimGrain, w);')
+    // One radial front = no detached islands in the body.
+    expect(BRISTLE_GATHER).toContain('featherShift += uFeather * uFeatherNoiseLift * envelope;')
+  })
+
+  it('rides the three-scale cloud: 20 / 60 / 200 document px, summed SIGNED', () => {
+    expect(BRISTLE_GATHER).toContain('cloudNoise(css / 20.0 + 19.0)')
+    expect(BRISTLE_GATHER).toContain('cloudNoise(css / 60.0 + 71.0)')
+    expect(BRISTLE_GATHER).toContain('cloudNoise(css / 200.0 + 133.0)')
+  })
+
+  it('carries the contained fringe and the sparse outward spikes', () => {
+    // The fringe: a narrow band straddling the front, perforated by the cloud.
+    expect(BRISTLE_GATHER).toContain('float band = exp(-pow((uN - (front - 0.07)) / 0.11, 2.0));')
+    expect(BRISTLE_GATHER).toContain('float spray = clamp(max(cloudMix(css * 3.1 + 23.0), 0.0) * 14.0, 0.0, 1.3);')
+    // The spikes: sparse peaks of a slow field that reach OUTSIDE the base edge.
+    expect(BRISTLE_GATHER).toContain('float spikeField = cloudMix(css * 0.8 + 41.0);')
+    expect(BRISTLE_GATHER).toContain('float spike = smoothstep(0.10, 0.34, spikeField);')
+    expect(BRISTLE_GATHER).toContain('float reach = mix(0.12, 0.40, uFeatherNoise);')
   })
 
   it('keeps the shipped threshold expression and its anchors byte-identical', () => {
     expect(BRISTLE_GATHER).toContain(
       'float featherStart = uFeatherEdge * (1.0 - mix(uFeatherMin, uFeatherReach, uFeather));',
     )
-    // The paper height keeps its shipped EXPRESSION; only its identifier moved.
+    // PRE's paper height, verbatim — the neutral path compiles from this line.
     expect(BRISTLE_GATHER).toContain(
-      'float heightPaper = mix(grainHeight(css, uAxis), 0.5, rimCalm);',
+      'float height = mix(grainHeight(css, uAxis), 0.5, rimCalm);',
     )
-    expect(BRISTLE_GATHER).toContain('float height = heightPaper;')
     expect(BRISTLE_GATHER).toContain(
       'float threshold = uGrain * (1.0 - height) - 0.25 + featherShift;',
     )
   })
 
-  it('keeps bristleCarrierFS free of the six Spec 11 uniforms', () => {
-    for (const name of SIX_FEATHER_UNIFORMS) {
+  it('maps the artist slider onto the drive (0..20 plain, 40 light, 60 medium, 100 full)', () => {
+    const drive = FEATHER_NOISE.featherNoiseDrive
+    expect(typeof drive, 'featherNoiseDrive is exported').toBe('function')
+    expect(drive!(0)).toBe(0)
+    expect(drive!(0.2)).toBe(0)
+    expect(drive!(0.4)).toBeCloseTo(0.2, 12)
+    expect(drive!(0.6)).toBeCloseTo(0.4, 12)
+    expect(drive!(1)).toBeCloseTo(1, 12)
+    // Monotone and total: a non-finite slider reads the plain block.
+    expect(drive!(Number.NaN)).toBe(0)
+    expect(drive!(2)).toBeCloseTo(1, 12)
+  })
+
+  it('keeps bristleCarrierFS free of the law uniforms', () => {
+    for (const name of LAW_UNIFORMS) {
       expect(bristleCarrierFS.includes(name), `${name} never reaches the carrier`).toBe(false)
     }
   })
