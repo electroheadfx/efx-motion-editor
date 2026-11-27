@@ -134,11 +134,11 @@ interface NewPresetSpec {
 }
 
 // The two acrylic responses, restated verbatim (quick 261124-iq9: the display
-// name becomes Medium, its id and every parameter stay shipped; quick
+// name becomes Gouache Round, its id and every parameter stay shipped; quick
 // 261124-tje appends the Pen).
 const NEW_PRESETS: Record<string, NewPresetSpec> = {
   'bristle-round': {
-    name: 'Medium',
+    name: 'Gouache Round',
     group: 'acrylic',
     overrides: {
       aspect: 0.7,
@@ -152,7 +152,7 @@ const NEW_PRESETS: Record<string, NewPresetSpec> = {
     },
   },
   pen: {
-    name: 'Pen',
+    name: 'Pen 1B',
     group: 'acrylic',
     overrides: {
       water: 0.06,
@@ -401,10 +401,15 @@ describe('the per-brush defaults bags (quick 261124-tje)', () => {
   interface DefaultsBag {
     sizePx?: number
     color?: string
+    grain?: number
     load?: number
     pickup?: number
+    opacity?: number
     dry?: number
     feather?: number
+    featherNoise?: number
+    featherFalloff?: number
+    emboss?: number
   }
   const defaultsOf = (preset: BrushPreset): DefaultsBag | undefined =>
     (preset as unknown as { defaults?: DefaultsBag }).defaults
@@ -427,21 +432,31 @@ describe('the per-brush defaults bags (quick 261124-tje)', () => {
     ])
   })
 
-  it('pins the Pen bag: size 10 px, pigment #373633', () => {
+  it('pins the Pen 1B bag: size 10 px, pigment #333537', () => {
     const bag = defaultsOf(presetById('pen'))
     expect(bag).toEqual({
       sizePx: 10,
-      color: '#373633',
+      grain: 25,
       load: 100,
       pickup: 0,
+      opacity: 100,
       dry: 0,
       feather: 85,
+      featherNoise: 60,
+      featherFalloff: 0,
+      emboss: 0,
+      color: '#333537',
     })
-    expect(Object.keys(bag!).sort(), 'exactly the six landing keys').toEqual([
+    expect(Object.keys(bag!).sort(), 'exactly the eleven landing keys').toEqual([
       'color',
       'dry',
+      'emboss',
       'feather',
+      'featherFalloff',
+      'featherNoise',
+      'grain',
       'load',
+      'opacity',
       'pickup',
       'sizePx',
     ])

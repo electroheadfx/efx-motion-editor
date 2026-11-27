@@ -5,9 +5,11 @@
 //   1. Applying Gouache's bag (`bristle-round`) is ONE compare-
 //      then-write spread: size from 40 px, load 100, pickup 100,
 //      dry 0, feather 100 — never lift, never an unnamed key.
-//   2. Applying Pen's bag lands size from 10 px, load 100,
-//      pickup 0, dry 0, feather 85, and its #373633 pigment lands
-//      through the registered colour sink exactly once.
+//   2. Applying Pen 1B's bag lands size from 10 px, grain 25,
+//      load 100, pickup 0, opacity 100 (stored edgeFade 0), dry 0,
+//      feather 85, feather noise 60, feather falloff 0, emboss 0,
+//      and its #333537 pigment lands through the registered colour
+//      sink exactly once.
 //   3. The colour sink mirrors the lift-preview contract: last
 //      registration wins and a stale unregister clears nothing.
 //   4. A bagless preset ('round') and an unknown id are TOTAL
@@ -168,11 +170,16 @@ describe('applyAquarelleBrushDefaults — the Pen bag', () => {
     registerSink((color) => colors.push(color));
     applyAquarelleBrushDefaults('pen');
     expect(aquarelleParams.value.size).toBe(aquarellePaintCanonicalFromPx(10));
+    expect(aquarelleParams.value.granulation, 'the Grain row').toBe(25);
     expect(aquarelleParams.value.load).toBe(100);
     expect(aquarelleParams.value.pickup).toBe(0);
+    expect(aquarelleParams.value.edgeFade, 'Opacity 100 is stored as transparency 0').toBe(0);
     expect(aquarelleParams.value.dry).toBe(0);
     expect(aquarelleParams.value.feather).toBe(85);
-    expect(colors, 'the pen pigment lands once').toEqual(['#373633']);
+    expect(aquarelleParams.value.featherNoise).toBe(60);
+    expect(aquarelleParams.value.featherFalloff).toBe(0);
+    expect(aquarelleParams.value.emboss).toBe(0);
+    expect(colors, 'the pen pigment lands once').toEqual(['#333537']);
   });
 
   it('a Gouache application never calls the colour sink', () => {
@@ -190,7 +197,7 @@ describe('the brush-defaults colour sink lifecycle', () => {
     applyAquarelleBrushDefaults('pen');
     unregister();
     applyAquarelleBrushDefaults('pen');
-    expect(colors, 'one delivery before the unregister').toEqual(['#373633']);
+    expect(colors, 'one delivery before the unregister').toEqual(['#333537']);
   });
 
   it('a second registration replaces the first and the stale unregister clears nothing', () => {
@@ -199,13 +206,13 @@ describe('the brush-defaults colour sink lifecycle', () => {
     const unregisterFirst = registerSink((color) => first.push(color));
     const unregisterSecond = registerSink((color) => second.push(color));
     applyAquarelleBrushDefaults('pen');
-    expect(second, 'the last registration wins').toEqual(['#373633']);
+    expect(second, 'the last registration wins').toEqual(['#333537']);
     expect(first, 'the replaced sink is silent').toEqual([]);
     unregisterFirst();
     applyAquarelleBrushDefaults('pen');
     expect(second, 'a stale unregister never clears the live sink').toEqual([
-      '#373633',
-      '#373633',
+      '#333537',
+      '#333537',
     ]);
     unregisterSecond();
   });

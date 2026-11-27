@@ -304,10 +304,17 @@ export function applyAquarelleBrushDefaults(presetId: string | null): void {
   if (!bag) return;
   const partial: Partial<AquarelleGlobalParams> = {};
   if (bag.sizePx !== undefined) partial.size = aquarellePaintCanonicalFromPx(bag.sizePx);
+  if (bag.grain !== undefined) partial.granulation = bag.grain;
   if (bag.load !== undefined) partial.load = bag.load;
   if (bag.pickup !== undefined) partial.pickup = bag.pickup;
+  // The Opacity row shows 100 = opaque; its stored key (`edgeFade`) is the
+  // transparency, so the bag's displayed value lands inverted.
+  if (bag.opacity !== undefined) partial.edgeFade = 100 - bag.opacity;
   if (bag.dry !== undefined) partial.dry = bag.dry;
   if (bag.feather !== undefined) partial.feather = bag.feather;
+  if (bag.featherNoise !== undefined) partial.featherNoise = bag.featherNoise;
+  if (bag.featherFalloff !== undefined) partial.featherFalloff = bag.featherFalloff;
+  if (bag.emboss !== undefined) partial.emboss = bag.emboss;
   const current = aquarelleParams.value;
   const keys = Object.keys(partial) as (keyof AquarelleGlobalParams)[];
   if (keys.some((key) => current[key] !== partial[key])) {

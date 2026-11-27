@@ -22,10 +22,16 @@ export interface BrushDefaults {
   /** Visible Brush size diameter in px (1..512), converted at application time. */
   sizePx?: number;
   /** Medium-scale 0..100 landing values (the params bag's own scale). */
+  grain?: number;
   load?: number;
   pickup?: number;
+  /** The Opacity row's displayed 0..100 (100 = opaque); the app store inverts it. */
+  opacity?: number;
   dry?: number;
   feather?: number;
+  featherNoise?: number;
+  featherFalloff?: number;
+  emboss?: number;
   /** `'#rrggbb'` pigment, landed through the Studio's one colour setter. */
   color?: string;
 }
@@ -479,9 +485,9 @@ export const BRUSH_PRESETS: BrushPreset[] = [
    * stroke persists the response id and an unknown id replays as the round.
    * ------------------------------------------------------------------- */
   define({
-    // 2026-11-27 (artist's live ruling): the acrylic family reads "Medium" in
-    // the Studio — same word as the medium dropdown and the group header.
-    id: 'bristle-round', name: 'Medium', hint: 'Round acrylic brush with body: springy, loaded hairs',
+    // 2026-11-27 (artist's live ruling): the acrylic family's response card
+    // reads "Gouache Round" — distinct from the Medium group header.
+    id: 'bristle-round', name: 'Gouache Round', hint: 'Round acrylic brush with body: springy, loaded hairs',
     group: 'acrylic', pressureLink: 0, speedLink: 0,
     aspect: 0.7, rotation: 'follow',
     water: 0.06, load: 1.4, capacity: 1.6, grain: 0.15,
@@ -490,16 +496,28 @@ export const BRUSH_PRESETS: BrushPreset[] = [
     tip: bristleTip,
   }),
   /* ---------------------------------------------------------------------
-   * quick 261124-tje: the Pen response. It APPENDS after Gouache on purpose
-   * — the acrylic group's FIRST preset must stay `bristle-round`, so the
-   * Brush family's landing brush never moves. A procedural crisp round tip;
-   * no `custom` (not an imported texture).
+   * quick 261124-tje: the Pen response. It APPENDS after Gouache Round on
+   * purpose — the acrylic group's FIRST preset must stay `bristle-round`, so
+   * the Brush family's landing brush never moves. A procedural crisp round
+   * tip; no `custom` (not an imported texture).
    * ------------------------------------------------------------------- */
   define({
-    id: 'pen', name: 'Pen', hint: 'Fine springy round: crisp edge, no pickup',
+    id: 'pen', name: 'Pen 1B', hint: 'Fine springy round: crisp edge, no pickup',
     group: 'acrylic', pressureLink: 0, speedLink: 0,
     water: 0.06, spacing: 0.12,
-    defaults: { sizePx: 10, color: '#373633', load: 100, pickup: 0, dry: 0, feather: 85 },
+    defaults: {
+      sizePx: 10,
+      grain: 25,
+      load: 100,
+      pickup: 0,
+      opacity: 100,
+      dry: 0,
+      feather: 85,
+      featherNoise: 60,
+      featherFalloff: 0,
+      emboss: 0,
+      color: '#333537',
+    },
     tip: n => tip((_u, _v, r) => soft(r, 0.85))(n),
   }),
 ];
