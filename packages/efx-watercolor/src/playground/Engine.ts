@@ -4074,14 +4074,12 @@ export class WatercolorEngine {
     gl.uniform1f(p.u.uLayerEdge!, BRISTLE_LAYER_EDGE);
     gl.uniform1f(p.u.uEdgeFade!, clamp(this.params.edgeFade, 0, 1));
     gl.uniform1f(p.u.uEdgeFalloff!, clamp(this.params.edgeFalloff, 0, 1));
-    // Spec 11: the feather noise/falloff pair and the front's two constants.
+    // Spec 11: the feather noise/falloff pair and the rim bite's constant.
     // Bound unconditionally like Spec 10's pair: the ONE gather binder feeds
     // every consumer, and the neutral program does not declare them (missing
     // locations are null). The constants arrive from bristles.ts.
     gl.uniform1f(p.u.uFeatherFalloff!, clamp(this.params.featherFalloff, 0, 1));
     gl.uniform1f(p.u.uFeatherNoise!, clamp(featherNoiseDrive(this.params.featherNoise), 0, 1));
-    // The grain shares Edge transparency's lateral span: 1 at the VISUAL edge.
-    gl.uniform1f(p.u.uFeatherNoiseAnchor!, BRISTLE_LAYER_EDGE);
     gl.uniform1f(p.u.uFeatherNoiseLift!, FEATHER_NOISE_LIFT);
     // The end's takeoff is the same threshold mechanism on the leading
     // frontier: the last running dab's uncovered band opens into tooth
