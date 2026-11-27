@@ -465,86 +465,56 @@ export function edgeFalloffExponent(bias: number): number {
   return clamp(2 ** (2 * clamp01(bias) - 1), 0.5, 2);
 }
 
-// ------------------------- Spec 11: the feather noise's chipped band -------------------------
+// ------------------------- Spec 11: the feather noise's eroding front -------------------------
 //
-//  2026-11-27 (quick 261126-v8j, the artist's live ruling on the eroded
-//  CHARACTER): the feather noise is a CHIPPED BAND, never a receding front.
+//  2026-11-27 (quick 261126-v8j, the artist's five-state ruling): ONE
+//  coherent noise field erodes the base shape from its boundary INWARD,
+//  progressively with the slider. The field is sampled in the STROKE frame
+//  (the 261126-rov displacement law's coordinates), isotropic, with a
+//  brush-relative feature size and a pixel floor. Removal is a THRESHOLD
+//  rise behind a soft front — never a depth fade, never outward spray:
+//  nothing can appear outside the base mark, and the kept set's level set
+//  leaves detached chunks behind the front as it deepens.
 //
-//  A solid CORE survives. Its radius in the uN coordinate (1 = the visual
-//  edge, the Edge-transparency span) falls linearly with the slider:
-//
-//      coreU = 1 − CORE_DEPTH · drive
-//
-//  and ONE low-frequency value-noise cell wobbles it, so the core meanders
-//  instead of reading as a cylinder. Inside the core nothing is touched — the
-//  paint keeps its exact carried film and its paper/bristle micro texture.
-//
-//  OUTSIDE the core, ONE fine-scale chip field — three octaves of the
-//  engine's own value noise in the stroke frame, plus the paper tooth — is
-//  thresholded into a SHARP speckle mask, and the removal is gated by it:
-//
-//      featherShift += LIFT · band · chipMask
-//
-//  Where chipMask is 1 the paint is removed completely (LIFT is above any
-//  carried coverage); where it is 0 the paint is untouched. The kept paint in
-//  the band IS the chips, so the flakes keep their own coverage / paper /
-//  bristle micro texture — the edge is speckled, never a smooth front. The
-//  band stops at the base mark (uN ≤ 1), and a threshold shift can only
-//  remove paint the base already laid, so the chips can never leave the
-//  footprint: no insect spikes, no spray family.
-//
-//  These values are the law's calibration; the shader reads them as uniforms
-//  and never re-types a literal, and the twins below are the one tested
-//  source of the core curve, the chip threshold and the two feature sizes.
+//  These values are the law's calibration; the shader reads them as
+//  uniforms and never re-types a literal, and the twins below are the one
+//  tested source of the feature size and the soft band.
 
+/** The eroding front's feature size as a fraction of the dab's half-width. */
+export const FEATHER_NOISE_FEATURE_SCALE = 0.3;
+/** The feature size's pixel floor — tiny brushes stay ragged at this size. */
+export const FEATHER_NOISE_FEATURE_MIN_PX = 6;
+/** The feature size's pixel ceiling — a wide brush never carries cloud-sized bites. */
+export const FEATHER_NOISE_FEATURE_MAX_PX = 90;
 /**
- * The core's recession at noise 100: the surviving core keeps
- * 1 − CORE_DEPTH = 18 % of the visual half-width, meandered by the wobble.
+ * The deepest front penetration at noise 100: the central spine keeps about
+ * 15 % of the nominal width, and every fragment outside it is carried by the
+ * same field (no second spray or spike source).
  */
-export const FEATHER_NOISE_CORE_DEPTH = 0.82;
+export const FEATHER_NOISE_DEPTH = 0.85;
 /**
- * The core wobble's amplitude in uN units (±). One low-frequency value-noise
- * cell moves the core around this much: enough to break the cylinder, small
- * enough that the core never collapses at low drive.
+ * The removal boundary's soft HALF-width in document px (the smoothstep's
+ * `front ± this`). 1.5 px keeps the boundary a real transition — never a
+ * sub-pixel cut — while staying inside the law's 1.5–3 px band. The uN
+ * conversion below is clamped at both ends so tiny brushes still carry a
+ * real soft band and huge brushes never lose it to fp32 underflow.
  */
-export const FEATHER_NOISE_CORE_WOBBLE = 0.05;
-/** The core wobble's feature size as a fraction of the dab's half-width. */
-export const FEATHER_NOISE_WOBBLE_SCALE = 0.35;
-/** The wobble's pixel floor — a tiny brush still meanders. */
-export const FEATHER_NOISE_WOBBLE_MIN_PX = 8;
-/** The wobble's pixel ceiling — a huge brush never reads as a bent tube. */
-export const FEATHER_NOISE_WOBBLE_MAX_PX = 48;
-/** The chip cells' feature size as a fraction of the dab's half-width. */
-export const FEATHER_NOISE_CHIP_SCALE = 0.05;
-/** The chip cells' pixel floor — flakes stay visible on tiny brushes. */
-export const FEATHER_NOISE_CHIP_MIN_PX = 2.5;
-/** The chip cells' pixel ceiling — a wide brush never carries cloud-sized bites. */
-export const FEATHER_NOISE_CHIP_MAX_PX = 6;
+export const FEATHER_NOISE_BLUR_PX = 1.5;
+/** The soft band's uN floor — the conversion never reads a hard cut. */
+export const FEATHER_NOISE_BLUR_MIN_U = 1e-4;
+/** The soft band's uN ceiling — a tiny brush's band never swallows the mark. */
+export const FEATHER_NOISE_BLUR_MAX_U = 0.5;
 /**
- * The chip threshold at drive 0 (sparse rim flakes) and drive 1 (the band
- * carries roughly half its area as flakes). Lower = denser removal; the two
- * ends are declared here and the shader interpolates them with the drive.
- */
-export const FEATHER_NOISE_CHIP_CUT_START = 0.62;
-export const FEATHER_NOISE_CHIP_CUT_END = 0.47;
-/**
- * The paper tooth's share of the chip field. The tooth (the same grainHeight
- * the threshold reads) tilts the chip mask locally, so the flakes break along
- * the paper's own pores instead of on a clean noise contour.
- */
-export const FEATHER_NOISE_CHIP_TOOTH = 0.15;
-/**
- * Spec 11: the chip removal's threshold rise. It sits above any carried
- * coverage, so where the mask is 1 the paint is removed completely — a
- * threshold shift, never a depth fade (a depth fade lanes).
+ * Spec 11: the BODY-WIDE threshold rise outside the front. The front removes
+ * paint through the paper THRESHOLD (never a depth fade), and this lift puts
+ * the threshold above any carried coverage — full-depth specks, no lanes.
  */
 export const FEATHER_NOISE_LIFT = 1.4;
 
 /**
  * The Feather-noise DRIVE (2026-11-27, the artist's linear ruling): the
- * recorded slider IS the drive — 0 does nothing, 20 flakes the rim with the
- * core at full width, 40 deepens the flakes, 60 widens the band, and 100
- * leaves a thin meandering core with flakes across the footprint. The shader
+ * recorded slider IS the drive — 0 does nothing, 20 tears the rim shallowly,
+ * the body recedes from 40, and 100 erodes down to the spine. The shader
  * skips the noise block outright when the drive is 0, so slider 0 stays on
  * the neutral program.
  */
@@ -554,52 +524,30 @@ export function featherNoiseDrive(n: number): number {
 }
 
 /**
- * `coreU = 1 − CORE_DEPTH · drive` — the surviving core's radius in uN
- * units. Total: NaN reads the neutral 1; infinite drives clamp to the ends.
- */
-export function featherNoiseCoreU(drive: number): number {
-  if (Number.isNaN(drive)) return 1;
-  return 1 - FEATHER_NOISE_CORE_DEPTH * clamp01(drive);
-}
-
-/**
- * `cut = START + (END − START) · drive` — the chip field's threshold for the
- * current drive. Lower with more drive = denser flakes. Total: NaN reads the
- * neutral start; infinite drives clamp to the ends.
- */
-export function featherNoiseChipCut(drive: number): number {
-  if (Number.isNaN(drive)) return FEATHER_NOISE_CHIP_CUT_START;
-  const t = clamp01(drive);
-  return FEATHER_NOISE_CHIP_CUT_START + (FEATHER_NOISE_CHIP_CUT_END - FEATHER_NOISE_CHIP_CUT_START) * t;
-}
-
-/**
- * `chipPx = clamp(halfWidthPx · CHIP_SCALE, MIN, MAX)` — the chip cells'
- * feature size in document px. Brush-relative with a pixel floor so tiny
- * brushes still flake, and a ceiling so a wide brush never reads as weather.
+ * `featurePx = clamp(halfWidthPx · SCALE, MIN, MAX)` — the eroding field's
+ * feature size in document px. Brush-relative with a pixel floor so a tiny
+ * brush still tears, and a ceiling so a huge brush never reads as weather.
  * Total: a non-finite or non-positive half-width reads the floor.
  */
-export function featherNoiseChipFeaturePx(halfWidthPx: number): number {
-  if (!Number.isFinite(halfWidthPx) || halfWidthPx <= 0) return FEATHER_NOISE_CHIP_MIN_PX;
+export function featherNoiseFeaturePx(halfWidthPx: number): number {
+  if (!Number.isFinite(halfWidthPx) || halfWidthPx <= 0) return FEATHER_NOISE_FEATURE_MIN_PX;
   return clamp(
-    halfWidthPx * FEATHER_NOISE_CHIP_SCALE,
-    FEATHER_NOISE_CHIP_MIN_PX,
-    FEATHER_NOISE_CHIP_MAX_PX,
+    halfWidthPx * FEATHER_NOISE_FEATURE_SCALE,
+    FEATHER_NOISE_FEATURE_MIN_PX,
+    FEATHER_NOISE_FEATURE_MAX_PX,
   );
 }
 
 /**
- * `wobblePx = clamp(halfWidthPx · WOBBLE_SCALE, MIN, MAX)` — the core
- * wobble's feature size in document px. Brush-relative, floored and capped.
- * Total: a non-finite or non-positive half-width reads the floor.
+ * `blurU = BLUR_PX / (halfWidthPx · anchor)` — the front's soft band in uN
+ * units, where 1 is the VISUAL edge. Clamped so the band is never a hard cut
+ * (fp32 underflow on a huge brush) and never swallows the whole mark on a
+ * tiny brush. Total: an unusable span reads the ceiling.
  */
-export function featherNoiseWobbleFeaturePx(halfWidthPx: number): number {
-  if (!Number.isFinite(halfWidthPx) || halfWidthPx <= 0) return FEATHER_NOISE_WOBBLE_MIN_PX;
-  return clamp(
-    halfWidthPx * FEATHER_NOISE_WOBBLE_SCALE,
-    FEATHER_NOISE_WOBBLE_MIN_PX,
-    FEATHER_NOISE_WOBBLE_MAX_PX,
-  );
+export function featherNoiseBlurU(halfWidthPx: number, anchor: number): number {
+  const span = halfWidthPx * anchor;
+  if (!Number.isFinite(span) || span <= 0) return FEATHER_NOISE_BLUR_MAX_U;
+  return clamp(FEATHER_NOISE_BLUR_PX / span, FEATHER_NOISE_BLUR_MIN_U, FEATHER_NOISE_BLUR_MAX_U);
 }
 
 // ------------------------- the trace and edge formulas (64-23) -------------------------

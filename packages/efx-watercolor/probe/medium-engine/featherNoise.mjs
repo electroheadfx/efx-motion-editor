@@ -2,19 +2,16 @@
 // ============================================================
 // featherNoise.mjs — quick 261126-v8j's five-state bar (Spec 11).
 //
-// The artist's law (2026-11-27, revised after the live UAT): the feather
-// noise is a CHIPPED BAND, never a receding front. A solid core recedes
-// linearly with the slider while ONE fine chip field punches dry-brush
-// flakes through the band outside it, so the mark keeps its footprint and
-// its micro texture. The old front gate measured a law that no longer
-// exists, so it was retired with it; this bar renders and reads the five
-// states the artist drew:
+// The artist's law (2026-11-27): ONE coherent noise field erodes the base
+// shape from its boundary INWARD, progressively with the slider. The old
+// band-period gate measured a law that no longer exists, so it was retired
+// with it; this bar renders and reads the five states the artist drew:
 //
 //     0   the clean footprint (the neutral program)
-//     20  a thin rim of flakes, the solid core at full width
-//     40  deeper flakes, the core slightly narrower
-//     60  a wide chipped band, a narrower continuous core
-//     100 a thin meandering core with flakes across the footprint
+//     20  the rim torn in shallow irregular bites, body full width
+//     40  deeper bites, a few detached bits, body slightly narrower
+//     60  the outer half broken into chunks, a continuous narrower core
+//     100 a thin continuous central spine, fragments close to the mark
 //
 // Bars (all declared here, never revised to fit a capture):
 //   (1) NEUTRAL DIGESTS. The noise-0 cells at Size 120 / Feather 85 and
@@ -22,20 +19,16 @@
 //       export digests (paper / transparent / white / pigment). The engine
 //       must render the neutral program byte-for-byte when the drive is 0.
 //   (2) KNOB ECHO. Every cell echoes the declared twins: parameters carry
-//       the slider and Feather, and the featherNoise block's drive / coreU /
-//       chipCut / chipFeaturePx / wobbleFeaturePx match bristles.ts for that
-//       size.
+//       the slider and Feather, and the featherNoise block's drive /
+//       featurePx / blurU / frontDepth match bristles.ts for that size.
 //   (3) EROSION ONLY REMOVES. openingHalfOffsetPx, outerExtentPx and
 //       measuredHalfWidthPx are NON-INCREASING across 0 -> 20 -> 40 -> 60 ->
-//       100. A threshold shift can never add paint, so a growing reading is
+//       100. A threshold front can never add paint, so a growing reading is
 //       a law break, not noise.
 //   (4) STATES 0 AND 100 ARE THE DRAWN EXTREMES. opening(100) is strictly
-//       smaller than opening(0) and still positive (the core survives);
+//       smaller than opening(0) and still positive (the spine survives);
 //       at Feather 85, opening(20) stays within 1 px + 2 % of opening(0)
-//       (state 20 flakes the rim, it does not shrink the body).
-//   (5) THE FOOTPRINT SURVIVES. measuredHalfWidthPx(100) keeps at least
-//       FOOTPRINT_SHARE of measuredHalfWidthPx(0): the chips are kept paint
-//       across the mark's full width, never a thin smooth noodle.
+//       (state 20 tears the rim, it does not shrink the body).
 //
 // usage:
 //   node featherNoise.mjs --sweep fn-v8j [--sizes 120] [--feathers 85,0]
@@ -71,23 +64,21 @@ const CAPTURE_DIR = '/tmp/medium-engine'
 
 // --- the declared bar -------------------------------------------------------
 
-/** Mirrors bristles.ts FEATHER_NOISE_CORE_DEPTH. */
-const CORE_DEPTH = 0.82
-/** Mirrors bristles.ts FEATHER_NOISE_CORE_WOBBLE. */
-const CORE_WOBBLE = 0.05
-/** Mirrors bristles.ts FEATHER_NOISE_WOBBLE_SCALE / _MIN_PX / _MAX_PX. */
-const WOBBLE_SCALE = 0.35
-const WOBBLE_MIN_PX = 8
-const WOBBLE_MAX_PX = 48
-/** Mirrors bristles.ts FEATHER_NOISE_CHIP_SCALE / _MIN_PX / _MAX_PX. */
-const CHIP_SCALE = 0.05
-const CHIP_MIN_PX = 2.5
-const CHIP_MAX_PX = 6
-/** Mirrors bristles.ts FEATHER_NOISE_CHIP_CUT_START / _END. */
-const CHIP_CUT_START = 0.62
-const CHIP_CUT_END = 0.47
-/** Mirrors bristles.ts FEATHER_NOISE_CHIP_TOOTH. */
-const CHIP_TOOTH = 0.15
+/** Mirrors bristles.ts FEATHER_NOISE_FEATURE_SCALE. */
+const FEATURE_SCALE = 0.3
+/** Mirrors bristles.ts FEATHER_NOISE_FEATURE_MIN_PX. */
+const FEATURE_MIN_PX = 6
+/** Mirrors bristles.ts FEATHER_NOISE_FEATURE_MAX_PX. */
+const FEATURE_MAX_PX = 90
+/** Mirrors bristles.ts FEATHER_NOISE_DEPTH. */
+const DEPTH = 0.85
+/** Mirrors bristles.ts FEATHER_NOISE_BLUR_PX. */
+const BLUR_PX = 1.5
+/** Mirrors bristles.ts FEATHER_NOISE_BLUR_MIN_U / _MAX_U. */
+const BLUR_MIN_U = 1e-4
+const BLUR_MAX_U = 0.5
+/** Mirrors bristles.ts BRISTLE_LAYER_EDGE — the uN coordinate's visual edge. */
+const LAYER_EDGE = 0.9
 /** The five declared states. */
 const STATES = [0, 20, 40, 60, 100]
 /** Bar 1: the neutral identity cells (Size 120 at the two Feather cells). */
@@ -97,14 +88,12 @@ const READ_EPSILON = 0.011
 /** Bar 4: state 20's body tolerance at Feather 85 (1 px + 2 %). */
 const STATE20_REL = 0.02
 const STATE20_ABS_PX = 1
-/** Bar 4: the core must retain this share of the state-0 opening. */
+/** Bar 4: the spine must retain this share of the state-0 opening. */
 const SPINE_MIN_SHARE = 0.03
-/** Bar 5: state 100 keeps this share of state 0's measured half-width. */
-const FOOTPRINT_SHARE = 0.6
 /** Bar 2 tolerances for the echoed twins. */
 const DRIVE_EPS = 5e-4
 const FEATURE_EPS = 0.011
-const THRESHOLD_EPS = 5e-4
+const BLUR_EPS = 1e-4
 
 // --- helpers ---------------------------------------------------------------
 
@@ -217,12 +206,9 @@ const renderCell = (size, feather, noise) => {
   const expected = expectedKnobs(fn.halfWidthPx, noise)
   for (const [key, want, epsilon] of [
     ['drive', expected.drive, DRIVE_EPS],
-    ['coreU', expected.coreU, DRIVE_EPS * CORE_DEPTH + 5e-4],
-    ['chipCut', expected.chipCut, THRESHOLD_EPS],
-    ['chipFeaturePx', expected.chipFeaturePx, FEATURE_EPS],
-    ['wobbleFeaturePx', expected.wobbleFeaturePx, FEATURE_EPS],
-    ['chipTooth', CHIP_TOOTH, THRESHOLD_EPS],
-    ['wobbleU', CORE_WOBBLE, THRESHOLD_EPS],
+    ['featurePx', expected.featurePx, FEATURE_EPS],
+    ['blurU', expected.blurU, BLUR_EPS],
+    ['frontDepth', expected.frontDepth, DRIVE_EPS * DEPTH + 5e-4],
   ]) {
     if (num(fn[key]) === null || Math.abs(fn[key] - want) > epsilon) {
       fail(`${gate}: featherNoise.${key} ${JSON.stringify(fn[key])} != ${want} (twin drift)`)
@@ -260,12 +246,12 @@ const renderCell = (size, feather, noise) => {
 /** The declared twins' values for a cell — the bar's independent echo. */
 function expectedKnobs(halfWidthPx, noise) {
   const drive = clamp(noise / 100, 0, 1)
+  const span = halfWidthPx * LAYER_EDGE
   return {
     drive,
-    coreU: 1 - CORE_DEPTH * drive,
-    chipCut: CHIP_CUT_START + (CHIP_CUT_END - CHIP_CUT_START) * drive,
-    chipFeaturePx: clamp(halfWidthPx * CHIP_SCALE, CHIP_MIN_PX, CHIP_MAX_PX),
-    wobbleFeaturePx: clamp(halfWidthPx * WOBBLE_SCALE, WOBBLE_MIN_PX, WOBBLE_MAX_PX),
+    featurePx: clamp(halfWidthPx * FEATURE_SCALE, FEATURE_MIN_PX, FEATURE_MAX_PX),
+    blurU: clamp(BLUR_PX / span, BLUR_MIN_U, BLUR_MAX_U),
+    frontDepth: DEPTH * drive,
   }
 }
 
@@ -309,8 +295,7 @@ for (const size of sizes) {
         `${pad(cell.gate, 24)} digests ${cell.digests.map((d) => String(d).slice(0, 8)).join(' ')}  ` +
           `open ${pad(fixed(cell.fn.openingHalfOffsetPx), 7)} outer ${pad(fixed(cell.fn.outerExtentPx), 7)} ` +
           `halfW ${pad(fixed(cell.fn.measuredHalfWidthPx), 7)} drive ${fixed(cell.fn.drive, 3)} ` +
-          `core ${fixed(cell.fn.coreU, 3)} cut ${fixed(cell.fn.chipCut, 3)} ` +
-          `chip ${fixed(cell.fn.chipFeaturePx)} wob ${fixed(cell.fn.wobbleFeaturePx)}`,
+          `feature ${fixed(cell.fn.featurePx)} blurU ${fixed(cell.fn.blurU, 4)}`,
       )
     }
   }
@@ -403,34 +388,12 @@ for (const size of sizes) {
   }
 }
 
-// --- bar 5: the footprint survives -----------------------------------------
-
-let bar5Checks = 0
-for (const size of sizes) {
-  for (const feather of feathers) {
-    const state0 = cells.get(`s${size}-f${feather}-n0`)
-    const state100 = cells.get(`s${size}-f${feather}-n100`)
-    if (state0 === undefined || state100 === undefined) continue
-    bar5Checks += 1
-    const keep = state100.fn.measuredHalfWidthPx
-    const want = FOOTPRINT_SHARE * state0.fn.measuredHalfWidthPx
-    if (!(keep >= want - READ_EPSILON)) {
-      fail(
-        `s${size}-f${feather}: state 100 collapses the footprint ` +
-          `(measured ${fixed(keep)} px vs ${fixed(state0.fn.measuredHalfWidthPx)} px at state 0; ` +
-          `kept ${fixed(keep / Math.max(state0.fn.measuredHalfWidthPx, EPS))} < ${FOOTPRINT_SHARE})`,
-      )
-    }
-  }
-}
-
 // --- verdict ----------------------------------------------------------------
 
 console.log('')
 console.log(
   `bars: (1) neutral digests ${bar1Checks} cells | (2) knob echo ${cells.size} cells | ` +
-    `(3) erosion order ${bar3Checks} sweeps | (4) drawn extremes ${bar4Checks} sweeps | ` +
-    `(5) footprint ${bar5Checks} sweeps`,
+    `(3) erosion order ${bar3Checks} sweeps | (4) drawn extremes ${bar4Checks} sweeps`,
 )
 if (bar1Checks === 0) {
   fail('bar 1 read no cell — needs Size 120 with Feather 85 and Feather 0 in --sizes/--feathers')
