@@ -25,13 +25,17 @@
 //   6. The thickness sampler binds at texture unit 7 and the four light
 //      uniforms are set on every display draw, in radians.
 //   7. Mode 4 derives pigment alpha from the unshaded reconstruction.
+//   8. 261128-fm3: the SAME shade folds a view-fixed Blinn sheen — one
+//      CPU-built half-vector uniform, thickness-gated, exactly 0 on a flat
+//      field / intensity 0 / bump 0 / uFlat 1, zero extra fetches, and both
+//      display variants carry the identical term by construction.
 // ============================================================
 
 import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { displayFS } from './shaders'
+import { displayFS, displayLayerFS } from './shaders'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const ENGINE_SOURCE = readFileSync(resolve(HERE, 'Engine.ts'), 'utf8')
@@ -72,6 +76,17 @@ function uniformNames(source: string): string[] {
   return names.sort()
 }
 
+/** Every sampler2D name a shader source declares, sorted (grouped declarations split). */
+function samplerNames(source: string): string[] {
+  const names: string[] = []
+  const re = /uniform\s+sampler2D\s+([^;]+);/g
+  let match: RegExpExecArray | null
+  while ((match = re.exec(source)) !== null) {
+    for (const name of match[1]!.split(',')) names.push(name.trim())
+  }
+  return names.sort()
+}
+
 // Source pins report the missing LITERAL, never the whole source: a raw
 // `toContain` would dump the shader into the RED report and break its format.
 function expectContains(source: string, needle: string): void {
@@ -93,12 +108,14 @@ function expectMatches(source: string, pattern: RegExp, label: string): void {
 // ---------------------------------------------------------------------------
 
 describe('displayFS emboss block (MED-15)', () => {
-  it('declares the thickness sampler and exactly four light uniforms, and reuses uFlat', () => {
+  it('declares the thickness sampler, the four light uniforms and the half-vector, and reuses uFlat', () => {
     const source = shaderSource('displayFS')
     expectContains(source, 'uniform sampler2D uRelief;')
     expectContains(source, 'uniform float uLightAzimuth, uLightElevation, uLightIntensity, uReliefBump;')
+    // 261128-fm3: the sheen's only new input — ONE CPU-built half-vector.
+    expectContains(source, 'uniform vec3 uSpecHalf;')
     const names = uniformNames(source)
-    for (const name of ['uRelief', 'uLightAzimuth', 'uLightElevation', 'uLightIntensity', 'uReliefBump']) {
+    for (const name of ['uRelief', 'uLightAzimuth', 'uLightElevation', 'uLightIntensity', 'uReliefBump', 'uSpecHalf']) {
       expect(names, `uniform ${name} not declared`).toContain(name)
     }
     // One flat gate serves the declaration, the binding and the formula.
@@ -164,7 +181,7 @@ describe('displayFS emboss block (MED-15)', () => {
     expectContains(source, 'float shade = 1.0;')
     expectContains(source, 'const float EMBOSS_GAIN = 2.3;')
     expectContains(source, 'const float EMBOSS_SHADE_MAX = 1.5;')
-    expectContains(source, 'shade = clamp(1.0 + litDelta * (1.0 - uFlat), 0.0, EMBOSS_SHADE_MAX);')
+    expectContains(source, 'shade = clamp(1.0 + (litDelta + specDelta) * (1.0 - uFlat), 0.0, EMBOSS_SHADE_MAX);')
     // The shade is computed AFTER the granulation gate, so k never sees it.
     expect(source.indexOf('a *= k; b *= k;')).toBeLessThan(source.indexOf('float shade = 1.0;'))
   })
@@ -192,6 +209,9 @@ describe('displayFS emboss block (MED-15)', () => {
     // Mode 4's early return reads the unshaded reconstruction and scales only
     // the premultiplied colour; alpha is byte-for-byte untouched.
     const mode4 = sliceBetween(source, 'if (uMode == 4){', 'if (uMode == 2){')
+    // 261128-fm3: the sheen lives in the shade upstream of every mode — mode 4
+    // inherits it through the lit transmittance, never as a local term.
+    expectNotContains(mode4, 'specDelta')
     // The reconstruction is over WHITE through the darkness alpha — the same
     // formula the committed sheet's transmittance conversion applies.
     expectContains(mode4, 'vec3 pigment = alpha > 0.0 ? (tSrgb - vec3(1.0 - alpha)) / alpha : vec3(0.0);')
@@ -205,6 +225,79 @@ describe('displayFS emboss block (MED-15)', () => {
     expectContains(sliceBetween(source, 'if (uMode == 2){', '// Paper:'), 'o = vec4(lit, 1.0);')
     // The linear transmittance is never scaled directly.
     expectNotContains(source, 'rgb *= shade;')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 1b. The specular sheen (quick 261128-fm3)
+// ---------------------------------------------------------------------------
+
+describe('displayFS specular sheen (quick 261128-fm3)', () => {
+  const specNeedles = [
+    'uniform vec3 uSpecHalf;',
+    'const float EMBOSS_SPEC_GAIN = 1.0;',
+    'const float EMBOSS_SPEC_GLOSS = 16.0;',
+    'const float EMBOSS_SPEC_DEPTH_LO = 0.05;',
+    'const float EMBOSS_SPEC_DEPTH_HI = 0.35;',
+    'float specGate = smoothstep(EMBOSS_SPEC_DEPTH_LO, EMBOSS_SPEC_DEPTH_HI, c);',
+    'float specDelta = uLightIntensity * uReliefBump * specGate * EMBOSS_SPEC_GAIN *',
+    'max(pow(max(dot(n, uSpecHalf), 0.0), EMBOSS_SPEC_GLOSS) - pow(uSpecHalf.z, EMBOSS_SPEC_GLOSS), 0.0);',
+    'shade = clamp(1.0 + (litDelta + specDelta) * (1.0 - uFlat), 0.0, EMBOSS_SHADE_MAX);',
+  ]
+
+  it('declares one half-vector uniform and the four calibration constants', () => {
+    const source = shaderSource('displayFS')
+    for (const needle of specNeedles) expectContains(source, needle)
+    // The sheen rides the ONE shade: the shipped ceiling is untouched.
+    expectContains(source, 'const float EMBOSS_SHADE_MAX = 1.5;')
+  })
+
+  it('is neutral by construction: multipliers only, exact pow-difference, one shared flat gate', () => {
+    const source = shaderSource('displayFS')
+    // Intensity, bump and the thickness gate all MULTIPLY — an offset would
+    // brighten a flat or unlit field.
+    expect(/specDelta\s*=\s*uLightIntensity\s*\+/.test(source), 'specDelta must multiply the intensity, never offset').toBe(false)
+    expect(/specDelta\s*=\s*uReliefBump\s*\+/.test(source), 'specDelta must multiply the bump, never offset').toBe(false)
+    // Flat field: n = (0,0,1) exactly, so dot(n, uSpecHalf) is uSpecHalf.z and
+    // the two pow terms are one evaluation — the difference is exactly 0.
+    expectContains(source, '- pow(uSpecHalf.z, EMBOSS_SPEC_GLOSS), 0.0);')
+    // The (1.0 - uFlat) gate applies to the SUM; uFlat 1 zeroes the sheen too.
+    expectContains(source, 'shade = clamp(1.0 + (litDelta + specDelta) * (1.0 - uFlat), 0.0, EMBOSS_SHADE_MAX);')
+    // Zero thickness never enters the block, and the fallback shade stays 1.0.
+    expectContains(source, 'float shade = 1.0;')
+    expectContains(source, 'if (c > 0.0){')
+  })
+
+  it('thickness-gates the sheen off thin films (smoothstep band)', () => {
+    const source = shaderSource('displayFS')
+    expectContains(source, 'float specGate = smoothstep(EMBOSS_SPEC_DEPTH_LO, EMBOSS_SPEC_DEPTH_HI, c);')
+  })
+
+  it('costs zero new fetches or samplers and never normalizes the half-vector', () => {
+    const source = shaderSource('displayFS')
+    const block = sliceBetween(source, 'float shade = 1.0;', 'if (uMode == 4){')
+    // The existing five relief taps are REUSED; no extra fetch.
+    expectContains(block, 'texture(uRelief, uv).x')
+    expect(block.match(/texture\(/g) ?? []).toHaveLength(5)
+    expect(block.match(/texture\(uRelief,/g) ?? []).toHaveLength(5)
+    expect(block.match(/texture\((?!uRelief,)/g) ?? []).toHaveLength(0)
+    // displayFS keeps exactly the shipped ten samplers — the sheen adds none.
+    expect(samplerNames(source)).toEqual([
+      'uCover', 'uFixedA', 'uFixedB', 'uInkA', 'uInkB',
+      'uPaper', 'uRef', 'uRelief', 'uUnderlay', 'uWet',
+    ])
+    // The sheen adds NO normalize: H arrives as one vec3. The block's two
+    // normalizes are the shipped central-difference normal and the light
+    // vector (the plan's "one normalize" predates the light line; deleting it
+    // would break the light-reconstruction pin above).
+    const spec = sliceBetween(block, 'float specGate', 'shade = clamp(1.0 + (litDelta + specDelta)')
+    expectNotContains(spec, 'normalize(')
+    expect(block.match(/normalize\(/g) ?? []).toHaveLength(2)
+  })
+
+  it('carries the identical term in displayLayerFS — live layer parity by construction', () => {
+    for (const needle of specNeedles) expectContains(displayLayerFS, needle)
+    expectContains(displayLayerFS, 'vec3 n = normalize(vec3((l - r) * uReliefBump, (b - t) * uReliefBump, 1.0));')
   })
 })
 
@@ -274,12 +367,16 @@ describe('engine light state (MED-15)', () => {
     expect(writes[0]).toBeLessThan(bodyEnd)
   })
 
-  it('binds the thickness sampler at unit 7 and sets the four light uniforms on every draw', () => {
+  it('binds the thickness sampler at unit 7 and sets the light uniforms and the half-vector on every draw', () => {
     const body = sliceBetween(ENGINE_SOURCE, 'private drawDisplay(', 'private render() {')
     expectContains(body, 'g.bindTex(7, this.relief.tex[0])')
-    for (const name of ['uLightAzimuth', 'uLightElevation', 'uLightIntensity', 'uReliefBump']) {
+    for (const name of ['uLightAzimuth', 'uLightElevation', 'uLightIntensity', 'uReliefBump', 'uSpecHalf']) {
       expectContains(body, `p.u.${name}`)
     }
+    // 261128-fm3: H = normalize(L + (0,0,1)) is built ONCE per draw on the CPU
+    // and uploaded as ONE vec3 — no per-fragment normalize, no new texture unit.
+    expectContains(body, 'const hLen = Math.hypot(lx, ly, lz + 1);')
+    expectContains(body, 'gl.uniform3f(p.u.uSpecHalf, lx / hLen, ly / hLen, (lz + 1) / hLen);')
     // No collision: ink 0-1, fixed 2-3, wet 4, paper 5, ref 6, relief 7,
     // coverage 8 (SPIKE 001 — an addition, never a replacement), underlay 9
     // (2026-11-21 — live compositor only, unbound on exports), and the layer

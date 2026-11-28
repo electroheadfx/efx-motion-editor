@@ -2396,7 +2396,21 @@ void main(){
  *              (post-UAT 2026-11-17: 3.0 read too strong once the colours
  *              stopped being veiled; the pen pressure now drives the
  *              thickness deposit instead — see EMBOSS_PRESS_FLOOR)
- *   shade      clamp(1.0 + litDelta * (1.0 - uFlat), 0.0, EMBOSS_SHADE_MAX)
+ *   spec       uLightIntensity * uReliefBump * smoothstep(DEPTH_LO, DEPTH_HI, c)
+ *              * EMBOSS_SPEC_GAIN
+ *              * max(pow(dot(n, H), g) - pow(H.z, g), 0)   (261128-fm3)
+ *              H = normalize(L + (0,0,1)) is ONE CPU-built vec3 uniform,
+ *              built in Engine.drawDisplay once per draw — never normalized
+ *              per fragment. No new fetch, sampler or texture unit: the five
+ *              relief taps are reused. The smoothstep band thickness-gates the
+ *              sheen off thin films so 1-texel relief speckle never sparkles
+ *              while crests pass. The EMBOSS_SPEC_* values beside EMBOSS_GAIN
+ *              and EMBOSS_SHADE_MAX are CALIBRATION START values the artist's
+ *              live UAT may retune; the law does not change. Per-medium gloss
+ *              (watercolor matte vs acrylic/gouache gloss) is DEFERRED: the
+ *              engine has no medium identity and this quick adds none — one
+ *              global gain/gloss serves every medium.
+ *   shade      clamp(1.0 + (litDelta + specDelta) * (1.0 - uFlat), 0.0, EMBOSS_SHADE_MAX)
  *   applied    in PIGMENT space on every mode: the transmittance becomes
  *              mn + (t - mn) * shade (mn = min(t)), which is exactly the live
  *              compositor layer's composite. The alpha never carries the light,
@@ -2407,6 +2421,24 @@ void main(){
  * shade is 1.0 at any intensity (D-09: never a flat multiply). uFlat gates the
  * lit delta only, so a region pick reads the unshaded sheet. The light angles
  * arrive in radians; only Engine.drawDisplay converts degrees.
+ *
+ * The sheen is neutral by the same exact law (261128-fm3): a flat field gives
+ * n = (0,0,1) exactly, so dot(n, H) is H.z bit-exactly and both pow operands
+ * are one evaluation whose difference is exactly 0 — the same zero-gradient
+ * subtraction litDelta performs with dot(n, L) - L.z. The term multiplies by
+ * uLightIntensity and uReliefBump, so intensity 0 and bump 0 each zero it, and
+ * the shared (1.0 - uFlat) gate zeroes it under uFlat 1; a texel with zero
+ * thickness never enters the block. The subtraction happens AFTER the exponent
+ * deliberately: the literal max(dot(n, H) - H.z, 0.0) cannot carry a 16th-power
+ * gloss (a crest delta of at most ~0.2 raised to 16 is ~1e-12, so the sheen
+ * would never render); pow(H.z, g) is NOT precomputed on the CPU because GPU
+ * and CPU pow can differ by one ulp and would break the exact flat-field zero.
+ *
+ * The sheen therefore LIFTS pigment/transmittance — it is folded into the ONE
+ * shade before the single clamp, so every mode and both variants inherit it by
+ * construction and the alpha is never scaled. Under the multiply compositor it
+ * cannot read brighter than the fond; accepted for this quick. A true additive
+ * white glint needs a different compositing route and is OUT OF SCOPE.
  *
  * TWO VARIANTS, ONE SOURCE (261125-kvl, SPIKE 006). `displayFS` is the shipped
  * compositor — every export and the entire amount-0 path — and stays
@@ -2511,8 +2543,24 @@ uniform float uRefOpacity;
 uniform float uShadow;    // screen only: size of the sheet's shadow on the desk (canvas px), 0 for exports
 uniform float uDpr;
 uniform float uLightAzimuth, uLightElevation, uLightIntensity, uReliefBump; // Phase 64: radians, radians, 0..4, fixed bump${layerUniforms}
+// 261128-fm3: the Blinn half-vector H = normalize(L + V), V = (0,0,1) —
+// built ONCE per draw on the CPU (Engine.drawDisplay) and uploaded as this ONE
+// vec3; never normalized per fragment, and no new fetch, sampler or unit.
+uniform vec3 uSpecHalf;
 const float EMBOSS_GAIN = 2.3;
 const float EMBOSS_SHADE_MAX = 1.5;
+// 261128-fm3: the sheen's CALIBRATION START values (the artist's live UAT may
+// retune them; the law does not change). Per-medium gloss (watercolor matte vs
+// acrylic/gouache gloss) is DEFERRED: the engine has no medium identity today
+// and this quick adds none — one global gain/gloss serves every medium.
+// The gain is deliberately modest next to EMBOSS_GAIN 2.3.
+const float EMBOSS_SPEC_GAIN = 1.0;
+// Low gloss: a broad, soft crest highlight, not a mirror point.
+const float EMBOSS_SPEC_GLOSS = 16.0;
+// The smoothstep band thickness-gates the sheen off thin films, so 1-texel
+// relief speckle on a near-flat wash never sparkles; crests pass fully.
+const float EMBOSS_SPEC_DEPTH_LO = 0.05;
+const float EMBOSS_SPEC_DEPTH_HI = 0.35;
 ${PAPER_COLOUR}
 ${TO_SRGB}
 float density(vec2 uv){ return texture(uInkA, uv).x + texture(uFixedA, uv).x; }
@@ -2607,7 +2655,27 @@ ${displayBasisGLSL()}
         cos(uLightElevation) * sin(uLightAzimuth),
         sin(uLightElevation)));
       float litDelta = uLightIntensity * (dot(n, L) - L.z) * uReliefBump * EMBOSS_GAIN;
-      shade = clamp(1.0 + litDelta * (1.0 - uFlat), 0.0, EMBOSS_SHADE_MAX);
+      // 261128-fm3: a view-fixed Blinn sheen on the SAME emboss block. H is the
+      // one CPU-built half-vector and the five relief taps above are reused, so
+      // the term costs one smoothstep, two pows and a few mults — no new fetch.
+      // Identity is EXACT: a flat field gives n = (0,0,1), so dot(n, uSpecHalf)
+      // is uSpecHalf.z bit-exactly and both pow operands are one evaluation
+      // whose difference is 0 — the same zero-gradient subtraction litDelta
+      // performs with dot(n, L) - L.z. The intensity and bump multiply (never
+      // offset), the shared (1.0 - uFlat) gate applies to the sum, and a texel
+      // with zero thickness never enters this block.
+      // The subtraction is AFTER the exponent deliberately: the literal
+      // max(dot(n, H) - H.z, 0.0) cannot carry a 16th-power gloss (a crest
+      // delta of at most ~0.2 raised to 16 is ~1e-12 and the sheen would never
+      // render). pow(H.z, g) is NOT precomputed on the CPU: GPU and CPU pow can
+      // differ by one ulp and would break the exact flat-field zero.
+      // Accepted: folded into the ONE shade, the sheen LIFTS pigment /
+      // transmittance and cannot exceed the fond in the multiply compositor; a
+      // true additive white glint is out of scope. The alpha is never scaled.
+      float specGate = smoothstep(EMBOSS_SPEC_DEPTH_LO, EMBOSS_SPEC_DEPTH_HI, c);
+      float specDelta = uLightIntensity * uReliefBump * specGate * EMBOSS_SPEC_GAIN *
+        max(pow(max(dot(n, uSpecHalf), 0.0), EMBOSS_SPEC_GLOSS) - pow(uSpecHalf.z, EMBOSS_SPEC_GLOSS), 0.0);
+      shade = clamp(1.0 + (litDelta + specDelta) * (1.0 - uFlat), 0.0, EMBOSS_SHADE_MAX);
     }
   }
 

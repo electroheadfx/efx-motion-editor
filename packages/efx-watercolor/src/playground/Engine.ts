@@ -280,8 +280,11 @@ const MAX_REF_SIDE = 4096;
 // emboss is inert — the deposit still records thickness, nothing is displayed.
 // The shipped shading is a first-order heightmap term: a one-texel central
 // difference over a grain-gated field turns to high-frequency speckle as
-// strokes accumulate, `clamp(1 + litDelta, 0.0, 1.5)` drives any steep slope
-// to pure black, and there is no specular.
+// strokes accumulate and `clamp(1 + litDelta, 0.0, 1.5)` drives any steep slope
+// to pure black. 261128-fm3: the display now folds a fixed-view Blinn sheen
+// (the half-vector is built once per draw in drawDisplay) into the SAME shade,
+// so a crest can catch a soft highlight; the term is still a first-order
+// heightmap with no new fetch, and its constants live in shaders.ts.
 // 2026-11-27 (artist's live ruling): lit again for a low-value test — the
 // Emboss row returns at 0..4, so the shade stays subtle and the artist can
 // re-judge a light impasto on the Gouache medium. A new renderer spiked
@@ -4884,10 +4887,21 @@ export class WatercolorEngine {
     gl.uniform1i(p.u.uUnderlay, g.bindTex(9, this.underlayTex ?? this.paper.tex[0]));
     gl.uniform1f(p.u.uUnderlayOn, underlayLive ? 1 : 0);
     // Degrees become radians once, at this boundary — the shader reads radians.
-    gl.uniform1f(p.u.uLightAzimuth, (this.light.azimuth * Math.PI) / 180);
-    gl.uniform1f(p.u.uLightElevation, (this.light.elevation * Math.PI) / 180);
+    const lightAz = (this.light.azimuth * Math.PI) / 180;
+    const lightEl = (this.light.elevation * Math.PI) / 180;
+    gl.uniform1f(p.u.uLightAzimuth, lightAz);
+    gl.uniform1f(p.u.uLightElevation, lightEl);
     gl.uniform1f(p.u.uLightIntensity, this.light.intensity);
     gl.uniform1f(p.u.uReliefBump, RELIEF_BUMP);
+    // 261128-fm3: the Blinn half-vector H = normalize(L + V), V = (0,0,1) —
+    // built once per draw and uploaded as ONE vec3 (the shader never normalizes
+    // per fragment). Elevation is clamped 0..90 by setLight, so lz is in [0,1]
+    // and hLen is at least 1 — no zero-length guard is needed.
+    const lx = Math.cos(lightEl) * Math.cos(lightAz);
+    const ly = Math.cos(lightEl) * Math.sin(lightAz);
+    const lz = Math.sin(lightEl);
+    const hLen = Math.hypot(lx, ly, lz + 1);
+    gl.uniform3f(p.u.uSpecHalf, lx / hLen, ly / hLen, (lz + 1) / hLen);
     const r = this.refRect;
     gl.uniform4f(p.u.uRefRect, r.x, r.y, r.w, r.h);
     // the shadow grows with the sheet on screen, within a range that always reads as paper on a desk
