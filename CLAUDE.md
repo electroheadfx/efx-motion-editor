@@ -86,3 +86,7 @@ This protocol applies when ending a Beads implementation workflow. It is subordi
 - Do not commit or push without clear authority from the active profile or the current user request.
 - If a required sync or push is blocked, stop and report the exact command and error.
 <!-- END BEADS INTEGRATION -->
+
+## Beads artifacts are committed with the work
+
+Standing rule (user, 2026-11-28): Beads planning artifacts are ALWAYS committed with the work that produced them. Any `.planning/**/BEADS-RECALL.md` or `*-BEADS.md` written or modified by the Beads hooks must be staged and committed in the same session — never left as a stray working-tree change. This is standing authority to commit those files even under the conservative git profile. `.beads/` itself stays gitignored and syncs through `refs/dolt/data`; never `git add` it.
