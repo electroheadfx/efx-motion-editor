@@ -2407,9 +2407,9 @@ void main(){
  *              while crests pass. The EMBOSS_SPEC_* values beside EMBOSS_GAIN
  *              and EMBOSS_SHADE_MAX are CALIBRATION START values the artist's
  *              live UAT may retune; the law does not change. Per-medium gloss
- *              (watercolor matte vs acrylic/gouache gloss) is DEFERRED: the
- *              engine has no medium identity and this quick adds none — one
- *              global gain/gloss serves every medium.
+ *              (a matte watercolor versus a glossier acrylic finish) is
+ *              DEFERRED: the engine has no medium identity and this quick
+ *              adds none — one global gain/gloss serves every medium.
  *   shade      clamp(1.0 + (litDelta + specDelta) * (1.0 - uFlat), 0.0, EMBOSS_SHADE_MAX)
  *   applied    in PIGMENT space on every mode: the transmittance becomes
  *              mn + (t - mn) * shade (mn = min(t)), which is exactly the live
@@ -2550,9 +2550,10 @@ uniform vec3 uSpecHalf;
 const float EMBOSS_GAIN = 2.3;
 const float EMBOSS_SHADE_MAX = 1.5;
 // 261128-fm3: the sheen's CALIBRATION START values (the artist's live UAT may
-// retune them; the law does not change). Per-medium gloss (watercolor matte vs
-// acrylic/gouache gloss) is DEFERRED: the engine has no medium identity today
-// and this quick adds none — one global gain/gloss serves every medium.
+// retune them; the law does not change). Per-medium gloss (a matte watercolor
+// versus a glossier acrylic finish) is DEFERRED: the engine has no medium
+// identity today and this quick adds none — one global gain/gloss serves
+// every medium.
 // The gain is deliberately modest next to EMBOSS_GAIN 2.3.
 const float EMBOSS_SPEC_GAIN = 1.0;
 // Low gloss: a broad, soft crest highlight, not a mirror point.
