@@ -21,7 +21,8 @@
 //   4. Engine holds the light in degrees, clamps it, rejects non-finite
 //      input, redraws only on a real change and never touches params or
 //      the deposit.
-//   5. DEFAULT_LIGHT reconstructs paperLightFS's fixed light direction.
+//   5. DEFAULT_LIGHT (130/38/1, whole degrees) reconstructs paperLightFS's
+//      fixed light direction within one degree.
 //   6. The thickness sampler binds at texture unit 7 and the four light
 //      uniforms are set on every display draw, in radians.
 //   7. Mode 4 derives pigment alpha from the unshaded reconstruction.
@@ -313,13 +314,13 @@ describe('engine light state (MED-15)', () => {
     )
     expectContains(
       ENGINE_SOURCE,
-      'export const DEFAULT_LIGHT: LightSettings = { azimuth: 129.8, elevation: 38.45, intensity: 1 };',
+      'export const DEFAULT_LIGHT: LightSettings = { azimuth: 130, elevation: 38, intensity: 1 };',
     )
     const field = ENGINE_SOURCE.match(/private light: LightSettings = \{[^}]*\};/g) ?? []
     expect(field).toHaveLength(1)
   })
 
-  it('reconstructs normalize(vec3(-0.5, 0.6, 0.62)) within a rounding tolerance', async () => {
+  it('reconstructs normalize(vec3(-0.5, 0.6, 0.62)) within the whole-degree rounding', async () => {
     const mod = await import('./Engine')
     const light = mod.DEFAULT_LIGHT
     expect(light).toBeDefined()
@@ -328,7 +329,10 @@ describe('engine light state (MED-15)', () => {
     const reconstructed = [Math.cos(el) * Math.cos(az), Math.cos(el) * Math.sin(az), Math.sin(el)]
     const target = [-0.5, 0.6, 0.62]
     const length = Math.hypot(target[0]!, target[1]!, target[2]!)
-    for (let i = 0; i < 3; i += 1) expect(reconstructed[i]).toBeCloseTo(target[i]! / length, 3)
+    const dot = reconstructed.reduce((sum, value, i) => sum + value * (target[i]! / length), 0)
+    // The 130/38 rounding stays within one degree of the paper's baked light
+    // (0.02 rad ~ 1.15 deg), so the paint shadows agree with the sheet's grain.
+    expect(Math.acos(Math.min(1, Math.max(-1, dot)))).toBeLessThan(0.02)
     expect(light.intensity).toBe(1)
   })
 

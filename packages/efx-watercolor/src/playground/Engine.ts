@@ -184,9 +184,11 @@ export interface LightSettings { azimuth: number; elevation: number; intensity: 
  * The shipped light reconstructs the unit vector `paperLightFS` lights the
  * paper with — normalize(vec3(-0.5, 0.6, 0.62)) — within a rounding tolerance,
  * at full intensity (D-09), so a heavy medium reads raised the moment it is
- * picked: elevation 38.45 lifts it, azimuth 129.8 puts it upper-left.
+ * picked: elevation 38 lifts it, azimuth 130 puts it upper-left.
+ * 2026-11-28 (artist UAT): the triple is rounded to whole degrees — the app
+ * default reads 130/38/1, still within one degree of the paper's baked light.
  */
-export const DEFAULT_LIGHT: LightSettings = { azimuth: 129.8, elevation: 38.45, intensity: 1 };
+export const DEFAULT_LIGHT: LightSettings = { azimuth: 130, elevation: 38, intensity: 1 };
 
 export interface EngineCallbacks {
   /** The undo history changed: every step (oldest first) and how many of them are applied. */
