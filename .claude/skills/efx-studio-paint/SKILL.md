@@ -1,6 +1,6 @@
 ---
 name: efx-studio-paint
-description: Studio paint engine (Physic Paint / watercolor + acrylic bristle media). The shipped compositing laws — pigment replacement with coverage, the Body cliff, the per-stroke stroke layer behind ONE global Opacity (stored `edgeFade`, shown inverted 100 = opaque; the lateral Edge-transparency/falloff law is retired), the coefficient-space merge and live/committed parity, the feather-noise threshold law (0 clean / 20 base / 40–100 three-scale breakup; the neutral/extended shader permutation) and the Noise panel pair (the legacy Feather row is hidden), live-over-committed parity, KEY = CACHE (a key opens on its committed image and strokes are never replayed), the sheet cache and re-render adoption, the capture merge, per-stroke seeds, first-paint pickup parity, cache cost — plus the seams, files, verification gates and debugging discipline for any change to what the artist sees. Load before touching the aquarelle engine, its Studio layers, the key/sheet path, the capture merge, brush/mutation recording, or any medium record.
+description: Studio paint engine (Physic Paint / watercolor + acrylic bristle media). The shipped compositing laws — pigment replacement with coverage, the Body cliff, the per-stroke stroke layer behind ONE global Opacity (stored `edgeFade`, shown inverted 100 = opaque; the lateral Edge-transparency/falloff law is retired), the coefficient-space merge and live/committed parity, the feather-noise threshold law (0 clean / 20 base / 40–100 three-scale breakup; the neutral/extended shader permutation) and the Noise panel pair (the legacy Feather row is hidden), the diffuse emboss with its view-fixed Blinn sheen and the paper-matched light default (130/38/1, whole degrees), live-over-committed parity, KEY = CACHE (a key opens on its committed image and strokes are never replayed), the sheet cache and re-render adoption, the capture merge, per-stroke seeds, first-paint pickup parity, cache cost — plus the seams, files, verification gates and debugging discipline for any change to what the artist sees. Load before touching the aquarelle engine, its Studio layers, the key/sheet path, the capture merge, brush/mutation recording, or any medium record.
 ---
 
 <context>
@@ -183,6 +183,64 @@ The two laws compose because the stroke-layer commit is pointwise. Detail and
 measured facts: `references/edge-transparency.md`.
 </edge-law>
 
+<emboss-law>
+## Emboss and its specular sheen (shipped 2026-11-28)
+
+**Light state.** Per paint-layer document `LightSettings` in DEGREES
+(`azimuth` 0..360 wrapped, `elevation` 0..90, `intensity` 0..4), render-only:
+never in a stroke payload or a params snapshot. `Engine.drawDisplay` converts
+once to radians and builds the Blinn half-vector. The ONE default is the
+package's `DEFAULT_LIGHT = { azimuth: 130, elevation: 38, intensity: 1 }`
+(2026-11-28, whole degrees) — the rounded reconstruction of the light
+`paperLightFS` bakes into the paper, `normalize(-0.5, 0.6, 0.62)` (129.8° /
+38.45°), so impasto shadows fall the same way as the sheet's grain. The Studio
+never retypes the triple; an absent document light resolves to `DEFAULT_LIGHT`.
+
+**Thickness = the emboss map.** A document R16F `relief` field, deposited
+additively per dab by `reliefFS` (watercolor: the same tip mask, dry
+re-threshold, jitter and paper-tooth gate as `stampFS`) or `bristleReliefFS`
+(bristle: the gather's own coverage). Brush texture and paper tooth therefore
+shape the relief; pigment granulation does not. The engine-side `emboss` param
+is SIGNED (negative erodes through the Lift law); the acrylic-context UI row
+offers 0..5 and watercolor never renders the row.
+
+**Shading law (one source, `displaySource`).** One document texel of central
+difference, fixed `RELIEF_BUMP = 1.0` (never zoom-scaled):
+
+    litDelta  = uLightIntensity * (dot(n, L) - L.z) * uReliefBump * EMBOSS_GAIN (2.3)
+    specDelta = uLightIntensity * uReliefBump * smoothstep(0.05, 0.35, c)
+                * EMBOSS_SPEC_GAIN (1.0)
+                * max(pow(max(dot(n, H), 0), 16) - pow(H.z, 16), 0)
+    shade     = clamp(1.0 + (litDelta + specDelta) * (1.0 - uFlat), 0.0, EMBOSS_SHADE_MAX (1.5))
+
+`H = normalize(L + V)` with `V = (0,0,1)` is built ONCE per draw in
+`Engine.drawDisplay` and uploaded as ONE `uniform vec3 uSpecHalf` — never
+normalized per fragment. The sheen reuses the five relief taps already
+sampled; it adds no fetch, sampler or texture unit. The fold happens BEFORE
+the single clamp on the ONE `shade`: `displayFS` (exports, mode 0/1/2/3/4, the
+amount-0 path), `displayLayerFS` (live stroke layer), the cached-base
+round-trip and mode-4 alpha inherit it by construction. **Alpha is never
+scaled by the light** — it derives from the unshaded `tMin`.
+
+**Exact neutral identity.** Flat field (both pow operands are the same
+evaluation), `uLightIntensity` 0, `uReliefBump` 0, `uFlat` 1 (region pick),
+or zero thickness (the block is guarded by `if (c > 0.0)`) all leave the
+render identical. The zero subtraction is deliberately AFTER the exponent —
+a literal `max(dot(n,H) - H.z, 0)` under a 16th power is ~1e-12 and would
+never render — and `pow(H.z, g)` is never precomputed on the CPU (ulp drift
+would break the exact flat-field zero).
+
+**What the sheen can be.** A pigment/transmittance LIFT (a sheen): the
+multiply compositor cannot exceed the fond, so a true additive white glint is
+out of scope. The highlight is brightest on thick crests (`smoothstep(0.05,
+0.35, c)` keeps thin films clean of 1-texel speckle). Per-medium gloss
+(watercolor matte vs acrylic gloss) is DEFERRED — the engine has no medium
+identity. `EMBOSS_SPEC_*` are calibration start values the artist's live UAT
+may retune; light intensity scales the diffuse AND the sheen together, so
+reduce the sheen alone only through the spec constants. UAT approved live
+2026-11-28 ("excellent résultat").
+</emboss-law>
+
 <parity-rules>
 ## Live / committed parity (shipped 2026-11-21)
 
@@ -292,6 +350,7 @@ paint paths to "make the test pass".
 | --- | --- |
 | Dab/deposit laws, coverage, exports | `packages/efx-watercolor/src/playground/Engine.ts`, `shaders.ts` |
 | Display modes 2/4, underlay branch | `shaders.ts` (`displayFS`), `Engine.drawDisplay`/`render` |
+| Emboss / sheen / light | `shaders.ts` (`displaySource` emboss block, `EMBOSS_GAIN`/`EMBOSS_SHADE_MAX`/`EMBOSS_SPEC_*`, `uSpecHalf`), `Engine.ts` (`DEFAULT_LIGHT`, `setLight`/`getLight`, `RELIEF_BUMP`, the `drawDisplay` half-vector), `emboss.test.ts` |
 | Replay/bake (the arbiter) | `packages/efx-watercolor/src/bake/aquarelleBake.ts`, `adapter/engineAdapter.ts` |
 | Sheet cache (capture/restore, KEY = CACHE) | `playground/Engine.ts` (`captureSheet`/`restoreSheet`, last-touch ages), `AquarelleCanvasLayer.tsx` (`rememberSheet`/`takeSheet`/`restoreCachedSheet`, script signature) |
 | Re-render adoption (bake sheet → live) | `bakeAquarelleEventsToFrame` (`onSheet`), `adapter.captureSheet`, `AquarelleCanvasLayer.adoptSheet`, `PhysicsPaintStudio.tsx` (`aquarelleAdoptSheetRef`) |
@@ -372,6 +431,13 @@ Known caveats:
   mark uniformly over paper and over a committed base (no zebra band, no
   white fringe); Opacity 0 fully transparent; undo/redo one edit;
   leave/reopen + forced re-render parity
+- Emboss/sheen law: `pnpm --dir packages/efx-watercolor exec vitest run
+  src/playground/emboss.test.ts` — one CPU half-vector uniform, five relief
+  taps reused, exact neutral identity (flat / intensity 0 / bump 0 / uFlat 1 /
+  zero thickness), the fold before the clamp, alpha untouched, both display
+  variants identical. Live rows approved 2026-11-28: crest sheen, thin films
+  clean, live = committed, region pick hides it, intensity 0 = unlit look;
+  `DEFAULT_LIGHT` 130/38/1 within one degree of the paper's baked light
 - Feather-noise probe: `probe/medium-engine` five-state sweep
   (`featherNoise.mjs`) — slider 20 / falloff 50 digests byte-identical to the
   pre-change baseline, slider 0 differs by design, driven states never exceed
