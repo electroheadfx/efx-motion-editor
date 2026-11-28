@@ -1,7 +1,7 @@
 ---
 phase: 64-medium-engine
 generated_from: "bd list --status open,in_progress,blocked,deferred --exclude-type epic --json -n 0"
-generated_at: 2026-11-26T21:29:52Z
+generated_at: 2026-11-28T10:14:43Z
 recall_status: ok
 ---
 
